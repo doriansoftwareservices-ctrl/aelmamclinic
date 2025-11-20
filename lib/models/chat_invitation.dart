@@ -2,7 +2,7 @@
 //
 // بيانات دعوات مجموعات الدردشة (chat_group_invitations).
 
-enum ChatGroupInvitationStatus { pending, accepted, declined }
+enum ChatGroupInvitationStatus { pending, accepted, declined, expired }
 
 extension ChatGroupInvitationStatusX on ChatGroupInvitationStatus {
   String get dbValue {
@@ -11,6 +11,8 @@ extension ChatGroupInvitationStatusX on ChatGroupInvitationStatus {
         return 'accepted';
       case ChatGroupInvitationStatus.declined:
         return 'declined';
+      case ChatGroupInvitationStatus.expired:
+        return 'expired';
       case ChatGroupInvitationStatus.pending:
       default:
         return 'pending';
@@ -23,6 +25,8 @@ extension ChatGroupInvitationStatusX on ChatGroupInvitationStatus {
         return ChatGroupInvitationStatus.accepted;
       case 'declined':
         return ChatGroupInvitationStatus.declined;
+      case 'expired':
+        return ChatGroupInvitationStatus.expired;
       case 'pending':
       default:
         return ChatGroupInvitationStatus.pending;
@@ -34,7 +38,7 @@ class ChatGroupInvitation {
   final String id;
   final String conversationId;
   final String inviterUid;
-  final String inviteeUid;
+  final String? inviteeUid;
   final String? inviteeEmail;
   final ChatGroupInvitationStatus status;
   final DateTime createdAt;
@@ -51,7 +55,7 @@ class ChatGroupInvitation {
     required this.id,
     required this.conversationId,
     required this.inviterUid,
-    required this.inviteeUid,
+    this.inviteeUid,
     required this.status,
     required this.createdAt,
     this.inviteeEmail,
@@ -66,13 +70,29 @@ class ChatGroupInvitation {
   bool get isPending => status == ChatGroupInvitationStatus.pending;
   bool get isAccepted => status == ChatGroupInvitationStatus.accepted;
   bool get isDeclined => status == ChatGroupInvitationStatus.declined;
+  bool get isExpired => status == ChatGroupInvitationStatus.expired;
+  bool get isActionable => status == ChatGroupInvitationStatus.pending;
+
+  String get statusLabel {
+    switch (status) {
+      case ChatGroupInvitationStatus.accepted:
+        return 'تم قبولها';
+      case ChatGroupInvitationStatus.declined:
+        return 'تم رفضها';
+      case ChatGroupInvitationStatus.expired:
+        return 'انتهت صلاحيتها';
+      case ChatGroupInvitationStatus.pending:
+      default:
+        return 'قيد الانتظار';
+    }
+  }
 
   factory ChatGroupInvitation.fromMap(Map<String, dynamic> map) {
     return ChatGroupInvitation(
       id: map['id']?.toString() ?? '',
       conversationId: map['conversation_id']?.toString() ?? '',
       inviterUid: map['inviter_uid']?.toString() ?? '',
-      inviteeUid: map['invitee_uid']?.toString() ?? '',
+      inviteeUid: _nullIfEmpty(map['invitee_uid']),
       inviteeEmail: map['invitee_email']?.toString(),
       status: ChatGroupInvitationStatusX.fromDb(map['status']?.toString()),
       createdAt: _parseDate(map['created_at']) ?? DateTime.now().toUtc(),
@@ -86,24 +106,21 @@ class ChatGroupInvitation {
   }
 
   Map<String, dynamic> toMap() => {
-        'id': id,
-        'conversation_id': conversationId,
-        'inviter_uid': inviterUid,
-        'invitee_uid': inviteeUid,
-        'invitee_email': inviteeEmail,
-        'status': status.dbValue,
-        'created_at': createdAt.toIso8601String(),
-        if (respondedAt != null)
-          'responded_at': respondedAt!.toIso8601String(),
-        if (responseNote != null && responseNote!.isNotEmpty)
-          'response_note': responseNote,
-        if (conversationTitle != null) 'title': conversationTitle,
-        'is_group': isGroup,
-        if (conversationAccountId != null)
-          'account_id': conversationAccountId,
-        if (conversationCreatedBy != null)
-          'created_by': conversationCreatedBy,
-      };
+    'id': id,
+    'conversation_id': conversationId,
+    'inviter_uid': inviterUid,
+    if (inviteeUid != null) 'invitee_uid': inviteeUid,
+    'invitee_email': inviteeEmail,
+    'status': status.dbValue,
+    'created_at': createdAt.toIso8601String(),
+    if (respondedAt != null) 'responded_at': respondedAt!.toIso8601String(),
+    if (responseNote != null && responseNote!.isNotEmpty)
+      'response_note': responseNote,
+    if (conversationTitle != null) 'title': conversationTitle,
+    'is_group': isGroup,
+    if (conversationAccountId != null) 'account_id': conversationAccountId,
+    if (conversationCreatedBy != null) 'created_by': conversationCreatedBy,
+  };
 }
 
 DateTime? _parseDate(dynamic value) {
@@ -116,4 +133,10 @@ DateTime? _parseDate(dynamic value) {
   } catch (_) {
     return null;
   }
+}
+
+String? _nullIfEmpty(dynamic value) {
+  if (value == null) return null;
+  final trimmed = value.toString().trim();
+  return trimmed.isEmpty ? null : trimmed;
 }

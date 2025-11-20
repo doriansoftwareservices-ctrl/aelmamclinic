@@ -246,9 +246,11 @@ void main() {
                 Future.microtask(() async {
                   String? accId = auth.accountId;
                   accId ??= await cp.fetchAccountIdForCurrentUser();
-                  if (accId == null || accId.isEmpty) return;
+                  if ((accId == null || accId.isEmpty) && !auth.isSuperAdmin) {
+                    return;
+                  }
                   await cp.bootstrap(
-                    accountId: accId,
+                    accountId: (accId != null && accId.isNotEmpty) ? accId : null,
                     role: auth.role ?? '',
                     isSuperAdmin: auth.isSuperAdmin,
                   );

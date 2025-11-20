@@ -70,6 +70,8 @@ class FeatureKeys {
   static const String backup = 'backup';
   static const String accounts = 'accounts'; // إدارة مستخدمي الحساب
   static const String chat = 'chat'; // الدردشة 👈 جديد
+  static const String auditLogs = 'audit.logs';
+  static const String auditPermissions = 'audit.permissions';
 }
 
 class StatisticsOverviewScreen extends StatefulWidget {
@@ -442,17 +444,13 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
     bool requireDelete = false,
     required VoidCallback onTap,
   }) {
-    // السوبر أدمن والمالِك يرون الكل دومًا
-    bool allowed = auth.isSuperAdmin ||
-        (auth.role ?? '') == 'owner' ||
-        auth.featureAllowed(featureKey);
-
-    // تطبيق CRUD إذا طُلب (لمالك/سوبر نتجاوز، للموظف نطبّق)
-    if (allowed && !auth.isSuperAdmin && (auth.role ?? '') != 'owner') {
-      if (requireCreate) allowed = allowed && auth.canCreate;
-      if (requireUpdate) allowed = allowed && auth.canUpdate;
-      if (requireDelete) allowed = allowed && auth.canDelete;
-    }
+    final allowed = _isFeatureAllowed(
+      auth,
+      featureKey,
+      requireCreate: requireCreate,
+      requireUpdate: requireUpdate,
+      requireDelete: requireDelete,
+    );
 
     if (!allowed && kHideDeniedTabs) {
       return const SizedBox.shrink(); // إخفاء التبويب
@@ -466,13 +464,41 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
     );
   }
 
+  bool _isFeatureAllowed(
+    AuthProvider auth,
+    String featureKey, {
+    bool requireCreate = false,
+    bool requireUpdate = false,
+    bool requireDelete = false,
+  }) {
+    // السوبر أدمن والمالِك يرون الكل دومًا
+    bool allowed = auth.isSuperAdmin ||
+        (auth.role ?? '') == 'owner' ||
+        auth.featureAllowed(featureKey);
+
+    // تطبيق CRUD إذا طُلب (لمالك/سوبر نتجاوز، للموظف نطبّق)
+    if (allowed && !auth.isSuperAdmin && (auth.role ?? '') != 'owner') {
+      if (requireCreate) allowed = allowed && auth.canCreate;
+      if (requireUpdate) allowed = allowed && auth.canUpdate;
+      if (requireDelete) allowed = allowed && auth.canDelete;
+    }
+
+    return allowed;
+  }
+
   /*──────── Drawer ────────*/
   Widget _buildDrawer(BuildContext context, StatisticsProvider stats) {
     final scheme = Theme.of(context).colorScheme;
 
     // استمع لتغيّرات AuthProvider كي تنعكس الصلاحيات مباشرة
     final auth = Provider.of<AuthProvider>(context);
-    final isOwnerOrSuper = auth.isSuperAdmin || (auth.role ?? '') == 'owner';
+    final canManageAccounts = _isFeatureAllowed(auth, FeatureKeys.accounts);
+    final canManagePermissions =
+        _isFeatureAllowed(auth, FeatureKeys.auditPermissions);
+    final canViewAuditLogs =
+        _isFeatureAllowed(auth, FeatureKeys.auditLogs);
+    final showAdminSection =
+        canManageAccounts || canManagePermissions || canViewAuditLogs;
 
     return Directionality(
       textDirection: ui.TextDirection.rtl,
@@ -668,12 +694,14 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
                       },
                     ),
 
-                    // ـــ قسم الإداري (مالك/سوبر فقط): الحسابات + الصلاحيات + السجلات
-                    if (isOwnerOrSuper) ...[
+                    // ـــ قسم الإداري: يظهر فقط إذا وُجدت صلاحيات لأي من المفاتيح الإدارية
+                    if (showAdminSection) ...[
                       const SizedBox(height: 8),
                       Divider(color: scheme.outline.withValues(alpha: .3)),
                       const SizedBox(height: 6),
-                      _drawerItem(
+                      _featureDrawerItem(
+                        auth: auth,
+                        featureKey: FeatureKeys.accounts,
                         icon: Icons.supervisor_account_rounded,
                         title: 'الحسابات',
                         onTap: () {
@@ -685,7 +713,9 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
                           );
                         },
                       ),
-                      _drawerItem(
+                      _featureDrawerItem(
+                        auth: auth,
+                        featureKey: FeatureKeys.auditPermissions,
                         icon: Icons.tune_rounded,
                         title: 'الصلاحيات',
                         onTap: () {
@@ -697,7 +727,9 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
                           );
                         },
                       ),
-                      _drawerItem(
+                      _featureDrawerItem(
+                        auth: auth,
+                        featureKey: FeatureKeys.auditLogs,
                         icon: Icons.receipt_long_rounded,
                         title: 'السجلات',
                         onTap: () {

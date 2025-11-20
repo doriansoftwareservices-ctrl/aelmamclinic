@@ -14,6 +14,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:aelmamclinic/core/features.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/providers/auth_provider.dart';
@@ -309,9 +310,9 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final auth = context.watch<AuthProvider>();
-
-    // السوبر أدمن قد لا يملك account_id فعّال — نمنع العرض إلا لمالك عيادة فعلي.
-    final notOwner = (!auth.isSuperAdmin && (auth.role ?? '') != 'owner');
+    final canView = auth.isSuperAdmin ||
+        (auth.role ?? '') == 'owner' ||
+        auth.featureAllowed(FeatureKeys.auditLogs);
 
     return Directionality(
       textDirection: ui.TextDirection.ltr,
@@ -323,205 +324,211 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
         body: SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (notOwner)
-                  NeuCard(
-                    padding: const EdgeInsets.all(16),
-                    child: Text(
-                      'هذه الصفحة متاحة لمالك الحساب فقط.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: scheme.error,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  )
-                else ...[
-                  // --- شريط الفلاتر ---
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    crossAxisAlignment: WrapCrossAlignment.center,
+            child: !canView
+                ? _buildAccessDeniedCard(scheme)
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // من
-                      SizedBox(
-                        width: 220,
-                        child: NeuCard(
-                          onTap: _pickFrom,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 10),
-                          child: Row(
-                            children: [
-                              Container(
-                                decoration: BoxDecoration(
-                                  color: kPrimaryColor.withValues(alpha: .10),
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                                padding: const EdgeInsets.all(8),
-                                child: const Icon(Icons.calendar_month_rounded,
-                                    color: kPrimaryColor, size: 18),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  _from == null
-                                      ? 'منذ البداية'
-                                      : _dateFmt.format(_from!),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: scheme.onSurface,
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 14.5,
-                                  ),
-                                ),
-                              ),
-                            ],
+                      // --- شريط الفلاتر ---
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          _buildFromPicker(scheme),
+                          _buildToPicker(scheme),
+                          _buildOperationDropdown(),
+                          _buildTableFilter(),
+                          _buildActorFilter(),
+                          FilledButton.icon(
+                            onPressed: _loading
+                                ? null
+                                : () => _refresh(reset: true),
+                            icon: const Icon(Icons.refresh_rounded),
+                            label: const Text('تحديث'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Expanded(
+                        child: RefreshIndicator(
+                          color: scheme.primary,
+                          onRefresh: () => _refresh(reset: true),
+                          child: NotificationListener<ScrollNotification>(
+                            onNotification: (n) {
+                              if (n.metrics.pixels >=
+                                      n.metrics.maxScrollExtent - 200 &&
+                                  !_loading &&
+                                  _hasMore) {
+                                _refresh(reset: false);
+                              }
+                              return false;
+                            },
+                            child: _buildList(),
                           ),
                         ),
-                      ),
-
-                      // إلى
-                      SizedBox(
-                        width: 220,
-                        child: NeuCard(
-                          onTap: _pickTo,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 10),
-                          child: Row(
-                            children: [
-                              Container(
-                                decoration: BoxDecoration(
-                                  color: kPrimaryColor.withValues(alpha: .10),
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                                padding: const EdgeInsets.all(8),
-                                child: const Icon(Icons.event_rounded,
-                                    color: kPrimaryColor, size: 18),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  _to == null
-                                      ? 'حتى اليوم'
-                                      : _dateFmt.format(_to!),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: scheme.onSurface,
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 14.5,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-
-                      // نوع العملية
-                      SizedBox(
-                        width: 180,
-                        child: NeuCard(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 2),
-                          child: DropdownButtonHideUnderline(
-                            child: DropdownButton<String>(
-                              isExpanded: true,
-                              value: _op,
-                              items: const [
-                                DropdownMenuItem(
-                                    value: 'all', child: Text('كل العمليات')),
-                                DropdownMenuItem(
-                                    value: 'insert', child: Text('INSERT')),
-                                DropdownMenuItem(
-                                    value: 'update', child: Text('UPDATE')),
-                                DropdownMenuItem(
-                                    value: 'delete', child: Text('DELETE')),
-                              ],
-                              onChanged: (v) =>
-                                  setState(() => _op = v ?? 'all'),
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      // اسم الجدول
-                      SizedBox(
-                        width: 220,
-                        child: NeuCard(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 6),
-                          child: TextField(
-                            controller: _tableCtrl,
-                            textInputAction: TextInputAction.search,
-                            decoration: const InputDecoration(
-                              isDense: true,
-                              border: InputBorder.none,
-                              hintText: 'اسم الجدول…',
-                              prefixIcon: Icon(Icons.table_chart_outlined),
-                            ),
-                            onSubmitted: (_) => _refresh(reset: true),
-                          ),
-                        ),
-                      ),
-
-                      // بريد المنفّذ
-                      SizedBox(
-                        width: 250,
-                        child: NeuCard(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 6),
-                          child: TextField(
-                            controller: _actorCtrl,
-                            textInputAction: TextInputAction.search,
-                            decoration: const InputDecoration(
-                              isDense: true,
-                              border: InputBorder.none,
-                              hintText: 'بريد المنفّذ أو UID…',
-                              prefixIcon: Icon(Icons.person_search_outlined),
-                            ),
-                            onSubmitted: (_) => _refresh(reset: true),
-                          ),
-                        ),
-                      ),
-
-                      // زر تحديث
-                      FilledButton.icon(
-                        onPressed:
-                        _loading ? null : () => _refresh(reset: true),
-                        icon: const Icon(Icons.refresh_rounded),
-                        label: const Text('تحديث'),
                       ),
                     ],
                   ),
-
-                  const SizedBox(height: 12),
-
-                  Expanded(
-                    child: RefreshIndicator(
-                      color: scheme.primary,
-                      onRefresh: () => _refresh(reset: true),
-                      child: NotificationListener<ScrollNotification>(
-                        onNotification: (n) {
-                          if (n.metrics.pixels >=
-                              n.metrics.maxScrollExtent - 200 &&
-                              !_loading &&
-                              _hasMore) {
-                            _refresh(reset: false);
-                          }
-                          return false;
-                        },
-                        child: _buildList(),
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFromPicker(ColorScheme scheme) {
+    return SizedBox(
+      width: 220,
+      child: NeuCard(
+        onTap: _pickFrom,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                color: kPrimaryColor.withValues(alpha: .10),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              padding: const EdgeInsets.all(8),
+              child:
+                  const Icon(Icons.calendar_month_rounded, color: kPrimaryColor, size: 18),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                _from == null ? 'منذ البداية' : _dateFmt.format(_from!),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: scheme.onSurface,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 14.5,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildToPicker(ColorScheme scheme) {
+    return SizedBox(
+      width: 220,
+      child: NeuCard(
+        onTap: _pickTo,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                color: kPrimaryColor.withValues(alpha: .10),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              padding: const EdgeInsets.all(8),
+              child: const Icon(Icons.event_rounded, color: kPrimaryColor, size: 18),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                _to == null ? 'حتى اليوم' : _dateFmt.format(_to!),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: scheme.onSurface,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 14.5,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOperationDropdown() {
+    return SizedBox(
+      width: 180,
+      child: NeuCard(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<String>(
+            isExpanded: true,
+            value: _op,
+            items: const [
+              DropdownMenuItem(value: 'all', child: Text('كل العمليات')),
+              DropdownMenuItem(value: 'insert', child: Text('INSERT')),
+              DropdownMenuItem(value: 'update', child: Text('UPDATE')),
+              DropdownMenuItem(value: 'delete', child: Text('DELETE')),
+            ],
+            onChanged: (v) => setState(() => _op = v ?? 'all'),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTableFilter() {
+    return SizedBox(
+      width: 220,
+      child: NeuCard(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        child: TextField(
+          controller: _tableCtrl,
+          textInputAction: TextInputAction.search,
+          decoration: const InputDecoration(
+            isDense: true,
+            border: InputBorder.none,
+            hintText: 'اسم الجدول…',
+            prefixIcon: Icon(Icons.table_chart_outlined),
+          ),
+          onSubmitted: (_) => _refresh(reset: true),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActorFilter() {
+    return SizedBox(
+      width: 250,
+      child: NeuCard(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        child: TextField(
+          controller: _actorCtrl,
+          textInputAction: TextInputAction.search,
+          decoration: const InputDecoration(
+            isDense: true,
+            border: InputBorder.none,
+            hintText: 'بريد المنفّذ أو UID…',
+            prefixIcon: Icon(Icons.person_search_outlined),
+          ),
+          onSubmitted: (_) => _refresh(reset: true),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAccessDeniedCard(ColorScheme scheme) {
+    return Center(
+      child: NeuCard(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.lock_outline_rounded, color: scheme.error, size: 32),
+            const SizedBox(height: 12),
+            const Text(
+              'لا تملك صلاحية عرض سجلات التدقيق.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'اطلب من المالك أو السوبر أدمن منحك صلاحية "audit.logs".',
+              textAlign: TextAlign.center,
+            ),
+          ],
         ),
       ),
     );

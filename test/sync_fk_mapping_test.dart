@@ -7,12 +7,14 @@ import 'package:sqflite_common/sqlite_api.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:aelmamclinic/services/db_service.dart';
+import 'support/native_sqlite.dart';
 
 void main() {
   late Directory tempDir;
   late String testDbPath;
 
   setUpAll(() {
+    ensureNativeSqlite();
     sqfliteFfiInit();
     sqflite.databaseFactory = databaseFactoryFfi;
   });

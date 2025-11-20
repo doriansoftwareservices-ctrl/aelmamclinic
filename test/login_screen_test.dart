@@ -30,7 +30,8 @@ class _LoginHarnessAuthProvider extends AuthProvider {
   })  : _results = ListQueue<AuthSessionResult>.from(results),
         _hasAccount = hasAccount,
         _superAdmin = isSuperAdmin,
-        super(authService: _NoopAuthSupabaseService(), listenAuthChanges: false);
+        super(
+            authService: _NoopAuthSupabaseService(), listenAuthChanges: false);
 
   final ListQueue<AuthSessionResult> _results;
   final bool _hasAccount;
@@ -43,8 +44,9 @@ class _LoginHarnessAuthProvider extends AuthProvider {
 
   @override
   Future<AuthSessionResult> refreshAndValidateCurrentUser() async {
-    final result =
-        _results.isEmpty ? const AuthSessionResult.unknown() : _results.removeFirst();
+    final result = _results.isEmpty
+        ? const AuthSessionResult.unknown()
+        : _results.removeFirst();
     _loggedIn = result.isSuccess;
     return result;
   }
@@ -71,12 +73,8 @@ class _LoginHarnessAuthProvider extends AuthProvider {
 }
 
 Future<void> _enterCredentials(WidgetTester tester) async {
-  final emailField = find.byWidgetPredicate((widget) {
-    return widget is TextFormField && widget.decoration?.labelText == 'البريد الإلكتروني';
-  });
-  final passwordField = find.byWidgetPredicate((widget) {
-    return widget is TextFormField && widget.decoration?.labelText == 'كلمة المرور';
-  });
+  final emailField = find.bySemanticsLabel('البريد الإلكتروني');
+  final passwordField = find.bySemanticsLabel('كلمة المرور');
 
   await tester.enterText(emailField, 'qa@clinic.test');
   await tester.enterText(passwordField, 'password123');
@@ -91,7 +89,8 @@ void main() {
     );
   });
 
-  testWidgets('successful login clears errors and bootstraps sync', (tester) async {
+  testWidgets('successful login clears errors and bootstraps sync',
+      (tester) async {
     final provider = _LoginHarnessAuthProvider(
       results: const [AuthSessionResult.success()],
     );
@@ -157,7 +156,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.text('لم يتم ربط هذا المستخدم بأي عيادة بعد. اطلب من الإدارة إكمال الإعداد.'),
+      find.text(
+          'لم يتم ربط هذا المستخدم بأي عيادة بعد. اطلب من الإدارة إكمال الإعداد.'),
       findsOneWidget,
     );
   });

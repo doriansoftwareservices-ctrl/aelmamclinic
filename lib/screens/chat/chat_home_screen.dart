@@ -64,20 +64,20 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
     final invites = chat.invitations;
     final query = _searchCtrl.text.trim().toLowerCase();
 
-    final filtered = convs.where((conv) {
-      if (_unreadOnly && (conv.unreadCount ?? 0) == 0) {
-        return false;
-      }
-      if (query.isEmpty) return true;
-      final title = chat.displayTitleOf(conv.id).toLowerCase();
-      final snippet = (conv.lastMsgSnippet ?? '').toLowerCase();
-      return title.contains(query) || snippet.contains(query);
-    }).toList()
-      ..sort((a, b) {
-        final aTime = a.lastMsgAt ?? a.updatedAt ?? a.createdAt;
-        final bTime = b.lastMsgAt ?? b.updatedAt ?? b.createdAt;
-        return bTime.compareTo(aTime);
-      });
+    final filtered =
+        convs.where((conv) {
+          if (_unreadOnly && (conv.unreadCount ?? 0) == 0) {
+            return false;
+          }
+          if (query.isEmpty) return true;
+          final title = chat.displayTitleOf(conv.id).toLowerCase();
+          final snippet = (conv.lastMsgSnippet ?? '').toLowerCase();
+          return title.contains(query) || snippet.contains(query);
+        }).toList()..sort((a, b) {
+          final aTime = a.lastMsgAt ?? a.updatedAt ?? a.createdAt;
+          final bTime = b.lastMsgAt ?? b.updatedAt ?? b.createdAt;
+          return bTime.compareTo(aTime);
+        });
 
     final isBusy = chat.busy && !chat.ready;
 
@@ -121,9 +121,13 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
                     const SizedBox(width: 8),
                     FilterChip(
                       label: const Text('غير المقروءة'),
-                      avatar: const Icon(Icons.mark_chat_unread_rounded, size: 18),
+                      avatar: const Icon(
+                        Icons.mark_chat_unread_rounded,
+                        size: 18,
+                      ),
                       selected: _unreadOnly,
-                      onSelected: (value) => setState(() => _unreadOnly = value),
+                      onSelected: (value) =>
+                          setState(() => _unreadOnly = value),
                     ),
                   ],
                 ),
@@ -136,8 +140,10 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
                     children: [
                       Align(
                         alignment: Alignment.centerRight,
-                        child: Text('دعوات المجموعات',
-                            style: Theme.of(context).textTheme.titleMedium),
+                        child: Text(
+                          'دعوات المجموعات',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
                       ),
                       const SizedBox(height: 8),
                       ...invites.map(
@@ -181,12 +187,16 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
                         padding: const EdgeInsets.fromLTRB(12, 6, 12, 18),
                         itemBuilder: (context, index) {
                           final conversation = filtered[index];
-                          final displayTitle = chat.displayTitleOf(conversation.id);
+                          final displayTitle = chat.displayTitleOf(
+                            conversation.id,
+                          );
                           final snippet = conversation.lastMsgSnippet ?? '';
                           final typing = chat.typingUids(conversation.id);
                           final subtitleOverride = typing.isNotEmpty
                               ? 'جارٍ الكتابة...'
-                              : (snippet.trim().isEmpty ? 'لا توجد رسائل بعد' : snippet.trim());
+                              : (snippet.trim().isEmpty
+                                    ? 'لا توجد رسائل بعد'
+                                    : snippet.trim());
 
                           return ConversationTile(
                             conversation: conversation,
@@ -225,9 +235,9 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
       await _openConversation(invitation.conversationId);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('تعذر قبول الدعوة: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('تعذر قبول الدعوة: $e')));
       }
     } finally {
       if (mounted) setState(() => _processingInvitationId = null);
@@ -240,15 +250,15 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
     try {
       await context.read<ChatProvider>().declineGroupInvitation(invitation.id);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('تم رفض الدعوة')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('تم رفض الدعوة')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('تعذر رفض الدعوة: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('تعذر رفض الدعوة: $e')));
       }
     } finally {
       if (mounted) setState(() => _processingInvitationId = null);
@@ -279,7 +289,8 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
               child: const Text('إلغاء'),
             ),
             FilledButton(
-              onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+              onPressed: () =>
+                  Navigator.of(context).pop(controller.text.trim()),
               child: const Text('حفظ'),
             ),
           ],
@@ -290,10 +301,17 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
     if (result == null) return;
     final trimmed = result.trim();
     if (trimmed == initial.trim()) return;
-    await chat.updateConversationAlias(conversationId: conversation.id, alias: trimmed);
+    await chat.updateConversationAlias(
+      conversationId: conversation.id,
+      alias: trimmed,
+    );
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(trimmed.isEmpty ? 'تم إزالة الاسم البديل' : 'تم تحديث الاسم البديل')),
+      SnackBar(
+        content: Text(
+          trimmed.isEmpty ? 'تم إزالة الاسم البديل' : 'تم تحديث الاسم البديل',
+        ),
+      ),
     );
   }
 
@@ -316,7 +334,9 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
   }
 
   Future<void> _showConversationActions(
-      BuildContext context, ChatConversation conversation) async {
+    BuildContext context,
+    ChatConversation conversation,
+  ) async {
     final chat = context.read<ChatProvider>();
     final isDirect = !conversation.isGroup;
     final alias = isDirect ? chat.aliasForConversation(conversation.id) : null;
@@ -386,8 +406,9 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
               child: const Text('إلغاء'),
             ),
             FilledButton(
-              onPressed: () =>
-                  Navigator.of(context).pop(emailCtrl.text.trim().toLowerCase()),
+              onPressed: () => Navigator.of(
+                context,
+              ).pop(emailCtrl.text.trim().toLowerCase()),
               child: const Text('بدء'),
             ),
           ],
@@ -402,8 +423,9 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
 
     try {
       final chat = context.read<ChatProvider>();
-      final conversation =
-          await chat.startDirectByEmail(result); // will schedule refresh
+      final conversation = await chat.startDirectByEmail(
+        result,
+      ); // will schedule refresh
       await chat.openConversation(conversation.id);
       await chat.markConversationRead(conversation.id);
       if (!mounted) return;
@@ -415,9 +437,9 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
       await chat.refreshConversations();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذر إنشاء المحادثة: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('تعذر إنشاء المحادثة: $e')));
     } finally {
       emailCtrl.dispose();
     }
@@ -443,6 +465,7 @@ class _InvitationCard extends StatelessWidget {
     final title = (invitation.conversationTitle ?? '').trim().isEmpty
         ? 'مجموعة بدون عنوان'
         : invitation.conversationTitle!.trim();
+    final actionable = invitation.isActionable && !busy;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -453,19 +476,36 @@ class _InvitationCard extends StatelessWidget {
           children: [
             Text(
               title,
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(fontWeight: FontWeight.bold),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
               textDirection: ui.TextDirection.rtl,
             ),
             const SizedBox(height: 6),
             Text(
+              'الحالة الحالية: ${invitation.statusLabel}',
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+              textDirection: ui.TextDirection.rtl,
+            ),
+            if (invitation.responseNote != null &&
+                invitation.responseNote!.trim().isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                'ملاحظة: ${invitation.responseNote}',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: scheme.tertiary),
+                textDirection: ui.TextDirection.rtl,
+              ),
+            ],
+            const SizedBox(height: 6),
+            Text(
               'تمت دعوتك للانضمام إلى هذه المجموعة. يمكنك القبول أو الرفض الآن.',
-              style: Theme.of(context)
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(color: scheme.onSurfaceVariant),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
               textDirection: ui.TextDirection.rtl,
             ),
             const SizedBox(height: 12),
@@ -473,7 +513,7 @@ class _InvitationCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: FilledButton(
-                    onPressed: busy ? null : onAccept,
+                    onPressed: actionable ? onAccept : null,
                     child: busy
                         ? const SizedBox(
                             height: 18,
@@ -486,7 +526,9 @@ class _InvitationCard extends StatelessWidget {
                 const SizedBox(width: 12),
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: busy ? null : onDecline,
+                    onPressed: invitation.isActionable && !busy
+                        ? onDecline
+                        : null,
                     child: const Text('رفض'),
                   ),
                 ),

@@ -21,6 +21,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'package:path/path.dart' as p;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:postgrest/postgrest.dart' show PostgrestException;
 
 import 'package:aelmamclinic/core/constants.dart';
 import 'package:aelmamclinic/models/chat_invitation.dart';
@@ -36,6 +37,21 @@ import 'package:aelmamclinic/models/chat_models.dart'
 import 'package:aelmamclinic/models/chat_reaction.dart';
 import 'package:aelmamclinic/utils/device_id.dart';
 import 'package:aelmamclinic/utils/local_seq.dart';
+
+class ChatAttachmentUploadException implements Exception {
+  final String message;
+  final Object? cause;
+  ChatAttachmentUploadException(this.message, {this.cause});
+  @override
+  String toString() => message;
+}
+
+class ChatInvitationException implements Exception {
+  final String message;
+  ChatInvitationException(this.message);
+  @override
+  String toString() => message;
+}
 
 class ChatService {
   ChatService._();
@@ -82,6 +98,44 @@ class ChatService {
         '${hex.substring(20)}';
   }
 
+  Map<String, dynamic>? _asJsonMap(dynamic value) {
+    if (value == null) return null;
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) {
+      return value.map((key, dynamic val) => MapEntry(key.toString(), val));
+    }
+    return null;
+  }
+
+  Future<void> _uploadToStorage({
+    required String path,
+    required File file,
+    required FileOptions options,
+  }) async {
+    try {
+      await _sb.storage
+          .from(attachmentsBucket)
+          .upload(path, file, fileOptions: options);
+    } on StorageException catch (e) {
+      final message = (e.statusCode == 403)
+          ? 'لا تملك صلاحية رفع المرفقات لهذه المحادثة.'
+          : (e.message ?? 'فشل رفع المرفقات.');
+      throw ChatAttachmentUploadException(message, cause: e);
+    } catch (e) {
+      throw ChatAttachmentUploadException('فشل رفع المرفقات: $e', cause: e);
+    }
+  }
+
+  void _ensureInvitationRpcOk(dynamic response, String fallback) {
+    if (response is Map && response['ok'] == true) {
+      return;
+    }
+    final error = response is Map ? response['error']?.toString() : null;
+    throw ChatInvitationException(
+      error == null || error.isEmpty ? fallback : error,
+    );
+  }
+
   Future<({String? accountId, String? role, String? email, String? deviceId})>
   _myAccountRow() async {
     final u = _sb.auth.currentUser;
@@ -89,18 +143,19 @@ class ChatService {
       return (accountId: null, role: null, email: null, deviceId: null);
     }
     try {
-      final row = await _sb
+      final raw = await _sb
           .from(_tblAccUsers)
           .select('account_id, role, email, device_id')
           .eq('user_uid', u.id)
           .order('created_at', ascending: false)
           .limit(1)
           .maybeSingle();
+      final row = _asJsonMap(raw);
       return (
-      accountId: row?['account_id']?.toString(),
-      role: row?['role']?.toString(),
-      email: (row?['email']?.toString() ?? '').toLowerCase(),
-      deviceId: row?['device_id']?.toString()
+        accountId: row?['account_id']?.toString(),
+        role: row?['role']?.toString(),
+        email: (row?['email']?.toString() ?? '').toLowerCase(),
+        deviceId: row?['device_id']?.toString(),
       );
     } catch (_) {
       return (accountId: null, role: null, email: null, deviceId: null);
@@ -110,11 +165,12 @@ class ChatService {
   /// account_id الخاص بالمحادثة (مفضل للرسائل ليتوافق مع RLS)
   Future<String?> _conversationAccountId(String conversationId) async {
     try {
-      final row = await _sb
+      final raw = await _sb
           .from(_tblConvs)
           .select('account_id')
           .eq('id', conversationId)
           .maybeSingle();
+      final row = _asJsonMap(raw);
       final v = row?['account_id']?.toString();
       if (v == null || v.isEmpty || v == 'null') return null;
       return v;
@@ -126,8 +182,8 @@ class ChatService {
   /// يضمن لنا تحديد بريد المرسل.
   String? _bestSenderEmail(String? meEmail) {
     final authEmail = _sb.auth.currentUser?.email;
-    final e =
-    (meEmail?.trim().isNotEmpty == true ? meEmail : authEmail)?.toLowerCase();
+    final e = (meEmail?.trim().isNotEmpty == true ? meEmail : authEmail)
+        ?.toLowerCase();
     return (e != null && e.isNotEmpty) ? e : null;
   }
 
@@ -162,11 +218,7 @@ class ChatService {
       try {
         final res = await _sb.functions.invoke(
           'sign-attachment',
-          body: {
-            'bucket': bucket,
-            'path': path,
-            'expiresIn': _signedUrlTTL,
-          },
+          body: {'bucket': bucket, 'path': path, 'expiresIn': _signedUrlTTL},
         );
         final data = res.data;
         if (data is Map) {
@@ -176,8 +228,9 @@ class ChatService {
       } catch (_) {}
       // 2) fallback: createSignedUrl من Storage
       try {
-        final s =
-        await _sb.storage.from(bucket).createSignedUrl(path, _signedUrlTTL);
+        final s = await _sb.storage
+            .from(bucket)
+            .createSignedUrl(path, _signedUrlTTL);
         if (s.trim().isNotEmpty) return s;
       } catch (_) {}
     }
@@ -192,7 +245,9 @@ class ChatService {
 
   String _friendlyFileName(File file, {String fallback = 'file'}) {
     try {
-      final uriName = file.uri.pathSegments.isNotEmpty ? file.uri.pathSegments.last : null;
+      final uriName = file.uri.pathSegments.isNotEmpty
+          ? file.uri.pathSegments.last
+          : null;
       final pathName = p.basename(file.path);
       final candidate = (uriName ?? pathName).trim();
       return _safeFileName(candidate.isEmpty ? fallback : candidate);
@@ -211,8 +266,8 @@ class ChatService {
   }
 
   Future<List<Map<String, dynamic>>> _normalizeAttachmentsToHttp(
-      List<dynamic> rawList,
-      ) async {
+    List<dynamic> rawList,
+  ) async {
     final result = <Map<String, dynamic>>[];
     for (final e in rawList.whereType<Map<String, dynamic>>()) {
       final bucket = e['bucket']?.toString();
@@ -238,8 +293,8 @@ class ChatService {
   }
 
   Future<Map<String, dynamic>> _withHttpAttachments(
-      Map<String, dynamic> msgRow,
-      ) async {
+    Map<String, dynamic> msgRow,
+  ) async {
     final att = msgRow['attachments'];
     if (att is List) {
       final normalized = await _normalizeAttachmentsToHttp(att);
@@ -252,16 +307,16 @@ class ChatService {
 
   /// إدراج عام مع سقوط اختياري — **لا تُستخدم للرسائل بعد الآن**.
   Future<Map<String, dynamic>> _insertWithFallback(
-      String table,
-      Map<String, dynamic> map, {
-        List<String> fallbackKeys = const [
-          'account_id',
-          'mentions',
-          'reply_to_message_id',
-          'reply_to_snippet',
-          'attachments',
-        ],
-      }) async {
+    String table,
+    Map<String, dynamic> map, {
+    List<String> fallbackKeys = const [
+      'account_id',
+      'mentions',
+      'reply_to_message_id',
+      'reply_to_snippet',
+      'attachments',
+    ],
+  }) async {
     try {
       return await _sb.from(table).insert(map).select().single();
     } catch (_) {
@@ -292,16 +347,16 @@ class ChatService {
       await _sb
           .from(_tblConvs)
           .update({
-        'last_msg_at': lastAt.toUtc().toIso8601String(),
-        'last_msg_snippet': snippet,
-      })
+            'last_msg_at': lastAt.toUtc().toIso8601String(),
+            'last_msg_snippet': snippet,
+          })
           .eq('id', conversationId);
     } catch (_) {}
   }
 
   Future<void> refreshConversationLastSummary(String conversationId) async {
     try {
-      final last = await _sb
+      final raw = await _sb
           .from(_tblMsgs)
           .select('kind, body, created_at, deleted')
           .eq('conversation_id', conversationId)
@@ -309,6 +364,7 @@ class ChatService {
           .order('created_at', ascending: false)
           .limit(1)
           .maybeSingle();
+      final last = _asJsonMap(raw);
 
       if (last == null) {
         await _sb
@@ -339,12 +395,15 @@ class ChatService {
     required String uidB,
   }) async {
     // ملاحظة: حدّد اسم علاقة الـ FK صراحةً لتفادي التباس PostgREST.
-    final rows = await _sb.from(_tblParts).select('''
+    final rows = await _sb
+        .from(_tblParts)
+        .select('''
     conversation_id,
     conversation:${_tblConvs}!fk_chat_participants_conversation(
       id, is_group, account_id, title, created_at, created_by, last_msg_at, last_msg_snippet
     )
-  ''').inFilter('user_uid', [uidA, uidB]);
+  ''')
+        .inFilter('user_uid', [uidA, uidB]);
 
     final countByConv = <String, int>{};
     final mapConv = <String, Map<String, dynamic>>{};
@@ -396,8 +455,7 @@ class ChatService {
       throw 'حدث خلل أثناء جلب المستخدم الهدف.';
     }
 
-    final otherEmail =
-        (targetRow['email']?.toString() ?? email).toLowerCase();
+    final otherEmail = (targetRow['email']?.toString() ?? email).toLowerCase();
 
     final targetRole = (targetRow['role']?.toString() ?? '').toLowerCase();
     if (targetRole == 'superadmin' && myRole != 'superadmin') {
@@ -445,7 +503,8 @@ class ChatService {
     final row = await _sb
         .from(_tblConvs)
         .select(
-        'id, is_group, title, account_id, created_by, created_at, updated_at, last_msg_at, last_msg_snippet')
+          'id, is_group, title, account_id, created_by, created_at, updated_at, last_msg_at, last_msg_snippet',
+        )
         .eq('id', convId)
         .maybeSingle();
 
@@ -519,16 +578,20 @@ class ChatService {
         'joined_at': nowIso,
       },
     ];
-    await _sb.from(_tblParts).upsert(participantRows, onConflict: 'conversation_id,user_uid');
+    await _sb
+        .from(_tblParts)
+        .upsert(participantRows, onConflict: 'conversation_id,user_uid');
     if (members.isNotEmpty) {
       final invites = members
-          .map((m) => {
-                'conversation_id': convId,
-                'inviter_uid': u.id,
-                'invitee_uid': m.uid,
-                'invitee_email': m.email,
-                'created_at': nowIso,
-              })
+          .map(
+            (m) => {
+              'conversation_id': convId,
+              'inviter_uid': u.id,
+              'invitee_uid': m.uid,
+              'invitee_email': m.email,
+              'created_at': nowIso,
+            },
+          )
           .toList();
       await _sb
           .from('chat_group_invitations')
@@ -553,8 +616,10 @@ class ChatService {
     if (u == null) return const <ConversationListItem>[];
 
     // (1) محادثات أنا مشارك فيها
-    final myPartRows =
-    await _sb.from(_tblParts).select('conversation_id').eq('user_uid', u.id);
+    final myPartRows = await _sb
+        .from(_tblParts)
+        .select('conversation_id')
+        .eq('user_uid', u.id);
 
     final partConvIds = (myPartRows as List)
         .whereType<Map<String, dynamic>>()
@@ -562,8 +627,10 @@ class ChatService {
         .toSet();
 
     // (2) + محادثات أنا منشئها، حتى لو لم أُدرج كمشارك
-    final createdRows =
-    await _sb.from(_tblConvs).select('id').eq('created_by', u.id);
+    final createdRows = await _sb
+        .from(_tblConvs)
+        .select('id')
+        .eq('created_by', u.id);
     final createdConvIds = (createdRows as List)
         .whereType<Map<String, dynamic>>()
         .map((e) => e['id'].toString())
@@ -575,7 +642,8 @@ class ChatService {
     final convRows = await _sb
         .from(_tblConvs)
         .select(
-        'id, is_group, title, account_id, created_by, created_at, updated_at, last_msg_at, last_msg_snippet')
+          'id, is_group, title, account_id, created_by, created_at, updated_at, last_msg_at, last_msg_snippet',
+        )
         .inFilter('id', convIds)
         .order('last_msg_at', ascending: false);
 
@@ -605,8 +673,9 @@ class ChatService {
     for (final r in (readsRows as List).whereType<Map<String, dynamic>>()) {
       final cid = r['conversation_id'].toString();
       final ts = r['last_read_at'];
-      lastReadAtByConv[cid] =
-      ts == null ? null : DateTime.tryParse(ts.toString())?.toUtc();
+      lastReadAtByConv[cid] = ts == null
+          ? null
+          : DateTime.tryParse(ts.toString())?.toUtc();
     }
 
     final items = <ConversationListItem>[];
@@ -621,27 +690,30 @@ class ChatService {
 
       String title = (c.isGroup)
           ? (c.title?.trim().isNotEmpty == true
-          ? c.title!.trim()
-          : emails
-          .where((e) => e != (u.email ?? '').toLowerCase())
-          .take(3)
-          .join('، '))
+                ? c.title!.trim()
+                : emails
+                      .where((e) => e != (u.email ?? '').toLowerCase())
+                      .take(3)
+                      .join('، '))
           : (emails.firstWhere(
-            (e) => e != (u.email ?? '').toLowerCase(),
-        orElse: () => emails.isNotEmpty ? emails.first : 'محادثة',
-      ));
+              (e) => e != (u.email ?? '').toLowerCase(),
+              orElse: () => emails.isNotEmpty ? emails.first : 'محادثة',
+            ));
 
       final lastMsgAt = c.lastMsgAt;
       final lastReadAt = lastReadAtByConv[c.id];
       final hasUnread =
-      (lastMsgAt != null && (lastReadAt == null || lastMsgAt.isAfter(lastReadAt)));
+          (lastMsgAt != null &&
+          (lastReadAt == null || lastMsgAt.isAfter(lastReadAt)));
 
       final convForList = c.copyWith(unreadCount: hasUnread ? 1 : 0);
 
-      items.add(ConversationListItem(
-        conversation: convForList,
-        displayTitle: title.isEmpty ? 'محادثة' : title,
-      ));
+      items.add(
+        ConversationListItem(
+          conversation: convForList,
+          displayTitle: title.isEmpty ? 'محادثة' : title,
+        ),
+      );
     }
 
     return items;
@@ -655,7 +727,9 @@ class ChatService {
     int limit = 40,
   }) async {
     try {
-      final data = await _sb.from(_tblMsgs).select('''
+      final data = await _sb
+          .from(_tblMsgs)
+          .select('''
         id, conversation_id, sender_uid, sender_email, kind,
         body, text, edited, deleted, created_at, edited_at, deleted_at,
         reply_to_message_id, reply_to_snippet, mentions,
@@ -665,23 +739,7 @@ class ChatService {
         delivery_receipts:chat_delivery_receipts (
           user_uid, delivered_at
         )
-      ''').eq('conversation_id', conversationId).or('deleted.is.false,deleted.is.null').order('created_at', ascending: true).limit(limit);
-
-      final list = <ChatMessage>[];
-      for (final row in (data as List).whereType<Map<String, dynamic>>()) {
-        final normalized = await _withHttpAttachments(row);
-        list.add(ChatMessage.fromMap(
-          normalized,
-          currentUid: _sb.auth.currentUser?.id,
-        ));
-      }
-      unawaited(_markDeliveredFor(list));
-      return list;
-    } catch (_) {
-      final data = await _sb
-          .from(_tblMsgs)
-          .select(
-          'id, conversation_id, sender_uid, sender_email, kind, body, text, edited, deleted, created_at, edited_at, deleted_at, reply_to_message_id, reply_to_snippet, mentions, attachments, delivery_receipts:chat_delivery_receipts(user_uid, delivered_at)')
+      ''')
           .eq('conversation_id', conversationId)
           .or('deleted.is.false,deleted.is.null')
           .order('created_at', ascending: true)
@@ -690,10 +748,29 @@ class ChatService {
       final list = <ChatMessage>[];
       for (final row in (data as List).whereType<Map<String, dynamic>>()) {
         final normalized = await _withHttpAttachments(row);
-        list.add(ChatMessage.fromMap(
-          normalized,
-          currentUid: _sb.auth.currentUser?.id,
-        ));
+        list.add(
+          ChatMessage.fromMap(normalized, currentUid: _sb.auth.currentUser?.id),
+        );
+      }
+      unawaited(_markDeliveredFor(list));
+      return list;
+    } catch (_) {
+      final data = await _sb
+          .from(_tblMsgs)
+          .select(
+            'id, conversation_id, sender_uid, sender_email, kind, body, text, edited, deleted, created_at, edited_at, deleted_at, reply_to_message_id, reply_to_snippet, mentions, attachments, delivery_receipts:chat_delivery_receipts(user_uid, delivered_at)',
+          )
+          .eq('conversation_id', conversationId)
+          .or('deleted.is.false,deleted.is.null')
+          .order('created_at', ascending: true)
+          .limit(limit);
+
+      final list = <ChatMessage>[];
+      for (final row in (data as List).whereType<Map<String, dynamic>>()) {
+        final normalized = await _withHttpAttachments(row);
+        list.add(
+          ChatMessage.fromMap(normalized, currentUid: _sb.auth.currentUser?.id),
+        );
       }
       unawaited(_markDeliveredFor(list));
       return list;
@@ -706,30 +783,16 @@ class ChatService {
     int limit = 40,
   }) async {
     try {
-      final data = await _sb.from(_tblMsgs).select('''
+      final data = await _sb
+          .from(_tblMsgs)
+          .select('''
         id, conversation_id, sender_uid, sender_email, kind,
         body, text, edited, deleted, created_at, edited_at, deleted_at,
         reply_to_message_id, reply_to_snippet, mentions,
         attachments:${_tblAtts}!$_relAttsByMsg (
           id, message_id, bucket, path, mime_type, size_bytes, width, height, created_at
         )
-      ''').eq('conversation_id', conversationId).or('deleted.is.false,deleted.is.null').lt('created_at', beforeCreatedAt.toUtc().toIso8601String()).order('created_at', ascending: true).limit(limit);
-
-      final list = <ChatMessage>[];
-      for (final row in (data as List).whereType<Map<String, dynamic>>()) {
-        final normalized = await _withHttpAttachments(row);
-        list.add(ChatMessage.fromMap(
-          normalized,
-          currentUid: _sb.auth.currentUser?.id,
-        ));
-      }
-      unawaited(_markDeliveredFor(list));
-      return list;
-    } catch (_) {
-      final data = await _sb
-          .from(_tblMsgs)
-          .select(
-          'id, conversation_id, sender_uid, sender_email, kind, body, text, edited, deleted, created_at, edited_at, deleted_at, reply_to_message_id, reply_to_snippet, mentions, attachments')
+      ''')
           .eq('conversation_id', conversationId)
           .or('deleted.is.false,deleted.is.null')
           .lt('created_at', beforeCreatedAt.toUtc().toIso8601String())
@@ -739,10 +802,30 @@ class ChatService {
       final list = <ChatMessage>[];
       for (final row in (data as List).whereType<Map<String, dynamic>>()) {
         final normalized = await _withHttpAttachments(row);
-        list.add(ChatMessage.fromMap(
-          normalized,
-          currentUid: _sb.auth.currentUser?.id,
-        ));
+        list.add(
+          ChatMessage.fromMap(normalized, currentUid: _sb.auth.currentUser?.id),
+        );
+      }
+      unawaited(_markDeliveredFor(list));
+      return list;
+    } catch (_) {
+      final data = await _sb
+          .from(_tblMsgs)
+          .select(
+            'id, conversation_id, sender_uid, sender_email, kind, body, text, edited, deleted, created_at, edited_at, deleted_at, reply_to_message_id, reply_to_snippet, mentions, attachments',
+          )
+          .eq('conversation_id', conversationId)
+          .or('deleted.is.false,deleted.is.null')
+          .lt('created_at', beforeCreatedAt.toUtc().toIso8601String())
+          .order('created_at', ascending: true)
+          .limit(limit);
+
+      final list = <ChatMessage>[];
+      for (final row in (data as List).whereType<Map<String, dynamic>>()) {
+        final normalized = await _withHttpAttachments(row);
+        list.add(
+          ChatMessage.fromMap(normalized, currentUid: _sb.auth.currentUser?.id),
+        );
       }
       unawaited(_markDeliveredFor(list));
       return list;
@@ -773,10 +856,14 @@ class ChatService {
   Future<void> acceptGroupInvitation(String invitationId) async {
     if (invitationId.isEmpty) return;
     try {
-      await _sb.rpc('chat_accept_invitation', params: {
-        'p_invitation_id': invitationId,
-      });
-    } catch (_) {}
+      final res = await _sb.rpc(
+        'chat_accept_invitation',
+        params: {'p_invitation_id': invitationId},
+      );
+      _ensureInvitationRpcOk(res, 'تعذر قبول الدعوة.');
+    } on PostgrestException catch (e) {
+      throw ChatInvitationException(e.message ?? 'تعذر قبول الدعوة.');
+    }
   }
 
   Future<void> declineGroupInvitation(
@@ -785,11 +872,14 @@ class ChatService {
   }) async {
     if (invitationId.isEmpty) return;
     try {
-      await _sb.rpc('chat_decline_invitation', params: {
-        'p_invitation_id': invitationId,
-        'p_note': note,
-      });
-    } catch (_) {}
+      final res = await _sb.rpc(
+        'chat_decline_invitation',
+        params: {'p_invitation_id': invitationId, 'p_note': note},
+      );
+      _ensureInvitationRpcOk(res, 'تعذر رفض الدعوة.');
+    } on PostgrestException catch (e) {
+      throw ChatInvitationException(e.message ?? 'تعذر رفض الدعوة.');
+    }
   }
 
   Future<Map<String, String>> fetchAliasMap() async {
@@ -860,7 +950,10 @@ class ChatService {
     _roomCacheById[conversationId] = <String, ChatMessage>{};
 
     unawaited(() async {
-      final seed = await fetchMessages(conversationId: conversationId, limit: 80);
+      final seed = await fetchMessages(
+        conversationId: conversationId,
+        limit: 80,
+      );
       final map = _roomCacheById[conversationId]!;
       for (final m in seed) {
         map[m.id] = m;
@@ -868,78 +961,88 @@ class ChatService {
       if (!c.isClosed) c.add(_sortedAsc(map.values.toList()));
     }());
 
-    final ch = _sb.channel('room:$conversationId').onPostgresChanges(
-      event: PostgresChangeEvent.all,
-      schema: 'public',
-      table: _tblMsgs,
-      filter: PostgresChangeFilter(
-        type: PostgresChangeFilterType.eq,
-        column: 'conversation_id',
-        value: conversationId,
-      ),
-      callback: (payload) async {
-        final ev = payload.eventType;
-        final newRow =
-            (payload.newRecord as Map<String, dynamic>?) ?? const {};
-        final oldRow =
-            (payload.oldRecord as Map<String, dynamic>?) ?? const {};
-        final map = _roomCacheById[conversationId]!;
-        String? id;
+    final ch = _sb
+        .channel('room:$conversationId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: _tblMsgs,
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'conversation_id',
+            value: conversationId,
+          ),
+          callback: (payload) async {
+            final ev = payload.eventType;
+            final newRow =
+                (payload.newRecord as Map<String, dynamic>?) ?? const {};
+            final oldRow =
+                (payload.oldRecord as Map<String, dynamic>?) ?? const {};
+            final map = _roomCacheById[conversationId]!;
+            String? id;
 
-        if (ev == PostgresChangeEvent.insert ||
-            ev == PostgresChangeEvent.update) {
-          id = newRow['id']?.toString();
-          if (id != null && newRow['deleted'] != true) {
-            var row = newRow;
-            try {
-              row = await _withHttpAttachments(row);
-            } catch (_) {}
-            var msg = ChatMessage.fromMap(
-              row,
-              currentUid: _sb.auth.currentUser?.id,
-            );
+            if (ev == PostgresChangeEvent.insert ||
+                ev == PostgresChangeEvent.update) {
+              id = newRow['id']?.toString();
+              if (id != null && newRow['deleted'] != true) {
+                var row = newRow;
+                try {
+                  row = await _withHttpAttachments(row);
+                } catch (_) {}
+                var msg = ChatMessage.fromMap(
+                  row,
+                  currentUid: _sb.auth.currentUser?.id,
+                );
 
-            if (msg.kind == ChatMessageKind.image && msg.attachments.isEmpty) {
-              try {
-                final attsRows = await _sb.from(_tblAtts).select(
-                  'id, message_id, bucket, path, mime_type, size_bytes, width, height, created_at',
-                ).eq('message_id', msg.id);
-                final normalized = await _normalizeAttachmentsToHttp(
-                    (attsRows as List)
-                        .whereType<Map<String, dynamic>>()
-                        .toList());
-                if (normalized.isNotEmpty) {
-                  msg = msg.copyWith(
-                    attachments:
-                    normalized.map(ChatAttachment.fromMap).toList(),
-                  );
+                if (msg.kind == ChatMessageKind.image &&
+                    msg.attachments.isEmpty) {
+                  try {
+                    final attsRows = await _sb
+                        .from(_tblAtts)
+                        .select(
+                          'id, message_id, bucket, path, mime_type, size_bytes, width, height, created_at',
+                        )
+                        .eq('message_id', msg.id);
+                    final normalized = await _normalizeAttachmentsToHttp(
+                      (attsRows as List)
+                          .whereType<Map<String, dynamic>>()
+                          .toList(),
+                    );
+                    if (normalized.isNotEmpty) {
+                      msg = msg.copyWith(
+                        attachments: normalized
+                            .map(ChatAttachment.fromMap)
+                            .toList(),
+                      );
+                    }
+                  } catch (_) {}
                 }
-              } catch (_) {}
+                map[id] = msg;
+                if (ev == PostgresChangeEvent.insert) {
+                  unawaited(_markDeliveredFor([msg]));
+                }
+              }
+              if (ev == PostgresChangeEvent.update &&
+                  newRow['deleted'] == true &&
+                  id != null) {
+                map.remove(id);
+              }
+            } else if (ev == PostgresChangeEvent.delete) {
+              id = oldRow['id']?.toString();
+              if (id != null) map.remove(id);
             }
-            map[id] = msg;
-            if (ev == PostgresChangeEvent.insert) {
-              unawaited(_markDeliveredFor([msg]));
-            }
-          }
-          if (ev == PostgresChangeEvent.update &&
-              newRow['deleted'] == true &&
-              id != null) {
-            map.remove(id);
-          }
-        } else if (ev == PostgresChangeEvent.delete) {
-          id = oldRow['id']?.toString();
-          if (id != null) map.remove(id);
-        }
 
-        if (!c.isClosed) c.add(_sortedAsc(map.values.toList()));
-      },
-    );
+            if (!c.isClosed) c.add(_sortedAsc(map.values.toList()));
+          },
+        );
 
     _roomChannels[conversationId] = ch;
 
-    unawaited(Future.microtask(() {
-      ch.subscribe();
-    }));
+    unawaited(
+      Future.microtask(() {
+        ch.subscribe();
+      }),
+    );
 
     c.onCancel = () async {
       _roomCtrls.remove(conversationId);
@@ -977,9 +1080,7 @@ class ChatService {
     if (ids.isEmpty) return;
 
     try {
-      await _sb.rpc('chat_mark_delivered', params: {
-        'p_message_ids': ids,
-      });
+      await _sb.rpc('chat_mark_delivered', params: {'p_message_ids': ids});
     } catch (_) {}
   }
 
@@ -1004,7 +1105,9 @@ class ChatService {
 
     // حرصاً على وجود local_id دائم
     final seq =
-        localSeq ?? (await _nextSeqForMe()) ?? DateTime.now().microsecondsSinceEpoch;
+        localSeq ??
+        (await _nextSeqForMe()) ??
+        DateTime.now().microsecondsSinceEpoch;
 
     // ✅ account_id من المحادثة أولًا
     final convAcc =
@@ -1059,21 +1162,25 @@ class ChatService {
     final mime = _guessMime(name);
     final path = 'attachments/$conversationId/$messageId/$name';
 
-    await _sb.storage.from(attachmentsBucket).upload(
-      path,
-      file,
-      fileOptions: FileOptions(contentType: mime, upsert: false),
+    await _uploadToStorage(
+      path: path,
+      file: file,
+      options: FileOptions(contentType: mime, upsert: false),
     );
 
     final stat = await file.stat();
-    final insertedAtt = await _sb.from(_tblAtts).insert({
-      'message_id': messageId,
-      'bucket': attachmentsBucket,
-      'path': path,
-      'mime_type': mime,
-      'size_bytes': stat.size,
-      'created_at': DateTime.now().toUtc().toIso8601String(),
-    }).select().single();
+    final insertedAtt = await _sb
+        .from(_tblAtts)
+        .insert({
+          'message_id': messageId,
+          'bucket': attachmentsBucket,
+          'path': path,
+          'mime_type': mime,
+          'size_bytes': stat.size,
+          'created_at': DateTime.now().toUtc().toIso8601String(),
+        })
+        .select()
+        .single();
 
     return insertedAtt;
   }
@@ -1087,10 +1194,10 @@ class ChatService {
     final mime = _guessMime(name);
     final path = 'attachments/$conversationId/$messageId/$name';
 
-    await _sb.storage.from(attachmentsBucket).upload(
-      path,
-      file,
-      fileOptions: FileOptions(contentType: mime, upsert: false),
+    await _uploadToStorage(
+      path: path,
+      file: file,
+      options: FileOptions(contentType: mime, upsert: false),
     );
 
     final url = await _signedOrPublicUrl(attachmentsBucket, path);
@@ -1120,7 +1227,8 @@ class ChatService {
   }) async {
     final u = _sb.auth.currentUser;
     if (u == null) throw 'لا يوجد مستخدم مسجّل الدخول.';
-    if (files.isEmpty && (optionalText == null || optionalText.trim().isEmpty)) {
+    if (files.isEmpty &&
+        (optionalText == null || optionalText.trim().isEmpty)) {
       throw 'لا يوجد شيء لإرساله.';
     }
 
@@ -1175,16 +1283,17 @@ class ChatService {
         throw 'الملفات التالية كبيرة جداً: $joined$cap';
       }
 
-
       final now = DateTime.now().toUtc();
-      
 
       // ✅ نضمن دومًا وجود local_id
       final seq =
-          localSeq ?? (await _nextSeqForMe()) ?? DateTime.now().microsecondsSinceEpoch;
+          localSeq ??
+          (await _nextSeqForMe()) ??
+          DateTime.now().microsecondsSinceEpoch;
 
       final convAcc =
-          (await _conversationAccountId(conversationId)) ?? (me.accountId ?? '');
+          (await _conversationAccountId(conversationId)) ??
+          (me.accountId ?? '');
 
       final payload = <String, dynamic>{
         'conversation_id': conversationId,
@@ -1241,13 +1350,18 @@ class ChatService {
       } else {
         final inline = <Map<String, dynamic>>[];
         for (final f in files) {
-          inline.add(await _makeInlineAttachmentJson(
-            conversationId: conversationId,
-            messageId: msg.id,
-            file: f,
-          ));
+          inline.add(
+            await _makeInlineAttachmentJson(
+              conversationId: conversationId,
+              messageId: msg.id,
+              file: f,
+            ),
+          );
         }
-        await _sb.from(_tblMsgs).update({'attachments': inline}).eq('id', msg.id);
+        await _sb
+            .from(_tblMsgs)
+            .update({'attachments': inline})
+            .eq('id', msg.id);
         final normalized = await _normalizeAttachmentsToHttp(inline);
         msg = msg.copyWith(
           attachments: normalized.map(ChatAttachment.fromMap).toList(),
@@ -1288,11 +1402,11 @@ class ChatService {
     await _sb
         .from(_tblMsgs)
         .update({
-      'body': newBody,
-      'text': newBody,
-      'edited': true,
-      'edited_at': DateTime.now().toUtc().toIso8601String(),
-    })
+          'body': newBody,
+          'text': newBody,
+          'edited': true,
+          'edited_at': DateTime.now().toUtc().toIso8601String(),
+        })
         .eq('id', messageId);
 
     await refreshConversationLastSummary(row['conversation_id'].toString());
@@ -1315,11 +1429,11 @@ class ChatService {
     await _sb
         .from(_tblMsgs)
         .update({
-      'deleted': true,
-      'deleted_at': DateTime.now().toUtc().toIso8601String(),
-      'body': null,
-      'text': null,
-    })
+          'deleted': true,
+          'deleted_at': DateTime.now().toUtc().toIso8601String(),
+          'body': null,
+          'text': null,
+        })
         .eq('id', messageId);
 
     await refreshConversationLastSummary(row['conversation_id'].toString());
@@ -1378,10 +1492,10 @@ class ChatService {
     final rows = await _sb
         .from(_tblMsgs)
         .select(
-      'id, conversation_id, sender_uid, sender_email, kind, '
+          'id, conversation_id, sender_uid, sender_email, kind, '
           'body, text, edited, deleted, created_at, edited_at, deleted_at, '
           'reply_to_message_id, reply_to_snippet, mentions, attachments',
-    )
+        )
         .eq('conversation_id', conversationId)
         .not('deleted', 'is', true)
         .or('body.ilike.%$esc%,text.ilike.%$esc%')
@@ -1391,10 +1505,9 @@ class ChatService {
     final list = <ChatMessage>[];
     for (final r in (rows as List).whereType<Map<String, dynamic>>()) {
       final normalized = await _withHttpAttachments(r);
-      list.add(ChatMessage.fromMap(
-        normalized,
-        currentUid: _sb.auth.currentUser?.id,
-      ));
+      list.add(
+        ChatMessage.fromMap(normalized, currentUid: _sb.auth.currentUser?.id),
+      );
     }
     return list;
   }
@@ -1420,7 +1533,7 @@ class ChatService {
     // ✅ استخدم زمن إنشاء آخر رسالة كوقت قراءة
     final lastCreated =
         DateTime.tryParse(lastRow['created_at'].toString())?.toUtc() ??
-            DateTime.now().toUtc();
+        DateTime.now().toUtc();
 
     await _sb.from(_tblReads).upsert({
       'conversation_id': conversationId,
@@ -1442,17 +1555,20 @@ class ChatService {
 
   Future<void> _ensureTypingBus() async {
     if (_typingBus != null && _typingBusSubscribed) return;
-    _typingBus ??=
-        _sb.channel('typing-bus', opts: const RealtimeChannelConfig(ack: false));
+    _typingBus ??= _sb.channel(
+      'typing-bus',
+      opts: const RealtimeChannelConfig(ack: false),
+    );
 
     _typingBus!.onBroadcast(
       event: 'typing',
       callback: (payload, [_]) {
         if (payload is! Map) return;
-        final cid = (payload['conversation_id'] ??
-            payload['conversationId'] ??
-            payload['cid'])
-            ?.toString();
+        final cid =
+            (payload['conversation_id'] ??
+                    payload['conversationId'] ??
+                    payload['cid'])
+                ?.toString();
         if (cid == null) return;
         final c = _typingCtlrs[cid];
         if (c != null && !c.isClosed) {
@@ -1500,13 +1616,16 @@ class ChatService {
 
     final me = await _myAccountRow();
 
-    await _typingBus!.sendBroadcastMessage(event: 'typing', payload: {
-      'conversation_id': conversationId,
-      'uid': u.id,
-      'email': (_bestSenderEmail(me.email) ?? '').toLowerCase(),
-      'typing': typing,
-      'ts': now.toUtc().toIso8601String(),
-    });
+    await _typingBus!.sendBroadcastMessage(
+      event: 'typing',
+      payload: {
+        'conversation_id': conversationId,
+        'uid': u.id,
+        'email': (_bestSenderEmail(me.email) ?? '').toLowerCase(),
+        'typing': typing,
+        'ts': now.toUtc().toIso8601String(),
+      },
+    );
   }
 
   Future<void> disposeTyping() async {
@@ -1537,8 +1656,10 @@ class ChatService {
   Future<void> _ensureReactBus() async {
     if (_reactBus != null && _reactBusSubscribed) return;
 
-    _reactBus ??=
-        _sb.channel('react-bus', opts: const RealtimeChannelConfig(ack: false));
+    _reactBus ??= _sb.channel(
+      'react-bus',
+      opts: const RealtimeChannelConfig(ack: false),
+    );
 
     _reactBus!.onPostgresChanges(
       event: PostgresChangeEvent.all,
@@ -1548,10 +1669,10 @@ class ChatService {
         final ev = payload.eventType;
         final Map<String, dynamic> newRow =
             (payload.newRecord as Map<String, dynamic>?) ??
-                const <String, dynamic>{};
+            const <String, dynamic>{};
         final Map<String, dynamic> oldRow =
             (payload.oldRecord as Map<String, dynamic>?) ??
-                const <String, dynamic>{};
+            const <String, dynamic>{};
 
         String? mid;
         if (ev == PostgresChangeEvent.delete) {
@@ -1561,8 +1682,9 @@ class ChatService {
         }
         if (mid == null || !_reactCtlrs.containsKey(mid)) return;
 
-        final current =
-        List<ChatReaction>.from(_reactCache[mid] ?? const <ChatReaction>[]);
+        final current = List<ChatReaction>.from(
+          _reactCache[mid] ?? const <ChatReaction>[],
+        );
 
         if (ev == PostgresChangeEvent.insert) {
           current.add(ChatReaction.fromMap(newRow));
@@ -1570,12 +1692,14 @@ class ChatService {
           final uid = oldRow['user_uid']?.toString();
           final emoji = oldRow['emoji']?.toString();
           current.removeWhere(
-                  (r) => r.userUid == uid && r.emoji == (emoji ?? r.emoji));
+            (r) => r.userUid == uid && r.emoji == (emoji ?? r.emoji),
+          );
         } else if (ev == PostgresChangeEvent.update) {
           final oldUid = oldRow['user_uid']?.toString();
           final oldEmoji = oldRow['emoji']?.toString();
           current.removeWhere(
-                  (r) => r.userUid == oldUid && r.emoji == (oldEmoji ?? r.emoji));
+            (r) => r.userUid == oldUid && r.emoji == (oldEmoji ?? r.emoji),
+          );
           current.add(ChatReaction.fromMap(newRow));
         }
 

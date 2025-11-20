@@ -13,3 +13,7 @@
 
 ## CI hints
 - فشل أي من `analyze` أو `test` يعتبر خطأ يجب إصلاحه قبل إنهاء المهمة.
+
+## References
+- راجع `docs/backend.md` لعقد Supabase والدوال الحرجة.
+- خطوات واختبارات كل دور موثقة في `docs/smoke_tests.md` مع مسار سجلات CI.*** End Patch```} to=functions.apply_patch ***!

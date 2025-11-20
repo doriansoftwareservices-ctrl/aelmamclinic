@@ -15,6 +15,7 @@ declare
   caller_uid uuid := nullif(claims->>'sub','')::uuid;
   can_manage boolean;
   is_super_admin boolean := public.fn_is_super_admin();
+  target_role text;
 begin
   select exists (
     select 1
@@ -34,9 +35,19 @@ begin
    where account_id = p_account
      and user_uid = p_user_uid;
 
+  select nullif(lower(coalesce(role, '')), '')
+    into target_role
+  from public.account_users
+  where account_id = p_account
+    and user_uid = p_user_uid
+  limit 1;
+
   -- اختياري: عكس الحالة على profiles (لو موجود)
   update public.profiles
-     set role = case when p_disabled then 'disabled' else coalesce(role, 'employee') end,
+     set role = case
+                  when p_disabled then 'disabled'
+                  else coalesce(target_role, 'employee')
+                end,
          account_id = coalesce(account_id, p_account)
    where id = p_user_uid;
 end;

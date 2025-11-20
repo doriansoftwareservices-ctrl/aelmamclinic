@@ -97,7 +97,8 @@ class ChatRepository {
   // -----------------------------------------------------------------------------
   // إنشاء محادثات
   // -----------------------------------------------------------------------------
-  Future<ChatConversation> startDM(String email) => _svc.startDMWithEmail(email);
+  Future<ChatConversation> startDM(String email) =>
+      _svc.startDMWithEmail(email);
 
   Future<ChatConversation> createGroup({
     required String title,

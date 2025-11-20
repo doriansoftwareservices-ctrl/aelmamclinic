@@ -1,9 +1,21 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:aelmamclinic/data/chat/chat_participant_repository.dart';
 import 'package:aelmamclinic/domain/chat/models/chat_participant.dart';
 
+bool _supabaseReady = false;
+
 void main() {
+  setUpAll(() async {
+    if (_supabaseReady) return;
+    await Supabase.initialize(
+      url: 'https://example.supabase.co',
+      anonKey: 'public-anon-key',
+    );
+    _supabaseReady = true;
+  });
+
   group('ChatParticipantFields', () {
     test('remoteColumns includes expected keys', () {
       expect(ChatParticipantFields.remoteColumns, containsAll(<String>[

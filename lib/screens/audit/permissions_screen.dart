@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:aelmamclinic/core/features.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/providers/auth_provider.dart';
@@ -58,9 +59,20 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
     final auth = context.read<AuthProvider>();
     final accId = auth.accountId ?? '';
     final isOwner = (auth.role ?? '') == 'owner';
+    final isOwnerOrSuper = isOwner || auth.isSuperAdmin;
+    final canView =
+        isOwnerOrSuper || auth.featureAllowed(FeatureKeys.auditPermissions);
+
+    if (!canView) {
+      setState(() {
+        _loading = false;
+        _initialLoaded = true;
+      });
+      return;
+    }
 
     try {
-      if (!isOwner) {
+      if (!isOwnerOrSuper) {
         // موظّف: نقرأ الصلاحيات المؤثرة فقط عبر RPC
         final res = await _client.rpc('my_feature_permissions', params: {
           'p_account': accId,
@@ -225,9 +237,12 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final isOwner = (auth.role ?? '') == 'owner';
+    final isOwnerOrSuper = isOwner || auth.isSuperAdmin;
+    final canView =
+        isOwnerOrSuper || auth.featureAllowed(FeatureKeys.auditPermissions);
 
     // تحميل أولي عند أول بناء
-    if (!_initialLoaded && !_loading) {
+    if (!_initialLoaded && !_loading && canView) {
       Future.microtask(_loadAll);
     }
 
@@ -240,7 +255,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
           actions: [
             IconButton(
               tooltip: 'تحديث',
-              onPressed: _loading ? null : _loadAll,
+              onPressed: (!canView || _loading) ? null : _loadAll,
               icon: const Icon(Icons.refresh_rounded),
             ),
           ],
@@ -248,12 +263,40 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
         body: SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 16),
-            child: _loading && !_initialLoaded
-                ? const Center(child: CircularProgressIndicator())
-                : isOwner
-                ? _buildOwnerBody()
-                : _buildEmployeeReadonly(),
+            child: !canView
+                ? _buildAccessDenied()
+                : _loading && !_initialLoaded
+                    ? const Center(child: CircularProgressIndicator())
+                    : isOwnerOrSuper
+                        ? _buildOwnerBody()
+                        : _buildEmployeeReadonly(),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAccessDenied() {
+    final scheme = Theme.of(context).colorScheme;
+    return Center(
+      child: NeuCard(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.lock_outline_rounded, color: scheme.error, size: 32),
+            const SizedBox(height: 12),
+            const Text(
+              'لا تملك صلاحية عرض أو تعديل صلاحيات الميزات.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'اطلب من المالك أو السوبر أدمن منحك صلاحية "audit.permissions".',
+              textAlign: TextAlign.center,
+            ),
+          ],
         ),
       ),
     );

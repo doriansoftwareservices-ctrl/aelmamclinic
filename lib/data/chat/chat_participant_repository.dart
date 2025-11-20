@@ -7,7 +7,7 @@ typedef ChatParticipantUpsertRunner = Future<void> Function(
 );
 typedef ChatParticipantUpdateRunner = Future<void> Function(
   Map<String, Object?> values,
-  Map<String, dynamic> match,
+  Map<String, Object> match,
 );
 
 /// Repository responsible for preparing and pushing chat participant rows.
@@ -17,8 +17,7 @@ class ChatParticipantRepository {
 
   final SupabaseClient _client;
 
-  PostgrestQueryBuilder get _table =>
-      _client.from(ChatParticipantFields.table);
+  PostgrestQueryBuilder get _table => _client.from(ChatParticipantFields.table);
 
   /// Columns that should be requested from Supabase when loading participants.
   List<String> get remoteColumns => ChatParticipantFields.remoteColumns;
@@ -88,7 +87,7 @@ class ChatParticipantRepository {
 
   Future<void> _defaultUpdateRunner(
     Map<String, Object?> values,
-    Map<String, dynamic> match,
+    Map<String, Object> match,
   ) async {
     final builder = _table.update(values);
     await builder.match(match);
@@ -103,14 +102,15 @@ class ChatParticipantRepository {
     final trimmedConversation = conversationId.trim();
     final trimmedUser = userUid.trim();
     if (trimmedConversation.isEmpty) {
-      throw ArgumentError.value(conversationId, 'conversationId', 'must not be empty');
+      throw ArgumentError.value(
+          conversationId, 'conversationId', 'must not be empty');
     }
     if (trimmedUser.isEmpty) {
       throw ArgumentError.value(userUid, 'userUid', 'must not be empty');
     }
 
     final runner = runUpdate ?? _defaultUpdateRunner;
-    final match = <String, dynamic>{
+    final match = <String, Object>{
       ChatParticipantFields.conversationId: trimmedConversation,
       ChatParticipantFields.userUid: trimmedUser,
     };

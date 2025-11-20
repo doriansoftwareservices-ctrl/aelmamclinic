@@ -37,6 +37,8 @@ class FeatureKeys {
   static const String backup        = 'backup';
   static const String accounts      = 'accounts'; // إدارة المستخدمين داخل الحساب
   static const String chat          = 'chat';     // 🔹 ميزة الدردشة
+  static const String auditLogs     = 'audit.logs';
+  static const String auditPermissions = 'audit.permissions';
 
   static const List<String> all = [
     dashboard,
@@ -52,6 +54,8 @@ class FeatureKeys {
     backup,
     accounts,
     chat,
+    auditLogs,
+    auditPermissions,
   ];
 }
 
