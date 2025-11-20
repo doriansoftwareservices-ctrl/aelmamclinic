@@ -88,12 +88,18 @@ class ChatGroupInvitation {
   }
 
   factory ChatGroupInvitation.fromMap(Map<String, dynamic> map) {
+    String? _readUid(String primaryKey, String legacyKey) {
+      final raw = map[primaryKey] ?? map[legacyKey];
+      final val = raw?.toString().trim();
+      return (val == null || val.isEmpty) ? null : val;
+    }
+
     return ChatGroupInvitation(
       id: map['id']?.toString() ?? '',
       conversationId: map['conversation_id']?.toString() ?? '',
-      inviterUid: map['inviter_uid']?.toString() ?? '',
-      inviteeUid: _nullIfEmpty(map['invitee_uid']),
-      inviteeEmail: map['invitee_email']?.toString(),
+      inviterUid: _readUid('inviter_uid', 'inviter') ?? '',
+      inviteeUid: _readUid('invitee_uid', 'invitee_user'),
+      inviteeEmail: _lowerIfPresent(map['invitee_email']),
       status: ChatGroupInvitationStatusX.fromDb(map['status']?.toString()),
       createdAt: _parseDate(map['created_at']) ?? DateTime.now().toUtc(),
       respondedAt: _parseDate(map['responded_at']),
@@ -110,7 +116,7 @@ class ChatGroupInvitation {
     'conversation_id': conversationId,
     'inviter_uid': inviterUid,
     if (inviteeUid != null) 'invitee_uid': inviteeUid,
-    'invitee_email': inviteeEmail,
+    'invitee_email': _lowerIfPresent(inviteeEmail),
     'status': status.dbValue,
     'created_at': createdAt.toIso8601String(),
     if (respondedAt != null) 'responded_at': respondedAt!.toIso8601String(),
@@ -139,4 +145,9 @@ String? _nullIfEmpty(dynamic value) {
   if (value == null) return null;
   final trimmed = value.toString().trim();
   return trimmed.isEmpty ? null : trimmed;
+}
+
+String? _lowerIfPresent(dynamic value) {
+  final v = _nullIfEmpty(value);
+  return v?.toLowerCase();
 }
