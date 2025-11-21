@@ -8,6 +8,10 @@ environment:
 
 dependency_overrides:
   syncfusion_flutter_core: 29.1.33
+  audioplayers_windows:
+    path: third_party/audioplayers_windows
+  permission_handler_windows:
+    path: third_party/permission_handler_windows
 
 dependencies:
   flutter:

@@ -22,6 +22,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 // مسارات آمنة للتخزين
 import 'package:path_provider/path_provider.dart' as path_provider;
+import 'package:path/path.dart' as p;
 
 /*──────── مزوّدات الحالة ────────*/
 import 'providers/activation_provider.dart';
@@ -76,6 +77,28 @@ bool get _pushSupported {
 /// مفاتيح ملاحة عامة لفتح الشاشات من الإشعارات
 final GlobalKey<NavigatorState> _navKey = GlobalKey<NavigatorState>();
 
+DynamicLibrary _loadWindowsSqliteLibrary() {
+  final exeDir = File(Platform.resolvedExecutable).parent;
+  final candidates = <String>[
+    p.join(exeDir.path, 'sqlite3.dll'),
+    p.join(Directory.current.path, 'sqlite3.dll'),
+    r'C:\sqlite\sqlite3.dll',
+  ];
+
+  for (final candidate in candidates) {
+    if (File(candidate).existsSync()) {
+      dev.log('Loading sqlite3 from $candidate', name: 'sqlite');
+      return DynamicLibrary.open(candidate);
+    }
+  }
+
+  dev.log(
+    'sqlite3.dll not found in explicit locations, falling back to default lookup',
+    name: 'sqlite',
+  );
+  return DynamicLibrary.open('sqlite3.dll');
+}
+
 void main() {
   runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
@@ -99,11 +122,7 @@ void main() {
     // SQLite عبر FFI على الديسكتوب
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
       if (Platform.isWindows) {
-        try {
-          open.overrideForAll(
-            () => DynamicLibrary.open(r'C:\sqlite\sqlite3.dll'),
-          );
-        } catch (_) {}
+        open.overrideForAll(_loadWindowsSqliteLibrary);
       }
       sqfliteFfiInit();
       sq.databaseFactory = databaseFactoryFfi;
