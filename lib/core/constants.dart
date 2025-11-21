@@ -21,6 +21,7 @@ class AppConstants {
 
   static String? _overrideSupabaseUrl;
   static String? _overrideSupabaseAnonKey;
+  static List<String> _superAdminEmails = const ['admin@elmam.com'];
   static bool _overridesLoaded = false;
 
   static String get supabaseUrl {
@@ -38,6 +39,8 @@ class AppConstants {
     }
     return _requireEnv(_envSupabaseAnonKey, 'SUPABASE_ANON_KEY');
   }
+
+  static List<String> get superAdminEmails => _superAdminEmails;
 
   /// Loads runtime overrides for Supabase configuration from the platform
   /// data directory (e.g. `C:\aelmam_clinic\config.json` on Windows).
@@ -71,6 +74,7 @@ class AppConstants {
     final (
       supabaseUrl: url,
       supabaseAnonKey: anonKey,
+      superAdminEmails: admins,
       source: source,
     ) = result;
 
@@ -79,6 +83,10 @@ class AppConstants {
     }
     if (anonKey != null && anonKey.isNotEmpty) {
       _overrideSupabaseAnonKey = anonKey;
+    }
+    if (admins != null && admins.isNotEmpty) {
+      _superAdminEmails =
+          admins.map((e) => e.trim().toLowerCase()).where((e) => e.isNotEmpty).toList();
     }
 
     if (source != null && source.isNotEmpty) {

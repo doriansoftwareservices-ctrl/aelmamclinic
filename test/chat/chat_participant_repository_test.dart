@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:aelmamclinic/data/chat/chat_participant_repository.dart';
@@ -7,8 +8,11 @@ import 'package:aelmamclinic/domain/chat/models/chat_participant.dart';
 bool _supabaseReady = false;
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   setUpAll(() async {
     if (_supabaseReady) return;
+    SharedPreferences.setMockInitialValues(<String, Object>{});
     await Supabase.initialize(
       url: 'https://example.supabase.co',
       anonKey: 'public-anon-key',

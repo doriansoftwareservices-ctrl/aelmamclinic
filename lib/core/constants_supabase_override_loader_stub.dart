@@ -1,4 +1,4 @@
-Future<({String? supabaseUrl, String? supabaseAnonKey, String? source})?>
+Future<({String? supabaseUrl, String? supabaseAnonKey, List<String>? superAdminEmails, String? source})?>
     loadSupabaseRuntimeOverrides({
   required String windowsDataDir,
   required String legacyWindowsDataDir,

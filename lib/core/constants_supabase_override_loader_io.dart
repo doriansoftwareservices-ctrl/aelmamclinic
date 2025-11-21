@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
-Future<({String? supabaseUrl, String? supabaseAnonKey, String? source})?>
+Future<({String? supabaseUrl, String? supabaseAnonKey, List<String>? superAdminEmails, String? source})?>
     loadSupabaseRuntimeOverrides({
   required String windowsDataDir,
   required String legacyWindowsDataDir,
@@ -109,17 +109,44 @@ Future<({String? supabaseUrl, String? supabaseAnonKey, String? source})?>
         return '$value'.trim();
       }
 
+      List<String>? readEmailList() {
+        final raw = data['superAdminEmails'] ??
+            data['super_admin_emails'] ??
+            data['superAdmins'] ??
+            data['super_admins'];
+        if (raw == null) return null;
+        List<String> normalizeList(List list) {
+          return list
+              .map((e) => e?.toString().trim() ?? '')
+              .where((value) => value.isNotEmpty)
+              .toList();
+        }
+
+        if (raw is String) {
+          final trimmed = raw.trim();
+          return trimmed.isEmpty ? null : [trimmed];
+        }
+        if (raw is List) {
+          final values = normalizeList(raw);
+          return values.isEmpty ? null : values;
+        }
+        return null;
+      }
+
       final url = readKey('supabaseUrl');
       final anonKey = readKey('supabaseAnonKey');
+      final admins = readEmailList();
 
       if ((url == null || url.isEmpty) &&
-          (anonKey == null || anonKey.isEmpty)) {
+          (anonKey == null || anonKey.isEmpty) &&
+          (admins == null || admins.isEmpty)) {
         continue;
       }
 
       return (
         supabaseUrl: url,
         supabaseAnonKey: anonKey,
+        superAdminEmails: admins,
         source: file.path,
       );
     } catch (_) {

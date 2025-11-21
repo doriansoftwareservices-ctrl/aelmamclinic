@@ -186,8 +186,14 @@ class DBService {
       databaseFactory = sqflite_ffi.databaseFactoryFfi;
     }
 
+    final overridePath = _testDbPathOverride;
     String dbPath;
-    if (Platform.isWindows) {
+    if (overridePath != null && overridePath.isNotEmpty) {
+      dbPath = overridePath;
+      try {
+        await File(dbPath).parent.create(recursive: true);
+      } catch (_) {}
+    } else if (Platform.isWindows) {
       // ✅ توحيد المسار على C:\aelmam_clinic + هجرة تلقائية من D:\aelmam_clinic إن وُجد
       const targetFolder = r'C:\aelmam_clinic';
       final dir = Directory(targetFolder);
@@ -537,7 +543,8 @@ class DBService {
         selectCols.add('itemId');
       }
       insertCols.add('threshold');
-      selectCols.add('threshold_tmp');
+      final thresholdSource = has('threshold_tmp') ? 'threshold_tmp' : 'threshold';
+      selectCols.add(thresholdSource);
       insertCols.add('is_enabled');
       selectCols.add('is_enabled');
       if (has('isEnabled')) {
@@ -648,77 +655,92 @@ class DBService {
 
   /// فهارس مشتركة للأداء (JOIN/WHERE شائعة)
   Future<void> _ensureCommonIndexes(Database db) async {
-    await _createIndexIfMissing(db, 'idx_patients_doctorId', 'patients', ['doctorId']);
-    await _createIndexIfMissing(db, 'idx_patients_registerDate', 'patients', ['registerDate']);
-    await _createIndexIfMissing(db, 'idx_purchases_created_at', 'purchases', ['created_at']);
-    await _createIndexIfMissing(db, 'idx_attachments_patient_created', 'attachments', ['patientId','createdAt']);
+    Future<void> safeIndex(String name, String table, List<String> cols) async {
+      if (await _tableExists(db, table)) {
+        await _createIndexIfMissing(db, name, table, cols);
+      }
+    }
 
-    await _createIndexIfMissing(db, 'idx_patient_services_patientId', PatientService.table, ['patientId']);
-    await _createIndexIfMissing(db, 'idx_patient_services_serviceId', PatientService.table, ['serviceId']);
+    await safeIndex('idx_patients_doctorId', 'patients', ['doctorId']);
+    await safeIndex('idx_patients_registerDate', 'patients', ['registerDate']);
+    await safeIndex('idx_purchases_created_at', 'purchases', ['created_at']);
+    await safeIndex('idx_attachments_patient_created', 'attachments', ['patientId', 'createdAt']);
 
-    await _createIndexIfMissing(db, 'idx_prescriptions_patientId', 'prescriptions', ['patientId']);
-    await _createIndexIfMissing(db, 'idx_prescription_items_prescriptionId', 'prescription_items', ['prescriptionId']);
+    await safeIndex('idx_patient_services_patientId', PatientService.table, ['patientId']);
+    await safeIndex('idx_patient_services_serviceId', PatientService.table, ['serviceId']);
 
-    await _createIndexIfMissing(db, 'idx_service_doctor_share_serviceId', 'service_doctor_share', ['serviceId']);
-    await _createIndexIfMissing(db, 'idx_service_doctor_share_doctorId', 'service_doctor_share', ['doctorId']);
-    await _createIndexIfMissing(db, 'idx_doctors_userUid', 'doctors', ['userUid']);
+    await safeIndex('idx_prescriptions_patientId', 'prescriptions', ['patientId']);
+    await safeIndex('idx_prescription_items_prescriptionId', 'prescription_items', ['prescriptionId']);
 
-    await _createIndexIfMissing(db, 'idx_consumptions_patientId', 'consumptions', ['patientId']);
-    await _createIndexIfMissing(db, 'idx_consumptions_itemId', 'consumptions', ['itemId']);
+    await safeIndex('idx_service_doctor_share_serviceId', 'service_doctor_share', ['serviceId']);
+    await safeIndex('idx_service_doctor_share_doctorId', 'service_doctor_share', ['doctorId']);
+    await safeIndex('idx_doctors_userUid', 'doctors', ['userUid']);
 
-    await _createIndexIfMissing(db, 'idx_items_name', 'items', ['name']);
-    await _createIndexIfMissing(db, 'idx_appointments_patientId', 'appointments', ['patientId']);
-    await _createIndexIfMissing(db, 'idx_returns_date', 'returns', ['date']);
+    await safeIndex('idx_consumptions_patientId', 'consumptions', ['patientId']);
+    await safeIndex('idx_consumptions_itemId', 'consumptions', ['itemId']);
 
-    await _createIndexIfMissing(db, 'idx_employees_loans_employeeId', 'employees_loans', ['employeeId']);
-    await _createIndexIfMissing(db, 'idx_employees_salaries_employeeId', 'employees_salaries', ['employeeId']);
-    await _createIndexIfMissing(db, 'idx_employees_discounts_employeeId', 'employees_discounts', ['employeeId']);
-    await _createIndexIfMissing(db, 'idx_employees_userUid', 'employees', ['userUid']);
+    await safeIndex('idx_items_name', 'items', ['name']);
+    await safeIndex('idx_appointments_patientId', 'appointments', ['patientId']);
+    await safeIndex('idx_returns_date', 'returns', ['date']);
+
+    await safeIndex('idx_employees_loans_employeeId', 'employees_loans', ['employeeId']);
+    await safeIndex('idx_employees_salaries_employeeId', 'employees_salaries', ['employeeId']);
+    await safeIndex('idx_employees_discounts_employeeId', 'employees_discounts', ['employeeId']);
+    await safeIndex('idx_employees_userUid', 'employees', ['userUid']);
+
+    Future<void> safeUniqueIndex(String name, String table, String sql) async {
+      if (!await _tableExists(db, table)) return;
+      try {
+        await db.execute(sql);
+      } catch (e) {
+        print('$name creation skipped: $e');
+      }
+    }
 
     // 🧪 فهرس فريد يمنع تكرار أسماء الأدوية باختلاف حالة الأحرف
-    try {
-      await db.execute('CREATE UNIQUE INDEX IF NOT EXISTS uix_drugs_lower_name ON drugs(lower(name))');
-    } catch (e) {
-      print('uix_drugs_lower_name creation skipped: $e');
-    }
+    await safeUniqueIndex(
+      'uix_drugs_lower_name',
+      'drugs',
+      'CREATE UNIQUE INDEX IF NOT EXISTS uix_drugs_lower_name ON drugs(lower(name))',
+    );
 
     // 🧪 فهرس فريد لعناصر المخزون على (type_id, name) كـ backfill لقواعد قديمة
-    try {
-      await db.execute('CREATE UNIQUE INDEX IF NOT EXISTS uix_items_type_name ON items(type_id, name)');
-    } catch (e) {
-      print('uix_items_type_name creation skipped: $e');
-    }
+    await safeUniqueIndex(
+      'uix_items_type_name',
+      'items',
+      'CREATE UNIQUE INDEX IF NOT EXISTS uix_items_type_name ON items(type_id, name)',
+    );
 
     // ✅ فهرس فريد لمنع ازدواج (خدمة، طبيب) الفعال فقط — بدون دوال داخل WHERE (متوافق مع SQLite)
-    try {
-      await db.execute('''
+    await safeUniqueIndex(
+      'uix_sds_service_doctor_active',
+      'service_doctor_share',
+      '''
         CREATE UNIQUE INDEX IF NOT EXISTS uix_sds_service_doctor_active
         ON service_doctor_share(serviceId, doctorId)
         WHERE isDeleted IS NULL OR isDeleted = 0
-      ''');
-    } catch (e) {
-      print('uix_sds_service_doctor_active creation skipped: $e');
-    }
+      '''.trim(),
+    );
 
-    try {
-      await db.execute('''
+    await safeUniqueIndex(
+      'uix_doctors_userUid_active',
+      'doctors',
+      '''
         CREATE UNIQUE INDEX IF NOT EXISTS uix_doctors_userUid_active
         ON doctors(userUid)
         WHERE userUid IS NOT NULL AND (isDeleted IS NULL OR isDeleted = 0)
-      ''');
-    } catch (e) {
-      print('uix_doctors_userUid_active creation skipped: $e');
-    }
+      '''.trim(),
+    );
 
-    try {
-      await db.execute('''
+    await safeUniqueIndex(
+      'uix_employees_userUid_active',
+      'employees',
+      '''
         CREATE UNIQUE INDEX IF NOT EXISTS uix_employees_userUid_active
         ON employees(userUid)
         WHERE userUid IS NOT NULL AND (isDeleted IS NULL OR isDeleted = 0)
-      ''');
-    } catch (e) {
-      print('uix_employees_userUid_active creation skipped: $e');
-    }
+      '''.trim(),
+    );
   }
 
   Future<void> _postOpenChecks(Database db) async {
@@ -1166,24 +1188,30 @@ class DBService {
     }
 
     if (oldVersion < 31) {
-      await _addColumnIfMissing(
-        db,
-        'patients',
-        'doctorReviewPending',
-        'INTEGER NOT NULL DEFAULT 0',
-      );
-      await _addColumnIfMissing(
-        db,
-        'patients',
-        'doctorReviewedAt',
-        'TEXT',
-      );
-      await db.rawUpdate(
-        'UPDATE patients SET doctorReviewPending = 0 WHERE doctorReviewPending IS NULL',
-      );
-      await db.rawUpdate(
-        'UPDATE patients SET doctorReviewedAt = NULL WHERE doctorReviewPending = 0',
-      );
+      if (await _tableExists(db, 'patients')) {
+        await _addColumnIfMissing(
+          db,
+          'patients',
+          'doctorReviewPending',
+          'INTEGER NOT NULL DEFAULT 0',
+        );
+        await _addColumnIfMissing(
+          db,
+          'patients',
+          'doctorReviewedAt',
+          'TEXT',
+        );
+        try {
+          await db.rawUpdate(
+            'UPDATE patients SET doctorReviewPending = 0 WHERE doctorReviewPending IS NULL',
+          );
+          await db.rawUpdate(
+            'UPDATE patients SET doctorReviewedAt = NULL WHERE doctorReviewPending = 0',
+          );
+        } catch (_) {
+          // Ignore if table missing mid-migration.
+        }
+      }
     }
 
     if (oldVersion < 21) {
@@ -2713,8 +2741,26 @@ class DBService {
   }
 
   /*────────────────── Helpers (idempotent DDL) ──────────────────*/
-  Future<bool> _columnExists(DatabaseExecutor db, String table, String column) async {
-    final info = await db.rawQuery("PRAGMA table_info('$table')");
+  Future<bool> _tableExists(DatabaseExecutor db, String table) async {
+    try {
+      final res = await db.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+          [table]);
+      return res.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> _columnExists(
+      DatabaseExecutor db, String table, String column) async {
+    if (!await _tableExists(db, table)) return false;
+    List<Map<String, Object?>> info = const [];
+    try {
+      info = await db.rawQuery("PRAGMA table_info('$table')");
+    } catch (_) {
+      return false;
+    }
     for (final row in info) {
       final name = (row['name'] ?? '').toString();
       if (name.toLowerCase() == column.toLowerCase()) return true;
@@ -2722,9 +2768,17 @@ class DBService {
     return false;
   }
 
-  Future<void> _addColumnIfMissing(DatabaseExecutor db, String table, String column, String sqlType) async {
+  Future<void> _addColumnIfMissing(
+      DatabaseExecutor db, String table, String column, String sqlType) async {
+    if (!await _tableExists(db, table)) {
+      return;
+    }
     if (!await _columnExists(db, table, column)) {
-      await db.execute('ALTER TABLE $table ADD COLUMN $column $sqlType');
+      try {
+        await db.execute('ALTER TABLE $table ADD COLUMN $column $sqlType');
+      } catch (_) {
+        // Ignore missing table/column errors during defensive upgrades.
+      }
     }
   }
 

@@ -614,11 +614,12 @@ class AuthProvider extends ChangeNotifier {
 
     // الدور والبريد — توحيد role = 'superadmin' إن كان سوبر
     final emailLower = (u.email ?? info?['email'] ?? '').toLowerCase();
-    final superAdminEmail = AuthSupabaseService.superAdminEmail.toLowerCase();
     final infoRole = (info?['role'] as String?)?.toLowerCase();
-    final role =
-        infoRole ?? (emailLower == superAdminEmail ? 'superadmin' : 'employee');
-    final isSuper = role == 'superadmin' || emailLower == superAdminEmail;
+    final bool emailIsSuper = AuthSupabaseService.isSuperAdminEmail(emailLower);
+    final role = emailIsSuper
+        ? 'superadmin'
+        : (infoRole ?? 'employee');
+    final isSuper = emailIsSuper || role == 'superadmin';
 
     currentUser = {
       'uid': u.id,
@@ -828,9 +829,7 @@ class AuthProvider extends ChangeNotifier {
     final savedDev = sp.getString(_kDeviceId);
 
     if (uid != null && uid.isNotEmpty) {
-      final isSuper =
-          (email ?? '').toLowerCase() ==
-          AuthSupabaseService.superAdminEmail.toLowerCase();
+      final isSuper = AuthSupabaseService.isSuperAdminEmail(email);
 
       currentUser = {
         'uid': uid,

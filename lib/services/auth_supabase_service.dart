@@ -29,6 +29,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:aelmamclinic/models/account_user_summary.dart';
 import 'package:aelmamclinic/models/clinic.dart';
+import 'package:aelmamclinic/core/constants.dart';
 
 import 'package:aelmamclinic/services/device_id_service.dart';
 import 'package:aelmamclinic/services/db_service.dart';
@@ -242,8 +243,22 @@ class AccountUserDisabledException extends AccountPolicyException {
 class AuthSupabaseService {
   final SupabaseClient _client = Supabase.instance.client;
 
-  /// بريد السوبر أدمن (يُستخدم في عدة أماكن)
-  static const String superAdminEmail = 'admin@elmam.com';
+  static const String _defaultSuperAdminEmail = 'admin@elmam.com';
+
+  static List<String> get _configuredSuperAdmins {
+    final emails = AppConstants.superAdminEmails;
+    if (emails.isEmpty) {
+      return const [_defaultSuperAdminEmail];
+    }
+    return emails.map((e) => e.toLowerCase()).toSet().toList();
+  }
+
+  static String get superAdminEmail => _configuredSuperAdmins.first;
+
+  static bool isSuperAdminEmail(String? email) {
+    if (email == null || email.isEmpty) return false;
+    return _configuredSuperAdmins.contains(email.toLowerCase());
+  }
 
   SupabaseClient get client => _client;
 
@@ -736,10 +751,17 @@ class AuthSupabaseService {
     }
 
     if (profileRow == null) {
-      _recordProvisioningError(
-        errors,
-        'لم يتم العثور على صف صالح في profiles للمستخدم $email.',
-      );
+      if (finalUserUid != null || finalAccountId != null) {
+        _recordProvisioningWarning(
+          warnings,
+          'لم يتم العثور على صف صالح في profiles للمستخدم $email، سنواصل باستخدام القيم المتوفّرة.',
+        );
+      } else {
+        _recordProvisioningError(
+          errors,
+          'لم يتم العثور على صف صالح في profiles للمستخدم $email.',
+        );
+      }
     } else {
       final profRole = _sanitizeString(profileRow['role']);
       if (profRole == null) {
@@ -759,15 +781,22 @@ class AuthSupabaseService {
 
       final profAccountId = _sanitizeString(profileRow['account_id']);
       if (profAccountId == null) {
-        _recordProvisioningError(
-          errors,
-          'صف profiles للمستخدم لا يحتوي على account_id.',
-        );
-      } else {
-        if (finalAccountId != null && finalAccountId != profAccountId) {
+        if (finalAccountId == null) {
           _recordProvisioningError(
             errors,
-            'المعرّف account_id القادم من $source ($finalAccountId) لا يطابق ما في profiles ($profAccountId).',
+            'صف profiles للمستخدم لا يحتوي على account_id.',
+          );
+        } else {
+          _recordProvisioningWarning(
+            warnings,
+            'صف profiles لا يحتوي على account_id وسيتم استخدام القيمة الحالية ($finalAccountId).',
+          );
+        }
+      } else {
+        if (finalAccountId != null && finalAccountId != profAccountId) {
+          _recordProvisioningWarning(
+            warnings,
+            'المعرّف account_id القادم من $source ($finalAccountId) لا يطابق ما في profiles ($profAccountId). سيتم الاحتفاظ بالقيمة الحالية.',
           );
         }
         finalAccountId ??= profAccountId;
@@ -817,9 +846,21 @@ class AuthSupabaseService {
 
     if (accountUserRow == null) {
       if (finalUserUid == null) {
-        _recordProvisioningError(
-          errors,
-          'لا يمكن التحقق من account_users بدون معرف المستخدم.',
+        if (finalAccountId != null) {
+          _recordProvisioningWarning(
+            warnings,
+            'لا يمكن التحقق من account_users بدون معرف المستخدم. سيتم المتابعة بالقيم الحالية.',
+          );
+        } else {
+          _recordProvisioningError(
+            errors,
+            'لا يمكن التحقق من account_users بدون معرف المستخدم.',
+          );
+        }
+      } else if (finalAccountId != null) {
+        _recordProvisioningWarning(
+          warnings,
+          'لم يتم العثور على صف في account_users للمستخدم $finalUserUid. سيتم الاعتماد على القيم الممررة.',
         );
       } else {
         _recordProvisioningError(
@@ -830,10 +871,17 @@ class AuthSupabaseService {
     } else {
       final auAccount = _sanitizeString(accountUserRow['account_id']);
       if (auAccount == null) {
-        _recordProvisioningError(
-          errors,
-          'صف account_users لا يحتوي على account_id.',
-        );
+        if (finalAccountId == null) {
+          _recordProvisioningError(
+            errors,
+            'صف account_users لا يحتوي على account_id.',
+          );
+        } else {
+          _recordProvisioningWarning(
+            warnings,
+            'صف account_users لا يحتوي على account_id وسيتم استخدام القيمة الحالية ($finalAccountId).',
+          );
+        }
       } else {
         if (finalAccountId != null && finalAccountId != auAccount) {
           _recordProvisioningError(
@@ -1080,7 +1128,7 @@ class AuthSupabaseService {
     final email = _client.auth.currentUser?.email?.toLowerCase();
     final metaRole = (_client.auth.currentUser?.appMetadata['role'] as String?)
         ?.toLowerCase();
-    return email == superAdminEmail.toLowerCase() || metaRole == 'superadmin';
+    return isSuperAdminEmail(email) || metaRole == 'superadmin';
   }
 
   @visibleForTesting
@@ -1151,11 +1199,7 @@ class AuthSupabaseService {
     }
 
     try {
-      final prof = await _client
-          .from('profiles')
-          .select('account_id, role')
-          .eq('id', user.id)
-          .maybeSingle();
+      final prof = await _client.rpc('my_profile').maybeSingle();
       final pAcc = (prof?['account_id'] as String?)?.trim();
       if (pAcc != null && pAcc.isNotEmpty) {
         final role = (prof?['role'] as String?) ?? 'employee';
@@ -1163,7 +1207,7 @@ class AuthSupabaseService {
         return ActiveAccount(id: pAcc, role: role, canWrite: true);
       }
     } catch (e) {
-      dev.log('resolveActiveAccountOrThrow: profiles lookup failed: $e');
+      dev.log('resolveActiveAccountOrThrow: my_profile RPC failed: $e');
     }
 
     try {
@@ -1415,6 +1459,7 @@ class AuthSupabaseService {
           error: e, stackTrace: st);
     }
 
+    final warnings = <String>[];
     try {
       final params = <String, dynamic>{
         'clinic_name': clinicName,
@@ -1445,6 +1490,15 @@ class AuthSupabaseService {
       );
       await _postOwnerProvisioningCleanup(result);
       return result;
+    } on PostgrestException catch (rpcErr, st) {
+      if (rpcErr.code == '42883') {
+        throw ProvisioningValidationException([
+          'دالة admin_bootstrap_clinic_for_email غير متوفرة في قاعدة البيانات. تأكد من تشغيل آخر المايغريشنات الخاصة بالسوبر أدمن أو استخدم `supabase db push`.',
+        ], warnings: warnings);
+      }
+      dev.log('registerOwner RPC fallback failed',
+          error: rpcErr, stackTrace: st);
+      rethrow;
     } catch (rpcErr, st) {
       dev.log('registerOwner RPC fallback failed',
           error: rpcErr, stackTrace: st);
@@ -2029,16 +2083,13 @@ class AuthSupabaseService {
       if (row != null) {
         final email = (row['email'] as String?) ?? user.email;
         final role = (row['role'] as String?) ??
-            ((email ?? '').toLowerCase() == superAdminEmail.toLowerCase()
-                ? 'superadmin'
-                : null);
+            (isSuperAdminEmail(email) ? 'superadmin' : null);
         return {
           'uid': user.id,
           'email': email,
           'accountId': row['account_id'] as String?,
           'role': role,
-          'isSuperAdmin': role == 'superadmin' ||
-              (email ?? '').toLowerCase() == superAdminEmail.toLowerCase(),
+          'isSuperAdmin': role == 'superadmin' || isSuperAdminEmail(email),
         };
       }
     } catch (e) {
@@ -2079,8 +2130,14 @@ class AuthSupabaseService {
 
     role ??= _client.auth.currentUser?.appMetadata['role'] as String?;
     final emailLower = (user.email ?? '').toLowerCase();
-    final isSuper = emailLower == superAdminEmail.toLowerCase() ||
-        (role?.toLowerCase() == 'superadmin');
+    final emailIsSuper = AuthSupabaseService.isSuperAdminEmail(emailLower);
+    if (emailIsSuper) {
+      role = 'superadmin';
+    }
+    if (emailIsSuper) {
+      role = 'superadmin';
+    }
+    final isSuper = emailIsSuper || (role?.toLowerCase() == 'superadmin');
 
     return {
       'uid': user.id,

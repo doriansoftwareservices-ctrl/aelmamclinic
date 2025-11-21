@@ -89,8 +89,7 @@ class _LoginScreenState extends State<LoginScreen> {
       final user = Supabase.instance.client.auth.currentUser;
       if (user == null) return;
       final email = (user.email ?? '').toLowerCase();
-      final isEmailSuper =
-          email == AuthSupabaseService.superAdminEmail.toLowerCase();
+      final isEmailSuper = AuthSupabaseService.isSuperAdminEmail(email);
       var isRoleSuper = false;
       try {
         final row = await Supabase.instance.client
