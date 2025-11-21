@@ -548,11 +548,15 @@ class ChatService {
       if (row == null) throw 'لا يوجد مستخدم بالبريد: $e';
       final uid = row['user_uid'].toString();
       if (uid == u.id) continue;
+      final memberAccountId = (row['account_id']?.toString() ?? '').trim();
+      if (memberAccountId.isEmpty || memberAccountId != myAcc) {
+        throw 'المستخدم $e ليس ضمن نفس حساب العيادة.';
+      }
       if (!members.any((m) => m.uid == uid)) {
         members.add((
           uid: uid,
           email: (row['email']?.toString() ?? e).toLowerCase(),
-          accountId: (row['account_id']?.toString() ?? '').trim(),
+          accountId: memberAccountId,
         ));
       }
     }
@@ -575,6 +579,7 @@ class ChatService {
         'conversation_id': convId,
         'user_uid': u.id,
         'email': (_bestSenderEmail(me.email) ?? '').toLowerCase(),
+        'account_id': myAcc,
         'joined_at': nowIso,
       },
     ];
@@ -790,6 +795,9 @@ class ChatService {
         reply_to_message_id, reply_to_snippet, mentions,
         attachments:${_tblAtts}!$_relAttsByMsg (
           id, message_id, bucket, path, mime_type, size_bytes, width, height, created_at
+        ),
+        delivery_receipts:chat_delivery_receipts (
+          user_uid, delivered_at
         )
       ''')
           .eq('conversation_id', conversationId)
@@ -811,7 +819,7 @@ class ChatService {
       final data = await _sb
           .from(_tblMsgs)
           .select(
-            'id, conversation_id, sender_uid, sender_email, kind, body, text, edited, deleted, created_at, edited_at, deleted_at, reply_to_message_id, reply_to_snippet, mentions, attachments',
+            'id, conversation_id, sender_uid, sender_email, kind, body, text, edited, deleted, created_at, edited_at, deleted_at, reply_to_message_id, reply_to_snippet, mentions, attachments, delivery_receipts:chat_delivery_receipts(user_uid, delivered_at)',
           )
           .eq('conversation_id', conversationId)
           .or('deleted.is.false,deleted.is.null')
@@ -1493,7 +1501,8 @@ class ChatService {
         .select(
           'id, conversation_id, sender_uid, sender_email, kind, '
           'body, text, edited, deleted, created_at, edited_at, deleted_at, '
-          'reply_to_message_id, reply_to_snippet, mentions, attachments',
+          'reply_to_message_id, reply_to_snippet, mentions, attachments, '
+          'delivery_receipts:chat_delivery_receipts(user_uid, delivered_at)',
         )
         .eq('conversation_id', conversationId)
         .not('deleted', 'is', true)
