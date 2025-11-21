@@ -8,7 +8,7 @@ Use these steps when you need to wipe the hosted project and rebuild it from the
 
 - Supabase CLI ≥ v1.174 (`supabase --version`).
 - A `SUPABASE_ACCESS_TOKEN` with owner rights (`supabase login`).
-- The project reference, e.g. `wiypiofuyrayywciovoo`.
+- The project reference, e.g. `kdcgpgcyxpameowcopqb`.
 - The database password (visible in the Supabase dashboard).
 - This workspace’s `.env` (or CLI flags) containing the runtime values you want to deploy, e.g. `SUPABASE_URL`, `SUPABASE_DB_PASSWORD`, storage S3 creds if any, etc.
 

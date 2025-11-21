@@ -13,7 +13,7 @@ const ANON_KEY = Deno.env.get("ANON_KEY") ?? Deno.env.get("SUPABASE_ANON_KEY")!;
 const SERVICE_ROLE_KEY =
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SERVICE_ROLE_KEY") ?? "";
 if (!SERVICE_ROLE_KEY) throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY / SERVICE_ROLE_KEY env");
-const SUPER_ADMIN_EMAIL = (Deno.env.get("SUPER_ADMIN_EMAIL") ?? "aelmam.app@gmail.com").toLowerCase();
+const SUPER_ADMIN_EMAIL = (Deno.env.get("SUPER_ADMIN_EMAIL") ?? "admin@elmam.com").toLowerCase();
 
 type RpcEmployeeRow = {
   user_uid: string;
@@ -56,17 +56,34 @@ serve(async (req: Request): Promise<Response> => {
     const { account_id } = (await req.json()) as { account_id?: string };
     if (!account_id) return json({ ok: false, message: "missing account_id" }, 400);
 
-    // مصادقة المستدعي
     const authed = createClient(SUPABASE_URL, ANON_KEY, {
       global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } },
     });
+    const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+
     const { data: me, error: meErr } = await authed.auth.getUser();
     if (meErr || !me?.user) return json({ ok: false, message: "unauthenticated" }, 401);
 
     const email = (me.user.email ?? "").toLowerCase();
+    let isSuper = false;
+    if (SUPER_ADMIN_EMAIL && email === SUPER_ADMIN_EMAIL) {
+      isSuper = true;
+    } else {
+      const { data: saRow, error: saError } = await admin
+        .from("super_admins")
+        .select("user_uid")
+        .eq("user_uid", me.user.id)
+        .maybeSingle();
+      if (saError) {
+        return json(
+          { ok: false, message: "super_admins lookup failed", details: saError.message },
+          500,
+        );
+      }
+      isSuper = !!saRow;
+    }
 
-    // السماحية: سوبر أدمن أو Owner/Admin على الحساب وغير معطّل
-    let allowed = email === SUPER_ADMIN_EMAIL;
+    let allowed = isSuper;
     if (!allowed) {
       const { data: membership } = await authed
         .from("account_users")
@@ -80,14 +97,12 @@ serve(async (req: Request): Promise<Response> => {
 
     if (!allowed) return json({ ok: false, message: "forbidden" }, 403);
 
-    // الأفضل: عبر RPC (يحترم RLS ويُعيد البريد)
     const { data: rpcData, error: rpcErr } = await authed.rpc<RpcEmployeeRow[]>(
       "list_employees_with_email",
       { p_account: account_id },
     );
 
     if (!rpcErr && Array.isArray(rpcData)) {
-      // توحيد المخرجات
       const out: Employee[] = rpcData.map((row): Employee => ({
         uid: row.user_uid,
         email: row.email ?? "",
@@ -95,13 +110,10 @@ serve(async (req: Request): Promise<Response> => {
         disabled: Boolean(row.disabled),
         created_at: row.created_at ?? null,
       }));
-      // ترتيب بسيط
       out.sort((a, b) => a.email.toLowerCase().localeCompare(b.email.toLowerCase()));
       return json(out, 200);
     }
 
-    // Fallback (يتطلّب Service Role): جمع emails يدويًا
-    const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
     const { data: rows, error } = await admin
       .from("account_users")
       .select<AccountUserRow>("user_uid, role, disabled, created_at")

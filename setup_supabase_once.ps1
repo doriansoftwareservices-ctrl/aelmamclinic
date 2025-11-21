@@ -3,8 +3,8 @@
 # ملاحظة أمنية: لا تضع service_role في هذا الملف أو داخل التطبيق.
 
 param(
-  [string]$Url  = "https://wiypiofuyrayywciovoo.supabase.co",
-  [string]$Anon = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndpeXBpb2Z1eXJheXl3Y2lvdm9vIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ1NjczOTcsImV4cCI6MjA3MDE0MzM5N30.TwveOqJJfM3eDVwsxaL76YkyVAAzZxeMVxGzLT8EC3E"
+  [string]$Url  = "https://kdcgpgcyxpameowcopqb.supabase.co",
+  [string]$Anon = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtkY2dwZ2N5eHBhbWVvd2NvcHFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM3NTA5NzMsImV4cCI6MjA3OTMyNjk3M30.saqQliOC2jTPu1G3MN16XznL4J-Efrw2CSdUEWMKSzE"
 )
 
 $ErrorActionPreference = "Stop"
