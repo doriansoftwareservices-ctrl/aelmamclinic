@@ -21,9 +21,13 @@ void main() {
 
   testWidgets('ThemeProvider toggles between light and dark modes',
       (WidgetTester tester) async {
+    final prefs = await SharedPreferences.getInstance();
+    final provider = ThemeProvider(prefs: prefs);
+    await provider.ready;
+
     await tester.pumpWidget(
-      ChangeNotifierProvider<ThemeProvider>(
-        create: (_) => ThemeProvider(),
+      ChangeNotifierProvider<ThemeProvider>.value(
+        value: provider,
         child: Builder(
           builder: (BuildContext context) {
             final theme = context.watch<ThemeProvider>();

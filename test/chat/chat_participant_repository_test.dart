@@ -4,16 +4,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:aelmamclinic/data/chat/chat_participant_repository.dart';
 import 'package:aelmamclinic/domain/chat/models/chat_participant.dart';
 
-bool _supabaseReady = false;
-
 void main() {
-  setUpAll(() async {
-    if (_supabaseReady) return;
-    await Supabase.initialize(
-      url: 'https://example.supabase.co',
-      anonKey: 'public-anon-key',
-    );
-    _supabaseReady = true;
+  late SupabaseClient client;
+
+  setUpAll(() {
+    client = SupabaseClient('https://example.supabase.co', 'public-anon-key');
   });
 
   group('ChatParticipantFields', () {
@@ -101,7 +96,7 @@ void main() {
 
   group('ChatParticipantRepository', () {
     test('save delegates to runner with normalised payload', () async {
-      final repo = ChatParticipantRepository();
+      final repo = ChatParticipantRepository(client: client);
       Map<String, dynamic>? captured;
 
       await repo.save(
@@ -122,7 +117,7 @@ void main() {
     });
 
     test('setPinned sends trimmed identifiers to runner', () async {
-      final repo = ChatParticipantRepository();
+      final repo = ChatParticipantRepository(client: client);
       Map<String, dynamic>? values;
       Map<String, dynamic>? match;
 
@@ -147,7 +142,7 @@ void main() {
     });
 
     test('setArchived updates archived flag', () async {
-      final repo = ChatParticipantRepository();
+      final repo = ChatParticipantRepository(client: client);
       Map<String, dynamic>? values;
 
       await repo.setArchived(
@@ -163,7 +158,7 @@ void main() {
     });
 
     test('updateLastReadAt forwards ISO payload', () async {
-      final repo = ChatParticipantRepository();
+      final repo = ChatParticipantRepository(client: client);
       Map<String, dynamic>? values;
 
       final ts = DateTime.utc(2024, 1, 1, 12, 30, 45);
@@ -185,7 +180,7 @@ void main() {
     });
 
     test('setPinned throws when identifiers are empty', () async {
-      final repo = ChatParticipantRepository();
+      final repo = ChatParticipantRepository(client: client);
 
       await expectLater(
         repo.setPinned(
