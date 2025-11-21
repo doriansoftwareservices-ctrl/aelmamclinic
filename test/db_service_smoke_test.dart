@@ -11,11 +11,20 @@ import 'package:aelmamclinic/services/db_service.dart';
 import 'support/native_sqlite.dart';
 
 void main() {
+  final hasNativeSqlite = ensureNativeSqlite();
+  if (!hasNativeSqlite) {
+    test(
+      'db_service_smoke_test skipped when sqlite3.dll is unavailable',
+      () {},
+      skip: 'Missing native sqlite3 library; install sqlite3.dll or set PATH.',
+    );
+    return;
+  }
+
   late Directory tempDir;
   late String testDbPath;
 
   setUpAll(() {
-    ensureNativeSqlite();
     sqfliteFfiInit();
     sqflite.databaseFactory = databaseFactoryFfi;
   });

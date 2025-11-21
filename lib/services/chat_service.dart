@@ -588,14 +588,13 @@ class ChatService {
               'conversation_id': convId,
               'inviter_uid': u.id,
               'invitee_uid': m.uid,
-              'invitee_email': m.email,
+              'invitee_email': m.email.toLowerCase(),
               'created_at': nowIso,
             },
           )
           .toList();
-      await _sb
-          .from('chat_group_invitations')
-          .upsert(invites, onConflict: 'conversation_id,invitee_uid');
+
+      await _sb.from('chat_group_invitations').insert(invites);
     }
 
     return ChatConversation.fromMap({
