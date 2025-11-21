@@ -8,10 +8,11 @@ class ThemeProvider extends ChangeNotifier {
 
   ThemeProvider({SharedPreferences? prefs})
       : _prefsOverride = prefs {
-    _loadTheme();
+    ready = _loadTheme();
   }
 
   final SharedPreferences? _prefsOverride;
+  late final Future<void> ready;
 
   ThemeMode get themeMode => _themeMode;
 

@@ -15,38 +15,42 @@ bool _sqlitePatched = false;
 bool ensureNativeSqlite() {
   if (_sqlitePatched) return true;
 
-  if (Platform.isLinux) {
-    open.overrideForAll(() => DynamicLibrary.open('libsqlite3.so'));
-    _sqlitePatched = true;
-    return true;
-  }
-
-  if (Platform.isMacOS) {
-    open.overrideForAll(() => DynamicLibrary.open('libsqlite3.dylib'));
-    _sqlitePatched = true;
-    return true;
-  }
-
-  if (Platform.isWindows) {
-    final candidates = <String>[
-      r'C:\\sqlite\\sqlite3.dll',
-      'sqlite3.dll',
-    ];
-    for (final path in candidates) {
-      try {
-        if (path.contains('\\') && !File(path).existsSync()) {
-          continue;
-        }
-
-        final lib = DynamicLibrary.open(path);
-        open.overrideForAll(() => lib);
-        _sqlitePatched = true;
-        return true;
-      } catch (_) {
-        // جرّب المسار التالي
-      }
+  try {
+    if (Platform.isLinux) {
+      open.overrideForAll(() => DynamicLibrary.open('libsqlite3.so'));
+      _sqlitePatched = true;
+      return true;
     }
 
+    if (Platform.isMacOS) {
+      open.overrideForAll(() => DynamicLibrary.open('libsqlite3.dylib'));
+      _sqlitePatched = true;
+      return true;
+    }
+
+    if (Platform.isWindows) {
+      final candidates = <String>[
+        r'C:\\sqlite\\sqlite3.dll',
+        'sqlite3.dll',
+      ];
+      for (final path in candidates) {
+        try {
+          if (path.contains('\\') && !File(path).existsSync()) {
+            continue;
+          }
+
+          final lib = DynamicLibrary.open(path);
+          open.overrideForAll(() => lib);
+          _sqlitePatched = true;
+          return true;
+        } catch (_) {
+          // جرّب المسار التالي
+        }
+      }
+
+      return false;
+    }
+  } catch (_) {
     return false;
   }
 
