@@ -1,7 +1,7 @@
 // lib/core/constants.dart
 import 'package:flutter/foundation.dart';
-import 'constants_supabase_override_loader_stub.dart'
-    if (dart.library.io) 'constants_supabase_override_loader_io.dart'
+import 'package:aelmamclinic/core/constants_supabase_override_loader_stub.dart'
+    if (dart.library.io) 'package:aelmamclinic/core/constants_supabase_override_loader_io.dart'
     as override_loader;
 
 class AppConstants {
@@ -71,12 +71,17 @@ class AppConstants {
       return;
     }
 
-    final (
-      supabaseUrl: url,
-      supabaseAnonKey: anonKey,
-      superAdminEmails: admins,
-      source: source,
-    ) = result;
+    final ({
+      String? supabaseUrl,
+      String? supabaseAnonKey,
+      List<String>? superAdminEmails,
+      String? source,
+    }) overrides = result;
+
+    final url = overrides.supabaseUrl;
+    final anonKey = overrides.supabaseAnonKey;
+    final admins = overrides.superAdminEmails;
+    final source = overrides.source;
 
     if (url != null && url.isNotEmpty) {
       _overrideSupabaseUrl = url;
@@ -85,8 +90,10 @@ class AppConstants {
       _overrideSupabaseAnonKey = anonKey;
     }
     if (admins != null && admins.isNotEmpty) {
-      _superAdminEmails =
-          admins.map((e) => e.trim().toLowerCase()).where((e) => e.isNotEmpty).toList();
+      _superAdminEmails = admins
+          .map((e) => e.trim().toLowerCase())
+          .where((e) => e.isNotEmpty)
+          .toList();
     }
 
     if (source != null && source.isNotEmpty) {
@@ -128,8 +135,10 @@ class AppConstants {
   static const String tableAccountUsers = 'account_users';
 
   static const bool chatPreferPublicUrls = false;
+  // ignore: unnecessary_nullable_for_final_variable_declarations
   static const int? chatMaxAttachmentBytes =
       20 * 1024 * 1024; // 20 MB إجمالي (null لإلغاء القيود)
+  // ignore: unnecessary_nullable_for_final_variable_declarations
   static const int? chatMaxSingleAttachmentBytes =
       10 * 1024 * 1024; // 10 MB لكل ملف (null لإلغاء القيود)
 
@@ -155,3 +164,5 @@ class AppConstants {
     throw StateError(msg);
   }
 }
+
+

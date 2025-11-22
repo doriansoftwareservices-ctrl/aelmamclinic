@@ -483,7 +483,13 @@ class AuthProvider extends ChangeNotifier {
         }
       }
 
-      success = ((currentUser?['accountId'] ?? '').toString().isNotEmpty);
+      final hasAccount =
+          ((currentUser?['accountId'] ?? '').toString().isNotEmpty);
+      final roleValue =
+          (currentUser?['role'] ?? '').toString().toLowerCase().trim();
+      final isSuper =
+          roleValue == 'superadmin' || currentUser?['isSuperAdmin'] == true;
+      success = hasAccount || isSuper;
     } catch (e, st) {
       dev.log('_networkRefreshAndMark failed', error: e, stackTrace: st);
       _authDiagError(
@@ -518,6 +524,16 @@ class AuthProvider extends ChangeNotifier {
         },
       );
     } else {
+      final roleValue =
+          (currentUser?['role'] ?? '').toString().toLowerCase().trim();
+      if (roleValue == 'superadmin' ||
+          currentUser?['isSuperAdmin'] == true) {
+        _authDiag(
+          '_networkRefreshAndMark:superAdminNoAccountBypass',
+          context: {'uid': currentUser?['uid']},
+        );
+        return true;
+      }
       _authDiagWarn(
         '_networkRefreshAndMark:missingAccountId',
         context: {'uid': currentUser?['uid']},
