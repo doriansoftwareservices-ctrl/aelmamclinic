@@ -16,6 +16,8 @@ class AppConstants {
   );
   static const String _envSupabaseAnonKey = String.fromEnvironment(
     'SUPABASE_ANON_KEY',
+    // اترك القيمة الافتراضية فارغة لتفادي تسريب المفاتيح عند تفكيك التطبيق،
+    // ويجب تمريرها في وقت البناء أو عبر ملف الإعداد في مجلد البيانات.
     defaultValue: '',
   );
 
