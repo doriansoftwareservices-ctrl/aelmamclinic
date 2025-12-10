@@ -88,7 +88,9 @@ class MessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
-    final bg = isMine ? kPrimaryColor.withValues(alpha: .10) : scheme.surfaceContainerHigh;
+    final bg = isMine
+        ? kPrimaryColor.withValues(alpha: .10)
+        : scheme.surfaceContainerHigh;
     final border = Border.all(color: scheme.outlineVariant);
 
     final radius = BorderRadius.only(
@@ -100,7 +102,8 @@ class MessageBubble extends StatelessWidget {
 
     // اشتغال احترازي: إن وصلت delivered نظهرها كـ sent (لو لم تُطبّع سابقًا من الشاشة)
     final rawUiStatus = _deriveUiStatus(message);
-    final uiStatus = rawUiStatus == _UiStatus.delivered ? _UiStatus.sent : rawUiStatus;
+    final uiStatus =
+        rawUiStatus == _UiStatus.delivered ? _UiStatus.sent : rawUiStatus;
 
     final maxW = MediaQuery.of(context).size.width * 0.78;
 
@@ -109,15 +112,18 @@ class MessageBubble extends StatelessWidget {
       child: Align(
         alignment: isMine
             ? AlignmentDirectional.centerStart // start=يمين في RTL
-            : AlignmentDirectional.centerEnd,  // end=يسار في RTL
+            : AlignmentDirectional.centerEnd, // end=يسار في RTL
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (showSenderHeader && !isMine && (senderEmail?.isNotEmpty ?? false))
+              if (showSenderHeader &&
+                  !isMine &&
+                  (senderEmail?.isNotEmpty ?? false))
                 Padding(
-                  padding: const EdgeInsetsDirectional.only(start: 6, bottom: 4, end: 6),
+                  padding: const EdgeInsetsDirectional.only(
+                      start: 6, bottom: 4, end: 6),
                   child: Text(
                     bidi.ensureLtr(senderEmail ?? ''),
                     textDirection: ui.TextDirection.ltr,
@@ -154,7 +160,8 @@ class MessageBubble extends StatelessWidget {
 
               // Reactions (لحظية) — مصدر خارجي إن وُجد، وإلا fallback على ChatService
               Padding(
-                padding: const EdgeInsetsDirectional.only(top: 4, start: 6, end: 6),
+                padding:
+                    const EdgeInsetsDirectional.only(top: 4, start: 6, end: 6),
                 child: _ReactionsBar(
                   messageId: message.id,
                   alignStart: isMine, // في RTL: start=يمين
@@ -165,10 +172,11 @@ class MessageBubble extends StatelessWidget {
 
               // الوقت + أيقونة الحالة (للمُرسِل فقط)
               Padding(
-                padding: const EdgeInsetsDirectional.only(top: 2, start: 6, end: 6),
+                padding:
+                    const EdgeInsetsDirectional.only(top: 2, start: 6, end: 6),
                 child: Row(
                   mainAxisAlignment:
-                  isMine ? MainAxisAlignment.start : MainAxisAlignment.end,
+                      isMine ? MainAxisAlignment.start : MainAxisAlignment.end,
                   children: [
                     if (isMine) _StatusIcon(status: uiStatus),
                     if (isMine) const SizedBox(width: 6),
@@ -289,7 +297,6 @@ class MessageBubble extends StatelessWidget {
     return _ImageSource(remoteUrl: remote, localPath: local);
   }
 
-
   _UiStatus _deriveUiStatus(ChatMessage m) {
     switch (m.status) {
       case ChatMessageStatus.sending:
@@ -345,7 +352,8 @@ class _TextBody extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       child: Column(
-        crossAxisAlignment: isMine ? CrossAxisAlignment.start : CrossAxisAlignment.end,
+        crossAxisAlignment:
+            isMine ? CrossAxisAlignment.start : CrossAxisAlignment.end,
         children: [
           if (replySnippet != null) ...[
             _ReplyPreview(
@@ -398,8 +406,8 @@ class _TextBody extends StatelessWidget {
 
 class _ImageBody extends StatelessWidget {
   final String heroTag;
-  final String imageUrl;      // HTTP fallback
-  final String? localPath;    // ✅ مسار محلي إن وُجد
+  final String imageUrl; // HTTP fallback
+  final String? localPath; // ✅ مسار محلي إن وُجد
   final String? caption;
   final bool isMine;
   final bool edited;
@@ -431,7 +439,9 @@ class _ImageBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
-    final hasLocal = (localPath != null && localPath!.isNotEmpty && File(localPath!).existsSync());
+    final hasLocal = (localPath != null &&
+        localPath!.isNotEmpty &&
+        File(localPath!).existsSync());
     final openArg = hasLocal ? localPath! : imageUrl;
 
     Widget imageWidget;
@@ -440,7 +450,8 @@ class _ImageBody extends StatelessWidget {
         File(localPath!),
         fit: BoxFit.cover,
         gaplessPlayback: true,
-        errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image_outlined)),
+        errorBuilder: (_, __, ___) =>
+            const Center(child: Icon(Icons.broken_image_outlined)),
       );
     } else {
       imageWidget = Image.network(
@@ -482,14 +493,15 @@ class _ImageBody extends StatelessWidget {
           );
         },
         errorBuilder: (_, __, ___) =>
-        const Center(child: Icon(Icons.broken_image_outlined)),
+            const Center(child: Icon(Icons.broken_image_outlined)),
       );
     }
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(16),
       child: Column(
-        crossAxisAlignment: isMine ? CrossAxisAlignment.start : CrossAxisAlignment.end,
+        crossAxisAlignment:
+            isMine ? CrossAxisAlignment.start : CrossAxisAlignment.end,
         children: [
           if (replySnippet != null) ...[
             Padding(
@@ -503,7 +515,9 @@ class _ImageBody extends StatelessWidget {
             ),
           ],
           GestureDetector(
-            onTap: (onOpen != null && openArg.isNotEmpty) ? () => onOpen!(openArg) : null,
+            onTap: (onOpen != null && openArg.isNotEmpty)
+                ? () => onOpen!(openArg)
+                : null,
             child: AspectRatio(
               aspectRatio: 4 / 3,
               child: Hero(
@@ -521,7 +535,8 @@ class _ImageBody extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
               child: Column(
-                crossAxisAlignment: isMine ? CrossAxisAlignment.start : CrossAxisAlignment.end,
+                crossAxisAlignment:
+                    isMine ? CrossAxisAlignment.start : CrossAxisAlignment.end,
                 children: [
                   if (caption?.isNotEmpty ?? false)
                     SelectableText(
@@ -579,9 +594,11 @@ class _DeletedBody extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       child: Row(
-        mainAxisAlignment: isMine ? MainAxisAlignment.start : MainAxisAlignment.end,
+        mainAxisAlignment:
+            isMine ? MainAxisAlignment.start : MainAxisAlignment.end,
         children: [
-          Icon(Icons.delete_outline_rounded, color: scheme.onSurface.withValues(alpha: .55), size: 18),
+          Icon(Icons.delete_outline_rounded,
+              color: scheme.onSurface.withValues(alpha: .55), size: 18),
           const SizedBox(width: 6),
           Text(
             'تم حذف هذه الرسالة',
@@ -616,7 +633,8 @@ class _ReplyPreview extends StatelessWidget {
     final display = text.length > 90 ? '${text.substring(0, 90)}…' : text;
 
     final hasThumb = (thumbnailUrl != null && thumbnailUrl!.trim().isNotEmpty);
-    final isImageHint = text.contains('📷'); // دعم قديم لعرض أيقونة كاميرا عند عدم توفر thumb
+    final isImageHint =
+        text.contains('📷'); // دعم قديم لعرض أيقونة كاميرا عند عدم توفر thumb
 
     final content = Row(
       mainAxisSize: MainAxisSize.min,
@@ -752,7 +770,8 @@ class _ReactionsBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final myUid = Supabase.instance.client.auth.currentUser?.id ?? '';
-    final stream = externalStream ?? ChatService.instance.watchReactions(messageId);
+    final stream =
+        externalStream ?? ChatService.instance.watchReactions(messageId);
 
     return StreamBuilder<List<ChatReaction>>(
       stream: stream,
@@ -822,7 +841,8 @@ class _ReactionChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final bg = selected ? kPrimaryColor.withValues(alpha: .12) : scheme.surface;
-    final brd = selected ? kPrimaryColor.withValues(alpha: .6) : scheme.outlineVariant;
+    final brd =
+        selected ? kPrimaryColor.withValues(alpha: .6) : scheme.outlineVariant;
 
     return Material(
       color: Colors.transparent,

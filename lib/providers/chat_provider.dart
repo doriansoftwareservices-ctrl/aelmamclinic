@@ -250,7 +250,8 @@ class ChatProvider extends ChangeNotifier {
       _rpcWarn('account_users account_id lookup failed', e, st);
     }
 
-    _rpcWarn('account_id resolution returned null', StateError('no account binding for $uid'));
+    _rpcWarn('account_id resolution returned null',
+        StateError('no account binding for $uid'));
     return null;
   }
 
@@ -283,9 +284,8 @@ class ChatProvider extends ChangeNotifier {
   Future<String> _signedOrPublicUrl(String bucket, String path) async {
     if (_preferSignedUrls) {
       try {
-        final signed = await _sb.storage
-            .from(bucket)
-            .createSignedUrl(path, _signedUrlTTL);
+        final signed =
+            await _sb.storage.from(bucket).createSignedUrl(path, _signedUrlTTL);
         if (signed.trim().isNotEmpty) return signed;
       } catch (_) {}
     }
@@ -408,8 +408,8 @@ class ChatProvider extends ChangeNotifier {
 
         fetched.addAll(
           (rows as List).whereType<Map<String, dynamic>>().map(
-            CM.ChatConversation.fromMap,
-          ),
+                CM.ChatConversation.fromMap,
+              ),
         );
 
         final partsRows = await _sb
@@ -440,9 +440,8 @@ class ChatProvider extends ChangeNotifier {
         if (cid.isEmpty) continue;
 
         if (c.isGroup) {
-          tmpDisplay[cid] = (c.title?.trim().isNotEmpty == true)
-              ? c.title!.trim()
-              : 'مجموعة';
+          tmpDisplay[cid] =
+              (c.title?.trim().isNotEmpty == true) ? c.title!.trim() : 'مجموعة';
         } else {
           final parts =
               tmpParticipantsByConv[cid] ?? const <ChatParticipantLocal>[];
@@ -461,8 +460,8 @@ class ChatProvider extends ChangeNotifier {
           tmpDisplay[cid] = nick.isNotEmpty
               ? nick
               : ((other.email?.isNotEmpty == true)
-                    ? other.email!
-                    : 'بدون بريد');
+                  ? other.email!
+                  : 'بدون بريد');
         }
       }
 
@@ -688,7 +687,7 @@ class ChatProvider extends ChangeNotifier {
 
     final createdAt =
         DateTime.tryParse((rec['created_at'] ?? '').toString())?.toUtc() ??
-        DateTime.now().toUtc();
+            DateTime.now().toUtc();
     final senderUid = (rec['sender_uid'] ?? '').toString();
     final body = ((rec['body'] ?? rec['text']) ?? '').toString();
     final snippet = _trimSnippet(body.isEmpty ? 'رسالة' : body);
@@ -752,9 +751,8 @@ class ChatProvider extends ChangeNotifier {
     final cached = await _local.getMessages(conversationId, limit: 40);
     if (_disposed) return;
     _messagesByConv[conversationId] = cached;
-    _olderCursorByConv[conversationId] = cached.isNotEmpty
-        ? cached.last.createdAt
-        : null;
+    _olderCursorByConv[conversationId] =
+        cached.isNotEmpty ? cached.last.createdAt : null;
     _safeNotify();
 
     // ✅ حمّل دفعة حديثة
@@ -767,37 +765,35 @@ class ChatProvider extends ChangeNotifier {
     try {
       await _roomMsgsSub?.cancel();
     } catch (_) {}
-    _roomMsgsSub = _chat
-        .watchMessages(conversationId)
-        .listen(
-          (remoteList) async {
-            if (_disposed) return;
-            final latest = List<CM.ChatMessage>.from(remoteList.reversed);
+    _roomMsgsSub = _chat.watchMessages(conversationId).listen(
+      (remoteList) async {
+        if (_disposed) return;
+        final latest = List<CM.ChatMessage>.from(remoteList.reversed);
 
-            await _local.upsertMessages(latest);
-            if (_disposed) return;
+        await _local.upsertMessages(latest);
+        if (_disposed) return;
 
-            _messagesByConv[conversationId] = latest;
-            _olderCursorByConv[conversationId] = latest.isNotEmpty
-                ? latest.last.createdAt
-                : _olderCursorByConv[conversationId];
+        _messagesByConv[conversationId] = latest;
+        _olderCursorByConv[conversationId] = latest.isNotEmpty
+            ? latest.last.createdAt
+            : _olderCursorByConv[conversationId];
 
-            _scheduleConversationsRefresh();
-            _safeNotify();
+        _scheduleConversationsRefresh();
+        _safeNotify();
 
-            // ✅ Prefetch بعد كل دفعة واردة
-            unawaited(
-              prefetchVisibleAttachments(conversationId, maxMessages: 30),
-            );
-
-            await _applyReadsToOutgoing(conversationId);
-          },
-          onError: (e) {
-            if (_disposed) return;
-            lastError = 'Realtime error: $e';
-            _safeNotify();
-          },
+        // ✅ Prefetch بعد كل دفعة واردة
+        unawaited(
+          prefetchVisibleAttachments(conversationId, maxMessages: 30),
         );
+
+        await _applyReadsToOutgoing(conversationId);
+      },
+      onError: (e) {
+        if (_disposed) return;
+        lastError = 'Realtime error: $e';
+        _safeNotify();
+      },
+    );
 
     try {
       await _typingSub?.cancel();
@@ -1495,9 +1491,7 @@ class ChatProvider extends ChangeNotifier {
 
     final path = 'attachments/$conversationId/$messageId/$name';
 
-    await _sb.storage
-        .from(storageBucketChat)
-        .upload(
+    await _sb.storage.from(storageBucketChat).upload(
           path,
           file,
           fileOptions: FileOptions(upsert: false, contentType: mime),
@@ -1524,9 +1518,7 @@ class ChatProvider extends ChangeNotifier {
 
     final path = 'attachments/$conversationId/legacy/$rnd/$name';
 
-    await _sb.storage
-        .from(storageBucketChat)
-        .upload(
+    await _sb.storage.from(storageBucketChat).upload(
           path,
           file,
           fileOptions: FileOptions(upsert: false, contentType: mime),
@@ -1618,9 +1610,8 @@ class ChatProvider extends ChangeNotifier {
     if (targetConversationIds.isEmpty) return;
 
     final originalText = (message.body ?? message.text).trim();
-    final label = originalText.isNotEmpty
-        ? 'تم تحويلها:\n$originalText'
-        : 'تم تحويلها';
+    final label =
+        originalText.isNotEmpty ? 'تم تحويلها:\n$originalText' : 'تم تحويلها';
 
     // جهّز ملفات الصور إن وجدت
     final files = <File>[];

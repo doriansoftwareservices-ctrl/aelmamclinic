@@ -251,7 +251,8 @@ class _ReminderScreenState extends State<ReminderScreen> {
                               _onlyUnseen ? scheme.primary : scheme.onSurface,
                           fontWeight: FontWeight.w600,
                         ),
-                        side: BorderSide(color: scheme.primary.withValues(alpha: .4)),
+                        side: BorderSide(
+                            color: scheme.primary.withValues(alpha: .4)),
                       ),
                     ),
                   ],

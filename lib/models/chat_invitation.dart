@@ -112,21 +112,21 @@ class ChatGroupInvitation {
   }
 
   Map<String, dynamic> toMap() => {
-    'id': id,
-    'conversation_id': conversationId,
-    'inviter_uid': inviterUid,
-    if (inviteeUid != null) 'invitee_uid': inviteeUid,
-    'invitee_email': _lowerIfPresent(inviteeEmail),
-    'status': status.dbValue,
-    'created_at': createdAt.toIso8601String(),
-    if (respondedAt != null) 'responded_at': respondedAt!.toIso8601String(),
-    if (responseNote != null && responseNote!.isNotEmpty)
-      'response_note': responseNote,
-    if (conversationTitle != null) 'title': conversationTitle,
-    'is_group': isGroup,
-    if (conversationAccountId != null) 'account_id': conversationAccountId,
-    if (conversationCreatedBy != null) 'created_by': conversationCreatedBy,
-  };
+        'id': id,
+        'conversation_id': conversationId,
+        'inviter_uid': inviterUid,
+        if (inviteeUid != null) 'invitee_uid': inviteeUid,
+        'invitee_email': _lowerIfPresent(inviteeEmail),
+        'status': status.dbValue,
+        'created_at': createdAt.toIso8601String(),
+        if (respondedAt != null) 'responded_at': respondedAt!.toIso8601String(),
+        if (responseNote != null && responseNote!.isNotEmpty)
+          'response_note': responseNote,
+        if (conversationTitle != null) 'title': conversationTitle,
+        'is_group': isGroup,
+        if (conversationAccountId != null) 'account_id': conversationAccountId,
+        if (conversationCreatedBy != null) 'created_by': conversationCreatedBy,
+      };
 }
 
 DateTime? _parseDate(dynamic value) {

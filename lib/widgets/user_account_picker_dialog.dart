@@ -75,7 +75,9 @@ class _UserAccountPickerDialogState extends State<UserAccountPickerDialog> {
       }
 
       final exclude = <String>{
-        ...widget.excludeUserUids.map((e) => e.trim()).where((e) => e.isNotEmpty),
+        ...widget.excludeUserUids
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty),
       };
       final initial = widget.initialUserUid?.trim();
       if (initial != null && initial.isNotEmpty) {
@@ -86,7 +88,8 @@ class _UserAccountPickerDialogState extends State<UserAccountPickerDialog> {
       final filtered = options
           .where((opt) => !exclude.contains(opt.uid))
           .toList()
-        ..sort((a, b) => a.email.toLowerCase().compareTo(b.email.toLowerCase()));
+        ..sort(
+            (a, b) => a.email.toLowerCase().compareTo(b.email.toLowerCase()));
 
       setState(() {
         _all
@@ -160,7 +163,8 @@ class _UserAccountPickerDialogState extends State<UserAccountPickerDialog> {
       final trimmed = uid.trim();
       if (trimmed.isEmpty || seen.contains(trimmed)) continue;
       seen.add(trimmed);
-      items.add(UserAccountSelection(uid: trimmed, email: email, disabled: disabled));
+      items.add(
+          UserAccountSelection(uid: trimmed, email: email, disabled: disabled));
     }
 
     return items;
@@ -174,7 +178,8 @@ class _UserAccountPickerDialogState extends State<UserAccountPickerDialog> {
     }
     setState(() {
       _filtered = _all
-          .where((opt) => opt.email.toLowerCase().contains(query) ||
+          .where((opt) =>
+              opt.email.toLowerCase().contains(query) ||
               opt.uid.toLowerCase().contains(query))
           .toList();
     });

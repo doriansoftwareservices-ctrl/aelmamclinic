@@ -30,13 +30,11 @@ class ChatRealtimeNotifier {
   // بثّات مبسطة لواجهة المستخدم
   final _conversationsCtrl = StreamController<void>.broadcast();
   final _participantsCtrl = StreamController<void>.broadcast();
-  final _messageEventCtrl =
-  StreamController<PostgresChangePayload>.broadcast();
+  final _messageEventCtrl = StreamController<PostgresChangePayload>.broadcast();
 
   Stream<void> get conversationsTicks => _conversationsCtrl.stream;
   Stream<void> get participantsTicks => _participantsCtrl.stream;
-  Stream<PostgresChangePayload> get messageEvents =>
-      _messageEventCtrl.stream;
+  Stream<PostgresChangePayload> get messageEvents => _messageEventCtrl.stream;
 
   // فلاتر
   String? _accountId;
@@ -200,14 +198,14 @@ class ChatRealtimeNotifier {
         : 'لديك رسالة جديدة';
 
     final body =
-    (kind == 'image') ? '📷 صورة' : (bodyRaw.isEmpty ? 'رسالة' : bodyRaw);
+        (kind == 'image') ? '📷 صورة' : (bodyRaw.isEmpty ? 'رسالة' : bodyRaw);
 
     final nid = id.hashCode & 0x7fffffff;
 
     // إطلاق الإشعار
     try {
-      NotificationService()
-          .showChatNotification(id: nid, title: title, body: body, payload: cid);
+      NotificationService().showChatNotification(
+          id: nid, title: title, body: body, payload: cid);
     } catch (_) {}
   }
 

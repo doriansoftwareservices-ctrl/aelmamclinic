@@ -253,8 +253,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 children: [
                   // بطاقة العنوان
                   NeuCard(
-                    padding:
-                    const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 18, vertical: 16),
                     child: Row(
                       children: [
                         Container(
@@ -342,18 +342,18 @@ class _LoginScreenState extends State<LoginScreen> {
                     alignment: Alignment.centerRight,
                     child: _loading
                         ? const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 6),
-                      child: SizedBox(
-                        height: 44,
-                        width: 44,
-                        child: CircularProgressIndicator(strokeWidth: 3),
-                      ),
-                    )
+                            padding: EdgeInsets.symmetric(vertical: 6),
+                            child: SizedBox(
+                              height: 44,
+                              width: 44,
+                              child: CircularProgressIndicator(strokeWidth: 3),
+                            ),
+                          )
                         : NeuButton.primary(
-                      label: 'دخول',
-                      icon: Icons.login_rounded,
-                      onPressed: () => _submit(auth),
-                    ),
+                            label: 'دخول',
+                            icon: Icons.login_rounded,
+                            onPressed: () => _submit(auth),
+                          ),
                   ),
                 ],
               ),

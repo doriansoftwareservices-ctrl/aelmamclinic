@@ -16,16 +16,16 @@ class Appointment {
   ''';
 
   /*────────────────────────── الحقول الأساسية (محلي) ─────────────────────────*/
-  int? id;                   // المعرف الفريد (محلي)
-  int patientId;             // المريض المرتبط
-  DateTime appointmentTime;  // وقت الموعد
-  String status;             // "مؤكد" | "ملغي" | "متابعة" ...
-  String notes;              // ملاحظات
+  int? id; // المعرف الفريد (محلي)
+  int patientId; // المريض المرتبط
+  DateTime appointmentTime; // وقت الموعد
+  String status; // "مؤكد" | "ملغي" | "متابعة" ...
+  String notes; // ملاحظات
 
   /*────────────────────────── حقول مزامنة اختيارية ─────────────────────────*/
   String? accountId; // Supabase account
-  String? deviceId;  // مصدر الجهاز
-  int? localId;      // مرجع السجل المحلي
+  String? deviceId; // مصدر الجهاز
+  int? localId; // مرجع السجل المحلي
   DateTime? updatedAt;
 
   Appointment({
@@ -52,7 +52,8 @@ class Appointment {
   static DateTime _epochToDate(num n) {
     // أقل من 10^12 ≈ ثوانٍ، أقل من 10^16 ≈ ميلي، غير ذلك مايكرو
     if (n < 1000000000000) {
-      return DateTime.fromMillisecondsSinceEpoch(n.toInt() * 1000, isUtc: false);
+      return DateTime.fromMillisecondsSinceEpoch(n.toInt() * 1000,
+          isUtc: false);
     } else if (n < 10000000000000000) {
       return DateTime.fromMillisecondsSinceEpoch(n.toInt(), isUtc: false);
     } else {
@@ -79,7 +80,8 @@ class Appointment {
   factory Appointment.fromMap(Map<String, dynamic> map) {
     final id = _toIntN(map['id']);
     final patientId = _toInt0(map['patientId'] ?? map['patient_id']);
-    final dtRaw = map['appointmentTime'] ?? map['appointment_time'] ?? map['time'];
+    final dtRaw =
+        map['appointmentTime'] ?? map['appointment_time'] ?? map['time'];
     final appointmentTime = _toDate(dtRaw);
     final status = _toStr(map['status'], 'مؤكد');
     final notes = _toStr(map['notes'], '');
@@ -115,15 +117,15 @@ class Appointment {
 
   /*──────────── خريطة سحابية (snake_case) للمزامنة ────────────*/
   Map<String, dynamic> toCloudMap() => {
-    'local_id': localId ?? id,
-    'account_id': (accountId?.trim().isEmpty ?? true) ? null : accountId,
-    'device_id': (deviceId?.trim().isEmpty ?? true) ? null : deviceId,
-    'patient_id': patientId,
-    'appointment_time': appointmentTime.toIso8601String(),
-    'status': status,
-    'notes': notes,
-    'updated_at': updatedAt?.toIso8601String(),
-  }..removeWhere((k, v) => v == null);
+        'local_id': localId ?? id,
+        'account_id': (accountId?.trim().isEmpty ?? true) ? null : accountId,
+        'device_id': (deviceId?.trim().isEmpty ?? true) ? null : deviceId,
+        'patient_id': patientId,
+        'appointment_time': appointmentTime.toIso8601String(),
+        'status': status,
+        'notes': notes,
+        'updated_at': updatedAt?.toIso8601String(),
+      }..removeWhere((k, v) => v == null);
 
   Map<String, dynamic> toJson() => toCloudMap();
 
@@ -159,21 +161,28 @@ class Appointment {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-          other is Appointment &&
-              runtimeType == other.runtimeType &&
-              id == other.id &&
-              patientId == other.patientId &&
-              appointmentTime == other.appointmentTime &&
-              status == other.status &&
-              notes == other.notes &&
-              accountId == other.accountId &&
-              deviceId == other.deviceId &&
-              localId == other.localId &&
-              updatedAt == other.updatedAt;
+      other is Appointment &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          patientId == other.patientId &&
+          appointmentTime == other.appointmentTime &&
+          status == other.status &&
+          notes == other.notes &&
+          accountId == other.accountId &&
+          deviceId == other.deviceId &&
+          localId == other.localId &&
+          updatedAt == other.updatedAt;
 
   @override
   int get hashCode => Object.hash(
-    id, patientId, appointmentTime, status, notes,
-    accountId, deviceId, localId, updatedAt,
-  );
+        id,
+        patientId,
+        appointmentTime,
+        status,
+        notes,
+        accountId,
+        deviceId,
+        localId,
+        updatedAt,
+      );
 }

@@ -42,7 +42,8 @@ class AttachmentCache {
   /// حدود تنظيف افتراضية
   static const int _kMaxFiles = 800; // أقصى عدد ملفات بالكاش
   static const int _kMaxTotalBytes = 500 * 1024 * 1024; // 500MB
-  static const Duration _kMaxAge = Duration(days: 120); // ثابت → يصلح كقيمة افتراضية
+  static const Duration _kMaxAge =
+      Duration(days: 120); // ثابت → يصلح كقيمة افتراضية
 
   Directory? _root;
   final _inflight = <String, Future<File>>{};
@@ -140,10 +141,10 @@ class AttachmentCache {
   /// إن لم يكن موجودًا سيستخدم [url] (موقّع/عام) للتنزيل.
   /// يعيد مسارًا محليًا أو null عند الفشل.
   Future<String?> ensureFileForSupabase(
-      String bucket,
-      String path, {
-        String? url,
-      }) async {
+    String bucket,
+    String path, {
+    String? url,
+  }) async {
     final root = await _ensureRoot();
     final key = _keyForSupabase(bucket, path);
     final dest = File('${root.path}/$key');
@@ -240,7 +241,7 @@ class AttachmentCache {
     await for (final e in root.list(recursive: false, followLinks: false)) {
       if (e is File) {
         final name =
-        e.uri.pathSegments.isNotEmpty ? e.uri.pathSegments.last : '';
+            e.uri.pathSegments.isNotEmpty ? e.uri.pathSegments.last : '';
         if (name.endsWith(_kMetaExt)) continue; // نستثني ملفات الميتا
         try {
           final stat = await e.stat();
@@ -274,7 +275,7 @@ class AttachmentCache {
     await for (final e in root.list(recursive: false, followLinks: false)) {
       if (e is File) {
         final name =
-        e.uri.pathSegments.isNotEmpty ? e.uri.pathSegments.last : '';
+            e.uri.pathSegments.isNotEmpty ? e.uri.pathSegments.last : '';
         if (name.endsWith(_kMetaExt)) continue;
         try {
           final stat = await e.stat();
@@ -338,7 +339,8 @@ class AttachmentCache {
   }
 
   Future<Uint8List> _httpGetBytes(String url) async {
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 15);
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 15);
     try {
       final uri = Uri.parse(url);
       final req = await client.getUrl(uri);
@@ -394,7 +396,7 @@ class AttachmentCache {
     try {
       final file = File(filePath);
       final name =
-      file.uri.pathSegments.isNotEmpty ? file.uri.pathSegments.last : '';
+          file.uri.pathSegments.isNotEmpty ? file.uri.pathSegments.last : '';
       final dir = file.parent;
       final metaFile = File('${dir.path}/$name$_kMetaExt');
       if (!await metaFile.exists()) return null;
@@ -493,20 +495,20 @@ class _CacheMeta {
   }
 
   Map<String, dynamic> toJson() => {
-    'url': url,
-    'created_at': createdAt.toIso8601String(),
-    if (lastAccess != null) 'last_access': lastAccess!.toIso8601String(),
-    if (contentType != null) 'content_type': contentType,
-    if (size != null) 'size': size,
-  };
+        'url': url,
+        'created_at': createdAt.toIso8601String(),
+        if (lastAccess != null) 'last_access': lastAccess!.toIso8601String(),
+        if (contentType != null) 'content_type': contentType,
+        if (size != null) 'size': size,
+      };
 
   static _CacheMeta fromJson(Map<String, dynamic> m) {
     DateTime? _p(String? s) => s == null ? null : DateTime.tryParse(s)?.toUtc();
     return _CacheMeta(
       url: (m['url'] ?? '').toString(),
       createdAt:
-      DateTime.tryParse((m['created_at'] ?? '').toString())?.toUtc() ??
-          DateTime.now().toUtc(),
+          DateTime.tryParse((m['created_at'] ?? '').toString())?.toUtc() ??
+              DateTime.now().toUtc(),
       lastAccess: _p((m['last_access'] ?? '').toString()),
       contentType: (() {
         final v = (m['content_type'] ?? '').toString();

@@ -74,7 +74,8 @@ class ThemeSettingsScreen extends StatelessWidget {
                   ),
                   subtitle: Text(
                     'فعِّل لاستخدام الثيم الداكن • التعـديـل فـوري',
-                    style: TextStyle(color: scheme.onSurface.withValues(alpha: .75)),
+                    style: TextStyle(
+                        color: scheme.onSurface.withValues(alpha: .75)),
                   ),
                   trailing: Switch.adaptive(
                     value: isDarkMode,

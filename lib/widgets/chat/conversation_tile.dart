@@ -100,19 +100,23 @@ class ConversationTile extends StatelessWidget {
         : _computeSubtitle(conversation, lastMessage, maxSubtitleChars);
 
     // مصدر الوقت: آخر رسالة مُمرّرة > lastMsgAt > createdAt
-    final DateTime timeSource =
-        lastMessage?.createdAt ?? conversation.lastMsgAt ?? conversation.createdAt;
+    final DateTime timeSource = lastMessage?.createdAt ??
+        conversation.lastMsgAt ??
+        conversation.createdAt;
     final timeText = tutils.formatChatListTimestamp(timeSource);
 
     // إن لم يمرَّر unreadCount، استخدم قيمة المحادثة إن وُجدت
-    final resolvedUnread = unreadCount != 0 ? unreadCount : (conversation.unreadCount ?? 0);
+    final resolvedUnread =
+        unreadCount != 0 ? unreadCount : (conversation.unreadCount ?? 0);
     final hasUnread = resolvedUnread > 0;
 
     // دلالات وصول
     final semanticsLabel = StringBuffer()
       ..write(titleText)
       ..write(', ')
-      ..write(hasUnread ? 'لديك $resolvedUnread رسائل غير مقروءة' : 'لا توجد رسائل غير مقروءة')
+      ..write(hasUnread
+          ? 'لديك $resolvedUnread رسائل غير مقروءة'
+          : 'لا توجد رسائل غير مقروءة')
       ..write(', آخر تحديث ')
       ..write(timeText);
 
@@ -148,8 +152,9 @@ class ConversationTile extends StatelessWidget {
               padding: const EdgeInsets.only(top: 2),
               child: _SubtitleText(
                 text: subText,
-                isTyping: subtitleIsTyping, // ✅ لم نعد نلوّن لمجرد وجود override
-                bold: hasUnread,            // نُبرز السطر الثاني أيضًا عند وجود غير مقروء
+                isTyping:
+                    subtitleIsTyping, // ✅ لم نعد نلوّن لمجرد وجود override
+                bold: hasUnread, // نُبرز السطر الثاني أيضًا عند وجود غير مقروء
               ),
             ),
             trailing: Column(
@@ -250,10 +255,10 @@ class ConversationTile extends StatelessWidget {
   }
 
   String _computeSubtitle(
-      ChatConversation c,
-      ChatMessage? last,
-      int maxLen,
-      ) {
+    ChatConversation c,
+    ChatMessage? last,
+    int maxLen,
+  ) {
     // لو لدينا رسالة أخيرة ممررة، استخدمها أولاً
     if (last != null) {
       if (last.deleted) return 'رسالة محذوفة';
@@ -262,8 +267,11 @@ class ConversationTile extends StatelessWidget {
       if (last.kind == ChatMessageKind.text) {
         final s = (last.body ?? '').trim();
         if (s.isNotEmpty) {
-          final oneLine = s.replaceAll('\n', ' ').replaceAll(RegExp(r'\s+'), ' ');
-          return oneLine.length > maxLen ? '${oneLine.substring(0, maxLen)}…' : oneLine;
+          final oneLine =
+              s.replaceAll('\n', ' ').replaceAll(RegExp(r'\s+'), ' ');
+          return oneLine.length > maxLen
+              ? '${oneLine.substring(0, maxLen)}…'
+              : oneLine;
         }
       }
     }
@@ -272,7 +280,9 @@ class ConversationTile extends StatelessWidget {
     final sn = (c.lastMessageText ?? c.lastMsgSnippet ?? '').trim();
     if (sn.isNotEmpty) {
       final oneLine = sn.replaceAll('\n', ' ').replaceAll(RegExp(r'\s+'), ' ');
-      return oneLine.length > maxLen ? '${oneLine.substring(0, maxLen)}…' : oneLine;
+      return oneLine.length > maxLen
+          ? '${oneLine.substring(0, maxLen)}…'
+          : oneLine;
     }
 
     return 'لا رسائل بعد';
@@ -308,7 +318,8 @@ class _SubtitleText extends StatelessWidget {
   final String text;
   final bool isTyping;
   final bool bold;
-  const _SubtitleText({required this.text, required this.isTyping, this.bold = false});
+  const _SubtitleText(
+      {required this.text, required this.isTyping, this.bold = false});
 
   @override
   Widget build(BuildContext context) {
@@ -321,7 +332,8 @@ class _SubtitleText extends StatelessWidget {
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
       style: TextStyle(
-        color: isTyping ? kPrimaryColor : scheme.onSurface.withValues(alpha: .75),
+        color:
+            isTyping ? kPrimaryColor : scheme.onSurface.withValues(alpha: .75),
         fontWeight: bold ? FontWeight.w800 : FontWeight.w700,
       ),
     );
@@ -362,9 +374,7 @@ class _UnreadBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bg = muted ? Colors.grey : kPrimaryColor;
-    final capped = count > 999
-        ? '999+'
-        : (count > 99 ? '99+' : '$count');
+    final capped = count > 999 ? '999+' : (count > 99 ? '99+' : '$count');
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
       decoration: BoxDecoration(

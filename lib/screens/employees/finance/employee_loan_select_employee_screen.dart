@@ -240,8 +240,8 @@ class _EmployeeLoanSelectEmployeeScreenState
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
-                                          color:
-                                              scheme.onSurface.withValues(alpha: .75),
+                                          color: scheme.onSurface
+                                              .withValues(alpha: .75),
                                           fontWeight: FontWeight.w600,
                                         ),
                                       ),

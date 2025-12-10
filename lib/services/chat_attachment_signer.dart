@@ -19,13 +19,13 @@ class ChatAttachmentSigner {
   }) async {
     final path = 'attachments/$conversationId/$messageId/$fileName';
     await _sb.storage.from(bucket).uploadBinary(
-      path,
-      bytes,
-      fileOptions: FileOptions(
-        upsert: upsert,
-        contentType: contentType,
-      ),
-    );
+          path,
+          bytes,
+          fileOptions: FileOptions(
+            upsert: upsert,
+            contentType: contentType,
+          ),
+        );
   }
 
   /// يطلب URL موقّع من Edge Function: sign-attachment

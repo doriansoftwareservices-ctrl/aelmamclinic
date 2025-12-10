@@ -23,8 +23,8 @@ class TimeUtils {
 
   // مفاتيح التخزين
   static const String _lastCheckKey = 'time:last_device_check_iso';
-  static const String _offsetMsKey  = 'time:last_ntp_offset_ms';
-  static const String _offsetAtKey  = 'time:last_ntp_offset_at_iso';
+  static const String _offsetMsKey = 'time:last_ntp_offset_ms';
+  static const String _offsetAtKey = 'time:last_ntp_offset_at_iso';
 
   /// أقصى تقدّم مسموح به بين تحققَين محليين (افتراضي: يوم).
   static const Duration _defaultMaxForwardDrift = Duration(days: 1);
@@ -188,15 +188,14 @@ class TimeUtils {
     bool forceNetworkRefresh = false,
   }) async {
     final deviceTampered =
-    await isDeviceTimeTampered(maxForwardDrift: localForwardDrift);
+        await isDeviceTimeTampered(maxForwardDrift: localForwardDrift);
     final offset = await ensureNtpOffset(
       ttl: ttl,
       samples: samples,
       forceRefresh: forceNetworkRefresh,
     );
-    final networkTampered = offset == null
-        ? true
-        : offset.abs() > networkAllowedDrift;
+    final networkTampered =
+        offset == null ? true : offset.abs() > networkAllowedDrift;
 
     return TimeCheckResult(
       deviceBackOrTooForward: deviceTampered,
@@ -252,8 +251,7 @@ class TimeCheckResult {
   /// هل تجاوز فرق NTP الحد المسموح؟
   final bool networkDriftExceeded;
 
-  bool get anyTamper =>
-      deviceBackOrTooForward || networkDriftExceeded;
+  bool get anyTamper => deviceBackOrTooForward || networkDriftExceeded;
 
   const TimeCheckResult({
     required this.deviceBackOrTooForward,
@@ -262,8 +260,7 @@ class TimeCheckResult {
   });
 
   @override
-  String toString() =>
-      'TimeCheckResult(deviceTamper=$deviceBackOrTooForward, '
-          'offset=${ntpOffset?.inMilliseconds}ms, '
-          'networkTamper=$networkDriftExceeded)';
+  String toString() => 'TimeCheckResult(deviceTamper=$deviceBackOrTooForward, '
+      'offset=${ntpOffset?.inMilliseconds}ms, '
+      'networkTamper=$networkDriftExceeded)';
 }

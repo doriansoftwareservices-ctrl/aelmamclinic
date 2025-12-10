@@ -403,8 +403,8 @@ class _ItemTileTBIAN extends StatelessWidget {
             color: Colors.white,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color:
-                  (critical ? Colors.red : lightAccentColor).withValues(alpha: .25),
+              color: (critical ? Colors.red : lightAccentColor)
+                  .withValues(alpha: .25),
             ),
             boxShadow: [
               BoxShadow(

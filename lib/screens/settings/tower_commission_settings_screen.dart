@@ -279,7 +279,8 @@ class _FieldWithSuffix extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final onSurface = Theme.of(context).colorScheme.onSurface.withValues(alpha: .65);
+    final onSurface =
+        Theme.of(context).colorScheme.onSurface.withValues(alpha: .65);
     return NeuField(
       controller: controller,
       labelText: label,

@@ -89,7 +89,7 @@ class _RadiologyServicesScreenState extends State<RadiologyServicesScreen> {
     });
     try {
       final servicesRaw =
-      await DBService.instance.getServicesByType('radiology');
+          await DBService.instance.getServicesByType('radiology');
 
       // انسخ الخرائط والقائمة ثم فرّزها
       final services = servicesRaw
@@ -147,9 +147,9 @@ class _RadiologyServicesScreenState extends State<RadiologyServicesScreen> {
         return AlertDialog(
           backgroundColor: scheme.surface,
           shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title:
-          Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+              Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -163,7 +163,7 @@ class _RadiologyServicesScreenState extends State<RadiologyServicesScreen> {
                 NeuField(
                   controller: _serviceCostCtrl,
                   keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
+                      const TextInputType.numberWithOptions(decimal: true),
                   labelText: 'الكلفة',
                   prefix: const Icon(Icons.attach_money_rounded),
                   textDirection: TextDirection.ltr,
@@ -566,7 +566,7 @@ class _RadiologyServicesScreenState extends State<RadiologyServicesScreen> {
                 /*──────── رأس الصفحة ────────*/
                 NeuCard(
                   padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   child: Row(
                     children: [
                       Container(
@@ -616,13 +616,13 @@ class _RadiologyServicesScreenState extends State<RadiologyServicesScreen> {
                       icon: Icons.add_rounded,
                       label: 'إضافة خدمة أشعة',
                       onPressed:
-                      _busy ? null : () => _addOrEditRadiologyService(),
+                          _busy ? null : () => _addOrEditRadiologyService(),
                     ),
                     TOutlinedButton(
                       icon: Icons.upload_file,
                       label: 'استيراد Excel',
                       onPressed:
-                      _busy ? null : _importRadiologyServicesFromExcel,
+                          _busy ? null : _importRadiologyServicesFromExcel,
                     ),
                     TOutlinedButton(
                       icon: Icons.download_outlined,

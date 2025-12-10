@@ -12,13 +12,13 @@ import 'package:aelmamclinic/utils/time.dart' as t;
 
 class ChatAttachmentRecord {
   // حقول قاعدة البيانات
-  final String? id;          // uuid (قد تكون null قبل الإدراج)
-  final String messageId;    // uuid
-  final String bucket;       // افتراضيًا 'chat-attachments'
-  final String path;         // مسار داخل البكت
-  final String mimeType;     // مثل image/png
-  final int sizeBytes;       // الحجم بالبايت
-  final int? width;          // أبعاد اختيارية للصورة/الفيديو
+  final String? id; // uuid (قد تكون null قبل الإدراج)
+  final String messageId; // uuid
+  final String bucket; // افتراضيًا 'chat-attachments'
+  final String path; // مسار داخل البكت
+  final String mimeType; // مثل image/png
+  final int sizeBytes; // الحجم بالبايت
+  final int? width; // أبعاد اختيارية للصورة/الفيديو
   final int? height;
   final DateTime? createdAt; // UTC
 
@@ -77,42 +77,43 @@ class ChatAttachmentRecord {
       sizeBytes: _toInt(pick(const ['size_bytes', 'sizeBytes']), fallback: 0),
       width: _toIntOrNull(pick(const ['width'])),
       height: _toIntOrNull(pick(const ['height'])),
-      createdAt: t.parseDateFlexibleUtc(pick(const ['created_at', 'createdAt'])),
+      createdAt:
+          t.parseDateFlexibleUtc(pick(const ['created_at', 'createdAt'])),
     );
   }
 
   Map<String, dynamic> toJson() => {
-    if (id != null) 'id': id,
-    'messageId': messageId,
-    'bucket': bucket,
-    'path': path,
-    'mimeType': mimeType,
-    'sizeBytes': sizeBytes,
-    'width': width,
-    'height': height,
-    'createdAt': t.toIsoUtc(createdAt),
-  };
+        if (id != null) 'id': id,
+        'messageId': messageId,
+        'bucket': bucket,
+        'path': path,
+        'mimeType': mimeType,
+        'sizeBytes': sizeBytes,
+        'width': width,
+        'height': height,
+        'createdAt': t.toIsoUtc(createdAt),
+      };
 
   /// خريطة إدراج لسيرفر (snake_case)
   Map<String, dynamic> toRemoteInsertMap() => {
-    if (id != null) 'id': id,
-    'message_id': messageId,
-    'bucket': bucket,
-    'path': path,
-    'mime_type': mimeType,
-    'size_bytes': sizeBytes,
-    if (width != null) 'width': width,
-    if (height != null) 'height': height,
-    if (createdAt != null) 'created_at': t.toIsoUtc(createdAt),
-  };
+        if (id != null) 'id': id,
+        'message_id': messageId,
+        'bucket': bucket,
+        'path': path,
+        'mime_type': mimeType,
+        'size_bytes': sizeBytes,
+        if (width != null) 'width': width,
+        if (height != null) 'height': height,
+        if (createdAt != null) 'created_at': t.toIsoUtc(createdAt),
+      };
 
   /// خريطة تحديث لسيرفر (snake_case)
   Map<String, dynamic> toRemoteUpdateMap() => {
-    'mime_type': mimeType,
-    'size_bytes': sizeBytes,
-    if (width != null) 'width': width,
-    if (height != null) 'height': height,
-  };
+        'mime_type': mimeType,
+        'size_bytes': sizeBytes,
+        if (width != null) 'width': width,
+        if (height != null) 'height': height,
+      };
 
   ChatAttachmentRecord copyWith({
     String? id,
@@ -154,7 +155,7 @@ class ChatAttachmentRecord {
   bool get isImage => mimeType.toLowerCase().startsWith('image/');
   bool get isVideo => mimeType.toLowerCase().startsWith('video/');
   bool get isAudio => mimeType.toLowerCase().startsWith('audio/');
-  bool get isPdf   => mimeType.toLowerCase() == 'application/pdf';
+  bool get isPdf => mimeType.toLowerCase() == 'application/pdf';
 
   double? get aspectRatio {
     if ((width ?? 0) <= 0 || (height ?? 0) <= 0) return null;

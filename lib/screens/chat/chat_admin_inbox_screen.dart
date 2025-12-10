@@ -51,7 +51,9 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
     _providerDebounce?.cancel();
     try {
       if (_providerListenerAttached) {
-        context.read<ChatProvider>().removeListener(_onProviderConversationsChanged);
+        context
+            .read<ChatProvider>()
+            .removeListener(_onProviderConversationsChanged);
       }
     } catch (_) {}
     super.dispose();
@@ -62,7 +64,8 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
     if (!isSuper) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('الوصول لهذه الشاشة مخصّص للسوبر أدمن فقط.')),
+        const SnackBar(
+            content: Text('الوصول لهذه الشاشة مخصّص للسوبر أدمن فقط.')),
       );
       Navigator.of(context).maybePop();
       return;
@@ -122,7 +125,7 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
         final list = byConvParts[c.id] ?? const <_UserRef>[];
         if (list.length != 2) continue;
         final other = list.firstWhere(
-              (u) => u.uid != meId,
+          (u) => u.uid != meId,
           orElse: () => const _UserRef(uid: '', email: ''),
         );
         if (other.uid.isNotEmpty) {
@@ -162,7 +165,7 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
         final cid = r['conversation_id']?.toString() ?? '';
         final ts = r['last_read_at'];
         readAtByConv[cid] =
-        ts == null ? null : DateTime.tryParse(ts.toString())?.toUtc();
+            ts == null ? null : DateTime.tryParse(ts.toString())?.toUtc();
       }
 
       final accountIds = dmConvs
@@ -179,7 +182,8 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
               .from('clinics')
               .select('id, name')
               .inFilter('id', accountIds);
-          for (final r in (clinicRows as List).whereType<Map<String, dynamic>>()) {
+          for (final r
+              in (clinicRows as List).whereType<Map<String, dynamic>>()) {
             clinicsById[r['id'].toString()] =
                 (r['name']?.toString() ?? '').trim();
           }
@@ -202,11 +206,11 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
 
         final lastAt = c.lastMsgAt;
         final lastReadAt = readAtByConv[c.id];
-        final hasUnread =
-            (lastAt != null) && (lastReadAt == null || lastAt.isAfter(lastReadAt));
+        final hasUnread = (lastAt != null) &&
+            (lastReadAt == null || lastAt.isAfter(lastReadAt));
 
         final clinicName =
-        c.accountId != null ? (clinicsById[c.accountId!] ?? '') : '';
+            c.accountId != null ? (clinicsById[c.accountId!] ?? '') : '';
 
         items.add(_AdminItem(
           conversation: c,
@@ -256,7 +260,8 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
           textDirection: ui.TextDirection.ltr,
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
           FilledButton(
             onPressed: () =>
                 Navigator.pop(ctx, emailCtrl.text.trim().toLowerCase()),
@@ -284,8 +289,8 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
       final row = await _sb
           .from('chat_conversations')
           .select(
-        'id, account_id, is_group, title, created_by, created_at, updated_at, last_msg_at, last_msg_snippet',
-      )
+            'id, account_id, is_group, title, created_by, created_at, updated_at, last_msg_at, last_msg_snippet',
+          )
           .eq('id', convId)
           .maybeSingle();
 
@@ -363,12 +368,14 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
                   children: [
                     Expanded(
                       child: NeuCard(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 6),
                         child: TextField(
                           controller: _searchCtrl,
                           onChanged: (_) => setState(() {}),
                           decoration: const InputDecoration(
-                            hintText: 'ابحث ببريد المالك، اسم العيادة، أو الملخّص…',
+                            hintText:
+                                'ابحث ببريد المالك، اسم العيادة، أو الملخّص…',
                             border: InputBorder.none,
                             prefixIcon: Icon(Icons.search_rounded),
                           ),
@@ -381,13 +388,15 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
                       selected: _unreadOnly,
                       onSelected: (v) => setState(() => _unreadOnly = v),
                       label: const Text('غير المقروء'),
-                      avatar: const Icon(Icons.mark_chat_unread_rounded, size: 18),
+                      avatar:
+                          const Icon(Icons.mark_chat_unread_rounded, size: 18),
                     ),
                   ],
                 ),
               ),
               if (_loading)
-                const Expanded(child: Center(child: CircularProgressIndicator()))
+                const Expanded(
+                    child: Center(child: CircularProgressIndicator()))
               else if (filtered.isEmpty)
                 Expanded(
                   child: RefreshIndicator(
@@ -399,7 +408,8 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
                         const SizedBox(height: 60),
                         Center(
                           child: NeuCard(
-                            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 18, vertical: 14),
                             child: Text(
                               'لا توجد محادثات مطابقة.',
                               style: TextStyle(
@@ -424,16 +434,18 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
                       padding: const EdgeInsets.fromLTRB(12, 6, 12, 16),
                       itemBuilder: (_, i) {
                         final it = filtered[i];
-                        final subtitle = _formatSubtitleFromSnippet(it.lastSnippet);
+                        final subtitle =
+                            _formatSubtitleFromSnippet(it.lastSnippet);
 
                         return ConversationTile(
                           conversation: it.conversation,
                           titleOverride: it.ownerEmail,
                           subtitleOverride: subtitle,
                           lastMessage: null,
-                          clinicLabel: (it.clinicName?.trim().isNotEmpty ?? false)
-                              ? it.clinicName!.trim()
-                              : null,
+                          clinicLabel:
+                              (it.clinicName?.trim().isNotEmpty ?? false)
+                                  ? it.clinicName!.trim()
+                                  : null,
                           unreadCount: it.hasUnread ? 1 : 0,
                           showChevron: true,
                           onTap: () async {
@@ -443,7 +455,8 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
                             if (!mounted) return;
                             await Navigator.of(context).push(
                               MaterialPageRoute(
-                                builder: (_) => ChatRoomScreen(conversation: it.conversation),
+                                builder: (_) => ChatRoomScreen(
+                                    conversation: it.conversation),
                               ),
                             );
                             if (mounted) await _fetchInbox();

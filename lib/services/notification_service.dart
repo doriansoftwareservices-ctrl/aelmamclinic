@@ -11,9 +11,9 @@ import 'package:timezone/timezone.dart' as tz;
 
 /// معالج النقر على الإشعار (مستوى أعلى خارج الكلاس لتجنّب أخطاء Dart)
 typedef NotificationTapHandler = Future<void> Function(
-    String? payload,
-    NotificationResponse response,
-    );
+  String? payload,
+  NotificationResponse response,
+);
 
 /// ⚠️ يجب أن يكون Top-level ومعلم بـ @pragma ليعمل في الخلفية/حالة الإنهاء.
 @pragma('vm:entry-point')
@@ -34,9 +34,9 @@ class NotificationService {
   static String _chatRouteName = '/chat/room';
 
   static void attachNavigator(
-      GlobalKey<NavigatorState> key, {
-        String chatRouteName = '/chat/room',
-      }) {
+    GlobalKey<NavigatorState> key, {
+    String chatRouteName = '/chat/room',
+  }) {
     _navigatorKey = key;
     _chatRouteName = chatRouteName;
   }
@@ -48,7 +48,7 @@ class NotificationService {
 
   // -------- القنوات/المحرّك --------
   final FlutterLocalNotificationsPlugin _flnp =
-  FlutterLocalNotificationsPlugin();
+      FlutterLocalNotificationsPlugin();
 
   static const String _messagesChannelId = 'messages_channel_id';
   static const String _messagesChannelName = 'رسائل الدردشة';
@@ -115,7 +115,8 @@ class NotificationService {
           }
         }
 
-        const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+        const androidInit =
+            AndroidInitializationSettings('@mipmap/ic_launcher');
         final darwinInit = DarwinInitializationSettings(
           requestSoundPermission: true,
           requestBadgePermission: true,
@@ -136,8 +137,7 @@ class NotificationService {
         );
 
         if (Platform.isAndroid) {
-          final androidImpl = _flnp
-              .resolvePlatformSpecificImplementation<
+          final androidImpl = _flnp.resolvePlatformSpecificImplementation<
               AndroidFlutterLocalNotificationsPlugin>();
 
           // طلب صلاحية الإشعارات (Android 13+) — استدعاء ديناميكي لتوافق كل الإصدارات
@@ -182,14 +182,14 @@ class NotificationService {
           );
         } else if (Platform.isIOS || Platform.isMacOS) {
           try {
-            final ios = _flnp
-                .resolvePlatformSpecificImplementation<
+            final ios = _flnp.resolvePlatformSpecificImplementation<
                 IOSFlutterLocalNotificationsPlugin>();
-            final mac = _flnp
-                .resolvePlatformSpecificImplementation<
+            final mac = _flnp.resolvePlatformSpecificImplementation<
                 MacOSFlutterLocalNotificationsPlugin>();
-            await ios?.requestPermissions(alert: true, badge: true, sound: true);
-            await mac?.requestPermissions(alert: true, badge: true, sound: true);
+            await ios?.requestPermissions(
+                alert: true, badge: true, sound: true);
+            await mac?.requestPermissions(
+                alert: true, badge: true, sound: true);
           } catch (_) {}
         }
 
@@ -203,7 +203,8 @@ class NotificationService {
         final attemptLabel = 'attempt $attempt/$maxRetries';
         debugPrint('❌ NotificationService init error ($attemptLabel): $e');
         if (attempt >= maxRetries) {
-          debugPrint('🚫 NotificationService init gave up after $attempt attempts.');
+          debugPrint(
+              '🚫 NotificationService init gave up after $attempt attempts.');
           // الحفاظ على الـ stacktrace الأصلي للمساعدة في التشخيص.
           Error.throwWithStackTrace(e, stackTrace);
         }
@@ -226,18 +227,18 @@ class NotificationService {
 
   // iOS < 10 callback (متزامن)
   static void _onDidReceiveLocalNotification(
-      int id,
-      String? title,
-      String? body,
-      String? payload,
-      ) {
+    int id,
+    String? title,
+    String? body,
+    String? payload,
+  ) {
     // يمكن عرض Dialog إن رغبت
   }
 
   // نقر المستخدم على الإشعار (أمامي/خلفي)
   static Future<void> _onSelectNotification(
-      NotificationResponse response,
-      ) async {
+    NotificationResponse response,
+  ) async {
     final payload = response.payload;
     debugPrint('🔔 onSelectNotification payload=$payload');
 
@@ -265,19 +266,16 @@ class NotificationService {
     if (!_supportedPlatform) return;
     if (Platform.isAndroid) {
       try {
-        final impl = _flnp
-            .resolvePlatformSpecificImplementation<
+        final impl = _flnp.resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>();
         (impl as dynamic)?.requestPermission?.call();
       } catch (_) {}
     } else if (Platform.isIOS) {
-      final ios = _flnp
-          .resolvePlatformSpecificImplementation<
+      final ios = _flnp.resolvePlatformSpecificImplementation<
           IOSFlutterLocalNotificationsPlugin>();
       await ios?.requestPermissions(alert: true, badge: true, sound: true);
     } else if (Platform.isMacOS) {
-      final mac = _flnp
-          .resolvePlatformSpecificImplementation<
+      final mac = _flnp.resolvePlatformSpecificImplementation<
           MacOSFlutterLocalNotificationsPlugin>();
       await mac?.requestPermissions(alert: true, badge: true, sound: true);
     }
@@ -324,7 +322,7 @@ class NotificationService {
       // sound: 'notification1.mp3',
     );
     final details =
-    NotificationDetails(android: android, iOS: darwin, macOS: darwin);
+        NotificationDetails(android: android, iOS: darwin, macOS: darwin);
 
     try {
       debugPrint(
@@ -341,8 +339,7 @@ class NotificationService {
     required String body,
     String? payload,
   }) async {
-    final autoId =
-    DateTime.now().millisecondsSinceEpoch.remainder(0x7fffffff);
+    final autoId = DateTime.now().millisecondsSinceEpoch.remainder(0x7fffffff);
     await showChatNotification(
       id: autoId,
       title: 'لديك رسالة من $fromLabel',
@@ -357,7 +354,8 @@ class NotificationService {
     required String patientName,
   }) async {
     if (!_supportedPlatform) {
-      debugPrint('🔕 showPatientAssignmentNotification skipped (unsupported platform).');
+      debugPrint(
+          '🔕 showPatientAssignmentNotification skipped (unsupported platform).');
       return;
     }
     if (!_initialized) {
@@ -387,9 +385,8 @@ class NotificationService {
         NotificationDetails(android: android, iOS: darwin, macOS: darwin);
 
     final safeId = patientId.abs() % 1000000 + 100000;
-    final trimmedName = patientName.trim().isEmpty
-        ? 'مريض جديد'
-        : patientName.trim();
+    final trimmedName =
+        patientName.trim().isEmpty ? 'مريض جديد' : patientName.trim();
     const title = 'حالة مرضية جديدة';
     final body = 'تم إضافة المريض $trimmedName إلى حسابك الطبي.';
 
@@ -445,7 +442,7 @@ class NotificationService {
       presentSound: true,
     );
     final details =
-    NotificationDetails(android: android, iOS: darwin, macOS: darwin);
+        NotificationDetails(android: android, iOS: darwin, macOS: darwin);
 
     try {
       debugPrint('⏰ scheduleNotification id=$id at=$tzTime');
@@ -458,7 +455,7 @@ class NotificationService {
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
         androidAllowWhileIdle: true,
         uiLocalNotificationDateInterpretation:
-        UILocalNotificationDateInterpretation.absoluteTime,
+            UILocalNotificationDateInterpretation.absoluteTime,
         matchDateTimeComponents: DateTimeComponents.dateAndTime,
         payload: payload ?? id.toString(),
       );

@@ -84,7 +84,8 @@ class AttachmentChip extends StatelessWidget {
     final thumbSize = compact ? 48.0 : 56.0;
     final textMaxW = compact ? 220.0 : 280.0;
 
-    final title = (name?.trim().isNotEmpty == true) ? name!.trim() : 'صورة مرفقة';
+    final title =
+        (name?.trim().isNotEmpty == true) ? name!.trim() : 'صورة مرفقة';
     final subtitle = _subtitleForStatus(
       sizeBytes: sizeBytes,
       status: status,
@@ -110,7 +111,8 @@ class AttachmentChip extends StatelessWidget {
     return Directionality(
       textDirection: ui.TextDirection.rtl,
       child: Padding(
-        padding: margin ?? const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+        padding:
+            margin ?? const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
         child: Semantics(
           label: 'مرفق: $title',
           hint: tooltip,
@@ -123,7 +125,10 @@ class AttachmentChip extends StatelessWidget {
               clipBehavior: Clip.antiAlias,
               borderRadius: BorderRadius.circular(14),
               child: InkWell(
-                onTap: onTap ?? (imgProvider != null ? () => _defaultPreview(context, imgProvider) : null),
+                onTap: onTap ??
+                    (imgProvider != null
+                        ? () => _defaultPreview(context, imgProvider)
+                        : null),
                 onLongPress: onLongPress,
                 borderRadius: BorderRadius.circular(14),
                 child: SizedBox(
@@ -191,12 +196,16 @@ class AttachmentChip extends StatelessWidget {
                           icon: const Icon(Icons.close_rounded),
                           iconSize: 20,
                           padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints.tightFor(width: 36, height: 36),
+                          constraints: const BoxConstraints.tightFor(
+                              width: 36, height: 36),
                           style: IconButton.styleFrom(
                             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            visualDensity: const VisualDensity(horizontal: -4, vertical: -4),
-                            foregroundColor: scheme.onSurface.withValues(alpha: .75),
-                            disabledForegroundColor: scheme.onSurface.withValues(alpha: .35),
+                            visualDensity: const VisualDensity(
+                                horizontal: -4, vertical: -4),
+                            foregroundColor:
+                                scheme.onSurface.withValues(alpha: .75),
+                            disabledForegroundColor:
+                                scheme.onSurface.withValues(alpha: .35),
                           ),
                         ),
                       ),
@@ -215,7 +224,8 @@ class AttachmentChip extends StatelessWidget {
     if (thumbnail != null) return thumbnail;
     if (file != null) return FileImage(file!);
     if (bytes != null) return MemoryImage(bytes!);
-    if (networkUrl != null && networkUrl!.isNotEmpty) return NetworkImage(networkUrl!);
+    if (networkUrl != null && networkUrl!.isNotEmpty)
+      return NetworkImage(networkUrl!);
     return null;
   }
 
@@ -227,10 +237,15 @@ class AttachmentChip extends StatelessWidget {
     final sizeText = sizeBytes != null ? _fmtBytes(sizeBytes) : null;
     switch (status) {
       case AttachmentUploadStatus.queued:
-        return sizeText == null ? 'بانتظار الإرسال' : 'بانتظار الإرسال • $sizeText';
+        return sizeText == null
+            ? 'بانتظار الإرسال'
+            : 'بانتظار الإرسال • $sizeText';
       case AttachmentUploadStatus.uploading:
-        final pct = ((progress ?? 0.0).clamp(0.0, 1.0) * 100).toStringAsFixed(0);
-        return sizeText == null ? 'جارٍ الرفع $pct%' : 'جارٍ الرفع $pct% • $sizeText';
+        final pct =
+            ((progress ?? 0.0).clamp(0.0, 1.0) * 100).toStringAsFixed(0);
+        return sizeText == null
+            ? 'جارٍ الرفع $pct%'
+            : 'جارٍ الرفع $pct% • $sizeText';
       case AttachmentUploadStatus.uploaded:
         return sizeText == null ? 'تم الإرسال' : 'تم الإرسال • $sizeText';
       case AttachmentUploadStatus.failed:
@@ -331,21 +346,21 @@ class _ThumbnailBox extends StatelessWidget {
           clipBehavior: Clip.antiAlias,
           child: (image != null)
               ? Image(
-            image: image!,
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) {
-              return Icon(
-                Icons.broken_image_rounded,
-                color: scheme.onSurface.withValues(alpha: .45),
-                size: size * .55,
-              );
-            },
-          )
+                  image: image!,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) {
+                    return Icon(
+                      Icons.broken_image_rounded,
+                      color: scheme.onSurface.withValues(alpha: .45),
+                      size: size * .55,
+                    );
+                  },
+                )
               : Icon(
-            Icons.image_outlined,
-            color: scheme.onSurface.withValues(alpha: .45),
-            size: size * .55,
-          ),
+                  Icons.image_outlined,
+                  color: scheme.onSurface.withValues(alpha: .45),
+                  size: size * .55,
+                ),
         ),
 
         // طبقة حالة الرفع أو الأيقونة (بانتقالي ناعم)

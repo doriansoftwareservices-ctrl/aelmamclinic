@@ -392,7 +392,8 @@ class _PatientsByDoctorScreenState extends State<PatientsByDoctorScreen> {
                                                 patient: patient,
                                               ),
                                             ),
-                                          ).then((_) => _loadPatientsByDoctor());
+                                          ).then(
+                                              (_) => _loadPatientsByDoctor());
                                         }
                                         break;
                                       case 'delete':

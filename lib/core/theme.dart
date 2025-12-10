@@ -12,7 +12,7 @@ const double kRadius = 18.0;
 
 /// مسافات عامة
 const EdgeInsets kScreenPadding =
-EdgeInsets.symmetric(horizontal: 16, vertical: 12);
+    EdgeInsets.symmetric(horizontal: 16, vertical: 12);
 
 class AppTheme {
   AppTheme._();
@@ -37,15 +37,15 @@ class AppTheme {
       secondaryContainer: const Color(0xFFE3F2FD),
       onSecondaryContainer: const Color(0xFF0D47A1),
       surfaceContainerHighest:
-      isDark ? const Color(0xFF161A1E) : const Color(0xFFF6F7FB),
+          isDark ? const Color(0xFF161A1E) : const Color(0xFFF6F7FB),
       surfaceContainerHigh:
-      isDark ? const Color(0xFF14181C) : const Color(0xFFF9FAFD),
+          isDark ? const Color(0xFF14181C) : const Color(0xFFF9FAFD),
       surfaceContainer:
-      isDark ? const Color(0xFF1A1F24) : const Color(0xFFF3F5F7),
+          isDark ? const Color(0xFF1A1F24) : const Color(0xFFF3F5F7),
       surfaceContainerLow:
-      isDark ? const Color(0xFF1F2429) : const Color(0xFFF0F2F5),
+          isDark ? const Color(0xFF1F2429) : const Color(0xFFF0F2F5),
       surfaceContainerLowest:
-      isDark ? const Color(0xFF23292E) : const Color(0xFFEFF1F4),
+          isDark ? const Color(0xFF23292E) : const Color(0xFFEFF1F4),
       outline: isDark ? Colors.white24 : Colors.black12,
       outlineVariant: isDark ? Colors.white10 : Colors.black12,
       scrim: Colors.black54,
@@ -100,7 +100,7 @@ class AppTheme {
           foregroundColor: scheme.onPrimary,
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           elevation: 0,
         ),
       ),
@@ -111,7 +111,7 @@ class AppTheme {
           foregroundColor: scheme.onPrimary,
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
           shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           elevation: 0,
         ),
       ),
@@ -122,7 +122,7 @@ class AppTheme {
           foregroundColor: isDark ? Colors.white : kPrimaryColor,
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
           shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         ),
       ),
 
@@ -157,7 +157,7 @@ class AppTheme {
           borderSide: BorderSide(color: scheme.error, width: 1.4),
         ),
         contentPadding:
-        const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       ),
 
       // 👇 التعديل هنا: استخدام CardThemeData بدل CardTheme
@@ -179,7 +179,7 @@ class AppTheme {
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
         backgroundColor:
-        isDark ? const Color(0xFF1F2429) : const Color(0xFF102A43),
+            isDark ? const Color(0xFF1F2429) : const Color(0xFF102A43),
         contentTextStyle: const TextStyle(color: Colors.white),
         elevation: 6,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

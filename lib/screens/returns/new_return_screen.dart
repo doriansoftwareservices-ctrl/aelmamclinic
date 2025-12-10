@@ -455,7 +455,8 @@ class _PatientSearchSheetState extends State<_PatientSearchSheet> {
                                         horizontal: 6),
                                     leading: Container(
                                       decoration: BoxDecoration(
-                                        color: kPrimaryColor.withValues(alpha: .10),
+                                        color: kPrimaryColor.withValues(
+                                            alpha: .10),
                                         borderRadius: BorderRadius.circular(14),
                                       ),
                                       padding: const EdgeInsets.all(8),

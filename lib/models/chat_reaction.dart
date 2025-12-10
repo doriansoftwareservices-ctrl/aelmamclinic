@@ -61,12 +61,13 @@ class ChatReaction {
 
     final id = _trimOrNull(getKey(const ['id']));
     final messageId =
-    _trimOr(getKey(const ['message_id', 'messageId'])?.toString(), '');
+        _trimOr(getKey(const ['message_id', 'messageId'])?.toString(), '');
     final userUid =
-    _trimOr(getKey(const ['user_uid', 'userUid'])?.toString(), '');
+        _trimOr(getKey(const ['user_uid', 'userUid'])?.toString(), '');
     final userEmail = _trimOrNull(getKey(const ['user_email', 'userEmail']));
     final emoji = _trimOr(getKey(const ['emoji'])?.toString(), '');
-    final createdAt = t.parseDateFlexibleUtc(getKey(const ['created_at', 'createdAt']));
+    final createdAt =
+        t.parseDateFlexibleUtc(getKey(const ['created_at', 'createdAt']));
 
     return ChatReaction(
       id: id,
@@ -82,29 +83,29 @@ class ChatReaction {
       ChatReaction.fromMap(json);
 
   Map<String, dynamic> toJson() => {
-    'id': id,
-    'messageId': messageId,
-    'userUid': userUid,
-    'userEmail': userEmail,
-    'emoji': emoji,
-    'createdAt': t.toIsoUtc(createdAt),
-  };
+        'id': id,
+        'messageId': messageId,
+        'userUid': userUid,
+        'userEmail': userEmail,
+        'emoji': emoji,
+        'createdAt': t.toIsoUtc(createdAt),
+      };
 
   /// خريطة للإدراج على Supabase (snake_case).
   Map<String, dynamic> toRemoteInsertMap() => {
-    if (id != null) 'id': id,
-    'message_id': messageId,
-    'user_uid': userUid,
-    if (userEmail != null) 'user_email': userEmail,
-    'emoji': emoji,
-    if (createdAt != null) 'created_at': t.toIsoUtc(createdAt),
-  };
+        if (id != null) 'id': id,
+        'message_id': messageId,
+        'user_uid': userUid,
+        if (userEmail != null) 'user_email': userEmail,
+        'emoji': emoji,
+        if (createdAt != null) 'created_at': t.toIsoUtc(createdAt),
+      };
 
   /// غالبًا لا نُحدّث التفاعل بعد إنشائه (إما يُحذف لإلغاء التفاعل).
   /// لكنها متاحة لو أردت تحديث user_email مثلًا.
   Map<String, dynamic> toRemoteUpdateMap() => {
-    if (userEmail != null) 'user_email': userEmail,
-  };
+        if (userEmail != null) 'user_email': userEmail,
+      };
 
   ChatReaction copyWith({
     String? id,
@@ -141,9 +142,9 @@ class ChatReaction {
 
   /// يعيد قائمة الإيموجيات التي ضغطها مستخدم معيّن.
   static List<String> emojisByUser(
-      Iterable<ChatReaction> reactions, {
-        required String userUid,
-      }) {
+    Iterable<ChatReaction> reactions, {
+    required String userUid,
+  }) {
     final uid = userUid.trim();
     if (uid.isEmpty) return const [];
     return reactions

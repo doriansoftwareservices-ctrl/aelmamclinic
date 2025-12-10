@@ -340,28 +340,43 @@ class DBService {
 
       // createdAt/created_at
       if (!has('createdAt')) {
-        await db.execute('ALTER TABLE alert_settings ADD COLUMN createdAt TEXT');
+        await db
+            .execute('ALTER TABLE alert_settings ADD COLUMN createdAt TEXT');
       }
       if (!has('created_at')) {
-        await db.execute('ALTER TABLE alert_settings ADD COLUMN created_at TEXT');
+        await db
+            .execute('ALTER TABLE alert_settings ADD COLUMN created_at TEXT');
       }
 
       // ترحيل ثنائي الاتجاه + تعبئة تواريخ خالية
-      await db.execute('UPDATE alert_settings SET itemId = COALESCE(itemId, item_id)');
-      await db.execute('UPDATE alert_settings SET item_id = COALESCE(item_id, itemId)');
-      await db.execute('UPDATE alert_settings SET isEnabled = COALESCE(isEnabled, is_enabled, 1)');
-      await db.execute('UPDATE alert_settings SET is_enabled = COALESCE(is_enabled, isEnabled, 1)');
-      await db.execute('UPDATE alert_settings SET lastTriggered = COALESCE(lastTriggered, last_triggered)');
-      await db.execute('UPDATE alert_settings SET last_triggered = COALESCE(last_triggered, lastTriggered)');
-      await db.execute('UPDATE alert_settings SET notifyTime = COALESCE(notifyTime, notify_time)');
-      await db.execute('UPDATE alert_settings SET notify_time = COALESCE(notify_time, notifyTime)');
-      await db.execute('UPDATE alert_settings SET itemUuid = COALESCE(itemUuid, item_uuid)');
-      await db.execute('UPDATE alert_settings SET item_uuid = COALESCE(item_uuid, itemUuid)');
-      await db.execute('UPDATE alert_settings SET createdAt = COALESCE(createdAt, created_at, CURRENT_TIMESTAMP)');
-      await db.execute('UPDATE alert_settings SET created_at = COALESCE(created_at, createdAt, CURRENT_TIMESTAMP)');
+      await db.execute(
+          'UPDATE alert_settings SET itemId = COALESCE(itemId, item_id)');
+      await db.execute(
+          'UPDATE alert_settings SET item_id = COALESCE(item_id, itemId)');
+      await db.execute(
+          'UPDATE alert_settings SET isEnabled = COALESCE(isEnabled, is_enabled, 1)');
+      await db.execute(
+          'UPDATE alert_settings SET is_enabled = COALESCE(is_enabled, isEnabled, 1)');
+      await db.execute(
+          'UPDATE alert_settings SET lastTriggered = COALESCE(lastTriggered, last_triggered)');
+      await db.execute(
+          'UPDATE alert_settings SET last_triggered = COALESCE(last_triggered, lastTriggered)');
+      await db.execute(
+          'UPDATE alert_settings SET notifyTime = COALESCE(notifyTime, notify_time)');
+      await db.execute(
+          'UPDATE alert_settings SET notify_time = COALESCE(notify_time, notifyTime)');
+      await db.execute(
+          'UPDATE alert_settings SET itemUuid = COALESCE(itemUuid, item_uuid)');
+      await db.execute(
+          'UPDATE alert_settings SET item_uuid = COALESCE(item_uuid, itemUuid)');
+      await db.execute(
+          'UPDATE alert_settings SET createdAt = COALESCE(createdAt, created_at, CURRENT_TIMESTAMP)');
+      await db.execute(
+          'UPDATE alert_settings SET created_at = COALESCE(created_at, createdAt, CURRENT_TIMESTAMP)');
 
       // فهرس للأداء
-      await db.execute('CREATE INDEX IF NOT EXISTS idx_alert_settings_item_id ON alert_settings(item_id)');
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_alert_settings_item_id ON alert_settings(item_id)');
 
       // تريجر تعبئة القيم الافتراضية
       await db.execute('''
@@ -475,8 +490,7 @@ class DBService {
           ((c['name'] ?? '') as String).toLowerCase() == name.toLowerCase());
 
       final thresholdInfo = cols.cast<Map<String, Object?>>().firstWhere(
-            (c) =>
-                ((c['name'] ?? '') as String).toLowerCase() == 'threshold',
+            (c) => ((c['name'] ?? '') as String).toLowerCase() == 'threshold',
             orElse: () => const {},
           );
       final currentType =
@@ -510,7 +524,8 @@ class DBService {
       bool has(String name) => cols.any((c) =>
           ((c['name'] ?? '') as String).toLowerCase() == name.toLowerCase());
 
-      await db.execute('ALTER TABLE alert_settings RENAME TO alert_settings_old');
+      await db
+          .execute('ALTER TABLE alert_settings RENAME TO alert_settings_old');
       await db.execute('DROP TABLE IF EXISTS alert_settings_new');
 
       final columnDefs = <String>[
@@ -543,7 +558,8 @@ class DBService {
         selectCols.add('itemId');
       }
       insertCols.add('threshold');
-      final thresholdSource = has('threshold_tmp') ? 'threshold_tmp' : 'threshold';
+      final thresholdSource =
+          has('threshold_tmp') ? 'threshold_tmp' : 'threshold';
       selectCols.add(thresholdSource);
       insertCols.add('is_enabled');
       selectCols.add('is_enabled');
@@ -580,7 +596,8 @@ class DBService {
       await db.execute(insertSql);
 
       await db.execute('DROP TABLE alert_settings_old');
-      await db.execute('ALTER TABLE alert_settings_new RENAME TO alert_settings');
+      await db
+          .execute('ALTER TABLE alert_settings_new RENAME TO alert_settings');
       await _ensureAlertSettingsColumns(db);
     } catch (e) {
       print('rebuildAlertSettingsWithRealThreshold: $e');
@@ -615,7 +632,8 @@ class DBService {
     ];
 
     for (final t in tables) {
-      await _addColumnIfMissing(db, t, 'isDeleted', 'INTEGER NOT NULL DEFAULT 0');
+      await _addColumnIfMissing(
+          db, t, 'isDeleted', 'INTEGER NOT NULL DEFAULT 0');
       await _addColumnIfMissing(db, t, 'deletedAt', 'TEXT');
       await _createIndexIfMissing(db, 'idx_${t}_isDeleted', t, ['isDeleted']);
     }
@@ -631,7 +649,8 @@ class DBService {
       await _addColumnIfMissing(db, t, 'device_id', 'TEXT');
       await _addColumnIfMissing(db, t, 'local_id', 'INTEGER');
       await _addColumnIfMissing(db, t, 'updated_at', 'TEXT');
-      await _createIndexIfMissing(db, 'idx_${t}_acc_dev_local', t, ['account_id', 'device_id', 'local_id']);
+      await _createIndexIfMissing(db, 'idx_${t}_acc_dev_local', t,
+          ['account_id', 'device_id', 'local_id']);
     }
   }
 
@@ -664,28 +683,40 @@ class DBService {
     await safeIndex('idx_patients_doctorId', 'patients', ['doctorId']);
     await safeIndex('idx_patients_registerDate', 'patients', ['registerDate']);
     await safeIndex('idx_purchases_created_at', 'purchases', ['created_at']);
-    await safeIndex('idx_attachments_patient_created', 'attachments', ['patientId', 'createdAt']);
+    await safeIndex('idx_attachments_patient_created', 'attachments',
+        ['patientId', 'createdAt']);
 
-    await safeIndex('idx_patient_services_patientId', PatientService.table, ['patientId']);
-    await safeIndex('idx_patient_services_serviceId', PatientService.table, ['serviceId']);
+    await safeIndex(
+        'idx_patient_services_patientId', PatientService.table, ['patientId']);
+    await safeIndex(
+        'idx_patient_services_serviceId', PatientService.table, ['serviceId']);
 
-    await safeIndex('idx_prescriptions_patientId', 'prescriptions', ['patientId']);
-    await safeIndex('idx_prescription_items_prescriptionId', 'prescription_items', ['prescriptionId']);
+    await safeIndex(
+        'idx_prescriptions_patientId', 'prescriptions', ['patientId']);
+    await safeIndex('idx_prescription_items_prescriptionId',
+        'prescription_items', ['prescriptionId']);
 
-    await safeIndex('idx_service_doctor_share_serviceId', 'service_doctor_share', ['serviceId']);
-    await safeIndex('idx_service_doctor_share_doctorId', 'service_doctor_share', ['doctorId']);
+    await safeIndex('idx_service_doctor_share_serviceId',
+        'service_doctor_share', ['serviceId']);
+    await safeIndex('idx_service_doctor_share_doctorId', 'service_doctor_share',
+        ['doctorId']);
     await safeIndex('idx_doctors_userUid', 'doctors', ['userUid']);
 
-    await safeIndex('idx_consumptions_patientId', 'consumptions', ['patientId']);
+    await safeIndex(
+        'idx_consumptions_patientId', 'consumptions', ['patientId']);
     await safeIndex('idx_consumptions_itemId', 'consumptions', ['itemId']);
 
     await safeIndex('idx_items_name', 'items', ['name']);
-    await safeIndex('idx_appointments_patientId', 'appointments', ['patientId']);
+    await safeIndex(
+        'idx_appointments_patientId', 'appointments', ['patientId']);
     await safeIndex('idx_returns_date', 'returns', ['date']);
 
-    await safeIndex('idx_employees_loans_employeeId', 'employees_loans', ['employeeId']);
-    await safeIndex('idx_employees_salaries_employeeId', 'employees_salaries', ['employeeId']);
-    await safeIndex('idx_employees_discounts_employeeId', 'employees_discounts', ['employeeId']);
+    await safeIndex(
+        'idx_employees_loans_employeeId', 'employees_loans', ['employeeId']);
+    await safeIndex('idx_employees_salaries_employeeId', 'employees_salaries',
+        ['employeeId']);
+    await safeIndex('idx_employees_discounts_employeeId', 'employees_discounts',
+        ['employeeId']);
     await safeIndex('idx_employees_userUid', 'employees', ['userUid']);
 
     Future<void> safeUniqueIndex(String name, String table, String sql) async {
@@ -719,7 +750,8 @@ class DBService {
         CREATE UNIQUE INDEX IF NOT EXISTS uix_sds_service_doctor_active
         ON service_doctor_share(serviceId, doctorId)
         WHERE isDeleted IS NULL OR isDeleted = 0
-      '''.trim(),
+      '''
+          .trim(),
     );
 
     await safeUniqueIndex(
@@ -729,7 +761,8 @@ class DBService {
         CREATE UNIQUE INDEX IF NOT EXISTS uix_doctors_userUid_active
         ON doctors(userUid)
         WHERE userUid IS NOT NULL AND (isDeleted IS NULL OR isDeleted = 0)
-      '''.trim(),
+      '''
+          .trim(),
     );
 
     await safeUniqueIndex(
@@ -739,7 +772,8 @@ class DBService {
         CREATE UNIQUE INDEX IF NOT EXISTS uix_employees_userUid_active
         ON employees(userUid)
         WHERE userUid IS NOT NULL AND (isDeleted IS NULL OR isDeleted = 0)
-      '''.trim(),
+      '''
+          .trim(),
     );
   }
 
@@ -747,7 +781,7 @@ class DBService {
     await db.rawQuery('PRAGMA foreign_keys = ON');
     await _ensureAlertSettingsColumns(db);
     await _ensureSoftDeleteColumns(db);
-    await _ensureSyncMetaColumns(db);     // ← snake_case (متوافق مع parity v3)
+    await _ensureSyncMetaColumns(db); // ← snake_case (متوافق مع parity v3)
     await _ensureSyncFkMappingTable(db);
     await _ensureCommonIndexes(db);
   }
@@ -819,7 +853,8 @@ class DBService {
       );
     ''');
     // 🧪 فهرس فريد case-insensitive للأدوية أثناء الإنشاء الأولي
-    await db.execute('CREATE UNIQUE INDEX IF NOT EXISTS uix_drugs_lower_name ON drugs(lower(name))');
+    await db.execute(
+        'CREATE UNIQUE INDEX IF NOT EXISTS uix_drugs_lower_name ON drugs(lower(name))');
 
     await db.execute('''
       CREATE TABLE prescriptions (
@@ -1032,7 +1067,8 @@ class DBService {
   /*────────────────── الترقيات ──────────────────*/
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 6) {
-      await db.execute('ALTER TABLE patients ADD COLUMN doctorSpecialization TEXT');
+      await db
+          .execute('ALTER TABLE patients ADD COLUMN doctorSpecialization TEXT');
     }
 
     if (oldVersion < 7) {
@@ -1042,7 +1078,8 @@ class DBService {
     }
 
     if (oldVersion < 8) {
-      await db.execute("ALTER TABLE doctors ADD COLUMN printCounter INTEGER DEFAULT 0");
+      await db.execute(
+          "ALTER TABLE doctors ADD COLUMN printCounter INTEGER DEFAULT 0");
     }
 
     if (oldVersion < 9) {
@@ -1118,7 +1155,8 @@ class DBService {
     }
 
     if (oldVersion < 12) {
-      await _addColumnIfMissing(db, 'patients', 'doctorShare', 'REAL DEFAULT 0');
+      await _addColumnIfMissing(
+          db, 'patients', 'doctorShare', 'REAL DEFAULT 0');
       await db.execute('''
         CREATE TABLE IF NOT EXISTS employees_discounts (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1132,20 +1170,24 @@ class DBService {
     }
 
     if (oldVersion < 13) {
-      await _addColumnIfMissing(db, 'patients', 'doctorInput', 'REAL DEFAULT 0');
+      await _addColumnIfMissing(
+          db, 'patients', 'doctorInput', 'REAL DEFAULT 0');
     }
 
     if (oldVersion < 14) {
-      await _addColumnIfMissing(db, 'service_doctor_share', 'towerSharePercentage', 'REAL DEFAULT 0');
+      await _addColumnIfMissing(
+          db, 'service_doctor_share', 'towerSharePercentage', 'REAL DEFAULT 0');
       await _addColumnIfMissing(db, 'patients', 'towerShare', 'REAL DEFAULT 0');
     }
 
     if (oldVersion < 15) {
-      await _addColumnIfMissing(db, 'patients', 'departmentShare', 'REAL DEFAULT 0');
+      await _addColumnIfMissing(
+          db, 'patients', 'departmentShare', 'REAL DEFAULT 0');
     }
 
     if (oldVersion < 16) {
-      await _addColumnIfMissing(db, 'employees', 'isDoctor', 'INTEGER DEFAULT 0');
+      await _addColumnIfMissing(
+          db, 'employees', 'isDoctor', 'INTEGER DEFAULT 0');
     }
 
     if (oldVersion < 17) {
@@ -1170,16 +1212,24 @@ class DBService {
     }
 
     if (oldVersion < 19) {
-      await _addColumnIfMissing(db, 'financial_logs', 'operation', "TEXT NOT NULL DEFAULT 'create'");
-      await _addColumnIfMissing(db, 'financial_logs', 'modification_details', 'TEXT');
+      await _addColumnIfMissing(
+          db, 'financial_logs', 'operation', "TEXT NOT NULL DEFAULT 'create'");
+      await _addColumnIfMissing(
+          db, 'financial_logs', 'modification_details', 'TEXT');
     }
 
     if (oldVersion < 20) {
-      try { await db.execute("ALTER TABLE items RENAME COLUMN typeId TO type_id"); } catch (_) {}
-      try { await db.execute("ALTER TABLE items RENAME COLUMN quantityAvailable TO stock"); } catch (_) {}
+      try {
+        await db.execute("ALTER TABLE items RENAME COLUMN typeId TO type_id");
+      } catch (_) {}
+      try {
+        await db.execute(
+            "ALTER TABLE items RENAME COLUMN quantityAvailable TO stock");
+      } catch (_) {}
       await _addColumnIfMissing(db, 'consumptions', 'patientId', 'TEXT');
       await _addColumnIfMissing(db, 'consumptions', 'itemId', 'TEXT');
-      await _addColumnIfMissing(db, 'consumptions', 'quantity', 'INTEGER DEFAULT 0');
+      await _addColumnIfMissing(
+          db, 'consumptions', 'quantity', 'INTEGER DEFAULT 0');
       await db.execute(Attachment.createTable);
     }
 
@@ -1215,7 +1265,8 @@ class DBService {
     }
 
     if (oldVersion < 21) {
-      final chk = await db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='stats_dirty'");
+      final chk = await db.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='stats_dirty'");
       if (chk.isEmpty) {
         await _createStatsDirtyStructure(db);
       }
@@ -1226,7 +1277,8 @@ class DBService {
     }
 
     if (oldVersion < 23) {
-      await _addColumnIfMissing(db, 'service_doctor_share', 'isHidden', 'INTEGER NOT NULL DEFAULT 0');
+      await _addColumnIfMissing(
+          db, 'service_doctor_share', 'isHidden', 'INTEGER NOT NULL DEFAULT 0');
     }
 
     if (oldVersion < 24) {
@@ -1269,7 +1321,12 @@ class DBService {
         );
       ''');
 
-      for (final tbl in ['drugs','prescriptions','prescription_items','complaints']) {
+      for (final tbl in [
+        'drugs',
+        'prescriptions',
+        'prescription_items',
+        'complaints'
+      ]) {
         for (final op in ['INSERT', 'UPDATE', 'DELETE']) {
           final trig = 'tg_${tbl}_${op.toLowerCase()}_stats_dirty';
           await db.execute('''
@@ -1284,7 +1341,8 @@ class DBService {
     }
 
     if (oldVersion < 25) {
-      await _ensureAlertSettingsColumns(db); // camel + snake + ترحيل + تريجر + notifyTime
+      await _ensureAlertSettingsColumns(
+          db); // camel + snake + ترحيل + تريجر + notifyTime
     }
 
     if (oldVersion < 26) {
@@ -1561,7 +1619,7 @@ class DBService {
   /*=============================== prescription_items ===============================*/
   Future<int> insertPrescriptionItem(PrescriptionItem pi) async {
     final id =
-    await (await database).insert(PrescriptionItem.table, pi.toMap());
+        await (await database).insert(PrescriptionItem.table, pi.toMap());
     await _markChanged(PrescriptionItem.table);
     return id;
   }
@@ -1662,7 +1720,8 @@ class DBService {
 
   Future<int> markPatientReviewed(int id) => patients.markPatientReviewed(id);
 
-  Future<int> updatePatient(Patient p, List<PatientService> newServices) => patients.updatePatient(p, newServices);
+  Future<int> updatePatient(Patient p, List<PatientService> newServices) =>
+      patients.updatePatient(p, newServices);
 
   /// حذف منطقي للمريض وكل العناصر التابعة + عكس المخزون + قيد مالي سالب
   /// الآن داخل معاملة واحدة لضمان الذرّية.
@@ -1699,8 +1758,8 @@ class DBService {
 
   Future<int> updateReturnEntry(ReturnEntry entry) async {
     final db = await database;
-    final rows =
-    await db.update('returns', entry.toMap(), where: 'id = ?', whereArgs: [entry.id]);
+    final rows = await db.update('returns', entry.toMap(),
+        where: 'id = ?', whereArgs: [entry.id]);
     await _markChanged('returns');
     return rows;
   }
@@ -1776,7 +1835,8 @@ class DBService {
     final db = await database;
     final now = DateTime.now();
     final fromIso = DateTime(now.year, now.month, now.day).toIso8601String();
-    final toIso = DateTime(now.year, now.month, now.day, 23, 59, 59, 999).toIso8601String();
+    final toIso = DateTime(now.year, now.month, now.day, 23, 59, 59, 999)
+        .toIso8601String();
 
     final res = await db.query(
       'appointments',
@@ -1827,7 +1887,8 @@ class DBService {
     final rows = await db.query(
       'doctors',
       columns: const ['userUid'],
-      where: 'userUid IS NOT NULL AND TRIM(userUid) <> "" AND ifnull(isDeleted,0)=0',
+      where:
+          'userUid IS NOT NULL AND TRIM(userUid) <> "" AND ifnull(isDeleted,0)=0',
     );
     final set = <String>{};
     for (final row in rows) {
@@ -1929,7 +1990,8 @@ class DBService {
     return rows;
   }
 
-  Future<List<Map<String, dynamic>>> getServicesByType(String serviceType) async {
+  Future<List<Map<String, dynamic>>> getServicesByType(
+      String serviceType) async {
     final db = await database;
     final res = await db.query(
       'medical_services',
@@ -1968,7 +2030,8 @@ class DBService {
     return id;
   }
 
-  Future<List<Map<String, dynamic>>> getDoctorSharesForService(int serviceId) async {
+  Future<List<Map<String, dynamic>>> getDoctorSharesForService(
+      int serviceId) async {
     final db = await database;
     return db.query(
       'service_doctor_share',
@@ -2001,8 +2064,10 @@ class DBService {
   }) async {
     final db = await database;
     final updateData = <String, dynamic>{};
-    if (sharePercentage != null) updateData['sharePercentage'] = sharePercentage;
-    if (towerSharePercentage != null) updateData['towerSharePercentage'] = towerSharePercentage;
+    if (sharePercentage != null)
+      updateData['sharePercentage'] = sharePercentage;
+    if (towerSharePercentage != null)
+      updateData['towerSharePercentage'] = towerSharePercentage;
     final rows = await db.update('service_doctor_share', updateData,
         where: 'id = ?', whereArgs: [id]);
     await _markChanged('service_doctor_share');
@@ -2026,7 +2091,8 @@ class DBService {
     return rows;
   }
 
-  Future<List<Map<String, dynamic>>> getDoctorGeneralServices(int doctorId) async {
+  Future<List<Map<String, dynamic>>> getDoctorGeneralServices(
+      int doctorId) async {
     final db = await database;
     return db.rawQuery('''
     SELECT ms.id, ms.name, ms.cost
@@ -2054,7 +2120,8 @@ class DBService {
   ───────────────────────────────────────────────────────────────*/
 
   /// كتالوج خدمات الطبيب مع النِّسب
-  Future<List<Map<String, dynamic>>> getDoctorServiceCatalogWithPercents(int doctorId) async {
+  Future<List<Map<String, dynamic>>> getDoctorServiceCatalogWithPercents(
+      int doctorId) async {
     final db = await database;
     return db.rawQuery('''
       SELECT 
@@ -2086,8 +2153,10 @@ class DBService {
 
   /// تفصيل فترة: عدد المرات + إجمالي مبالغ الطبيب والمركز لكل خدمة للطبيب
   Future<List<Map<String, dynamic>>> getDoctorServiceBreakdownBetween(
-      int doctorId, DateTime from, DateTime to,
-      ) async {
+    int doctorId,
+    DateTime from,
+    DateTime to,
+  ) async {
     final db = await database;
     return db.rawQuery('''
       SELECT 
@@ -2164,8 +2233,8 @@ class DBService {
     }
     final r = rows.first;
     final String st = (r['serviceType'] ?? '').toString();
-    final double shareP  = (r['shareP']  as num).toDouble();
-    final double towerP  = (r['towerP']  as num).toDouble();
+    final double shareP = (r['shareP'] as num).toDouble();
+    final double towerP = (r['towerP'] as num).toDouble();
 
     if (st == 'doctor' || st == 'doctorGeneral' || st == 'طبيب') {
       return {'doctor': (100.0 - towerP), 'clinic': towerP};
@@ -2207,7 +2276,8 @@ class DBService {
     final rows = await db.query(
       'employees',
       columns: const ['userUid'],
-      where: 'userUid IS NOT NULL AND TRIM(userUid) <> "" AND ifnull(isDeleted,0)=0',
+      where:
+          'userUid IS NOT NULL AND TRIM(userUid) <> "" AND ifnull(isDeleted,0)=0',
     );
     final set = <String>{};
     for (final row in rows) {
@@ -2217,9 +2287,11 @@ class DBService {
     return set;
   }
 
-  Future<int> updateEmployee(int employeeId, Map<String, dynamic> newData) async {
+  Future<int> updateEmployee(
+      int employeeId, Map<String, dynamic> newData) async {
     final db = await database;
-    final rows = await db.update('employees', newData, where: 'id = ?', whereArgs: [employeeId]);
+    final rows = await db
+        .update('employees', newData, where: 'id = ?', whereArgs: [employeeId]);
     await _markChanged('employees');
     return rows;
   }
@@ -2282,7 +2354,8 @@ class DBService {
         where: 'ifnull(isDeleted,0)=0', orderBy: 'loanDateTime DESC');
   }
 
-  Future<int> updateEmployeeLoan(int loanId, Map<String, dynamic> newData) async {
+  Future<int> updateEmployeeLoan(
+      int loanId, Map<String, dynamic> newData) async {
     final db = await database;
     final rows = await db.update('employees_loans', newData,
         where: 'id = ?', whereArgs: [loanId]);
@@ -2328,7 +2401,8 @@ class DBService {
         where: 'ifnull(isDeleted,0)=0', orderBy: 'id DESC');
   }
 
-  Future<int> updateEmployeeSalary(int salaryId, Map<String, dynamic> newData) async {
+  Future<int> updateEmployeeSalary(
+      int salaryId, Map<String, dynamic> newData) async {
     final db = await database;
     final rows = await db.update('employees_salaries', newData,
         where: 'id = ?', whereArgs: [salaryId]);
@@ -2369,7 +2443,8 @@ class DBService {
     );
   }
 
-  Future<int> updateEmployeeDiscount(int discountId, Map<String, dynamic> newData) async {
+  Future<int> updateEmployeeDiscount(
+      int discountId, Map<String, dynamic> newData) async {
     final db = await database;
     final rows = await db.update('employees_discounts', newData,
         where: 'id = ?', whereArgs: [discountId]);
@@ -2508,7 +2583,8 @@ class DBService {
         : (res.first['total'] as num).toDouble();
   }
 
-  Future<double> getSumReturnsRemainingBetween(DateTime from, DateTime to) async {
+  Future<double> getSumReturnsRemainingBetween(
+      DateTime from, DateTime to) async {
     final db = await database;
     final res = await db.rawQuery('''
         SELECT SUM(remaining) as total
@@ -2527,7 +2603,8 @@ class DBService {
     - ننسب خدمات الـ serviceId عبر sds.doctorId
     - السطور الحرّة (serviceId NULL) تُنسب لطبيب المريض فقط في مدخلات الطبيب
    ───────────────────────────────────────────────────────────────*/
-  Future<double> getDoctorRatioSum(int doctorId, DateTime from, DateTime to) async {
+  Future<double> getDoctorRatioSum(
+      int doctorId, DateTime from, DateTime to) async {
     final db = await database;
     final res = await db.rawQuery('''
       SELECT COALESCE(SUM(
@@ -2576,16 +2653,17 @@ class DBService {
         AND ifnull(p.isDeleted,0)=0
         AND (ps.serviceId IS NULL OR ifnull(ms.isDeleted,0)=0)
     ''', [
-      doctorId,             // حالة السطر الحر
-      doctorId,             // خدمات الطبيب المُعرّفة
-      doctorId,             // ربط sds
+      doctorId, // حالة السطر الحر
+      doctorId, // خدمات الطبيب المُعرّفة
+      doctorId, // ربط sds
       from.toIso8601String(),
       to.toIso8601String(),
     ]);
     return (res.first['docInput'] as num?)?.toDouble() ?? 0.0;
   }
 
-  Future<double> getDoctorTowerShareSum(int doctorId, DateTime from, DateTime to) async {
+  Future<double> getDoctorTowerShareSum(
+      int doctorId, DateTime from, DateTime to) async {
     final db = await database;
     final res = await db.rawQuery('''
       SELECT COALESCE(SUM(
@@ -2614,7 +2692,8 @@ class DBService {
     return (res.first['towerShare'] as num?)?.toDouble() ?? 0.0;
   }
 
-  Future<double> getEffectiveSumAllDoctorInputBetween(DateTime from, DateTime to) async {
+  Future<double> getEffectiveSumAllDoctorInputBetween(
+      DateTime from, DateTime to) async {
     final db = await database;
     final res = await db.rawQuery('''
       SELECT COALESCE(SUM(
@@ -2819,8 +2898,17 @@ class DBService {
     ''');
   }
 
-  Future<void> _createIndexIfMissing(DatabaseExecutor db, String indexName, String table, List<String> columns) async {
+  Future<void> _createIndexIfMissing(DatabaseExecutor db, String indexName,
+      String table, List<String> columns) async {
+    if (!await _tableExists(db, table)) {
+      return;
+    }
     final cols = columns.join(',');
-    await db.execute('CREATE INDEX IF NOT EXISTS $indexName ON $table($cols)');
+    try {
+      await db
+          .execute('CREATE INDEX IF NOT EXISTS $indexName ON $table($cols)');
+    } catch (_) {
+      // قد يُستدعى أثناء ترقية دفاعية قبل إنشاء الجدول، لذا نتجاهل الخطأ.
+    }
   }
 }

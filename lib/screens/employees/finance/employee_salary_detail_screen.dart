@@ -416,7 +416,8 @@ class _StatPill extends StatelessWidget {
           Text(
             '$label: ',
             style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .7),
+              color:
+                  Theme.of(context).colorScheme.onSurface.withValues(alpha: .7),
               fontWeight: FontWeight.w700,
             ),
           ),

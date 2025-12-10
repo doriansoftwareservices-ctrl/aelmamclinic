@@ -7,11 +7,38 @@ const ANON_KEY =
   Deno.env.get("ANON_KEY") ?? Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const SERVICE_ROLE_KEY =
   Deno.env.get("SERVICE_ROLE_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-const SUPER_ADMIN_EMAIL = (Deno.env.get("SUPER_ADMIN_EMAIL") ?? "").toLowerCase();
 const ADMIN_INTERNAL_TOKEN = Deno.env.get("ADMIN_INTERNAL_TOKEN") ?? "";
 
 if (!SUPABASE_URL || !ANON_KEY || !SERVICE_ROLE_KEY) {
   throw new Error("Missing Supabase configuration envs");
+}
+
+function normalizeEmail(email?: string | null) {
+  return (email ?? "").trim().toLowerCase();
+}
+
+async function isSuperAdminUser(
+  adminClient: ReturnType<typeof createClient>,
+  userId: string | null,
+  email: string | null,
+) {
+  const normalized = normalizeEmail(email);
+  if (!userId && !normalized) return false;
+
+  let query = adminClient.from("super_admins").select("id").limit(1);
+  if (userId && normalized) {
+    query = query.or(`user_uid.eq.${userId},email.eq.${normalized}`);
+  } else if (userId) {
+    query = query.eq("user_uid", userId);
+  } else {
+    query = query.eq("email", normalized);
+  }
+
+  const { data, error } = await query.maybeSingle();
+  if (error && error.code !== "PGRST116") {
+    throw new Error(`[admin__set_user_role] super_admins lookup failed: ${error.message}`);
+  }
+  return !!data;
 }
 
 const corsHeaders = {
@@ -61,21 +88,14 @@ serve(async (req) => {
       if (error || !caller?.user) {
         return json(401, { error: "invalid jwt", details: error?.message });
       }
-      const callerEmail = (caller.user.email ?? "").toLowerCase();
-      let isSuper = SUPER_ADMIN_EMAIL && callerEmail === SUPER_ADMIN_EMAIL;
-      if (!isSuper) {
-        const { data: saRow, error: saError } = await adminClient
-          .from("super_admins")
-          .select("user_uid")
-          .eq("user_uid", caller.user.id)
-          .maybeSingle();
-        if (saError) {
-          return json(500, { error: "super_admins lookup failed", details: saError.message });
+      try {
+        const isSuper = await isSuperAdminUser(adminClient, caller.user.id, caller.user.email);
+        if (!isSuper) {
+          return json(403, { error: "not a super admin" });
         }
-        isSuper = !!saRow;
-      }
-      if (!isSuper) {
-        return json(403, { error: "not a super admin" });
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        return json(500, { error: "super_admins lookup failed", details: detail });
       }
     }
 

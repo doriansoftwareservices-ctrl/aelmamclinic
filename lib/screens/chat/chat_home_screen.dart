@@ -64,20 +64,20 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
     final invites = chat.invitations;
     final query = _searchCtrl.text.trim().toLowerCase();
 
-    final filtered =
-        convs.where((conv) {
-          if (_unreadOnly && (conv.unreadCount ?? 0) == 0) {
-            return false;
-          }
-          if (query.isEmpty) return true;
-          final title = chat.displayTitleOf(conv.id).toLowerCase();
-          final snippet = (conv.lastMsgSnippet ?? '').toLowerCase();
-          return title.contains(query) || snippet.contains(query);
-        }).toList()..sort((a, b) {
-          final aTime = a.lastMsgAt ?? a.updatedAt ?? a.createdAt;
-          final bTime = b.lastMsgAt ?? b.updatedAt ?? b.createdAt;
-          return bTime.compareTo(aTime);
-        });
+    final filtered = convs.where((conv) {
+      if (_unreadOnly && (conv.unreadCount ?? 0) == 0) {
+        return false;
+      }
+      if (query.isEmpty) return true;
+      final title = chat.displayTitleOf(conv.id).toLowerCase();
+      final snippet = (conv.lastMsgSnippet ?? '').toLowerCase();
+      return title.contains(query) || snippet.contains(query);
+    }).toList()
+      ..sort((a, b) {
+        final aTime = a.lastMsgAt ?? a.updatedAt ?? a.createdAt;
+        final bTime = b.lastMsgAt ?? b.updatedAt ?? b.createdAt;
+        return bTime.compareTo(aTime);
+      });
 
     final isBusy = chat.busy && !chat.ready;
 
@@ -195,8 +195,8 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
                           final subtitleOverride = typing.isNotEmpty
                               ? 'جارٍ الكتابة...'
                               : (snippet.trim().isEmpty
-                                    ? 'لا توجد رسائل بعد'
-                                    : snippet.trim());
+                                  ? 'لا توجد رسائل بعد'
+                                  : snippet.trim());
 
                           return ConversationTile(
                             conversation: conversation,
@@ -526,9 +526,8 @@ class _InvitationCard extends StatelessWidget {
                 const SizedBox(width: 12),
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: invitation.isActionable && !busy
-                        ? onDecline
-                        : null,
+                    onPressed:
+                        invitation.isActionable && !busy ? onDecline : null,
                     child: const Text('رفض'),
                   ),
                 ),

@@ -93,7 +93,8 @@ class _NewEmployeeScreenState extends State<NewEmployeeScreen> {
     if (!mounted) return;
     setState(() {
       _selectedUserUid = selection.uid;
-      _selectedUserEmail = selection.email.isEmpty ? selection.uid : selection.email;
+      _selectedUserEmail =
+          selection.email.isEmpty ? selection.uid : selection.email;
       _selectedAccountDisabled = selection.disabled;
       _selectedAccount = AccountUserSummary(
         userUid: selection.uid,
@@ -116,7 +117,8 @@ class _NewEmployeeScreenState extends State<NewEmployeeScreen> {
 
     // إن لم يُدخل المستخدم الراتب النهائي، اعتبره مساويًا للأساسي
     final basic = double.tryParse(basicStr) ?? 0.0;
-    final fin = (finalStr.trim().isEmpty) ? basic : (double.tryParse(finalStr) ?? 0.0);
+    final fin =
+        (finalStr.trim().isEmpty) ? basic : (double.tryParse(finalStr) ?? 0.0);
 
     final data = <String, dynamic>{
       'name': _nameCtrl.text.trim(),
@@ -173,7 +175,8 @@ class _NewEmployeeScreenState extends State<NewEmployeeScreen> {
         includeDisabled: false,
       );
       final linkedEmployees = await DBService.instance.getEmployeeUserUids();
-      final filtered = accounts.where((a) => !linkedEmployees.contains(a.userUid)).toList();
+      final filtered =
+          accounts.where((a) => !linkedEmployees.contains(a.userUid)).toList();
       if (!mounted) return;
       setState(() {
         _availableAccounts = filtered;
@@ -192,7 +195,8 @@ class _NewEmployeeScreenState extends State<NewEmployeeScreen> {
     if (_loadingAccounts) return;
     if (_availableAccounts.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('لا يوجد حسابات متاحة غير مرتبطة بموظفين.')),
+        const SnackBar(
+            content: Text('لا يوجد حسابات متاحة غير مرتبطة بموظفين.')),
       );
       return;
     }
@@ -208,7 +212,8 @@ class _NewEmployeeScreenState extends State<NewEmployeeScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 ListTile(
-                  title: const Text('اختر حساب الموظف', style: TextStyle(fontWeight: FontWeight.w800)),
+                  title: const Text('اختر حساب الموظف',
+                      style: TextStyle(fontWeight: FontWeight.w800)),
                   trailing: IconButton(
                     icon: const Icon(Icons.refresh_rounded),
                     onPressed: () {
@@ -226,10 +231,15 @@ class _NewEmployeeScreenState extends State<NewEmployeeScreen> {
                       final acc = _availableAccounts[index];
                       return ListTile(
                         title: Text(acc.email.isEmpty ? acc.userUid : acc.email,
-                            style: const TextStyle(fontWeight: FontWeight.w700)),
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w700)),
                         subtitle: acc.email.isEmpty
-                            ? Text(acc.userUid, style: TextStyle(color: scheme.onSurfaceVariant))
-                            : Text(acc.userUid, style: TextStyle(color: scheme.onSurfaceVariant)),
+                            ? Text(acc.userUid,
+                                style:
+                                    TextStyle(color: scheme.onSurfaceVariant))
+                            : Text(acc.userUid,
+                                style:
+                                    TextStyle(color: scheme.onSurfaceVariant)),
                         trailing: const Icon(Icons.chevron_left_rounded),
                         onTap: () => Navigator.pop(ctx, acc),
                       );
@@ -315,7 +325,8 @@ class _NewEmployeeScreenState extends State<NewEmployeeScreen> {
                                 Icon(Icons.badge_rounded, color: kPrimaryColor),
                                 SizedBox(width: 8),
                                 Text('البيانات الأساسية',
-                                    style: TextStyle(fontWeight: FontWeight.w900)),
+                                    style:
+                                        TextStyle(fontWeight: FontWeight.w900)),
                               ],
                             ),
                             const SizedBox(height: 10),
@@ -323,14 +334,16 @@ class _NewEmployeeScreenState extends State<NewEmployeeScreen> {
                               controller: _nameCtrl,
                               hintText: 'اسم الموظف',
                               prefix: const Icon(Icons.person_rounded),
-                              validator: (v) => Validators.required(v, fieldName: 'اسم الموظف'),
+                              validator: (v) => Validators.required(v,
+                                  fieldName: 'اسم الموظف'),
                             ),
                             const SizedBox(height: 12),
                             NeuField(
                               controller: _identityCtrl,
                               hintText: 'رقم الهوية (اختياري)',
                               prefix: const Icon(Icons.credit_card_rounded),
-                              validator: (v) => Validators.nationalId(v, fieldName: 'رقم الهوية'),
+                              validator: (v) => Validators.nationalId(v,
+                                  fieldName: 'رقم الهوية'),
                             ),
                             const SizedBox(height: 12),
                             NeuField(
@@ -383,7 +396,8 @@ class _NewEmployeeScreenState extends State<NewEmployeeScreen> {
                             ),
                             title: Text(
                               _selectedUserEmail ?? 'اختيار حساب Supabase',
-                              style: const TextStyle(fontWeight: FontWeight.w800),
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w800),
                             ),
                             subtitle: Text(
                               _selectedUserEmail == null
@@ -409,20 +423,27 @@ class _NewEmployeeScreenState extends State<NewEmployeeScreen> {
                           children: [
                             Row(
                               children: const [
-                                Icon(Icons.attach_money_rounded, color: kPrimaryColor),
+                                Icon(Icons.attach_money_rounded,
+                                    color: kPrimaryColor),
                                 SizedBox(width: 8),
-                                Text('الرواتب', style: TextStyle(fontWeight: FontWeight.w900)),
+                                Text('الرواتب',
+                                    style:
+                                        TextStyle(fontWeight: FontWeight.w900)),
                               ],
                             ),
                             const SizedBox(height: 10),
                             NeuField(
                               controller: _basicSalaryCtrl,
                               hintText: 'الراتب الأساسي',
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                      decimal: true),
                               prefix: const Icon(Icons.payments_rounded),
                               onChanged: (v) {
-                                final latin = Formatters.arabicToEnglishDigits(v);
-                                if ((_finalSalaryCtrl.text.trim().isEmpty) && latin.isNotEmpty) {
+                                final latin =
+                                    Formatters.arabicToEnglishDigits(v);
+                                if ((_finalSalaryCtrl.text.trim().isEmpty) &&
+                                    latin.isNotEmpty) {
                                   _finalSalaryCtrl.text = latin;
                                 }
                               },
@@ -431,7 +452,9 @@ class _NewEmployeeScreenState extends State<NewEmployeeScreen> {
                             NeuField(
                               controller: _finalSalaryCtrl,
                               hintText: 'الراتب النهائي مع البدل',
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                      decimal: true),
                               prefix: const Icon(Icons.request_quote_rounded),
                             ),
                           ],
@@ -443,7 +466,8 @@ class _NewEmployeeScreenState extends State<NewEmployeeScreen> {
                       if (!_isDoctor) ...[
                         NeuCard(
                           onTap: _pickAccount,
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 10),
                           child: ListTile(
                             contentPadding: EdgeInsets.zero,
                             leading: Container(
@@ -452,7 +476,8 @@ class _NewEmployeeScreenState extends State<NewEmployeeScreen> {
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               padding: const EdgeInsets.all(10),
-                              child: const Icon(Icons.account_circle_rounded, color: kPrimaryColor),
+                              child: const Icon(Icons.account_circle_rounded,
+                                  color: kPrimaryColor),
                             ),
                             title: Text(
                               _selectedAccount == null
@@ -460,7 +485,8 @@ class _NewEmployeeScreenState extends State<NewEmployeeScreen> {
                                   : (_selectedAccount!.email.isNotEmpty
                                       ? _selectedAccount!.email
                                       : _selectedAccount!.userUid),
-                              style: const TextStyle(fontWeight: FontWeight.w800),
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w800),
                             ),
                             subtitle: Text(
                               _loadingAccounts
@@ -477,7 +503,8 @@ class _NewEmployeeScreenState extends State<NewEmployeeScreen> {
                                 ? const SizedBox(
                                     height: 20,
                                     width: 20,
-                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2),
                                   )
                                 : const Icon(Icons.chevron_left_rounded),
                           ),
@@ -487,7 +514,8 @@ class _NewEmployeeScreenState extends State<NewEmployeeScreen> {
 
                       // بطاقة: طبيب؟
                       NeuCard(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 6),
                         child: SwitchListTile.adaptive(
                           contentPadding: EdgeInsets.zero,
                           title: const Text('هل الموظف طبيب؟',
@@ -522,7 +550,8 @@ class _NewEmployeeScreenState extends State<NewEmployeeScreen> {
                           const SizedBox(width: 10),
                           Expanded(
                             child: OutlinedButton.icon(
-                              onPressed: _saving ? null : () => Navigator.pop(context),
+                              onPressed:
+                                  _saving ? null : () => Navigator.pop(context),
                               icon: const Icon(Icons.arrow_back_rounded),
                               label: const Text('إلغاء'),
                             ),
@@ -533,7 +562,6 @@ class _NewEmployeeScreenState extends State<NewEmployeeScreen> {
                   ),
                 ),
               ),
-
               if (_saving)
                 const Align(
                   alignment: Alignment.topCenter,

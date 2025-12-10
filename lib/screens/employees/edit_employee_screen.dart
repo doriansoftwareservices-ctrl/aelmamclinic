@@ -196,7 +196,8 @@ class _EditEmployeeScreenState extends State<EditEmployeeScreen> {
                                 children: [
                                   Container(
                                     decoration: BoxDecoration(
-                                      color: kPrimaryColor.withValues(alpha: .10),
+                                      color:
+                                          kPrimaryColor.withValues(alpha: .10),
                                       borderRadius: BorderRadius.circular(16),
                                     ),
                                     padding: const EdgeInsets.all(14),
@@ -227,7 +228,8 @@ class _EditEmployeeScreenState extends State<EditEmployeeScreen> {
                                               ? '—'
                                               : _jobTitleCtrl.text.trim(),
                                           style: TextStyle(
-                                            color: cs.onSurface.withValues(alpha: .7),
+                                            color: cs.onSurface
+                                                .withValues(alpha: .7),
                                             fontWeight: FontWeight.w600,
                                           ),
                                         ),

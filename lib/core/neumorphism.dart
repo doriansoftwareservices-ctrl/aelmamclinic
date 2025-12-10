@@ -158,13 +158,13 @@ class NeuButton extends StatelessWidget {
       builder: (pressed) {
         final shadows = filled
             ? [
-          _lightShadow(context, pressed ? depth * .4 : depth * .8),
-          _darkShadow(context, pressed ? depth * .4 : depth * .8),
-        ]
+                _lightShadow(context, pressed ? depth * .4 : depth * .8),
+                _darkShadow(context, pressed ? depth * .4 : depth * .8),
+              ]
             : [
-          _lightShadow(context, pressed ? depth * .4 : depth),
-          _darkShadow(context, pressed ? depth * .4 : depth),
-        ];
+                _lightShadow(context, pressed ? depth * .4 : depth),
+                _darkShadow(context, pressed ? depth * .4 : depth),
+              ];
 
         return AnimatedContainer(
           duration: const Duration(milliseconds: 100),
@@ -248,7 +248,7 @@ class NeuField extends StatefulWidget {
     this.validator,
     this.onChanged,
     this.contentPadding =
-    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
     this.radius = kRadius,
     this.depth = 6,
     this.enabled = true,
@@ -282,7 +282,9 @@ class _NeuFieldState extends State<NeuField> {
         borderRadius: BorderRadius.circular(widget.radius),
         boxShadow: shadows,
         border: Border.all(
-          color: _focused ? kPrimaryColor.withValues(alpha: .5) : scheme.outlineVariant,
+          color: _focused
+              ? kPrimaryColor.withValues(alpha: .5)
+              : scheme.outlineVariant,
           width: _focused ? 1.4 : 1.0,
         ),
       ),
@@ -318,7 +320,8 @@ class _NeuFieldState extends State<NeuField> {
                   color: scheme.onSurface.withValues(alpha: .7),
                   fontWeight: FontWeight.w600,
                 ),
-                hintStyle: TextStyle(color: scheme.onSurface.withValues(alpha: .45)),
+                hintStyle:
+                    TextStyle(color: scheme.onSurface.withValues(alpha: .45)),
                 prefixIcon: widget.prefix,
                 suffixIcon: widget.suffix,
                 contentPadding: EdgeInsets.zero,

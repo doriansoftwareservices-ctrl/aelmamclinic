@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:aelmamclinic/core/constants_supabase_override_loader_stub.dart'
     if (dart.library.io) 'package:aelmamclinic/core/constants_supabase_override_loader_io.dart'
     as override_loader;
+import 'package:aelmamclinic/core/nhost_config.dart';
 
 class AppConstants {
   AppConstants._();
@@ -18,6 +19,17 @@ class AppConstants {
     'SUPABASE_ANON_KEY',
     defaultValue: '',
   );
+
+  // -------------------- Nhost --------------------
+  static String get nhostSubdomain => NhostConfig.subdomain;
+  static String get nhostRegion => NhostConfig.region;
+  static String get nhostGraphqlUrl => NhostConfig.graphqlUrl;
+  static String get nhostAuthUrl => NhostConfig.authUrl;
+  static String get nhostStorageUrl => NhostConfig.storageUrl;
+  static String get nhostFunctionsUrl => NhostConfig.functionsUrl;
+  static String get nhostAdminSecret => NhostConfig.adminSecret;
+  static String get nhostWebhookSecret => NhostConfig.webhookSecret;
+  static String get nhostJwtSecret => NhostConfig.jwtSecret;
 
   static String? _overrideSupabaseUrl;
   static String? _overrideSupabaseAnonKey;
@@ -164,5 +176,3 @@ class AppConstants {
     throw StateError(msg);
   }
 }
-
-

@@ -13,7 +13,8 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
-import 'package:flutter/foundation.dart' show consolidateHttpClientResponseBytes;
+import 'package:flutter/foundation.dart'
+    show consolidateHttpClientResponseBytes;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -99,11 +100,12 @@ class ImageViewerScreen extends StatefulWidget {
     final items = urls
         .map(
           (u) => _ImageItem(
-        url: u,
-        displayName:
-        u.split('/').isNotEmpty ? u.split('/').last.split('?').first : null,
-      ),
-    )
+            url: u,
+            displayName: u.split('/').isNotEmpty
+                ? u.split('/').last.split('?').first
+                : null,
+          ),
+        )
         .toList(growable: false);
     return ImageViewerScreen(
       items: items,
@@ -122,8 +124,9 @@ class ImageViewerScreen extends StatefulWidget {
     Future<void> Function(String url)? onOpenExternal,
     Future<void> Function(int, _ImageItem)? onDeleteCurrent,
   }) {
-    final items =
-    attachments.map((a) => _ImageItem.fromAttachment(a)).toList(growable: false);
+    final items = attachments
+        .map((a) => _ImageItem.fromAttachment(a))
+        .toList(growable: false);
     return ImageViewerScreen(
       items: items,
       initialIndex: initialIndex,
@@ -186,9 +189,10 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
   Future<void> _showInfo() async {
     final it = _currentItem;
     final created =
-    it.createdAt != null ? time.formatMessageTimestamp(it.createdAt!) : '—';
-    final wh =
-    (it.width != null || it.height != null) ? '${it.width ?? "?"}×${it.height ?? "?"}' : '—';
+        it.createdAt != null ? time.formatMessageTimestamp(it.createdAt!) : '—';
+    final wh = (it.width != null || it.height != null)
+        ? '${it.width ?? "?"}×${it.height ?? "?"}'
+        : '—';
     final name = it.displayName ?? (it.path?.split('/').last ?? '—');
     await showDialog<void>(
       context: context,
@@ -200,7 +204,10 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
           children: [
             _kv('الاسم', name),
             _kv('الأبعاد', wh),
-            _kv('Bucket', it.bucket ?? (it.url?.startsWith('http') == true ? '—' : 'غير محدد')),
+            _kv(
+                'Bucket',
+                it.bucket ??
+                    (it.url?.startsWith('http') == true ? '—' : 'غير محدد')),
             _kv('Path', it.path ?? '—'),
             _kv('التاريخ', created),
           ],
@@ -220,7 +227,9 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
       padding: const EdgeInsets.only(bottom: 8),
       child: SelectableText.rich(
         TextSpan(children: [
-          TextSpan(text: '$k: ', style: const TextStyle(fontWeight: FontWeight.w700)),
+          TextSpan(
+              text: '$k: ',
+              style: const TextStyle(fontWeight: FontWeight.w700)),
           TextSpan(text: v),
         ]),
       ),
@@ -236,7 +245,8 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
         await widget.onSaveCurrent!.call(url);
         return;
       }
-      await _downloadToDownloads(url, suggestedName: _suggestFileName(_currentItem, url));
+      await _downloadToDownloads(url,
+          suggestedName: _suggestFileName(_currentItem, url));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
@@ -260,7 +270,9 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
         title: const Text('حذف الصورة'),
         content: const Text('هل تريد بالتأكيد حذف هذه الصورة؟'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('إلغاء')),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
@@ -325,7 +337,8 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
                     children: [
                       IconButton(
                         onPressed: () => Navigator.of(context).maybePop(),
-                        icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+                        icon: const Icon(Icons.arrow_back_rounded,
+                            color: Colors.white),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
@@ -343,7 +356,8 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
                       // قائمة المزيد
                       PopupMenuButton<_MenuAction>(
                         color: cs.surface,
-                        icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
+                        icon: const Icon(Icons.more_vert_rounded,
+                            color: Colors.white),
                         onSelected: (a) {
                           switch (a) {
                             case _MenuAction.copyLink:
@@ -401,8 +415,10 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
                             items.add(PopupMenuItem(
                               value: _MenuAction.delete,
                               child: ListTile(
-                                leading: const Icon(Icons.delete_rounded, color: Colors.red),
-                                title: const Text('حذف', style: TextStyle(color: Colors.red)),
+                                leading: const Icon(Icons.delete_rounded,
+                                    color: Colors.red),
+                                title: const Text('حذف',
+                                    style: TextStyle(color: Colors.red)),
                               ),
                             ));
                           }
@@ -424,7 +440,8 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
               child: SafeArea(
                 top: false,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   color: Colors.black38,
                   child: Row(
                     children: [
@@ -443,7 +460,8 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
                       ),
                       const SizedBox(width: 8),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 6),
                         decoration: BoxDecoration(
                           color: Colors.white12,
                           borderRadius: BorderRadius.circular(999),
@@ -480,7 +498,9 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
       }
       final filePath = _uniquePath(
         dirPath,
-        suggestedName ?? _fileNameFromUrl(url) ?? 'image_${DateTime.now().millisecondsSinceEpoch}.jpg',
+        suggestedName ??
+            _fileNameFromUrl(url) ??
+            'image_${DateTime.now().millisecondsSinceEpoch}.jpg',
       );
       final f = File(filePath);
       await f.create(recursive: true);
@@ -627,7 +647,8 @@ class _ImagePage extends StatefulWidget {
   State<_ImagePage> createState() => _ImagePageState();
 }
 
-class _ImagePageState extends State<_ImagePage> with SingleTickerProviderStateMixin {
+class _ImagePageState extends State<_ImagePage>
+    with SingleTickerProviderStateMixin {
   final TransformationController _transform = TransformationController();
   TapDownDetails? _doubleTapDetails;
 
@@ -648,7 +669,9 @@ class _ImagePageState extends State<_ImagePage> with SingleTickerProviderStateMi
       const zoom = 2.5;
       final x = -pos.dx * (zoom - 1);
       final y = -pos.dy * (zoom - 1);
-      final m = Matrix4.identity()..translate(x, y)..scale(zoom);
+      final m = Matrix4.identity()
+        ..translate(x, y)
+        ..scale(zoom);
       _animateTo(m);
     }
   }
@@ -711,7 +734,9 @@ class _ImagePageState extends State<_ImagePage> with SingleTickerProviderStateMi
                     if (evt == null) return child;
                     final expected = evt.expectedTotalBytes ?? 0;
                     final loaded = evt.cumulativeBytesLoaded;
-                    final p = expected > 0 ? (loaded / expected).clamp(0.0, 1.0) : null;
+                    final p = expected > 0
+                        ? (loaded / expected).clamp(0.0, 1.0)
+                        : null;
                     return Stack(
                       alignment: Alignment.center,
                       children: [
@@ -755,7 +780,8 @@ class _ErrorPane extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: const Center(
-        child: Icon(Icons.broken_image_outlined, size: 64, color: Colors.white38),
+        child:
+            Icon(Icons.broken_image_outlined, size: 64, color: Colors.white38),
       ),
     );
   }

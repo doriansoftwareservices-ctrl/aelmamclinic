@@ -308,7 +308,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const LoginScreen()),
-          (route) => false,
+      (route) => false,
     );
   }
 
@@ -373,7 +373,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                   tabs: const [
                     Tab(icon: Icon(Icons.add_business), text: 'عيادة جديدة'),
                     Tab(icon: Icon(Icons.person_add_alt_1), text: 'موظف جديد'),
-                    Tab(icon: Icon(Icons.manage_accounts), text: 'إدارة العيادات'),
+                    Tab(
+                        icon: Icon(Icons.manage_accounts),
+                        text: 'إدارة العيادات'),
                   ],
                 ),
               ),
@@ -504,13 +506,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                   border: Border.all(color: scheme.outlineVariant),
                 ),
                 padding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
                 child: DropdownButtonFormField<Clinic>(
                   value: _selectedClinic,
                   decoration: const InputDecoration(border: InputBorder.none),
                   items: _clinics
                       .map((c) =>
-                      DropdownMenuItem(value: c, child: Text(c.name)))
+                          DropdownMenuItem(value: c, child: Text(c.name)))
                       .toList(),
                   onChanged: (c) => setState(() => _selectedClinic = c),
                   icon: const Icon(Icons.expand_more_rounded),
@@ -563,7 +565,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             Center(
               child: NeuCard(
                 padding:
-                const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
                 child: const Text('لا توجد عيادات مسجّلة.',
                     textAlign: TextAlign.center),
               ),
@@ -629,13 +631,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                   itemBuilder: (_) => [
                     PopupMenuItem<String>(
                       value: 'freeze',
-                      child: Text(
-                          clinic.isFrozen ? 'إلغاء التجميد' : 'تجميد'),
+                      child: Text(clinic.isFrozen ? 'إلغاء التجميد' : 'تجميد'),
                     ),
                     const PopupMenuItem<String>(
                       value: 'delete',
-                      child:
-                      Text('حذف', style: TextStyle(color: Colors.red)),
+                      child: Text('حذف', style: TextStyle(color: Colors.red)),
                     ),
                   ],
                 ),

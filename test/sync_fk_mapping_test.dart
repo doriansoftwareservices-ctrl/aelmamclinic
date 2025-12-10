@@ -42,7 +42,8 @@ void main() {
     final tables = await db.rawQuery(
       "SELECT name FROM sqlite_master WHERE type='table' AND name='sync_fk_mapping'",
     );
-    expect(tables, isNotEmpty, reason: 'sync_fk_mapping table should be created');
+    expect(tables, isNotEmpty,
+        reason: 'sync_fk_mapping table should be created');
 
     const tableName = 'patients';
     const localId = 1;

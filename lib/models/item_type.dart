@@ -21,8 +21,8 @@ class ItemType {
   ''';
 
   /* ─── الحقول الأساسية (محلي) ─── */
-  final int? id;      // المعرف الذاتي
-  final String name;  // اسم الفئة (Unique)
+  final int? id; // المعرف الذاتي
+  final String name; // اسم الفئة (Unique)
 
   /* ─── حقول مزامنة اختيارية (لا تُحفَظ محليًا) ─── */
   final String? accountId;
@@ -68,35 +68,37 @@ class ItemType {
 
   /// محليًا نخزن snake_case فقط.
   Map<String, dynamic> toMap() => {
-    'id': id,
-    'name': name,
-  };
+        'id': id,
+        'name': name,
+      };
 
   /// تمثيل مناسب للسحابة (snake_case) مع حقول المزامنة الاختيارية.
   Map<String, dynamic> toCloudMap() => {
-    'local_id': localId ?? id,
-    // تعقيم السلاسل الفارغة/المسافات
-    'account_id': (accountId?.trim().isEmpty ?? true) ? null : accountId,
-    'device_id': (deviceId?.trim().isEmpty ?? true) ? null : deviceId,
-    'name': name,
-    'updated_at': updatedAt?.toIso8601String(),
-  }..removeWhere((k, v) => v == null);
+        'local_id': localId ?? id,
+        // تعقيم السلاسل الفارغة/المسافات
+        'account_id': (accountId?.trim().isEmpty ?? true) ? null : accountId,
+        'device_id': (deviceId?.trim().isEmpty ?? true) ? null : deviceId,
+        'name': name,
+        'updated_at': updatedAt?.toIso8601String(),
+      }..removeWhere((k, v) => v == null);
 
   Map<String, dynamic> toJson() => toCloudMap();
 
   /// يدعم القراءة المرنة من أي مصدر (SQLite/Supabase) مع camel/snake.
   factory ItemType.fromMap(Map<String, dynamic> map) => ItemType(
-    id: _toIntN(map['id']),
-    name: _toStr(map['name']),
-    accountId: _toStrN(map['accountId'] ?? map['account_id']),
-    deviceId: _toStrN(map['deviceId'] ?? map['device_id']),
-    localId: map['localId'] is int
-        ? map['localId'] as int
-        : (map['local_id'] is int ? map['local_id'] as int : map['id'] as int?),
-    updatedAt: map.containsKey('updatedAt') || map.containsKey('updated_at')
-        ? _toDate(map['updatedAt'] ?? map['updated_at'])
-        : null,
-  );
+        id: _toIntN(map['id']),
+        name: _toStr(map['name']),
+        accountId: _toStrN(map['accountId'] ?? map['account_id']),
+        deviceId: _toStrN(map['deviceId'] ?? map['device_id']),
+        localId: map['localId'] is int
+            ? map['localId'] as int
+            : (map['local_id'] is int
+                ? map['local_id'] as int
+                : map['id'] as int?),
+        updatedAt: map.containsKey('updatedAt') || map.containsKey('updated_at')
+            ? _toDate(map['updatedAt'] ?? map['updated_at'])
+            : null,
+      );
 
   ItemType copyWith({
     int? id,
@@ -121,15 +123,16 @@ class ItemType {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-          other is ItemType &&
-              runtimeType == other.runtimeType &&
-              id == other.id &&
-              name == other.name &&
-              accountId == other.accountId &&
-              deviceId == other.deviceId &&
-              localId == other.localId &&
-              updatedAt == other.updatedAt;
+      other is ItemType &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          name == other.name &&
+          accountId == other.accountId &&
+          deviceId == other.deviceId &&
+          localId == other.localId &&
+          updatedAt == other.updatedAt;
 
   @override
-  int get hashCode => Object.hash(id, name, accountId, deviceId, localId, updatedAt);
+  int get hashCode =>
+      Object.hash(id, name, accountId, deviceId, localId, updatedAt);
 }

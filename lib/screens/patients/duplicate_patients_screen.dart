@@ -593,7 +593,8 @@ class _DuplicatePatientsScreenState extends State<DuplicatePatientsScreen> {
                                               .map((s) => Chip(
                                                     backgroundColor:
                                                         kPrimaryColor
-                                                            .withValues(alpha: .10),
+                                                            .withValues(
+                                                                alpha: .10),
                                                     label: Text(
                                                         '${s.serviceName} • ${s.serviceCost.toStringAsFixed(2)}'),
                                                   ))

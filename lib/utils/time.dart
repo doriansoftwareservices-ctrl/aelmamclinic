@@ -74,7 +74,8 @@ DateTime startOfDayLocal(DateTime dt) {
 /// نهاية اليوم (محليًا).
 DateTime endOfDayLocal(DateTime dt) {
   final s = startOfDayLocal(dt);
-  return s.add(const Duration(days: 1))
+  return s
+      .add(const Duration(days: 1))
       .subtract(const Duration(milliseconds: 1));
 }
 
@@ -91,8 +92,8 @@ bool isToday(DateTime dt, {DateTime? now}) {
 bool isYesterday(DateTime dt, {DateTime? now}) {
   final _now = (now ?? DateTime.now()).toLocal();
   final d = dt.toLocal();
-  final yesterday =
-  DateTime(_now.year, _now.month, _now.day).subtract(const Duration(days: 1));
+  final yesterday = DateTime(_now.year, _now.month, _now.day)
+      .subtract(const Duration(days: 1));
   final dd = DateTime(d.year, d.month, d.day);
   return dd == yesterday;
 }
@@ -143,10 +144,10 @@ String weekdayNameAr(DateTime dt) {
 /// - خلال آخر 7 أيام: اسم اليوم
 /// - غير ذلك: YYYY-MM-DD
 String formatChatListTimestamp(
-    DateTime dt, {
-      DateTime? now,
-      bool useYesterdayLabel = false,
-    }) {
+  DateTime dt, {
+  DateTime? now,
+  bool useYesterdayLabel = false,
+}) {
   if (isToday(dt, now: now)) {
     return formatHhMm(dt);
   } else if (useYesterdayLabel && isYesterday(dt, now: now)) {
@@ -237,11 +238,19 @@ String formatRelativeCompactAr(DateTime dt, {DateTime? now}) {
   String unit(num v, String u) => '${v.toStringAsFixed(0)}$u';
 
   if (dur.inSeconds <= 10) return future ? 'بعد لحظات' : 'الآن';
-  if (dur.inMinutes < 1) return future ? 'بعد ${unit(dur.inSeconds, "ث")}' : unit(dur.inSeconds, 'ث');
-  if (dur.inMinutes < 60) return future ? 'بعد ${unit(dur.inMinutes, "د")}' : unit(dur.inMinutes, 'د');
-  if (dur.inHours < 24) return future ? 'بعد ${unit(dur.inHours, "س")}' : unit(dur.inHours, 'س');
+  if (dur.inMinutes < 1)
+    return future
+        ? 'بعد ${unit(dur.inSeconds, "ث")}'
+        : unit(dur.inSeconds, 'ث');
+  if (dur.inMinutes < 60)
+    return future
+        ? 'بعد ${unit(dur.inMinutes, "د")}'
+        : unit(dur.inMinutes, 'د');
+  if (dur.inHours < 24)
+    return future ? 'بعد ${unit(dur.inHours, "س")}' : unit(dur.inHours, 'س');
   if (isYesterday(d, now: _now)) return 'أمس';
-  if (dur.inDays < 7) return future ? 'بعد ${unit(dur.inDays, "ي")}' : unit(dur.inDays, 'ي');
+  if (dur.inDays < 7)
+    return future ? 'بعد ${unit(dur.inDays, "ي")}' : unit(dur.inDays, 'ي');
   return formatYmd(dt);
 }
 

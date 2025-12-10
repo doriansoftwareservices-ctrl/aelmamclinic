@@ -8,14 +8,14 @@
 // ChatAttachment الموجودة في lib/models/chat_models.dart.
 
 import 'chat_attachment_record.dart';
-import 'chat_models.dart'
-    show ChatAttachment, ChatAttachmentType;
+import 'chat_models.dart' show ChatAttachment, ChatAttachmentType;
 
 /// تحويل سجل DB إلى نموذج واجهة.
 /// - إن لم يتوفر url مباشر، نضع Placeholder "storage://bucket/path"
 ///   ويمكن لاحقًا استبداله برابط موقّع.
 extension ChatAttachmentRecordX on ChatAttachmentRecord {
-  ChatAttachment toUiAttachment({String? signedUrl, Map<String, dynamic>? extra}) {
+  ChatAttachment toUiAttachment(
+      {String? signedUrl, Map<String, dynamic>? extra}) {
     // تحديد النوع من المايم تايب
     final type = mimeType.toLowerCase().startsWith('image/')
         ? ChatAttachmentType.image
@@ -46,10 +46,10 @@ extension ChatAttachmentUiX on ChatAttachment {
   ChatAttachmentRecord toRecord({required String messageId}) {
     // إن لم توجد قيم، نضع افتراضيات مناسبة
     final String bucketVal = (bucket ?? 'chat-attachments');
-    final String pathVal   = (path ?? '');
+    final String pathVal = (path ?? '');
 
-    final String mime = (mimeType ??
-        (isImage ? 'image/jpeg' : 'application/octet-stream'));
+    final String mime =
+        (mimeType ?? (isImage ? 'image/jpeg' : 'application/octet-stream'));
 
     final int size = (sizeBytes ?? 0);
 

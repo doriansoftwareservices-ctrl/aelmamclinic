@@ -122,10 +122,14 @@ class ChatParticipantMapper {
   }
 
   static Map<String, Object?> toRemote(Map<String, dynamic> localRow) {
-    final conversationId =
-        _trim(_first(localRow, <String>[ChatParticipantFields.conversationId, ChatParticipantFields.conversationIdCamel]));
-    final userUid =
-        _trim(_first(localRow, <String>[ChatParticipantFields.userUid, ChatParticipantFields.userUidCamel]));
+    final conversationId = _trim(_first(localRow, <String>[
+      ChatParticipantFields.conversationId,
+      ChatParticipantFields.conversationIdCamel
+    ]));
+    final userUid = _trim(_first(localRow, <String>[
+      ChatParticipantFields.userUid,
+      ChatParticipantFields.userUidCamel
+    ]));
 
     if (conversationId == null || conversationId.isEmpty) {
       throw ArgumentError('chat_participants requires conversation_id');
@@ -134,34 +138,57 @@ class ChatParticipantMapper {
       throw ArgumentError('chat_participants requires user_uid');
     }
 
-    final accountId =
-        _trim(_first(localRow, <String>[ChatParticipantFields.accountId, ChatParticipantFields.accountIdCamel]));
-    final email =
-        _lower(_first(localRow, <String>[ChatParticipantFields.email, ChatParticipantFields.emailCamel]));
-    final displayName = _trim(_first(
-        localRow, <String>[ChatParticipantFields.displayName, ChatParticipantFields.displayNameCamel]));
+    final accountId = _trim(_first(localRow, <String>[
+      ChatParticipantFields.accountId,
+      ChatParticipantFields.accountIdCamel
+    ]));
+    final email = _lower(_first(localRow, <String>[
+      ChatParticipantFields.email,
+      ChatParticipantFields.emailCamel
+    ]));
+    final displayName = _trim(_first(localRow, <String>[
+      ChatParticipantFields.displayName,
+      ChatParticipantFields.displayNameCamel
+    ]));
     final nickname = _trim(localRow[ChatParticipantFields.nickname]);
-    final role = _trim(_first(localRow, <String>[ChatParticipantFields.role, ChatParticipantFields.roleCamel]));
+    final role = _trim(_first(localRow,
+        <String>[ChatParticipantFields.role, ChatParticipantFields.roleCamel]));
 
-    final joinedAt = t.parseDateFlexibleUtc(
-        _first(localRow, <String>[ChatParticipantFields.joinedAt, ChatParticipantFields.joinedAtCamel]));
-    final lastReadAt = t.parseDateFlexibleUtc(
-        _first(localRow, <String>[ChatParticipantFields.lastReadAt, ChatParticipantFields.lastReadAtCamel]));
+    final joinedAt = t.parseDateFlexibleUtc(_first(localRow, <String>[
+      ChatParticipantFields.joinedAt,
+      ChatParticipantFields.joinedAtCamel
+    ]));
+    final lastReadAt = t.parseDateFlexibleUtc(_first(localRow, <String>[
+      ChatParticipantFields.lastReadAt,
+      ChatParticipantFields.lastReadAtCamel
+    ]));
 
     final muted = _toBool(
-      _first(localRow, <String>[ChatParticipantFields.muted, ChatParticipantFields.mutedCamel]),
+      _first(localRow, <String>[
+        ChatParticipantFields.muted,
+        ChatParticipantFields.mutedCamel
+      ]),
       fallback: false,
     );
     final pinned = _toBool(
-      _first(localRow, <String>[ChatParticipantFields.pinned, ChatParticipantFields.pinnedCamel]),
+      _first(localRow, <String>[
+        ChatParticipantFields.pinned,
+        ChatParticipantFields.pinnedCamel
+      ]),
       fallback: false,
     );
     final archived = _toBool(
-      _first(localRow, <String>[ChatParticipantFields.archived, ChatParticipantFields.archivedCamel]),
+      _first(localRow, <String>[
+        ChatParticipantFields.archived,
+        ChatParticipantFields.archivedCamel
+      ]),
       fallback: false,
     );
     final blocked = _toBool(
-      _first(localRow, <String>[ChatParticipantFields.blocked, ChatParticipantFields.blockedCamel]),
+      _first(localRow, <String>[
+        ChatParticipantFields.blocked,
+        ChatParticipantFields.blockedCamel
+      ]),
       fallback: false,
     );
 
@@ -199,15 +226,18 @@ class ChatParticipantMapper {
   }
 
   static Map<String, dynamic> fromRemote(Map<String, dynamic> remoteRow) {
-    final conversationId = _trim(remoteRow[ChatParticipantFields.conversationId]) ?? '';
+    final conversationId =
+        _trim(remoteRow[ChatParticipantFields.conversationId]) ?? '';
     final userUid = _trim(remoteRow[ChatParticipantFields.userUid]) ?? '';
     final accountId = _trim(remoteRow[ChatParticipantFields.accountId]);
     final email = _lower(remoteRow[ChatParticipantFields.email]);
     final displayName = _trim(remoteRow[ChatParticipantFields.displayName]) ??
         _trim(remoteRow[ChatParticipantFields.nickname]);
     final role = _trim(remoteRow[ChatParticipantFields.role]);
-    final joinedAt = t.parseDateFlexibleUtc(remoteRow[ChatParticipantFields.joinedAt]);
-    final lastReadAt = t.parseDateFlexibleUtc(remoteRow[ChatParticipantFields.lastReadAt]);
+    final joinedAt =
+        t.parseDateFlexibleUtc(remoteRow[ChatParticipantFields.joinedAt]);
+    final lastReadAt =
+        t.parseDateFlexibleUtc(remoteRow[ChatParticipantFields.lastReadAt]);
     final muted = _toBool(remoteRow[ChatParticipantFields.muted]);
     final pinned = _toBool(remoteRow[ChatParticipantFields.pinned]);
     final archived = _toBool(remoteRow[ChatParticipantFields.archived]);

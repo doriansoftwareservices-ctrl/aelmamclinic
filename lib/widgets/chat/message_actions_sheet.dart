@@ -24,43 +24,50 @@ import 'package:aelmamclinic/models/chat_models.dart';
 import 'package:aelmamclinic/utils/text_direction.dart' as bidi;
 import 'package:aelmamclinic/utils/time.dart' as time;
 
-const List<String> _kCommonReactions = <String>['👍', '❤️', '😂', '😮', '😢', '👎'];
+const List<String> _kCommonReactions = <String>[
+  '👍',
+  '❤️',
+  '😂',
+  '😮',
+  '😢',
+  '👎'
+];
 
 // نوافذ الصلاحيات
 const Duration _kEditWindow = Duration(hours: 2);
 const Duration _kDeleteWindow = Duration(hours: 12);
 
 Future<void> showMessageActionsSheet(
-    BuildContext context, {
-      required ChatMessage message,
-      String? myUid,
+  BuildContext context, {
+  required ChatMessage message,
+  String? myUid,
 
-      // Callbacks (اختيارية – حسب ما تدعمه شاشتك/مزودك)
-      void Function(ChatMessage m)? onReply,
-      void Function(ChatMessage m)? onMention,
-      void Function(ChatMessage m)? onEdit,
-      void Function(ChatMessage m)? onDelete,
-      void Function(ChatMessage m)? onForward,
-      void Function(ChatMessage m)? onSelect,
-      void Function(ChatMessage m, String emoji)? onReact,
-      void Function(ChatMessage m)? onSaveImage,
-      void Function(ChatMessage m)? onInfo,
-      void Function(ChatMessage m)? onPin,
-      void Function(ChatMessage m)? onCopy, // إن لم يُمرر سننسخ محليًا
+  // Callbacks (اختيارية – حسب ما تدعمه شاشتك/مزودك)
+  void Function(ChatMessage m)? onReply,
+  void Function(ChatMessage m)? onMention,
+  void Function(ChatMessage m)? onEdit,
+  void Function(ChatMessage m)? onDelete,
+  void Function(ChatMessage m)? onForward,
+  void Function(ChatMessage m)? onSelect,
+  void Function(ChatMessage m, String emoji)? onReact,
+  void Function(ChatMessage m)? onSaveImage,
+  void Function(ChatMessage m)? onInfo,
+  void Function(ChatMessage m)? onPin,
+  void Function(ChatMessage m)? onCopy, // إن لم يُمرر سننسخ محليًا
 
-      // تحكم عرض/إخفاء (إن أردت إجبار حالة معيّنة)
-      bool? canReply,
-      bool? canMention,
-      bool? canCopy,
-      bool? canEdit,
-      bool? canDelete,
-      bool? canForward,
-      bool? canReact,
-      bool? canSelect,
-      bool? canSaveImage,
-      bool? canInfo,
-      bool? canPin,
-    }) {
+  // تحكم عرض/إخفاء (إن أردت إجبار حالة معيّنة)
+  bool? canReply,
+  bool? canMention,
+  bool? canCopy,
+  bool? canEdit,
+  bool? canDelete,
+  bool? canForward,
+  bool? canReact,
+  bool? canSelect,
+  bool? canSaveImage,
+  bool? canInfo,
+  bool? canPin,
+}) {
   return showModalBottomSheet<void>(
     context: context,
     useSafeArea: true,
@@ -157,6 +164,7 @@ class _MessageActionsSheet extends StatelessWidget {
     final uid = myUid;
     return uid != null && uid.isNotEmpty && message.senderUid == uid;
   }
+
   bool get _isText => message.kind == ChatMessageKind.text;
   bool get _isImage => message.kind == ChatMessageKind.image;
   bool get _isDeleted => message.deleted;
@@ -176,8 +184,8 @@ class _MessageActionsSheet extends StatelessWidget {
     final senderLabel = _isMine
         ? 'أنت'
         : (message.senderEmail == null || message.senderEmail!.trim().isEmpty
-        ? 'مستخدم'
-        : bidi.ensureLtr(message.senderEmail!.trim()));
+            ? 'مستخدم'
+            : bidi.ensureLtr(message.senderEmail!.trim()));
     final timeLabel = time.formatMessageTimestamp(message.createdAt);
 
     // نص فعلي قابل للنسخ (للنسخ المحلي fallback)
@@ -208,17 +216,21 @@ class _MessageActionsSheet extends StatelessWidget {
     // نسخ: مسموح إن كان هناك onCopy أو نص فعلي أو رابط مرفق للصور
     final allowCopy = canCopy ??
         (((onCopy != null) ||
-            (_isText && rawCopyText.isNotEmpty) ||
-            (_isImage && hasAttachmentUrl)) &&
+                (_isText && rawCopyText.isNotEmpty) ||
+                (_isImage && hasAttachmentUrl)) &&
             !_isDeleted);
 
     // تعديل: نصي + ملكي + داخل المهلة + لديك onEdit
     final allowEdit = canEdit ??
-        (_isText && _isMine && !_isDeleted && _withinEditWindow && onEdit != null);
+        (_isText &&
+            _isMine &&
+            !_isDeleted &&
+            _withinEditWindow &&
+            onEdit != null);
 
     // حذف: ملكي + داخل المهلة + لديك onDelete
-    final allowDelete =
-        canDelete ?? (_isMine && !_isDeleted && _withinDeleteWindow && onDelete != null);
+    final allowDelete = canDelete ??
+        (_isMine && !_isDeleted && _withinDeleteWindow && onDelete != null);
 
     final allowForward = canForward ?? (onForward != null && !_isDeleted);
     final allowReact = this.canReact ?? (onReact != null && !_isDeleted);
@@ -315,8 +327,9 @@ class _MessageActionsSheet extends StatelessWidget {
               return;
             }
             // النسخ المحلي الافتراضي (body ثم text، أو رابط أول مرفق للصور)
-            final txt =
-                rawCopyText.isNotEmpty ? rawCopyText : (firstAttachmentUrl ?? '');
+            final txt = rawCopyText.isNotEmpty
+                ? rawCopyText
+                : (firstAttachmentUrl ?? '');
             if (txt.isNotEmpty) {
               await Clipboard.setData(ClipboardData(text: txt));
               if (context.mounted) {

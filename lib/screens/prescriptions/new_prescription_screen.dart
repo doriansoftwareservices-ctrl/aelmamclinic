@@ -579,7 +579,8 @@ class _NewPrescriptionScreenState extends State<NewPrescriptionScreen> {
                     children: _items
                         .map(
                           (it) => InputChip(
-                            backgroundColor: kPrimaryColor.withValues(alpha: .08),
+                            backgroundColor:
+                                kPrimaryColor.withValues(alpha: .08),
                             label: Text(
                                 '${it.drugName} • ${it.days} يوم × ${it.timesPerDay}'),
                             onDeleted: () => setState(() => _items.remove(it)),

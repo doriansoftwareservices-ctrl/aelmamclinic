@@ -31,16 +31,16 @@ class Prescription {
   ''';
 
   /*──────────── الحقول (محلي) ────────────*/
-  final int? id;             // NULL قبل الإدراج
-  final int patientId;       // مطلوب
-  final int? doctorId;       // اختياري
+  final int? id; // NULL قبل الإدراج
+  final int patientId; // مطلوب
+  final int? doctorId; // اختياري
   final DateTime recordDate; // تاريخ الوصفة
-  final DateTime createdAt;  // وقت الإنشاء
+  final DateTime createdAt; // وقت الإنشاء
 
   /*──────── حقول مزامنة اختيارية (لا تُحفَظ محليًا) ────────*/
-  final String? accountId;   // Supabase → accounts.id
-  final String? deviceId;    // معرّف الجهاز
-  final int? localId;        // مرجع السجل المحلي عند الرفع (إن لم يُمرّر نستخدم id)
+  final String? accountId; // Supabase → accounts.id
+  final String? deviceId; // معرّف الجهاز
+  final int? localId; // مرجع السجل المحلي عند الرفع (إن لم يُمرّر نستخدم id)
   final DateTime? updatedAt; // آخر تعديل في السحابة
 
   /*──────────── الباني ────────────*/
@@ -92,42 +92,44 @@ class Prescription {
 
   /*──────────── من/إلى خريطة (SQLite محلي) ────────────*/
   Map<String, dynamic> toMap() => {
-    'id': id,
-    'patientId': patientId,
-    'doctorId': doctorId,
-    'recordDate': recordDate.toIso8601String(),
-    'createdAt': createdAt.toIso8601String(),
-  };
+        'id': id,
+        'patientId': patientId,
+        'doctorId': doctorId,
+        'recordDate': recordDate.toIso8601String(),
+        'createdAt': createdAt.toIso8601String(),
+      };
 
   Map<String, dynamic> toJson() => toMap();
 
   /// يدعم مفاتيح camelCase و snake_case (قادمة من Supabase أو مصادر قديمة)
   factory Prescription.fromMap(Map<String, dynamic> row) => Prescription(
-    id: _asIntN(row['id']),
-    patientId: _asInt0(row['patientId'] ?? row['patient_id']),
-    doctorId: _asIntN(row['doctorId'] ?? row['doctor_id']),
-    recordDate: _asDate(row['recordDate'] ?? row['record_date']),
-    createdAt: _asDate(row['createdAt'] ?? row['created_at']),
-    // حقول المزامنة (camel + snake)
-    accountId: _asStrN(row['accountId'] ?? row['account_id']),
-    deviceId: _asStrN(row['deviceId'] ?? row['device_id']),
-    localId: row['localId'] is int
-        ? row['localId'] as int
-        : (row['local_id'] is int ? row['local_id'] as int : row['id'] as int?),
-    updatedAt: _asDateN(row['updatedAt'] ?? row['updated_at']),
-  );
+        id: _asIntN(row['id']),
+        patientId: _asInt0(row['patientId'] ?? row['patient_id']),
+        doctorId: _asIntN(row['doctorId'] ?? row['doctor_id']),
+        recordDate: _asDate(row['recordDate'] ?? row['record_date']),
+        createdAt: _asDate(row['createdAt'] ?? row['created_at']),
+        // حقول المزامنة (camel + snake)
+        accountId: _asStrN(row['accountId'] ?? row['account_id']),
+        deviceId: _asStrN(row['deviceId'] ?? row['device_id']),
+        localId: row['localId'] is int
+            ? row['localId'] as int
+            : (row['local_id'] is int
+                ? row['local_id'] as int
+                : row['id'] as int?),
+        updatedAt: _asDateN(row['updatedAt'] ?? row['updated_at']),
+      );
 
   /*──────── تمثيل سحابي (snake_case) — يستخدمه SyncService عند الرفع ────────*/
   Map<String, dynamic> toCloudMap() => {
-    'local_id': localId ?? id,
-    'account_id': (accountId?.trim().isEmpty ?? true) ? null : accountId,
-    'device_id': (deviceId?.trim().isEmpty ?? true) ? null : deviceId,
-    'patient_id': patientId,
-    'doctor_id': doctorId,
-    'record_date': recordDate.toIso8601String(),
-    'created_at': createdAt.toIso8601String(),
-    'updated_at': updatedAt?.toIso8601String(),
-  }..removeWhere((k, v) => v == null);
+        'local_id': localId ?? id,
+        'account_id': (accountId?.trim().isEmpty ?? true) ? null : accountId,
+        'device_id': (deviceId?.trim().isEmpty ?? true) ? null : deviceId,
+        'patient_id': patientId,
+        'doctor_id': doctorId,
+        'record_date': recordDate.toIso8601String(),
+        'created_at': createdAt.toIso8601String(),
+        'updated_at': updatedAt?.toIso8601String(),
+      }..removeWhere((k, v) => v == null);
 
   /*──────────── copyWith ────────────*/
   Prescription copyWith({
@@ -157,25 +159,25 @@ class Prescription {
   @override
   String toString() =>
       'Prescription(id: $id, patientId: $patientId, doctorId: $doctorId, '
-          'recordDate: $recordDate, createdAt: $createdAt, '
-          'accountId: $accountId, deviceId: $deviceId, localId: $localId, updatedAt: $updatedAt)';
+      'recordDate: $recordDate, createdAt: $createdAt, '
+      'accountId: $accountId, deviceId: $deviceId, localId: $localId, updatedAt: $updatedAt)';
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-          other is Prescription &&
-              runtimeType == other.runtimeType &&
-              id == other.id &&
-              patientId == other.patientId &&
-              doctorId == other.doctorId &&
-              recordDate == other.recordDate &&
-              createdAt == other.createdAt &&
-              accountId == other.accountId &&
-              deviceId == other.deviceId &&
-              localId == other.localId &&
-              updatedAt == other.updatedAt;
+      other is Prescription &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          patientId == other.patientId &&
+          doctorId == other.doctorId &&
+          recordDate == other.recordDate &&
+          createdAt == other.createdAt &&
+          accountId == other.accountId &&
+          deviceId == other.deviceId &&
+          localId == other.localId &&
+          updatedAt == other.updatedAt;
 
   @override
-  int get hashCode =>
-      Object.hash(id, patientId, doctorId, recordDate, createdAt, accountId, deviceId, localId, updatedAt);
+  int get hashCode => Object.hash(id, patientId, doctorId, recordDate,
+      createdAt, accountId, deviceId, localId, updatedAt);
 }

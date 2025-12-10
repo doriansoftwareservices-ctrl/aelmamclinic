@@ -33,7 +33,9 @@ Future<void> main(List<String> args) async {
   }
 
   // إغلاق نظيف (إن وُجدت الدالة في DBService)
-  try { await DBService.instance.flushAndClose(); } catch (_) {}
+  try {
+    await DBService.instance.flushAndClose();
+  } catch (_) {}
 
   print('\n🎯 Done. Inserted $success/10 drugs locally.');
   print('➡️  الآن شغّل:  dart run tool/sync_cross_device_smoke_test.dart');

@@ -1,39 +1,5 @@
-في SQL Editor بتنفيذ:
--- جداول public
-select table_name, table_type
-from information_schema.tables
-where table_schema = 'public'
-order by table_name;
-
--- جميع الدوال في public
-select proname as function_name,
-       pg_get_functiondef(p.oid) as definition
-from pg_proc p
-join pg_namespace n on n.oid = p.pronamespace
-where n.nspname = 'public'
-order by proname;
-
--- سياسات RLS
-select schemaname, tablename, policyname, permissive, roles, cmd, qual, with_check
-from pg_policies
-where schemaname = 'public'
-order by tablename, policyname;
-
--- صلاحيات الجداول
-select table_schema, table_name, privilege_type, grantee
-from information_schema.table_privileges
-where table_schema = 'public'
-order by table_name, grantee;
-
--- المايغريشنات كما هي مخزّنة (سيُظهر ما هي الأعمدة المتاحة لديك)
-select *
-from supabase_migrations.schema_migrations
-order by 1 desc;
-
-
-
-وكانت النيجة:
-[
+ابحث عن اي اسباب او تناقضات او نقصان يسبب اي اخطاء مع الغلم السحابة لدي تتكون من:
+[ 
   {
     "version": "20251123031000",
     "statements": [
@@ -969,8 +935,3 @@ order by 1 desc;
     "name": "accounts_and_account_users"
   }
 ]
-
-
-
-
-اريد منك ان تقوم بقرائة وفهم جيدا الية عمل التطبيق والترابط في مابين الاكواد الشاشات ومهمة كل منهم وقم بالتاكد 100% ان التزامن صحيح ما بين التطبيق والسحابة دون وجود اي اخطاء وبالاخص الية العمل في ما بين الحسابات السوبر ادمن وحساب المالك وحساب الموظفين والمميزات المتاحة لكل حساب وصلاحياته

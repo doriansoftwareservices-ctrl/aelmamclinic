@@ -85,11 +85,9 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
     setState(() => _loading = true);
     try {
       // لاحظ: dynamic لتفادي تعارض الأنواع بين Transform/Filter builders
-      dynamic q = _client
-          .from('audit_logs')
-          .select(
-        'id, account_id, actor_uid, actor_email, table_name, op, row_pk, before_row, after_row, diff, created_at',
-      );
+      dynamic q = _client.from('audit_logs').select(
+            'id, account_id, actor_uid, actor_email, table_name, op, row_pk, before_row, after_row, diff, created_at',
+          );
 
       q = q.eq('account_id', accId);
 
@@ -139,7 +137,8 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
     } on PostgrestException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('تعذر تحميل السجلات (${e.code ?? e.message}).')),
+          SnackBar(
+              content: Text('تعذر تحميل السجلات (${e.code ?? e.message}).')),
         );
       }
     } catch (e) {
@@ -278,7 +277,6 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
                       ),
                     ),
                     const SizedBox(height: 14),
-
                     if (e.op == 'update') ...[
                       _JsonBlock(
                         title: 'Diff — الحقول المتغيّرة',
@@ -286,7 +284,6 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
                       ),
                       const SizedBox(height: 12),
                     ],
-
                     _JsonBlock(
                       title: 'قبل التعديل',
                       jsonString: prettyJson(e.beforeRow),
@@ -341,9 +338,8 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
                           _buildTableFilter(),
                           _buildActorFilter(),
                           FilledButton.icon(
-                            onPressed: _loading
-                                ? null
-                                : () => _refresh(reset: true),
+                            onPressed:
+                                _loading ? null : () => _refresh(reset: true),
                             icon: const Icon(Icons.refresh_rounded),
                             label: const Text('تحديث'),
                           ),
@@ -390,8 +386,8 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
                 borderRadius: BorderRadius.circular(14),
               ),
               padding: const EdgeInsets.all(8),
-              child:
-                  const Icon(Icons.calendar_month_rounded, color: kPrimaryColor, size: 18),
+              child: const Icon(Icons.calendar_month_rounded,
+                  color: kPrimaryColor, size: 18),
             ),
             const SizedBox(width: 8),
             Expanded(
@@ -426,7 +422,8 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
                 borderRadius: BorderRadius.circular(14),
               ),
               padding: const EdgeInsets.all(8),
-              child: const Icon(Icons.event_rounded, color: kPrimaryColor, size: 18),
+              child: const Icon(Icons.event_rounded,
+                  color: kPrimaryColor, size: 18),
             ),
             const SizedBox(width: 8),
             Expanded(
@@ -634,8 +631,8 @@ class _AuditLogEntry {
       beforeRow: asMap(j['before_row']),
       afterRow: asMap(j['after_row']),
       diff: asMap(j['diff']),
-      createdAt:
-      DateTime.tryParse(j['created_at']?.toString() ?? '') ?? DateTime.now(),
+      createdAt: DateTime.tryParse(j['created_at']?.toString() ?? '') ??
+          DateTime.now(),
     );
   }
 }
@@ -684,8 +681,8 @@ class _AuditLogTile extends StatelessWidget {
               entry.op == 'insert'
                   ? Icons.add_circle_outline
                   : entry.op == 'update'
-                  ? Icons.change_circle_outlined
-                  : Icons.delete_outline,
+                      ? Icons.change_circle_outlined
+                      : Icons.delete_outline,
               color: _opColor(entry.op, scheme),
             ),
           ),
@@ -729,8 +726,7 @@ class _AuditLogTile extends StatelessWidget {
                   color: _opColor(entry.op, scheme).withValues(alpha: .12),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                padding:
-                const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 child: Text(
                   entry.op.toUpperCase(),
                   style: TextStyle(

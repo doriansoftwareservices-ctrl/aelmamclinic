@@ -137,7 +137,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   Future<void> _bootFromLocal() async {
     try {
       final local =
-      await ChatLocalStore.instance.getMessages(_convId, limit: 30);
+          await ChatLocalStore.instance.getMessages(_convId, limit: 30);
       if (!mounted) return;
       setState(() {
         _bootLocal = local;
@@ -247,8 +247,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   Future<void> _pickImages({bool fromCamera = false}) async {
     try {
       if (fromCamera) {
-        final shot =
-        await _picker.pickImage(source: ImageSource.camera, imageQuality: 90);
+        final shot = await _picker.pickImage(
+            source: ImageSource.camera, imageQuality: 90);
         if (shot != null) setState(() => _pickedImages.add(shot));
       } else {
         final files = await _picker.pickMultiImage(imageQuality: 90);
@@ -322,8 +322,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       myUid: _currentUid,
       onReply: (msg) {
         final raw = (msg.body ?? '').trim();
-        setState(() => _replySnippet =
-        raw.isEmpty ? (msg.kind == ChatMessageKind.image ? '📷 صورة' : '') : raw);
+        setState(() => _replySnippet = raw.isEmpty
+            ? (msg.kind == ChatMessageKind.image ? '📷 صورة' : '')
+            : raw);
         FocusScope.of(context).requestFocus(_focusNode);
       },
       onMention: (msg) {
@@ -332,35 +333,35 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         if (email.isEmpty) return;
         final cur = _textCtrl.text;
         _textCtrl.text = '$cur @$email ';
-        _textCtrl.selection =
-            TextSelection.fromPosition(TextPosition(offset: _textCtrl.text.length));
+        _textCtrl.selection = TextSelection.fromPosition(
+            TextPosition(offset: _textCtrl.text.length));
         FocusScope.of(context).requestFocus(_focusNode);
       },
       // تعديل/حذف عبر المزوّد
       onEdit: canEdit
           ? (msg) async {
-        final newText = await _promptEditText(context, msg.body ?? '');
-        if (newText == null) return;
-        try {
-          await context.read<ChatProvider>().editMessage(
-            messageId: msg.id,
-            newBody: newText,
-          );
-        } catch (e) {
-          _snack('تعذّر التعديل: $e');
-        }
-      }
+              final newText = await _promptEditText(context, msg.body ?? '');
+              if (newText == null) return;
+              try {
+                await context.read<ChatProvider>().editMessage(
+                      messageId: msg.id,
+                      newBody: newText,
+                    );
+              } catch (e) {
+                _snack('تعذّر التعديل: $e');
+              }
+            }
           : null,
       onDelete: isMine
           ? (msg) async {
-        final ok = await _confirmDelete(context);
-        if (!ok) return;
-        try {
-          await context.read<ChatProvider>().deleteMessage(msg.id);
-        } catch (e) {
-          _snack('تعذّر الحذف: $e');
-        }
-      }
+              final ok = await _confirmDelete(context);
+              if (!ok) return;
+              try {
+                await context.read<ChatProvider>().deleteMessage(msg.id);
+              } catch (e) {
+                _snack('تعذّر الحذف: $e');
+              }
+            }
           : null,
       onReact: (msg, emoji) async {
         try {
@@ -394,8 +395,12 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
             decoration: const InputDecoration(hintText: 'اكتب النص الجديد…'),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, null), child: const Text('إلغاء')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, c.text.trim()), child: const Text('حفظ')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, null),
+                child: const Text('إلغاء')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, c.text.trim()),
+                child: const Text('حفظ')),
           ],
         );
       },
@@ -409,7 +414,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         title: const Text('حذف الرسالة'),
         content: const Text('هل تريد حذف هذه الرسالة للجميع؟'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('إلغاء')),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
@@ -440,9 +447,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         if (hasText) {
           final body = '— تم تحويلها —\n$rawTxt';
           await context.read<ChatProvider>().sendText(
-            conversationId: conv.id,
-            text: body,
-          );
+                conversationId: conv.id,
+                text: body,
+              );
         }
 
         // إن كانت هناك صور: نزّلها مؤقتًا ثم أعد رفعها كرسالة صور
@@ -463,10 +470,10 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
           }
           if (files.isNotEmpty) {
             await context.read<ChatProvider>().sendImages(
-              conversationId: conv.id,
-              files: files,
-              optionalText: hasText ? null : '— تم تحويلها —',
-            );
+                  conversationId: conv.id,
+                  files: files,
+                  optionalText: hasText ? null : '— تم تحويلها —',
+                );
           }
         }
       }
@@ -565,9 +572,11 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                   onPressed: selected.isEmpty
                       ? null
                       : () {
-                    final chosen = all.where((c) => selected.contains(c.id)).toList();
-                    Navigator.pop(ctx, chosen);
-                  },
+                          final chosen = all
+                              .where((c) => selected.contains(c.id))
+                              .toList();
+                          Navigator.pop(ctx, chosen);
+                        },
                   child: const Text('إرسال'),
                 ),
               ],
@@ -607,8 +616,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     final email = (m.senderEmail ?? '').trim();
     if (!widget.conversation.isGroup) return email;
     try {
-      final names =
-      context.read<ChatProvider>().displayNamesForTyping(_convId, [m.senderUid]);
+      final names = context
+          .read<ChatProvider>()
+          .displayNamesForTyping(_convId, [m.senderUid]);
       final name = (names.isNotEmpty ? names.first : '').trim();
       return name.isNotEmpty ? name : email;
     } catch (_) {
@@ -654,8 +664,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         _chat?.markConversationRead(_convId);
         _scrollToBottom();
       } else {
-        setState(
-                () => _pendingNewWhileAway = (_pendingNewWhileAway + 1).clamp(0, 99));
+        setState(() =>
+            _pendingNewWhileAway = (_pendingNewWhileAway + 1).clamp(0, 99));
       }
     }
   }
@@ -716,7 +726,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                   scheme.surface.withValues(alpha: .00),
                 ],
               ),
-              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(18)),
+              borderRadius:
+                  const BorderRadius.vertical(bottom: Radius.circular(18)),
             ),
           ),
           title: Column(
@@ -815,7 +826,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                                   Text(
                                     'لا توجد رسائل بعد',
                                     style: TextStyle(
-                                      color: scheme.onSurface.withValues(alpha: .7),
+                                      color: scheme.onSurface
+                                          .withValues(alpha: .7),
                                       fontWeight: FontWeight.w800,
                                     ),
                                   ),
@@ -823,7 +835,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                                   Text(
                                     'ابدأ بكتابة رسالتك في الأسفل',
                                     style: TextStyle(
-                                      color: scheme.onSurface.withValues(alpha: .55),
+                                      color: scheme.onSurface
+                                          .withValues(alpha: .55),
                                       fontWeight: FontWeight.w600,
                                       fontSize: 12.5,
                                     ),
@@ -840,30 +853,35 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                                   borderRadius: BorderRadius.circular(18),
                                 ),
                                 child: ListView.builder(
-                                  key: PageStorageKey<String>('chat-room-list:${_convId}'),
+                                  key: PageStorageKey<String>(
+                                      'chat-room-list:${_convId}'),
                                   controller: _listCtrl,
                                   reverse: true,
-                                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                                  padding:
+                                      const EdgeInsets.fromLTRB(12, 12, 12, 12),
                                   itemCount: msgs.length + 1,
                                   itemBuilder: (_, index) {
                                     if (index == msgs.length) {
                                       return AnimatedSwitcher(
-                                        duration: const Duration(milliseconds: 150),
+                                        duration:
+                                            const Duration(milliseconds: 150),
                                         child: _loadingMore
                                             ? Padding(
-                                          padding:
-                                          const EdgeInsets.symmetric(vertical: 10),
-                                          child: Center(
-                                            child: SizedBox(
-                                              width: 22,
-                                              height: 22,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2.4,
-                                                color: scheme.primary,
-                                              ),
-                                            ),
-                                          ),
-                                        )
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                        vertical: 10),
+                                                child: Center(
+                                                  child: SizedBox(
+                                                    width: 22,
+                                                    height: 22,
+                                                    child:
+                                                        CircularProgressIndicator(
+                                                      strokeWidth: 2.4,
+                                                      color: scheme.primary,
+                                                    ),
+                                                  ),
+                                                ),
+                                              )
                                             : const SizedBox.shrink(),
                                       );
                                     }
@@ -872,8 +890,11 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                                     final mine = raw.senderUid == _currentUid;
 
                                     // ✅ delivered ↦ sent بصريًا للرسائل الصادرة
-                                    final m = (mine && raw.status == ChatMessageStatus.delivered)
-                                        ? raw.copyWith(status: ChatMessageStatus.sent)
+                                    final m = (mine &&
+                                            raw.status ==
+                                                ChatMessageStatus.delivered)
+                                        ? raw.copyWith(
+                                            status: ChatMessageStatus.sent)
                                         : raw;
 
                                     // هل نضيف فاصل يوم قبل هذه الرسالة؟
@@ -886,7 +907,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                                       final ChatMessage prevNewer =
                                           msgs[index + 1];
                                       if (prevNewer.createdAt.toLocal().day !=
-                                          m.createdAt.toLocal().day ||
+                                              m.createdAt.toLocal().day ||
                                           prevNewer.createdAt.toLocal().month !=
                                               m.createdAt.toLocal().month ||
                                           prevNewer.createdAt.toLocal().year !=
@@ -898,45 +919,56 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
                                     // فاصل "رسائل جديدة" عند Anchor (مرة واحدة)
                                     final isUnreadAnchor =
-                                    (_unreadAnchorMessageId != null &&
-                                        m.id == _unreadAnchorMessageId);
+                                        (_unreadAnchorMessageId != null &&
+                                            m.id == _unreadAnchorMessageId);
 
                                     // حدّ أقصى ~70–78% لعرض الفقاعة
-                                    final screenW = MediaQuery.of(context).size.width;
+                                    final screenW =
+                                        MediaQuery.of(context).size.width;
                                     final maxBubbleW = screenW * 0.70;
 
                                     return Column(
                                       key: _keyForMessage(m.id),
-                                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
                                       children: [
-                                        if (showDayDivider && (dayLabel?.isNotEmpty ?? false))
+                                        if (showDayDivider &&
+                                            (dayLabel?.isNotEmpty ?? false))
                                           _DayDivider(label: dayLabel!),
                                         if (isUnreadAnchor)
                                           const _NewMessagesDivider(),
                                         Container(
-                                          margin: const EdgeInsets.symmetric(vertical: 2),
+                                          margin: const EdgeInsets.symmetric(
+                                              vertical: 2),
                                           child: Row(
                                             mainAxisAlignment: mine
-                                                ? MainAxisAlignment.start // RTL: start = يمين
-                                                : MainAxisAlignment.end, // RTL: end = يسار
+                                                ? MainAxisAlignment
+                                                    .start // RTL: start = يمين
+                                                : MainAxisAlignment
+                                                    .end, // RTL: end = يسار
                                             children: [
                                               ConstrainedBox(
-                                                constraints: BoxConstraints(maxWidth: maxBubbleW),
+                                                constraints: BoxConstraints(
+                                                    maxWidth: maxBubbleW),
                                                 child: MessageBubble(
                                                   message: m,
                                                   isMine: mine,
-                                                  showSenderHeader:
-                                                  !mine && widget.conversation.isGroup,
-                                                  senderEmail: _senderLabelFor(m),
+                                                  showSenderHeader: !mine &&
+                                                      widget
+                                                          .conversation.isGroup,
+                                                  senderEmail:
+                                                      _senderLabelFor(m),
                                                   onOpenImage: (url) {
                                                     if (url.isEmpty) return;
-                                                    ImageViewerScreen.pushSingle(
+                                                    ImageViewerScreen
+                                                        .pushSingle(
                                                       context,
                                                       imageUrl: url,
                                                       heroTag: m.id,
                                                     );
                                                   },
-                                                  onLongPress: () => _openMessageActions(m),
+                                                  onLongPress: () =>
+                                                      _openMessageActions(m),
                                                 ),
                                               ),
                                             ],
@@ -959,19 +991,22 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                                 alignment: Alignment.center,
                                 child: DecoratedBox(
                                   decoration: BoxDecoration(
-                                    color: scheme.surface.withValues(alpha: .55),
+                                    color:
+                                        scheme.surface.withValues(alpha: .55),
                                     borderRadius: BorderRadius.circular(14),
                                     boxShadow: [
                                       BoxShadow(
                                         blurRadius: 10,
-                                        color: Colors.black.withValues(alpha: .06),
+                                        color:
+                                            Colors.black.withValues(alpha: .06),
                                       )
                                     ],
                                   ),
                                   child: Padding(
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 10, vertical: 6),
-                                    child: TypingIndicator(participants: typingNames),
+                                    child: TypingIndicator(
+                                        participants: typingNames),
                                   ),
                                 ),
                               ),
@@ -1004,9 +1039,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                       separatorBuilder: (_, __) => const SizedBox(width: 8),
                       itemBuilder: (_, i) {
                         final double w =
-                        (MediaQuery.of(context).size.width * 0.8)
-                            .clamp(240.0, 360.0)
-                            .toDouble();
+                            (MediaQuery.of(context).size.width * 0.8)
+                                .clamp(240.0, 360.0)
+                                .toDouble();
                         final x = _pickedImages[i];
                         final f = File(x.path);
                         return SizedBox(
@@ -1015,7 +1050,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                             status: AttachmentUploadStatus.queued,
                             file: f,
                             name: x.name,
-                            onRemove: () => setState(() => _pickedImages.removeAt(i)),
+                            onRemove: () =>
+                                setState(() => _pickedImages.removeAt(i)),
                             compact: true,
                           ),
                         );
@@ -1031,12 +1067,16 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                       children: [
                         Expanded(
                           child: Container(
-                            padding:
-                            const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 8),
                             decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.primary.withValues(alpha: .06),
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .primary
+                                  .withValues(alpha: .06),
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Theme.of(context).dividerColor),
+                              border: Border.all(
+                                  color: Theme.of(context).dividerColor),
                             ),
                             child: Text(
                               _replySnippet!.length > 140
@@ -1178,11 +1218,13 @@ class _JumpToBottomFab extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.keyboard_double_arrow_down_rounded, color: Colors.white),
+              const Icon(Icons.keyboard_double_arrow_down_rounded,
+                  color: Colors.white),
               if (count > 0) ...[
                 const SizedBox(width: 6),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
                     color: Colors.white.withValues(alpha: .20),
                     borderRadius: BorderRadius.circular(10),
@@ -1266,7 +1308,8 @@ class _ComposerBar extends StatelessWidget {
                     ),
                   ],
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                 child: TextField(
                   controller: textCtrl,
                   focusNode: focusNode,

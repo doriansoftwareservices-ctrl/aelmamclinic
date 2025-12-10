@@ -111,8 +111,10 @@ class _NewDrugScreenState extends State<NewDrugScreen> {
       final insertMap = <String, Object?>{
         'name': name,
         if (notes != null) 'notes': notes,
-        if (widget.initialDrug == null && hasCreatedAtCamel) 'createdAt': nowIso,
-        if (widget.initialDrug == null && hasCreatedAtSnake) 'created_at': nowIso,
+        if (widget.initialDrug == null && hasCreatedAtCamel)
+          'createdAt': nowIso,
+        if (widget.initialDrug == null && hasCreatedAtSnake)
+          'created_at': nowIso,
       };
 
       await db.transaction((txn) async {
@@ -211,13 +213,13 @@ class _NewDrugScreenState extends State<NewDrugScreen> {
                       onPressed: _saving ? null : _save,
                       icon: _saving
                           ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
                           : const Icon(Icons.save_rounded),
                       label: Text(_saving ? 'جارٍ الحفظ...' : 'حفظ'),
                     ),

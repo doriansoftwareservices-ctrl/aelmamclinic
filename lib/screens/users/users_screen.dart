@@ -38,7 +38,8 @@ class _UsersScreenState extends State<UsersScreen> {
     }
 
     try {
-      final summaries = await _authService.listAccountUsersWithEmail(accountId: accountId);
+      final summaries =
+          await _authService.listAccountUsersWithEmail(accountId: accountId);
       return summaries
           .map((AccountUserSummary s) => {
                 'uid': s.userUid,
@@ -70,7 +71,8 @@ class _UsersScreenState extends State<UsersScreen> {
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(disabled ? 'تم تجميد الحساب' : 'تم تفعيل الحساب')),
+        SnackBar(
+            content: Text(disabled ? 'تم تجميد الحساب' : 'تم تفعيل الحساب')),
       );
       await _refresh();
     } catch (e) {
@@ -91,8 +93,12 @@ class _UsersScreenState extends State<UsersScreen> {
         title: const Text('تأكيد حذف الحساب'),
         content: const Text('سيتم حذف حساب الموظف بشكل نهائي. هل أنت متأكد؟'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('حذف')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('إلغاء')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('حذف')),
         ],
       ),
     );
@@ -193,7 +199,8 @@ class _UsersScreenState extends State<UsersScreen> {
                     physics: physics,
                     children: const [
                       SizedBox(height: 48),
-                      Center(child: Text('لا يوجد موظفون مسجّلون لهذه العيادة.')),
+                      Center(
+                          child: Text('لا يوجد موظفون مسجّلون لهذه العيادة.')),
                     ],
                   );
                 }
@@ -216,7 +223,8 @@ class _UsersScreenState extends State<UsersScreen> {
                             : Icons.verified_user_rounded,
                         color: disabled ? Colors.orange : Colors.green,
                       ),
-                      title: Text(email?.isNotEmpty == true ? email! : 'بدون بريد'),
+                      title: Text(
+                          email?.isNotEmpty == true ? email! : 'بدون بريد'),
                       subtitle: Text(disabled ? 'مجمّد' : 'نشط'),
                       trailing: PopupMenuButton(
                         enabled: !busy,

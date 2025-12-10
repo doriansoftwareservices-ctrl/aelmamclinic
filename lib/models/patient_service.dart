@@ -30,14 +30,14 @@ class PatientService {
   /*──────── الحقول الأساسية (محلي) ────────*/
   final int? id;
   final int patientId;
-  final int? serviceId;     // قد تكون null إذا كانت الحالة نصية فقط
+  final int? serviceId; // قد تكون null إذا كانت الحالة نصية فقط
   final String serviceName;
   final double serviceCost;
 
   /*──────── حقول مزامنة اختيارية (لا تُحفَظ محليًا) ────────*/
-  final String? accountId;  // Supabase → accounts.id
-  final String? deviceId;   // معرّف الجهاز
-  final int? localId;       // مرجع السجل المحلي عند الرفع (إن لم يُمرّر نستخدم id)
+  final String? accountId; // Supabase → accounts.id
+  final String? deviceId; // معرّف الجهاز
+  final int? localId; // مرجع السجل المحلي عند الرفع (إن لم يُمرّر نستخدم id)
   final DateTime? updatedAt;
 
   PatientService({
@@ -78,43 +78,43 @@ class PatientService {
 
   /*──────── تحويلات (محلي) ────────*/
   Map<String, dynamic> toMap() => {
-    'id': id,
-    'patientId': patientId,
-    'serviceId': serviceId,
-    'serviceName': serviceName,
-    'serviceCost': serviceCost,
-  };
+        'id': id,
+        'patientId': patientId,
+        'serviceId': serviceId,
+        'serviceName': serviceName,
+        'serviceCost': serviceCost,
+      };
 
   /*──────── تمثيل سحابي (snake_case) — يستخدمه SyncService عند الرفع ────────*/
   Map<String, dynamic> toCloudMap() => {
-    'local_id': localId ?? id,
-    // تعقيم السلاسل الفارغة/المسافات
-    'account_id': (accountId?.trim().isEmpty ?? true) ? null : accountId,
-    'device_id': (deviceId?.trim().isEmpty ?? true) ? null : deviceId,
-    'patient_id': patientId,
-    'service_id': serviceId,
-    'service_name': serviceName,
-    'service_cost': serviceCost,
-    'updated_at': updatedAt?.toIso8601String(),
-  }..removeWhere((k, v) => v == null);
+        'local_id': localId ?? id,
+        // تعقيم السلاسل الفارغة/المسافات
+        'account_id': (accountId?.trim().isEmpty ?? true) ? null : accountId,
+        'device_id': (deviceId?.trim().isEmpty ?? true) ? null : deviceId,
+        'patient_id': patientId,
+        'service_id': serviceId,
+        'service_name': serviceName,
+        'service_cost': serviceCost,
+        'updated_at': updatedAt?.toIso8601String(),
+      }..removeWhere((k, v) => v == null);
 
   Map<String, dynamic> toJson() => toCloudMap();
 
   /// يدعم camelCase (محلي) و snake_case (قادمة من السحابة)
   factory PatientService.fromMap(Map<String, dynamic> m) => PatientService(
-    id: _toIntN(m['id']),
-    patientId: _toInt0(m['patientId'] ?? m['patient_id']),
-    serviceId: _toIntN(m['serviceId'] ?? m['service_id']),
-    serviceName: _toStr0(m['serviceName'] ?? m['service_name']),
-    serviceCost: _toDouble0(m['serviceCost'] ?? m['service_cost']),
-    // حقول مزامنة اختيارية (إن وُجدت في المصدر)
-    accountId: _toStrN(m['accountId'] ?? m['account_id']),
-    deviceId: _toStrN(m['deviceId'] ?? m['device_id']),
-    localId: m['localId'] is int
-        ? m['localId'] as int
-        : (m['local_id'] is int ? m['local_id'] as int : m['id'] as int?),
-    updatedAt: _toDateN(m['updatedAt'] ?? m['updated_at']),
-  );
+        id: _toIntN(m['id']),
+        patientId: _toInt0(m['patientId'] ?? m['patient_id']),
+        serviceId: _toIntN(m['serviceId'] ?? m['service_id']),
+        serviceName: _toStr0(m['serviceName'] ?? m['service_name']),
+        serviceCost: _toDouble0(m['serviceCost'] ?? m['service_cost']),
+        // حقول مزامنة اختيارية (إن وُجدت في المصدر)
+        accountId: _toStrN(m['accountId'] ?? m['account_id']),
+        deviceId: _toStrN(m['deviceId'] ?? m['device_id']),
+        localId: m['localId'] is int
+            ? m['localId'] as int
+            : (m['local_id'] is int ? m['local_id'] as int : m['id'] as int?),
+        updatedAt: _toDateN(m['updatedAt'] ?? m['updated_at']),
+      );
 
   factory PatientService.fromJson(Map<String, dynamic> m) =>
       PatientService.fromMap(m);
@@ -145,33 +145,33 @@ class PatientService {
   @override
   String toString() =>
       'PatientService(id: $id, patientId: $patientId, serviceId: $serviceId, '
-          'serviceName: $serviceName, serviceCost: $serviceCost)';
+      'serviceName: $serviceName, serviceCost: $serviceCost)';
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-          other is PatientService &&
-              runtimeType == other.runtimeType &&
-              id == other.id &&
-              patientId == other.patientId &&
-              serviceId == other.serviceId &&
-              serviceName == other.serviceName &&
-              serviceCost == other.serviceCost &&
-              accountId == other.accountId &&
-              deviceId == other.deviceId &&
-              localId == other.localId &&
-              updatedAt == other.updatedAt;
+      other is PatientService &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          patientId == other.patientId &&
+          serviceId == other.serviceId &&
+          serviceName == other.serviceName &&
+          serviceCost == other.serviceCost &&
+          accountId == other.accountId &&
+          deviceId == other.deviceId &&
+          localId == other.localId &&
+          updatedAt == other.updatedAt;
 
   @override
   int get hashCode => Object.hash(
-    id,
-    patientId,
-    serviceId,
-    serviceName,
-    serviceCost,
-    accountId,
-    deviceId,
-    localId,
-    updatedAt,
-  );
+        id,
+        patientId,
+        serviceId,
+        serviceName,
+        serviceCost,
+        accountId,
+        deviceId,
+        localId,
+        updatedAt,
+      );
 }

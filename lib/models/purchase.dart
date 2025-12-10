@@ -84,43 +84,45 @@ class Purchase {
 
   /* ─── SQLite Map (نخزّن محليًا snake_case) ─── */
   Map<String, dynamic> toMap() => {
-    'id': id,
-    'item_id': itemId,
-    'quantity': quantity,
-    'unit_price': unitPrice,
-    'created_at': createdAt.toIso8601String(),
-  };
+        'id': id,
+        'item_id': itemId,
+        'quantity': quantity,
+        'unit_price': unitPrice,
+        'created_at': createdAt.toIso8601String(),
+      };
 
   /// تمثيل مخصص للسحابة (snake_case) مع حقول المزامنة الاختيارية.
   Map<String, dynamic> toCloudMap() => {
-    'local_id': localId ?? id,
-    'account_id': (accountId?.trim().isEmpty ?? true) ? null : accountId,
-    'device_id': (deviceId?.trim().isEmpty ?? true) ? null : deviceId,
-    'item_id': itemId,
-    'quantity': quantity,
-    'unit_price': unitPrice,
-    'created_at': createdAt.toIso8601String(),
-    'updated_at': updatedAt?.toIso8601String(),
-  }..removeWhere((k, v) => v == null);
+        'local_id': localId ?? id,
+        'account_id': (accountId?.trim().isEmpty ?? true) ? null : accountId,
+        'device_id': (deviceId?.trim().isEmpty ?? true) ? null : deviceId,
+        'item_id': itemId,
+        'quantity': quantity,
+        'unit_price': unitPrice,
+        'created_at': createdAt.toIso8601String(),
+        'updated_at': updatedAt?.toIso8601String(),
+      }..removeWhere((k, v) => v == null);
 
   Map<String, dynamic> toJson() => toCloudMap();
 
   /// يدعم مفاتيح camelCase أو snake_case (قادمة من Supabase)
   factory Purchase.fromMap(Map<String, dynamic> map) => Purchase(
-    id: _asIntN(map['id']),
-    itemId: _asInt(map['itemId'] ?? map['item_id']),
-    quantity: _asInt(map['quantity']),
-    unitPrice: _asDouble(map['unitPrice'] ?? map['unit_price']),
-    createdAt: _asDate(
-      map['createdAt'] ?? map['created_at'] ?? map['purchased_at'],
-    ),
-    accountId: _asStrN(map['accountId'] ?? map['account_id']),
-    deviceId: _asStrN(map['deviceId'] ?? map['device_id']),
-    localId: map['localId'] is int
-        ? map['localId'] as int
-        : (map['local_id'] is int ? map['local_id'] as int : _asIntN(map['id'])),
-    updatedAt: _asDateN(map['updatedAt'] ?? map['updated_at']),
-  );
+        id: _asIntN(map['id']),
+        itemId: _asInt(map['itemId'] ?? map['item_id']),
+        quantity: _asInt(map['quantity']),
+        unitPrice: _asDouble(map['unitPrice'] ?? map['unit_price']),
+        createdAt: _asDate(
+          map['createdAt'] ?? map['created_at'] ?? map['purchased_at'],
+        ),
+        accountId: _asStrN(map['accountId'] ?? map['account_id']),
+        deviceId: _asStrN(map['deviceId'] ?? map['device_id']),
+        localId: map['localId'] is int
+            ? map['localId'] as int
+            : (map['local_id'] is int
+                ? map['local_id'] as int
+                : _asIntN(map['id'])),
+        updatedAt: _asDateN(map['updatedAt'] ?? map['updated_at']),
+      );
 
   Purchase copyWith({
     int? id,
@@ -154,28 +156,28 @@ class Purchase {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-          other is Purchase &&
-              runtimeType == other.runtimeType &&
-              id == other.id &&
-              itemId == other.itemId &&
-              quantity == other.quantity &&
-              unitPrice == other.unitPrice &&
-              createdAt == other.createdAt &&
-              accountId == other.accountId &&
-              deviceId == other.deviceId &&
-              localId == other.localId &&
-              updatedAt == other.updatedAt;
+      other is Purchase &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          itemId == other.itemId &&
+          quantity == other.quantity &&
+          unitPrice == other.unitPrice &&
+          createdAt == other.createdAt &&
+          accountId == other.accountId &&
+          deviceId == other.deviceId &&
+          localId == other.localId &&
+          updatedAt == other.updatedAt;
 
   @override
   int get hashCode => Object.hash(
-    id,
-    itemId,
-    quantity,
-    unitPrice,
-    createdAt,
-    accountId,
-    deviceId,
-    localId,
-    updatedAt,
-  );
+        id,
+        itemId,
+        quantity,
+        unitPrice,
+        createdAt,
+        accountId,
+        deviceId,
+        localId,
+        updatedAt,
+      );
 }

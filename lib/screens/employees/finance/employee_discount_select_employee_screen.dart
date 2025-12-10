@@ -327,7 +327,8 @@ class _EmployeeDiscountSelectEmployeeScreenState
                                                         vertical: 4),
                                                     decoration: BoxDecoration(
                                                       color: kPrimaryColor
-                                                          .withValues(alpha: .10),
+                                                          .withValues(
+                                                              alpha: .10),
                                                       borderRadius:
                                                           BorderRadius.circular(
                                                               100),

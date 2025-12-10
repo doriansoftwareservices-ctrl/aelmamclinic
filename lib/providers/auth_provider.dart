@@ -15,6 +15,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:meta/meta.dart';
 import 'package:flutter/widgets.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:postgrest/postgrest.dart';
@@ -124,17 +125,17 @@ class AuthSessionResult {
   const AuthSessionResult.success() : this._(AuthSessionStatus.success);
   const AuthSessionResult.disabled() : this._(AuthSessionStatus.disabled);
   const AuthSessionResult.accountFrozen()
-    : this._(AuthSessionStatus.accountFrozen);
+      : this._(AuthSessionStatus.accountFrozen);
   const AuthSessionResult.noAccount() : this._(AuthSessionStatus.noAccount);
   const AuthSessionResult.signedOut() : this._(AuthSessionStatus.signedOut);
   const AuthSessionResult.networkError({Object? error, StackTrace? stackTrace})
-    : this._(
-        AuthSessionStatus.networkError,
-        error: error,
-        stackTrace: stackTrace,
-      );
+      : this._(
+          AuthSessionStatus.networkError,
+          error: error,
+          stackTrace: stackTrace,
+        );
   const AuthSessionResult.unknown({Object? error, StackTrace? stackTrace})
-    : this._(AuthSessionStatus.unknown, error: error, stackTrace: stackTrace);
+      : this._(AuthSessionStatus.unknown, error: error, stackTrace: stackTrace);
 
   bool get isSuccess => status == AuthSessionStatus.success;
 }
@@ -155,6 +156,7 @@ class AuthProvider extends ChangeNotifier {
   bool _canDelete = true;
   bool _permissionsLoaded = false;
   String? _permissionsError;
+  bool _permissionsWarningShown = false;
 
   Set<String> get allowedFeatures => _allowedFeatures;
   bool get canCreate => isSuperAdmin || (_permissionsLoaded && _canCreate);
@@ -162,6 +164,13 @@ class AuthProvider extends ChangeNotifier {
   bool get canDelete => isSuperAdmin || (_permissionsLoaded && _canDelete);
   bool get permissionsLoaded => _permissionsLoaded;
   String? get permissionsError => _permissionsError;
+
+  FeaturePermissions _snapshotPermissions() => FeaturePermissions(
+        allowedFeatures: Set<String>.from(_allowedFeatures),
+        canCreate: _canCreate,
+        canUpdate: _canUpdate,
+        canDelete: _canDelete,
+      );
 
   /// اعتبارًا لمخطط الـ SQL: إذا كانت القائمة فارغة فهذا يعني "لا قيود" (الكل مسموح).
   bool featureAllowed(String featureKey) {
@@ -526,8 +535,7 @@ class AuthProvider extends ChangeNotifier {
     } else {
       final roleValue =
           (currentUser?['role'] ?? '').toString().toLowerCase().trim();
-      if (roleValue == 'superadmin' ||
-          currentUser?['isSuperAdmin'] == true) {
+      if (roleValue == 'superadmin' || currentUser?['isSuperAdmin'] == true) {
         _authDiag(
           '_networkRefreshAndMark:superAdminNoAccountBypass',
           context: {'uid': currentUser?['uid']},
@@ -632,9 +640,7 @@ class AuthProvider extends ChangeNotifier {
     final emailLower = (u.email ?? info?['email'] ?? '').toLowerCase();
     final infoRole = (info?['role'] as String?)?.toLowerCase();
     final bool emailIsSuper = AuthSupabaseService.isSuperAdminEmail(emailLower);
-    final role = emailIsSuper
-        ? 'superadmin'
-        : (infoRole ?? 'employee');
+    final role = emailIsSuper ? 'superadmin' : (infoRole ?? 'employee');
     final isSuper = emailIsSuper || role == 'superadmin';
 
     currentUser = {
@@ -751,13 +757,17 @@ class AuthProvider extends ChangeNotifier {
     final accId = accountId;
     if (accId == null || accId.isEmpty) return;
     try {
-      final perms = await _auth.fetchMyFeaturePermissions(accountId: accId);
+      final perms = await _auth.fetchMyFeaturePermissions(
+        accountId: accId,
+        fallback: _snapshotPermissions(),
+      );
       _allowedFeatures = perms.allowedFeatures;
       _canCreate = perms.canCreate;
       _canUpdate = perms.canUpdate;
       _canDelete = perms.canDelete;
       _permissionsLoaded = true;
       _permissionsError = null;
+      _permissionsWarningShown = false;
       await _persistPermissions();
     } catch (e, st) {
       dev.log('refreshFeaturePermissions failed', error: e, stackTrace: st);
@@ -766,11 +776,20 @@ class AuthProvider extends ChangeNotifier {
         context: {'error': e.toString()},
         stackTrace: st,
       );
+      if (e is FeaturePermissionsFetchException && e.fallback != null) {
+        _allowedFeatures = e.fallback!.allowedFeatures;
+        _canCreate = e.fallback!.canCreate;
+        _canUpdate = e.fallback!.canUpdate;
+        _canDelete = e.fallback!.canDelete;
+      } else {
+        _allowedFeatures = <String>{};
+        _canCreate = false;
+        _canUpdate = false;
+        _canDelete = false;
+      }
       _permissionsLoaded = false;
       _permissionsError = '${e}';
-      _canCreate = false;
-      _canUpdate = false;
-      _canDelete = false;
+      _showPermissionsFallbackWarning();
     }
     notifyListeners();
   }
@@ -782,6 +801,17 @@ class AuthProvider extends ChangeNotifier {
     _canDelete = true;
     _permissionsLoaded = false;
     _permissionsError = null;
+    _permissionsWarningShown = false;
+  }
+
+  void _showPermissionsFallbackWarning() {
+    if (_permissionsWarningShown) return;
+    _permissionsWarningShown = true;
+    Fluttertoast.showToast(
+      msg:
+          'تعذّر تحديث صلاحيات الميزات، سيتم استخدام آخر إعدادات محفوظة إلى حين عودة الاتصال.',
+      toastLength: Toast.LENGTH_LONG,
+    );
   }
 
   Future<void> _persistPermissions() async {
@@ -806,8 +836,7 @@ class AuthProvider extends ChangeNotifier {
     _canCreate = sp.getBool(_kCanCreate) ?? true;
     _canUpdate = sp.getBool(_kCanUpdate) ?? true;
     _canDelete = sp.getBool(_kCanDelete) ?? true;
-    _permissionsLoaded =
-        sp.containsKey(_kAllowedFeatures) ||
+    _permissionsLoaded = sp.containsKey(_kAllowedFeatures) ||
         sp.containsKey(_kCanCreate) ||
         sp.containsKey(_kCanUpdate) ||
         sp.containsKey(_kCanDelete);
@@ -933,9 +962,8 @@ class AuthProvider extends ChangeNotifier {
       final newIds = currentIds.difference(_pendingPatientAlerts);
       for (final id in newIds) {
         final label = current[id]?.trim();
-        final patientName = (label == null || label.isEmpty)
-            ? 'مريض جديد'
-            : label;
+        final patientName =
+            (label == null || label.isEmpty) ? 'مريض جديد' : label;
         try {
           await NotificationService().showPatientAssignmentNotification(
             patientId: id,

@@ -291,7 +291,8 @@ class _AddItemScreenState extends State<AddItemScreen> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: lightAccentColor.withValues(alpha: .35)),
+                  border: Border.all(
+                      color: lightAccentColor.withValues(alpha: .35)),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withValues(alpha: .06),

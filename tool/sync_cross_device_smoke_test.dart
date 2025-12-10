@@ -16,7 +16,8 @@ Map<String, dynamic> toRemoteRowSim({
 
   // Fallback id
   final dynId = data['id'];
-  int fallbackLocalId = (dynId is num) ? dynId.toInt() : int.tryParse('${dynId ?? 0}') ?? 0;
+  int fallbackLocalId =
+      (dynId is num) ? dynId.toInt() : int.tryParse('${dynId ?? 0}') ?? 0;
   if (fallbackLocalId <= 0) {
     fallbackLocalId = DateTime.now().millisecondsSinceEpoch % 2147483647;
   }
@@ -33,15 +34,23 @@ Map<String, dynamic> toRemoteRowSim({
   })();
 
   // إزالة أعمدة محلية
-  for (final k in ['id','isDeleted','deletedAt','deviceId','localId','accountId','updatedAt']) {
+  for (final k in [
+    'id',
+    'isDeleted',
+    'deletedAt',
+    'deviceId',
+    'localId',
+    'accountId',
+    'updatedAt'
+  ]) {
     data.remove(k);
   }
 
   // هنا لا نهتم camel/snake — فقط نختبر مفاتيح التزامن:
   final snake = Map<String, dynamic>.from(data);
   snake['account_id'] = accountId;
-  snake['device_id']  = devForRow;
-  snake['local_id']   = locForRow;
+  snake['device_id'] = devForRow;
+  snake['local_id'] = locForRow;
   snake['updated_at'] = DateTime.now().toIso8601String();
   return snake;
 }
@@ -52,9 +61,10 @@ Map<String, dynamic> deleteFilterFromLocalRow({
   required String safeDeviceId,
   required Map<String, dynamic> deletedLocalRow,
 }) {
-  final originDev = (deletedLocalRow['deviceId']?.toString().trim().isNotEmpty ?? false)
-      ? deletedLocalRow['deviceId'].toString().trim()
-      : safeDeviceId;
+  final originDev =
+      (deletedLocalRow['deviceId']?.toString().trim().isNotEmpty ?? false)
+          ? deletedLocalRow['deviceId'].toString().trim()
+          : safeDeviceId;
 
   final int originLocal = (() {
     final li = deletedLocalRow['localId'];
@@ -79,8 +89,8 @@ void expect(bool cond, String msg) {
 void main() {
   // افتراضات
   const accountId = 'acc-XYZ';
-  const ownerDev  = 'device-owner';
-  const empDev    = 'device-employee';
+  const ownerDev = 'device-owner';
+  const empDev = 'device-employee';
 
   // 1) المالك أنشأ سجلًا محليًا id=12
   final ownerLocal = {
@@ -95,8 +105,8 @@ void main() {
   final pulledOnEmployee = {
     'id': 1234567890, // مركّب (مثال)
     'name': 'Test Drug',
-    'deviceId': ownerDev,  // ← أصل السجل
-    'localId': 12,         // ← أصل السجل
+    'deviceId': ownerDev, // ← أصل السجل
+    'localId': 12, // ← أصل السجل
     'isDeleted': 0,
   };
 
@@ -109,7 +119,7 @@ void main() {
   );
 
   expect(payload['device_id'] == ownerDev, 'payload uses origin device_id');
-  expect(payload['local_id'] == 12,        'payload uses origin local_id');
+  expect(payload['local_id'] == 12, 'payload uses origin local_id');
 
   // 4) الموظف حذف السجل — يجب حذف الصف الأصلي ذاته على السحابة
   final deletedLocalRow = Map<String, dynamic>.from(pulledOnEmployee)
@@ -121,8 +131,10 @@ void main() {
     deletedLocalRow: deletedLocalRow,
   );
 
-  expect(delFilter['device_id'] == ownerDev, 'delete filter uses origin device_id');
-  expect(delFilter['local_id'] == 12,        'delete filter uses origin local_id');
+  expect(delFilter['device_id'] == ownerDev,
+      'delete filter uses origin device_id');
+  expect(delFilter['local_id'] == 12, 'delete filter uses origin local_id');
 
-  print('\n🎉 All checks passed. Cross-device edits/deletes will target the original cloud row.\n');
+  print(
+      '\n🎉 All checks passed. Cross-device edits/deletes will target the original cloud row.\n');
 }

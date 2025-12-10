@@ -22,18 +22,20 @@ void main() {
 
   group('ChatParticipantFields', () {
     test('remoteColumns includes expected keys', () {
-      expect(ChatParticipantFields.remoteColumns, containsAll(<String>[
-        ChatParticipantFields.conversationId,
-        ChatParticipantFields.userUid,
-        ChatParticipantFields.email,
-        ChatParticipantFields.displayName,
-        ChatParticipantFields.joinedAt,
-        ChatParticipantFields.lastReadAt,
-        ChatParticipantFields.muted,
-        ChatParticipantFields.pinned,
-        ChatParticipantFields.archived,
-        ChatParticipantFields.blocked,
-      ]));
+      expect(
+          ChatParticipantFields.remoteColumns,
+          containsAll(<String>[
+            ChatParticipantFields.conversationId,
+            ChatParticipantFields.userUid,
+            ChatParticipantFields.email,
+            ChatParticipantFields.displayName,
+            ChatParticipantFields.joinedAt,
+            ChatParticipantFields.lastReadAt,
+            ChatParticipantFields.muted,
+            ChatParticipantFields.pinned,
+            ChatParticipantFields.archived,
+            ChatParticipantFields.blocked,
+          ]));
     });
   });
 
@@ -56,8 +58,10 @@ void main() {
       expect(payload[ChatParticipantFields.email], 'user@example.com');
       expect(payload[ChatParticipantFields.displayName], 'Alice');
       expect(payload[ChatParticipantFields.role], 'member');
-      expect(payload[ChatParticipantFields.joinedAt], '2024-10-12T10:00:00.000Z');
-      expect(payload[ChatParticipantFields.lastReadAt], '2024-10-12T10:00:00.000Z');
+      expect(
+          payload[ChatParticipantFields.joinedAt], '2024-10-12T10:00:00.000Z');
+      expect(payload[ChatParticipantFields.lastReadAt],
+          '2024-10-12T10:00:00.000Z');
       expect(payload[ChatParticipantFields.muted], isFalse);
       expect(payload[ChatParticipantFields.pinned], isTrue);
       expect(payload[ChatParticipantFields.archived], isFalse);
@@ -96,8 +100,8 @@ void main() {
       );
       expect(
         () => ChatParticipantMapper.toRemote(<String, dynamic>{
-              'conversation_id': 'conv',
-            }),
+          'conversation_id': 'conv',
+        }),
         throwsArgumentError,
       );
     });
@@ -140,7 +144,8 @@ void main() {
         },
       );
 
-      expect(values, equals(<String, dynamic>{ChatParticipantFields.pinned: true}));
+      expect(values,
+          equals(<String, dynamic>{ChatParticipantFields.pinned: true}));
       expect(
         match,
         equals(<String, dynamic>{
@@ -163,7 +168,8 @@ void main() {
         },
       );
 
-      expect(values, equals(<String, dynamic>{ChatParticipantFields.archived: true}));
+      expect(values,
+          equals(<String, dynamic>{ChatParticipantFields.archived: true}));
     });
 
     test('updateLastReadAt forwards ISO payload', () async {

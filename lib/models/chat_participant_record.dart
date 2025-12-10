@@ -92,26 +92,33 @@ class ChatParticipantRecord {
 
     final id = _trimOrNull(getKey(const ['id']));
     final conversationId =
-    (getKey(const ['conversation_id', 'conversationId']) ?? '').toString();
-    final userUid = (getKey(const ['user_uid', 'userUid', 'user_id', 'userId', 'uid']) ?? '')
-        .toString();
+        (getKey(const ['conversation_id', 'conversationId']) ?? '').toString();
+    final userUid =
+        (getKey(const ['user_uid', 'userUid', 'user_id', 'userId', 'uid']) ??
+                '')
+            .toString();
 
     final accountId = _trimOrNull(getKey(const ['account_id', 'accountId']));
 
-    final rawEmail = _trimOrNull(getKey(const ['email', 'user_email', 'email_address']));
+    final rawEmail =
+        _trimOrNull(getKey(const ['email', 'user_email', 'email_address']));
     final email = rawEmail?.toLowerCase();
 
-    final displayName =
-    _trimOrNull(getKey(const ['display_name', 'displayName', 'nickname', 'name']));
+    final displayName = _trimOrNull(
+        getKey(const ['display_name', 'displayName', 'nickname', 'name']));
     final role = _trimOrNull(getKey(const ['role', 'participant_role']));
 
-    final joinedAt = t.parseDateFlexibleUtc(getKey(const ['joined_at', 'joinedAt']));
-    final lastReadAt = t.parseDateFlexibleUtc(getKey(const ['last_read_at', 'lastReadAt']));
+    final joinedAt =
+        t.parseDateFlexibleUtc(getKey(const ['joined_at', 'joinedAt']));
+    final lastReadAt =
+        t.parseDateFlexibleUtc(getKey(const ['last_read_at', 'lastReadAt']));
 
     final muted = _toBool(getKey(const ['muted', 'is_muted', 'isMuted']));
     final pinned = _toBool(getKey(const ['pinned', 'is_pinned', 'isPinned']));
-    final archived = _toBool(getKey(const ['archived', 'is_archived', 'isArchived']));
-    final blocked = _toBool(getKey(const ['blocked', 'is_blocked', 'isBlocked']));
+    final archived =
+        _toBool(getKey(const ['archived', 'is_archived', 'isArchived']));
+    final blocked =
+        _toBool(getKey(const ['blocked', 'is_blocked', 'isBlocked']));
 
     // واجهة:
     final isTyping = _toBool(getKey(const ['isTyping', 'typing']));
@@ -143,53 +150,53 @@ class ChatParticipantRecord {
       ChatParticipantRecord.fromMap(json);
 
   Map<String, dynamic> toJson() => {
-    'id': id,
-    'conversationId': conversationId,
-    'userUid': userUid,
-    'accountId': accountId,
-    'email': email,
-    'displayName': displayName,
-    'role': role,
-    'joinedAt': t.toIsoUtc(joinedAt),
-    'lastReadAt': t.toIsoUtc(lastReadAt),
-    'muted': muted,
-    'pinned': pinned,
-    'archived': archived,
-    'blocked': blocked,
-    // UI-only:
-    'isTyping': isTyping,
-    'isOnline': isOnline,
-    'unreadCount': unreadCount,
-  };
+        'id': id,
+        'conversationId': conversationId,
+        'userUid': userUid,
+        'accountId': accountId,
+        'email': email,
+        'displayName': displayName,
+        'role': role,
+        'joinedAt': t.toIsoUtc(joinedAt),
+        'lastReadAt': t.toIsoUtc(lastReadAt),
+        'muted': muted,
+        'pinned': pinned,
+        'archived': archived,
+        'blocked': blocked,
+        // UI-only:
+        'isTyping': isTyping,
+        'isOnline': isOnline,
+        'unreadCount': unreadCount,
+      };
 
   /// خريطة إدراج إلى Supabase (snake_case). تجاهَل الحقول غير الموجودة في الجدول.
   Map<String, dynamic> toRemoteInsertMap() => {
-    if (id != null) 'id': id,
-    'conversation_id': conversationId,
-    'user_uid': userUid,
-    if (accountId != null) 'account_id': accountId,
-    if (email != null) 'email': email,
-    if (displayName != null) 'display_name': displayName,
-    if (role != null) 'role': role,
-    if (joinedAt != null) 'joined_at': t.toIsoUtc(joinedAt),
-    if (lastReadAt != null) 'last_read_at': t.toIsoUtc(lastReadAt),
-    'muted': muted,
-    'pinned': pinned,
-    'archived': archived,
-    'blocked': blocked,
-  };
+        if (id != null) 'id': id,
+        'conversation_id': conversationId,
+        'user_uid': userUid,
+        if (accountId != null) 'account_id': accountId,
+        if (email != null) 'email': email,
+        if (displayName != null) 'display_name': displayName,
+        if (role != null) 'role': role,
+        if (joinedAt != null) 'joined_at': t.toIsoUtc(joinedAt),
+        if (lastReadAt != null) 'last_read_at': t.toIsoUtc(lastReadAt),
+        'muted': muted,
+        'pinned': pinned,
+        'archived': archived,
+        'blocked': blocked,
+      };
 
   /// خريطة تحديث إلى Supabase (snake_case).
   Map<String, dynamic> toRemoteUpdateMap() => {
-    if (email != null) 'email': email,
-    if (displayName != null) 'display_name': displayName,
-    if (role != null) 'role': role,
-    'muted': muted,
-    'pinned': pinned,
-    'archived': archived,
-    'blocked': blocked,
-    if (lastReadAt != null) 'last_read_at': t.toIsoUtc(lastReadAt),
-  };
+        if (email != null) 'email': email,
+        if (displayName != null) 'display_name': displayName,
+        if (role != null) 'role': role,
+        'muted': muted,
+        'pinned': pinned,
+        'archived': archived,
+        'blocked': blocked,
+        if (lastReadAt != null) 'last_read_at': t.toIsoUtc(lastReadAt),
+      };
 
   ChatParticipantRecord copyWith({
     String? id,

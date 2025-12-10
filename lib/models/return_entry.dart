@@ -18,9 +18,9 @@ class ReturnEntry {
   final String notes;
 
   /* ─── حقول مزامنة اختيارية (للسحابة) ─── */
-  final String? accountId;   // Supabase → accounts.id
-  final String? deviceId;    // معرّف الجهاز
-  final int?    localId;     // بصمة السجل المحلي عند الرفع (id إن لم يُمرّر)
+  final String? accountId; // Supabase → accounts.id
+  final String? deviceId; // معرّف الجهاز
+  final int? localId; // بصمة السجل المحلي عند الرفع (id إن لم يُمرّر)
   final DateTime? updatedAt; // آخر تحديث للسحابة
 
   ReturnEntry({
@@ -117,54 +117,54 @@ class ReturnEntry {
   /*──────────────── تحويل ↔︎ خريطة ────────────────*/
   /// يدعم مفاتيح camelCase (محلي) و snake_case (سحابي)
   factory ReturnEntry.fromMap(Map<String, dynamic> map) => ReturnEntry(
-    id: map['id'] as int?,
-    // نقبل: date أو return_date أو created_at
-    date: _toDate(map['date'] ?? map['return_date'] ?? map['created_at']),
-    patientName: _toStr(map['patientName'] ?? map['patient_name']),
-    phoneNumber: _toStr(map['phoneNumber'] ?? map['phone_number']),
-    diagnosis: _toStr(map['diagnosis']),
-    remaining: _toDouble(map['remaining']),
-    age: _toInt(map['age']),
-    // في السحابة أبقينا الحقل "doctor"، وندعم doctor_name احتياطًا
-    doctor: _toStr(map['doctor'] ?? map['doctor_name']),
-    notes: _toStr(map['notes']),
-    // حقول المزامنة (camel + snake)
-    accountId: _toStrN(map['accountId'] ?? map['account_id']),
-    deviceId: _toStrN(map['deviceId'] ?? map['device_id']),
-    localId: _toIntN(map['localId'] ?? map['local_id'] ?? map['id']),
-    updatedAt: _toDateN(map['updatedAt'] ?? map['updated_at']),
-  );
+        id: map['id'] as int?,
+        // نقبل: date أو return_date أو created_at
+        date: _toDate(map['date'] ?? map['return_date'] ?? map['created_at']),
+        patientName: _toStr(map['patientName'] ?? map['patient_name']),
+        phoneNumber: _toStr(map['phoneNumber'] ?? map['phone_number']),
+        diagnosis: _toStr(map['diagnosis']),
+        remaining: _toDouble(map['remaining']),
+        age: _toInt(map['age']),
+        // في السحابة أبقينا الحقل "doctor"، وندعم doctor_name احتياطًا
+        doctor: _toStr(map['doctor'] ?? map['doctor_name']),
+        notes: _toStr(map['notes']),
+        // حقول المزامنة (camel + snake)
+        accountId: _toStrN(map['accountId'] ?? map['account_id']),
+        deviceId: _toStrN(map['deviceId'] ?? map['device_id']),
+        localId: _toIntN(map['localId'] ?? map['local_id'] ?? map['id']),
+        updatedAt: _toDateN(map['updatedAt'] ?? map['updated_at']),
+      );
 
   /// نخزّن محليًا بصيغة camelCase
   Map<String, dynamic> toMap() => {
-    'id': id,
-    'date': date.toIso8601String(),
-    'patientName': patientName,
-    'phoneNumber': phoneNumber,
-    'diagnosis': diagnosis,
-    'remaining': remaining,
-    'age': age,
-    'doctor': doctor,
-    'notes': notes,
-  };
+        'id': id,
+        'date': date.toIso8601String(),
+        'patientName': patientName,
+        'phoneNumber': phoneNumber,
+        'diagnosis': diagnosis,
+        'remaining': remaining,
+        'age': age,
+        'doctor': doctor,
+        'notes': notes,
+      };
 
   /// خريطة سحابية (snake_case) للمزامنة عبر SyncService
   Map<String, dynamic> toCloudMap() => {
-    'local_id': localId ?? id,
-    // تعقيم السلاسل الفارغة/المسافات
-    'account_id': (accountId?.trim().isEmpty ?? true) ? null : accountId,
-    'device_id': (deviceId?.trim().isEmpty ?? true) ? null : deviceId,
-    // نُرسِل date كما هو (هو تاريخ السجل في هذا الموديل)
-    'date': date.toIso8601String(),
-    'patient_name': patientName,
-    'phone_number': phoneNumber,
-    'diagnosis': diagnosis,
-    'remaining': remaining,
-    'age': age,
-    'doctor': doctor, // متروك كما هو، وندعم doctor_name عند القراءة
-    'notes': notes,
-    'updated_at': updatedAt?.toIso8601String(),
-  }..removeWhere((k, v) => v == null);
+        'local_id': localId ?? id,
+        // تعقيم السلاسل الفارغة/المسافات
+        'account_id': (accountId?.trim().isEmpty ?? true) ? null : accountId,
+        'device_id': (deviceId?.trim().isEmpty ?? true) ? null : deviceId,
+        // نُرسِل date كما هو (هو تاريخ السجل في هذا الموديل)
+        'date': date.toIso8601String(),
+        'patient_name': patientName,
+        'phone_number': phoneNumber,
+        'diagnosis': diagnosis,
+        'remaining': remaining,
+        'age': age,
+        'doctor': doctor, // متروك كما هو، وندعم doctor_name عند القراءة
+        'notes': notes,
+        'updated_at': updatedAt?.toIso8601String(),
+      }..removeWhere((k, v) => v == null);
 
   /// JSON عام — نُعيد خريطة السحابة افتراضيًا
   Map<String, dynamic> toJson() => toCloudMap();
@@ -203,42 +203,42 @@ class ReturnEntry {
   @override
   String toString() =>
       'ReturnEntry(id:$id, date:$date, patient:$patientName, remaining:$remaining, '
-          'age:$age, doctor:$doctor, accountId:$accountId, deviceId:$deviceId, '
-          'localId:$localId, updatedAt:$updatedAt)';
+      'age:$age, doctor:$doctor, accountId:$accountId, deviceId:$deviceId, '
+      'localId:$localId, updatedAt:$updatedAt)';
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-          other is ReturnEntry &&
-              runtimeType == other.runtimeType &&
-              id == other.id &&
-              date == other.date &&
-              patientName == other.patientName &&
-              phoneNumber == other.phoneNumber &&
-              diagnosis == other.diagnosis &&
-              remaining == other.remaining &&
-              age == other.age &&
-              doctor == other.doctor &&
-              notes == other.notes &&
-              accountId == other.accountId &&
-              deviceId == other.deviceId &&
-              localId == other.localId &&
-              updatedAt == other.updatedAt;
+      other is ReturnEntry &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          date == other.date &&
+          patientName == other.patientName &&
+          phoneNumber == other.phoneNumber &&
+          diagnosis == other.diagnosis &&
+          remaining == other.remaining &&
+          age == other.age &&
+          doctor == other.doctor &&
+          notes == other.notes &&
+          accountId == other.accountId &&
+          deviceId == other.deviceId &&
+          localId == other.localId &&
+          updatedAt == other.updatedAt;
 
   @override
   int get hashCode => Object.hash(
-    id,
-    date,
-    patientName,
-    phoneNumber,
-    diagnosis,
-    remaining,
-    age,
-    doctor,
-    notes,
-    accountId,
-    deviceId,
-    localId,
-    updatedAt,
-  );
+        id,
+        date,
+        patientName,
+        phoneNumber,
+        diagnosis,
+        remaining,
+        age,
+        doctor,
+        notes,
+        accountId,
+        deviceId,
+        localId,
+        updatedAt,
+      );
 }

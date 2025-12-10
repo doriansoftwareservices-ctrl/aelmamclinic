@@ -47,8 +47,8 @@ class AlertSettingsMapper {
       return DateTime.tryParse(text)?.toUtc();
     }
 
-    final notify =
-        parseDate(out[AlertSettingsFields.notifyTime] ?? out[AlertSettingsFields.notifyTimeCamel]);
+    final notify = parseDate(out[AlertSettingsFields.notifyTime] ??
+        out[AlertSettingsFields.notifyTimeCamel]);
     if (notify != null) {
       out[AlertSettingsFields.notifyTime] = notify.toIso8601String();
     } else if (out.containsKey(AlertSettingsFields.notifyTime) &&
@@ -57,8 +57,8 @@ class AlertSettingsMapper {
     }
     out.remove(AlertSettingsFields.notifyTimeCamel);
 
-    final last =
-        parseDate(out[AlertSettingsFields.lastTriggered] ?? out[AlertSettingsFields.lastTriggeredCamel]);
+    final last = parseDate(out[AlertSettingsFields.lastTriggered] ??
+        out[AlertSettingsFields.lastTriggeredCamel]);
     if (last != null) {
       out[AlertSettingsFields.lastTriggered] = last.toIso8601String();
     }
@@ -70,7 +70,8 @@ class AlertSettingsMapper {
     if (rawUuid is String) {
       final trimmed = rawUuid.trim();
       out[AlertSettingsFields.itemUuid] = trimmed.isEmpty ? null : trimmed;
-    } else if (rawUuid == null && out.containsKey(AlertSettingsFields.itemUuid)) {
+    } else if (rawUuid == null &&
+        out.containsKey(AlertSettingsFields.itemUuid)) {
       out[AlertSettingsFields.itemUuid] = null;
     }
     out.remove(AlertSettingsFields.itemUuidCamel);

@@ -36,7 +36,8 @@ Future<void> main(List<String> args) async {
   final rows = <Map<String, dynamic>>[];
   for (var i = 0; i < count; i++) {
     final localId = base + i; // يبقى < 1e9
-    final suffix = List.generate(5, (_) => alphabet[rand.nextInt(alphabet.length)]).join();
+    final suffix =
+        List.generate(5, (_) => alphabet[rand.nextInt(alphabet.length)]).join();
     final name = 'CLI-SmokeDrug-${now.millisecondsSinceEpoch}-$i-$suffix';
 
     rows.add({
@@ -53,16 +54,17 @@ Future<void> main(List<String> args) async {
     });
   }
 
-  stdout.writeln('→ Upserting $count drugs to Supabase as account=$accountId device=$deviceId ...');
+  stdout.writeln(
+      '→ Upserting $count drugs to Supabase as account=$accountId device=$deviceId ...');
 
   try {
     final resp = await client
         .from('drugs')
         .upsert(
-      rows,
-      onConflict: 'account_id,device_id,local_id',
-      ignoreDuplicates: false,
-    )
+          rows,
+          onConflict: 'account_id,device_id,local_id',
+          ignoreDuplicates: false,
+        )
         .select();
 
     stdout.writeln('✅ Upsert finished. Server echoed ${resp.length} rows.');

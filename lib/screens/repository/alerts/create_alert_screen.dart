@@ -131,7 +131,8 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                       'اضبط تنبيهًا يظهر عند نزول مخزون الصنف إلى حد معيّن'),
                   subtitle: Text(
                     'اختر نوع الصنف ثم الصنف، وحدّد العتبة التي عندها يتم إشعارك.',
-                    style: TextStyle(color: scheme.onSurface.withValues(alpha: .75)),
+                    style: TextStyle(
+                        color: scheme.onSurface.withValues(alpha: .75)),
                   ),
                 ),
               ),

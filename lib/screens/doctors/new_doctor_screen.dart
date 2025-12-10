@@ -128,8 +128,8 @@ class _NewDoctorScreenState extends State<NewDoctorScreen> {
                           borderRadius: BorderRadius.circular(12),
                         ),
                         padding: const EdgeInsets.all(10),
-                        child:
-                            const Icon(Icons.badge_rounded, color: kPrimaryColor),
+                        child: const Icon(Icons.badge_rounded,
+                            color: kPrimaryColor),
                       ),
                       title: Text(
                         _selectedEmployeeId != null
@@ -270,4 +270,3 @@ class _TimePickerCard extends StatelessWidget {
     );
   }
 }
-

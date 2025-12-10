@@ -55,7 +55,7 @@ class GoogleDriveService {
     if (_isDesktopUnsupported) {
       throw UnsupportedError(
         'Google Drive backup is not supported on ${Platform.operatingSystem}. '
-            'Use local storage or run on Android/iOS/macOS.',
+        'Use local storage or run on Android/iOS/macOS.',
       );
     }
 
@@ -149,7 +149,7 @@ class BackupRestoreService {
 
     // 2️⃣ المرفقات الخارجية
     final rows =
-    await liveDb.query(Attachment.tableName, columns: ['filePath']);
+        await liveDb.query(Attachment.tableName, columns: ['filePath']);
     final externalFiles = <File>[];
     for (final r in rows) {
       final path = r['filePath'] as String?;
@@ -162,7 +162,7 @@ class BackupRestoreService {
 
     // 3️⃣ مجلدات إضافية
     final attachmentsDir =
-    Directory(await DBService.instance.getAttachmentsDir());
+        Directory(await DBService.instance.getAttachmentsDir());
     final exportsDir = Directory(p.join(dbDir.path, 'exports'));
     final logsDir = Directory(p.join(dbDir.path, 'logs'));
     final debugDir = Directory(p.join(dbDir.path, 'debug-info'));
@@ -236,7 +236,7 @@ class BackupRestoreService {
     final bytes = await backupFile.readAsBytes();
     final archive = ZipDecoder().decodeBytes(bytes);
     final dbDir =
-    Directory(p.dirname(await DBService.instance.getDatabasePath()));
+        Directory(p.dirname(await DBService.instance.getDatabasePath()));
     final attachDir = Directory(await DBService.instance.getAttachmentsDir());
 
     if (!merge) {
@@ -321,7 +321,8 @@ class BackupRestoreService {
       await _mergeSubDir(tempBackupDir, dbDir, 'exports');
       await _mergeSubDir(tempBackupDir, dbDir, 'logs');
       await _mergeSubDir(tempBackupDir, dbDir, 'debug-info');
-      await _mergeSubDir(tempBackupDir, attachDir.parent, 'attachments_external');
+      await _mergeSubDir(
+          tempBackupDir, attachDir.parent, 'attachments_external');
 
       await backupDb.close();
       await currentDb.close();
@@ -330,11 +331,11 @@ class BackupRestoreService {
 
   /*──────── helpers ─────────────────*/
   static Future<void> _mergeTable(
-      Database currentDb,
-      Database backupDb,
-      String tableName, {
-        required List<String> uniqueColumns,
-      }) async {
+    Database currentDb,
+    Database backupDb,
+    String tableName, {
+    required List<String> uniqueColumns,
+  }) async {
     final batch = currentDb.batch();
     final backupData = await backupDb.query(tableName);
     for (final record in backupData) {
@@ -352,10 +353,10 @@ class BackupRestoreService {
 
   /* دمج أى مجلد فرعى: attachments / exports / logs / debug-info … */
   static Future<void> _mergeSubDir(
-      Directory backupRoot,
-      Directory targetParent,
-      String subDirName,
-      ) async {
+    Directory backupRoot,
+    Directory targetParent,
+    String subDirName,
+  ) async {
     final inside = Directory(p.join(backupRoot.path, subDirName));
     if (!await inside.exists()) return;
 
@@ -376,8 +377,8 @@ class BackupRestoreService {
       final user = Platform.environment['USERNAME'] ?? 'User';
       return Directory('C:\\Users\\$user\\Downloads\\ClinicBackups');
     }
-    final downloads =
-        await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
+    final downloads = await getDownloadsDirectory() ??
+        await getApplicationDocumentsDirectory();
     return Directory(p.join(downloads.path, 'ClinicBackups'));
   }
 

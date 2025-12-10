@@ -128,7 +128,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
         final perms = await _client
             .from('account_feature_permissions')
             .select(
-            'user_uid, allowed_features, can_create, can_update, can_delete')
+                'user_uid, allowed_features, can_create, can_update, can_delete')
             .filter('account_id', 'eq', accId);
 
         _byUser.clear();
@@ -220,7 +220,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
               content:
-              Text('تعذّر الحفظ (${e.code ?? e.message}). تحقق من RLS.')),
+                  Text('تعذّر الحفظ (${e.code ?? e.message}). تحقق من RLS.')),
         );
       }
     } catch (e) {
@@ -338,27 +338,26 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
             onRefresh: _loadAll,
             child: _employees.isEmpty
                 ? const Center(
-              child: Text(
-                'لا يوجد موظفون مسجلون لهذا الحساب.',
-                style: TextStyle(fontWeight: FontWeight.w700),
-              ),
-            )
+                    child: Text(
+                      'لا يوجد موظفون مسجلون لهذا الحساب.',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  )
                 : ListView.separated(
-              physics: const AlwaysScrollableScrollPhysics(),
-              itemCount: filtered.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 8),
-              itemBuilder: (_, i) {
-                final emp = filtered[i];
-                final p =
-                _byUser[emp.userUid]; // قد تكون null → افتراضي
-                return _EmployeeTile(
-                  employee: emp,
-                  perm: p ?? _FeaturePerm.defaults(),
-                  isCustom: p != null,
-                  onEdit: () => _openEditor(emp),
-                );
-              },
-            ),
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    itemCount: filtered.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (_, i) {
+                      final emp = filtered[i];
+                      final p = _byUser[emp.userUid]; // قد تكون null → افتراضي
+                      return _EmployeeTile(
+                        employee: emp,
+                        perm: p ?? _FeaturePerm.defaults(),
+                        isCustom: p != null,
+                        onEdit: () => _openEditor(emp),
+                      );
+                    },
+                  ),
           ),
         ),
       ],
@@ -437,7 +436,7 @@ class _Employee {
 
   // نبني من صف account_users مع تمرير البريد إن وُجد
   factory _Employee.fromAccountUserRow(Map<String, dynamic> j,
-      {String? email}) =>
+          {String? email}) =>
       _Employee(
         userUid: j['user_uid']?.toString() ?? '',
         role: j['role']?.toString() ?? 'employee',
@@ -562,13 +561,13 @@ class _FeatureDef {
 // اللائحة المعروضة في واجهة التحديد
 const List<_FeatureDef> _kFeatureDefs = [
   _FeatureDef(_FeatureKeys.dashboard, 'لوحة الإحصاءات', Icons.insights_rounded),
-  _FeatureDef(
-      _FeatureKeys.patientNew, 'تسجيل مريض جديد', Icons.person_add_alt_1_rounded),
+  _FeatureDef(_FeatureKeys.patientNew, 'تسجيل مريض جديد',
+      Icons.person_add_alt_1_rounded),
   _FeatureDef(
       _FeatureKeys.patientsList, 'قائمة المرضى', Icons.people_outline_rounded),
-  _FeatureDef(_FeatureKeys.returns, 'العودات', Icons.assignment_return_outlined),
   _FeatureDef(
-      _FeatureKeys.employees, 'شؤون الموظفين', Icons.groups_rounded),
+      _FeatureKeys.returns, 'العودات', Icons.assignment_return_outlined),
+  _FeatureDef(_FeatureKeys.employees, 'شؤون الموظفين', Icons.groups_rounded),
   _FeatureDef(_FeatureKeys.payments, 'الشؤون المالية', Icons.payments_rounded),
   _FeatureDef(
       _FeatureKeys.labRadiology, 'الأشعة والمختبرات', Icons.biotech_rounded),
@@ -578,8 +577,10 @@ const List<_FeatureDef> _kFeatureDefs = [
   _FeatureDef(
       _FeatureKeys.prescriptions, 'الوصفات الطبية', Icons.menu_book_rounded),
   _FeatureDef(_FeatureKeys.backup, 'النسخ الاحتياطي', Icons.backup_rounded),
-  _FeatureDef(_FeatureKeys.accounts, 'الحسابات', Icons.supervisor_account_rounded),
-  _FeatureDef(_FeatureKeys.auditLogs, 'سجلات التدقيق', Icons.receipt_long_rounded),
+  _FeatureDef(
+      _FeatureKeys.accounts, 'الحسابات', Icons.supervisor_account_rounded),
+  _FeatureDef(
+      _FeatureKeys.auditLogs, 'سجلات التدقيق', Icons.receipt_long_rounded),
   _FeatureDef(
       _FeatureKeys.auditPermissions, 'صلاحيات الميزات', Icons.tune_rounded),
 ];
@@ -587,12 +588,12 @@ const List<_FeatureDef> _kFeatureDefs = [
 // أدوات مساعدة محليّة
 String _labelOf(String key) => _kFeatureDefs
     .firstWhere((d) => d.key == key,
-    orElse: () => _FeatureDef(key, key, Icons.help_outline))
+        orElse: () => _FeatureDef(key, key, Icons.help_outline))
     .label;
 
 IconData _iconOf(String key) => _kFeatureDefs
     .firstWhere((d) => d.key == key,
-    orElse: () => _FeatureDef(key, key, Icons.help_outline))
+        orElse: () => _FeatureDef(key, key, Icons.help_outline))
     .icon;
 
 /*────────────────────────── عناصر الواجهة ─────────────────────────*/
@@ -622,7 +623,7 @@ class _EmployeeTile extends StatelessWidget {
       final featsText = feats.isEmpty
           ? 'كل الميزات'
           : feats.map(_labelOf).take(4).join('، ') +
-          (feats.length > 4 ? '…' : '');
+              (feats.length > 4 ? '…' : '');
       final crud = [
         if (perm.canCreate) 'إضافة',
         if (perm.canUpdate) 'تعديل',
@@ -688,7 +689,9 @@ class _EmployeeTile extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  employee.disabled ? 'الحالة: مُعطّل' : 'الدور: ${employee.role}',
+                  employee.disabled
+                      ? 'الحالة: مُعطّل'
+                      : 'الدور: ${employee.role}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.right,
@@ -811,8 +814,8 @@ class _PermissionEditorState extends State<_PermissionEditor> {
                           borderRadius: BorderRadius.circular(12),
                         ),
                         padding: const EdgeInsets.all(10),
-                        child:
-                        const Icon(Icons.tune_rounded, color: kPrimaryColor),
+                        child: const Icon(Icons.tune_rounded,
+                            color: kPrimaryColor),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
@@ -853,8 +856,7 @@ class _PermissionEditorState extends State<_PermissionEditor> {
 
                         // ميزات
                         NeuCard(
-                          padding:
-                          const EdgeInsets.fromLTRB(12, 10, 12, 12),
+                          padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
@@ -871,14 +873,12 @@ class _PermissionEditorState extends State<_PermissionEditor> {
                                   const Spacer(),
                                   TextButton.icon(
                                     onPressed: () => _toggleAll(true),
-                                    icon:
-                                    const Icon(Icons.done_all_rounded),
+                                    icon: const Icon(Icons.done_all_rounded),
                                     label: const Text('تحديد الكل'),
                                   ),
                                   TextButton.icon(
                                     onPressed: () => _toggleAll(false),
-                                    icon:
-                                    const Icon(Icons.clear_all_rounded),
+                                    icon: const Icon(Icons.clear_all_rounded),
                                     label: const Text('إلغاء الكل'),
                                   ),
                                 ],
@@ -904,7 +904,7 @@ class _PermissionEditorState extends State<_PermissionEditor> {
                                   'إذا بقيت القائمة فارغة مع تفعيل CRUD الكامل، فسيتم استخدام الصلاحيات الافتراضية (كل الميزات).',
                                   style: TextStyle(
                                     color:
-                                    scheme.onSurface.withValues(alpha: .7),
+                                        scheme.onSurface.withValues(alpha: .7),
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),

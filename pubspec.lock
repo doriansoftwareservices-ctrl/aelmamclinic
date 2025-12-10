@@ -216,6 +216,22 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.19.1"
+  connectivity_plus:
+    dependency: transitive
+    description:
+      name: connectivity_plus
+      sha256: b5e72753cf63becce2c61fd04dfe0f1c430cc5278b53a1342dc5ad839eab29ec
+      url: "https://pub.dev"
+    source: hosted
+    version: "6.1.5"
+  connectivity_plus_platform_interface:
+    dependency: transitive
+    description:
+      name: connectivity_plus_platform_interface
+      sha256: "42657c1715d48b167930d5f34d00222ac100475f73d10162ddf43e714932f204"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.0.1"
   convert:
     dependency: transitive
     description:
@@ -410,6 +426,14 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
+  flutter_hooks:
+    dependency: transitive
+    description:
+      name: flutter_hooks
+      sha256: "8ae1f090e5f4ef5cfa6670ce1ab5dddadd33f3533a7f9ba19d9f958aa2a89f42"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.21.3+1"
   flutter_launcher_icons:
     dependency: "direct dev"
     description:
@@ -646,6 +670,86 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.16.0"
+  gql:
+    dependency: transitive
+    description:
+      name: gql
+      sha256: "67c32325eb55c15f526f0f5e7d8b38a463dbff2ec3c2e046be4a1a95f0dc93d1"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.0.1"
+  gql_dedupe_link:
+    dependency: transitive
+    description:
+      name: gql_dedupe_link
+      sha256: "10bee0564d67c24e0c8bd08bd56e0682b64a135e58afabbeed30d85d5e9fea96"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.0.4-alpha+1715521079596"
+  gql_error_link:
+    dependency: transitive
+    description:
+      name: gql_error_link
+      sha256: dd0f3fbfbcec848ea050507470cdb5d3dc47d29544ae11044a1c883cbe159ccc
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.0.1"
+  gql_exec:
+    dependency: transitive
+    description:
+      name: gql_exec
+      sha256: "394944626fae900f1d34343ecf2d62e44eb984826189c8979d305f0ae5846e38"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.1.1-alpha+1699813812660"
+  gql_http_link:
+    dependency: transitive
+    description:
+      name: gql_http_link
+      sha256: "07635e85a4f313836904961904417fd27844fe8f68f77b410a4e6b81d8e9202e"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.2.0"
+  gql_link:
+    dependency: transitive
+    description:
+      name: gql_link
+      sha256: "0730276ce3a6a0ced073194ff923a8d99b3c78e442cbf096eb54fd0c3fa9f974"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.1.0"
+  gql_transform_link:
+    dependency: transitive
+    description:
+      name: gql_transform_link
+      sha256: b3bb06a6991bc5c9d877e2757455f80e2c14dc684b8327bedae4f4ee67afae8b
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.0.1"
+  gql_websocket_link:
+    dependency: transitive
+    description:
+      name: gql_websocket_link
+      sha256: ad281c46b5411315fbc0c1c92676127c9b72639a27649c699d9b52664acac452
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.1.0"
+  graphql:
+    dependency: transitive
+    description:
+      name: graphql
+      sha256: "297a1680520e7b4d3c5784cfcea11a16d599702911b74a8ab50857c6d58741b9"
+      url: "https://pub.dev"
+    source: hosted
+    version: "5.2.3"
+  graphql_flutter:
+    dependency: "direct main"
+    description:
+      name: graphql_flutter
+      sha256: "0fef9dc2483c4f21c6ac93cd2ef0b820542fc0ce6db6efa87367326d7f36ade4"
+      url: "https://pub.dev"
+    source: hosted
+    version: "5.2.1"
   gtk:
     dependency: transitive
     description:
@@ -654,6 +758,22 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.1.0"
+  hive:
+    dependency: transitive
+    description:
+      name: hive
+      sha256: "8dcf6db979d7933da8217edcec84e9df1bdb4e4edc7fc77dbd5aa74356d6d941"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.2.3"
+  hive_ce:
+    dependency: transitive
+    description:
+      name: hive_ce
+      sha256: "81d39a03c4c0ba5938260a8c3547d2e71af59defecea21793d57fc3551f0d230"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.15.1"
   http:
     dependency: "direct main"
     description:
@@ -763,6 +883,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.20.2"
+  isolate_channel:
+    dependency: transitive
+    description:
+      name: isolate_channel
+      sha256: f3d36f783b301e6b312c3450eeb2656b0e7d1db81331af2a151d9083a3f6b18d
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.2.2+1"
   js:
     dependency: transitive
     description:
@@ -795,6 +923,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.3.1"
+  jwt_decoder:
+    dependency: transitive
+    description:
+      name: jwt_decoder
+      sha256: "54774aebf83f2923b99e6416b4ea915d47af3bde56884eb622de85feabbc559f"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.0.1"
   latlng:
     dependency: transitive
     description:
@@ -907,6 +1043,78 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.0.0"
+  nhost_auth_dart:
+    dependency: transitive
+    description:
+      name: nhost_auth_dart
+      sha256: "8692cd20d62e17ce356b052aafcc728394bd1632c925ed714727f11ec31dfe07"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.6.1"
+  nhost_dart:
+    dependency: "direct main"
+    description:
+      name: nhost_dart
+      sha256: e4ea0d96f8740bc15eb523e6c568187c59ce9000e46601f206a7c7e4fa7401d9
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.2.0"
+  nhost_functions_dart:
+    dependency: transitive
+    description:
+      name: nhost_functions_dart
+      sha256: e32077e2dc280ce45140108ac358fb11ef5415491b163601073058c3a315981f
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.0.10"
+  nhost_gql_links:
+    dependency: transitive
+    description:
+      name: nhost_gql_links
+      sha256: "565ee70132c8f0d05517dbcdbf53f197d4b766256583c6898863794533cc494d"
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.0.11"
+  nhost_graphql_adapter:
+    dependency: transitive
+    description:
+      name: nhost_graphql_adapter
+      sha256: ae971a6e656fb16a248c08b831dc25e1bcf4870f4d6abad132b048491f6829db
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.0.10"
+  nhost_sdk:
+    dependency: transitive
+    description:
+      name: nhost_sdk
+      sha256: "4e5d8184f6f67bd850f8cf212fe78339a64153cee5a38c4be0c0bea4d6ede205"
+      url: "https://pub.dev"
+    source: hosted
+    version: "5.8.0"
+  nhost_storage_dart:
+    dependency: transitive
+    description:
+      name: nhost_storage_dart
+      sha256: e98ae58cb06f6269b3d4c6646301096c6590302a12ff9e8d751738cf9b56fc00
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.2.0"
+  nm:
+    dependency: transitive
+    description:
+      name: nm
+      sha256: "2c9aae4127bdc8993206464fcc063611e0e36e72018696cd9631023a31b24254"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.5.0"
+  normalize:
+    dependency: transitive
+    description:
+      name: normalize
+      sha256: f78bf0552b9640c76369253f0b8fdabad4f3fbfc06bdae9359e71bee9a5b071b
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.9.1"
   ntp:
     dependency: "direct main"
     description:

@@ -69,6 +69,8 @@ dependencies:
 
   # الشبكات والمزامنة
   supabase_flutter: ^2.10.0
+  nhost_dart: any
+  graphql_flutter: any
   uuid: ^4.4.0
   http: any
   image_picker: ^1.2.0

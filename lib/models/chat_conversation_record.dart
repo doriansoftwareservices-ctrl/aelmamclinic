@@ -12,9 +12,9 @@ class ChatConversationRecord {
   final bool isGroup;
   final String? title;
   final String createdBy;
-  final DateTime createdAt;   // UTC
-  final DateTime updatedAt;   // UTC
-  final DateTime? lastMsgAt;  // UTC
+  final DateTime createdAt; // UTC
+  final DateTime updatedAt; // UTC
+  final DateTime? lastMsgAt; // UTC
   final String? lastMessageText;
 
   // واجهة/محلي (غير محفوظ)
@@ -34,7 +34,8 @@ class ChatConversationRecord {
     String fallbackAnnouncement = 'إعلان',
   }) {
     if ((title ?? '').trim().isNotEmpty) return title!.trim();
-    if (!isGroup && (otherEmail ?? '').trim().isNotEmpty) return otherEmail!.trim();
+    if (!isGroup && (otherEmail ?? '').trim().isNotEmpty)
+      return otherEmail!.trim();
     switch (type) {
       case ChatConversationType.group:
         return fallbackGroup;
@@ -125,24 +126,30 @@ class ChatConversationRecord {
     final accountId = (getKey(const ['account_id', 'accountId']))?.toString();
     final isGroup = _toBool(getKey(const ['is_group', 'isGroup']));
     final title = (getKey(const ['title']))?.toString();
-    final createdBy = (getKey(const ['created_by', 'createdBy']) ?? '').toString();
+    final createdBy =
+        (getKey(const ['created_by', 'createdBy']) ?? '').toString();
 
-    final createdAt = t.parseDateFlexibleUtc(getKey(const ['created_at', 'createdAt'])) ??
-        DateTime.now().toUtc();
-    final updatedAt = t.parseDateFlexibleUtc(getKey(const ['updated_at', 'updatedAt'])) ??
-        createdAt;
-    final lastMsgAt = t.parseDateFlexibleUtc(getKey(const ['last_msg_at', 'lastMsgAt']));
+    final createdAt =
+        t.parseDateFlexibleUtc(getKey(const ['created_at', 'createdAt'])) ??
+            DateTime.now().toUtc();
+    final updatedAt =
+        t.parseDateFlexibleUtc(getKey(const ['updated_at', 'updatedAt'])) ??
+            createdAt;
+    final lastMsgAt =
+        t.parseDateFlexibleUtc(getKey(const ['last_msg_at', 'lastMsgAt']));
     final lastMsgSnippet = (getKey(const [
       'last_msg_snippet',
       'lastMessageText',
       'last_msg_snippet_text',
-    ]))
-        ?.toString();
+    ]))?.toString();
 
     final unread = getKey(const ['unread', 'unread_count', 'unreadCount']);
-    final unreadCount = (unread is num) ? unread.toInt() : int.tryParse('${unread ?? ''}');
-    final otherEmail = (getKey(const ['other_email', 'otherEmail']))?.toString();
-    final isAnnouncement = _toBool(getKey(const ['is_announcement', 'isAnnouncement']));
+    final unreadCount =
+        (unread is num) ? unread.toInt() : int.tryParse('${unread ?? ''}');
+    final otherEmail =
+        (getKey(const ['other_email', 'otherEmail']))?.toString();
+    final isAnnouncement =
+        _toBool(getKey(const ['is_announcement', 'isAnnouncement']));
 
     return ChatConversationRecord(
       id: id,
@@ -153,10 +160,12 @@ class ChatConversationRecord {
       createdAt: createdAt,
       updatedAt: updatedAt,
       lastMsgAt: lastMsgAt,
-      lastMessageText:
-      (lastMsgSnippet ?? '').trim().isNotEmpty ? lastMsgSnippet!.trim() : null,
+      lastMessageText: (lastMsgSnippet ?? '').trim().isNotEmpty
+          ? lastMsgSnippet!.trim()
+          : null,
       unreadCount: unreadCount,
-      otherEmail: (otherEmail ?? '').trim().isNotEmpty ? otherEmail!.trim() : null,
+      otherEmail:
+          (otherEmail ?? '').trim().isNotEmpty ? otherEmail!.trim() : null,
       isAnnouncement: isAnnouncement,
     );
   }
@@ -187,19 +196,19 @@ class ChatConversationRecord {
   }
 
   Map<String, dynamic> toJson() => {
-    'id': id,
-    'accountId': accountId,
-    'isGroup': isGroup,
-    'title': title,
-    'createdBy': createdBy,
-    'createdAt': t.toIsoUtc(createdAt),
-    'updatedAt': t.toIsoUtc(updatedAt),
-    'lastMsgAt': t.toIsoUtc(lastMsgAt),
-    'lastMessageText': lastMessageText,
-    'unreadCount': unreadCount,
-    'otherEmail': otherEmail,
-    'isAnnouncement': isAnnouncement,
-  };
+        'id': id,
+        'accountId': accountId,
+        'isGroup': isGroup,
+        'title': title,
+        'createdBy': createdBy,
+        'createdAt': t.toIsoUtc(createdAt),
+        'updatedAt': t.toIsoUtc(updatedAt),
+        'lastMsgAt': t.toIsoUtc(lastMsgAt),
+        'lastMessageText': lastMessageText,
+        'unreadCount': unreadCount,
+        'otherEmail': otherEmail,
+        'isAnnouncement': isAnnouncement,
+      };
 
   factory ChatConversationRecord.fromJson(Map<String, dynamic> json) =>
       ChatConversationRecord.fromMap(json);

@@ -63,6 +63,8 @@ import 'screens/patients/view_patient_screen.dart';
 /*──────── الثيم/الثوابت ────────*/
 import 'core/theme.dart';
 import 'core/constants.dart';
+import 'core/backend_selector.dart';
+import 'core/nhost_manager.dart';
 import 'utils/notifications_helper.dart';
 
 /// هل المنصّة تدعم flutter_local_notifications؟ (Android/iOS/macOS)
@@ -103,14 +105,29 @@ void main() {
   runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
 
-    // تحميل إعدادات Supabase المخصّصة قبل التهيئة.
+    // تحميل إعدادات Supabase المخصّصة قبل التهيئة أو Nhost overrides.
     await AppConstants.loadRuntimeOverrides();
 
-    // Supabase
-    await Supabase.initialize(
-      url: AppConstants.supabaseUrl,
-      anonKey: AppConstants.supabaseAnonKey,
-    );
+    switch (BackendSelector.current) {
+      case BackendTarget.supabase:
+        await Supabase.initialize(
+          url: AppConstants.supabaseUrl,
+          anonKey: AppConstants.supabaseAnonKey,
+        );
+        AppConstants.debugLog(
+          'Initialized Supabase backend',
+          tag: 'BOOT',
+        );
+        break;
+      case BackendTarget.nhost:
+        // مجرد لمس الـ client يضمن تهيئة nhost_dart (gRPC/GraphQL).
+        NhostManager.client;
+        AppConstants.debugLog(
+          'Initialized Nhost backend',
+          tag: 'BOOT',
+        );
+        break;
+    }
 
     // إنشاء مجلد ثابت على ويندوز ليتوافق مع DBService
     if (Platform.isWindows) {
@@ -269,7 +286,8 @@ void main() {
                     return;
                   }
                   await cp.bootstrap(
-                    accountId: (accId != null && accId.isNotEmpty) ? accId : null,
+                    accountId:
+                        (accId != null && accId.isNotEmpty) ? accId : null,
                     role: auth.role ?? '',
                     isSuperAdmin: auth.isSuperAdmin,
                   );

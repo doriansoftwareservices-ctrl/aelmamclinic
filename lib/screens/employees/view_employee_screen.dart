@@ -158,7 +158,8 @@ class _ViewEmployeeScreenState extends State<ViewEmployeeScreen> {
                                         _dashIfEmpty(
                                             _asString(_employee!['jobTitle'])),
                                         style: TextStyle(
-                                          color: cs.onSurface.withValues(alpha: .7),
+                                          color: cs.onSurface
+                                              .withValues(alpha: .7),
                                           fontWeight: FontWeight.w600,
                                         ),
                                       ),

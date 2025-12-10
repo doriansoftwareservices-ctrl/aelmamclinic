@@ -87,7 +87,8 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
       _resolveDoctorAccount();
     });
     _loadInvTypes();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _prefillDoctorFromAccount());
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _prefillDoctorFromAccount());
   }
 
   @override
@@ -156,14 +157,13 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
     List<Map<String, dynamic>> dlgItems = [];
     final qtyCtrl = TextEditingController();
 
-
     final res = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (ctx) => Directionality(
         textDirection: ui.TextDirection.rtl,
         child: AlertDialog(
           shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: const Text('استخدام من المستودع',
               style: TextStyle(fontWeight: FontWeight.w800)),
           content: StatefulBuilder(
@@ -177,9 +177,9 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
                       decoration: const InputDecoration(labelText: 'نوع الصنف'),
                       items: _invTypes
                           .map((t) => DropdownMenuItem(
-                        value: t['id'] as int,
-                        child: Text(t['name'] as String),
-                      ))
+                                value: t['id'] as int,
+                                child: Text(t['name'] as String),
+                              ))
                           .toList(),
                       onChanged: (v) async {
                         dlgTypeId = v;
@@ -199,18 +199,18 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
                       padding: const EdgeInsets.all(10),
                       child: DropdownButtonFormField<int>(
                         decoration:
-                        const InputDecoration(labelText: 'اسم الصنف'),
+                            const InputDecoration(labelText: 'اسم الصنف'),
                         items: dlgItems
                             .map((i) => DropdownMenuItem(
-                          value: i['id'] as int,
-                          child: Text(i['name'] as String),
-                        ))
+                                  value: i['id'] as int,
+                                  child: Text(i['name'] as String),
+                                ))
                             .toList(),
                         onChanged: (v) {
                           dlgItemId = v;
                           dlgItemName =
-                          dlgItems.firstWhere((i) => i['id'] == v)['name']
-                          as String;
+                              dlgItems.firstWhere((i) => i['id'] == v)['name']
+                                  as String;
                           setStateDlg(() {});
                         },
                       ),
@@ -228,7 +228,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
             ),
           ),
           actionsPadding:
-          const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           actions: [
             TOutlinedButton(
               icon: Icons.close,
@@ -296,7 +296,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
     );
     if (d != null) {
       final t =
-      await showTimePicker(context: context, initialTime: _registerTime);
+          await showTimePicker(context: context, initialTime: _registerTime);
       if (t != null) {
         setState(() {
           _registerDate = d;
@@ -379,7 +379,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
 
   void _recalcTotals() {
     final total =
-    _selectedServices.fold<double>(0.0, (p, e) => p + e.serviceCost);
+        _selectedServices.fold<double>(0.0, (p, e) => p + e.serviceCost);
     _totalCtrl.text = total.toStringAsFixed(2);
     final paid = _parseDouble(_paidCtrl.text);
     _remainingCtrl.text = (total - paid).toStringAsFixed(2);
@@ -455,7 +455,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
         textDirection: ui.TextDirection.rtl,
         child: AlertDialog(
           shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: const Text('اختر الطبيب',
               style: TextStyle(fontWeight: FontWeight.w800)),
           content: SizedBox(
@@ -468,9 +468,8 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
                   prefix: const Icon(Icons.search),
                   onChanged: (v) {
                     filtered = source
-                        .where((d) => d.name
-                        .toLowerCase()
-                        .contains(v.toLowerCase()))
+                        .where((d) =>
+                            d.name.toLowerCase().contains(v.toLowerCase()))
                         .toList();
                     (ctx as Element).markNeedsBuild();
                   },
@@ -480,27 +479,27 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
                   child: filtered.isEmpty
                       ? const Center(child: Text('لا يوجد نتائج'))
                       : ListView.builder(
-                    itemCount: filtered.length,
-                    itemBuilder: (c, i) {
-                      final d = filtered[i];
-                      return NeuCard(
-                        margin: const EdgeInsets.symmetric(vertical: 4),
-                        onTap: () => Navigator.pop(ctx, d),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 8),
-                        child: ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: Text('د/${d.name}',
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w700)),
-                          subtitle: Text(d.specialization),
-                          trailing:
-                          const Icon(Icons.chevron_left_rounded),
-                          onTap: () => Navigator.pop(ctx, d),
+                          itemCount: filtered.length,
+                          itemBuilder: (c, i) {
+                            final d = filtered[i];
+                            return NeuCard(
+                              margin: const EdgeInsets.symmetric(vertical: 4),
+                              onTap: () => Navigator.pop(ctx, d),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 8),
+                              child: ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                title: Text('د/${d.name}',
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.w700)),
+                                subtitle: Text(d.specialization),
+                                trailing:
+                                    const Icon(Icons.chevron_left_rounded),
+                                onTap: () => Navigator.pop(ctx, d),
+                              ),
+                            );
+                          },
                         ),
-                      );
-                    },
-                  ),
                 ),
               ],
             ),
@@ -538,7 +537,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
       return;
     }
     final svcs =
-    await DBService.instance.getDoctorGeneralServices(_selectedDoctorId!);
+        await DBService.instance.getDoctorGeneralServices(_selectedDoctorId!);
     if (svcs.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('لا توجد خدمات عامة لهذا الطبيب')),
@@ -555,7 +554,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
         textDirection: ui.TextDirection.rtl,
         child: AlertDialog(
           shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: const Text('اختر خدمة الطبيب',
               style: TextStyle(fontWeight: FontWeight.w800)),
           content: SizedBox(
@@ -571,8 +570,8 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
                   onChanged: (v) {
                     filteredServices = svcs
                         .where((s) => (s['name'] as String)
-                        .toLowerCase()
-                        .contains(v.toLowerCase()))
+                            .toLowerCase()
+                            .contains(v.toLowerCase()))
                         .toList();
                     (ctx as Element).markNeedsBuild();
                   },
@@ -582,28 +581,28 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
                   child: filteredServices.isEmpty
                       ? const Center(child: Text('لا توجد نتائج'))
                       : ListView.builder(
-                    itemCount: filteredServices.length,
-                    itemBuilder: (c, i) {
-                      final s = filteredServices[i];
-                      return NeuCard(
-                        margin: const EdgeInsets.symmetric(vertical: 4),
-                        onTap: () => Navigator.pop(ctx, s),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 8),
-                        child: ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(s['name'] as String,
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w700)),
-                          subtitle: Text(
-                              'السعر: ${(s['cost'] as num).toStringAsFixed(2)}'),
-                          trailing:
-                          const Icon(Icons.chevron_left_rounded),
-                          onTap: () => Navigator.pop(ctx, s),
+                          itemCount: filteredServices.length,
+                          itemBuilder: (c, i) {
+                            final s = filteredServices[i];
+                            return NeuCard(
+                              margin: const EdgeInsets.symmetric(vertical: 4),
+                              onTap: () => Navigator.pop(ctx, s),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 8),
+                              child: ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                title: Text(s['name'] as String,
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.w700)),
+                                subtitle: Text(
+                                    'السعر: ${(s['cost'] as num).toStringAsFixed(2)}'),
+                                trailing:
+                                    const Icon(Icons.chevron_left_rounded),
+                                onTap: () => Navigator.pop(ctx, s),
+                              ),
+                            );
+                          },
                         ),
-                      );
-                    },
-                  ),
                 ),
               ],
             ),
@@ -653,9 +652,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
   /*──────────────────── تحذير مكررات ────────────────────*/
   Future<bool> _maybeWarnDuplicates(String phoneNormalized, String name) async {
     final all = await DBService.instance.getAllPatients();
-    final dups = all
-        .where((p) => p.phoneNumber == phoneNormalized)
-        .toList();
+    final dups = all.where((p) => p.phoneNumber == phoneNormalized).toList();
     if (dups.isEmpty) return true;
 
     final proceed = await showDialog<bool>(
@@ -664,7 +661,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
         textDirection: ui.TextDirection.rtl,
         child: AlertDialog(
           shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: const Text('تنبيه تكرار',
               style: TextStyle(fontWeight: FontWeight.w800)),
           content: Text(
@@ -733,7 +730,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
 
     // تحذير المكررات
     final ok =
-    await _maybeWarnDuplicates(normalizedPhone, _nameCtrl.text.trim());
+        await _maybeWarnDuplicates(normalizedPhone, _nameCtrl.text.trim());
     if (!ok) return;
 
     setState(() => _saving = true);
@@ -749,16 +746,16 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
 
       // المبالغ
       final total =
-      _selectedServices.fold<double>(0.0, (p, e) => p + e.serviceCost);
+          _selectedServices.fold<double>(0.0, (p, e) => p + e.serviceCost);
       final paid = _parseDouble(_paidCtrl.text);
       double remain = _parseDouble(_remainingCtrl.text);
       if ((paid + remain - total).abs() > 0.01) remain = (total - paid);
       if (remain < 0) remain = 0.0;
 
       // نسب/مدخلات الطبيب
-      double docShareSum = 0.0;   // للأشعة/المختبر (حصة الطبيب كنسبة)
+      double docShareSum = 0.0; // للأشعة/المختبر (حصة الطبيب كنسبة)
       double towerShareSum = 0.0; // حصة المركز
-      double docInputSum = 0.0;   // صافي مدخلات الطبيب لعيادته (Doctor-type)
+      double docInputSum = 0.0; // صافي مدخلات الطبيب لعيادته (Doctor-type)
 
       // Helper: إيجاد صف النسبة لهذا الطبيب/الخدمة تحديدًا
       Map<String, dynamic>? findDoctorShareRow(
@@ -824,7 +821,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
         doctorName: _selectedDoctorName,
         notes: _notesCtrl.text.trim(),
         serviceType:
-        _mapServiceTypeToCode(_selectedServiceType), // تخزين بصيغة قياسية
+            _mapServiceTypeToCode(_selectedServiceType), // تخزين بصيغة قياسية
         serviceId: null,
         serviceName: null,
         serviceCost: null,
@@ -1025,11 +1022,11 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
                             runSpacing: 6,
                             children: _invUsages
                                 .map((u) => _RemovableChip(
-                              text:
-                              '${u['typeName']} > ${u['itemName']} × ${u['quantity']}',
-                              onDelete: () =>
-                                  setState(() => _invUsages.remove(u)),
-                            ))
+                                      text:
+                                          '${u['typeName']} > ${u['itemName']} × ${u['quantity']}',
+                                      onDelete: () =>
+                                          setState(() => _invUsages.remove(u)),
+                                    ))
                                 .toList(),
                           ),
                         ),
@@ -1054,10 +1051,10 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
                             runSpacing: 6,
                             children: _pickedFiles
                                 .map((pf) => _RemovableChip(
-                              text: pf.name,
-                              onDelete: () => setState(
-                                      () => _pickedFiles.remove(pf)),
-                            ))
+                                      text: pf.name,
+                                      onDelete: () => setState(
+                                          () => _pickedFiles.remove(pf)),
+                                    ))
                                 .toList(),
                           ),
                         ),
@@ -1093,7 +1090,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
                           ],
                           onChanged: _onServiceTypeChanged,
                           validator: (v) =>
-                          v == null ? 'اختر نوع الخدمة' : null,
+                              v == null ? 'اختر نوع الخدمة' : null,
                         ),
                       ),
 
@@ -1143,7 +1140,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
                               Expanded(
                                 child: Text('إضافة خدمة من عيادة الطبيب',
                                     style:
-                                    TextStyle(fontWeight: FontWeight.w700)),
+                                        TextStyle(fontWeight: FontWeight.w700)),
                               ),
                               Icon(Icons.chevron_left_rounded),
                             ],
@@ -1192,15 +1189,15 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
                             runSpacing: 6,
                             children: _selectedServices
                                 .map((ps) => _RemovableChip(
-                              text:
-                              '${ps.serviceName} • ${ps.serviceCost.toStringAsFixed(2)}',
-                              onDelete: () {
-                                setState(() {
-                                  _selectedServices.remove(ps);
-                                  _recalcTotals();
-                                });
-                              },
-                            ))
+                                      text:
+                                          '${ps.serviceName} • ${ps.serviceCost.toStringAsFixed(2)}',
+                                      onDelete: () {
+                                        setState(() {
+                                          _selectedServices.remove(ps);
+                                          _recalcTotals();
+                                        });
+                                      },
+                                    ))
                                 .toList(),
                           ),
                         ),
@@ -1282,7 +1279,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
                 child: NeuCard(
                   margin: EdgeInsets.zero,
                   padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   child: SafeArea(
                     top: false,
                     child: Row(
@@ -1356,7 +1353,8 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
               duration: const Duration(milliseconds: 120),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
-                color: sel ? kPrimaryColor.withValues(alpha: .10) : scheme.surface,
+                color:
+                    sel ? kPrimaryColor.withValues(alpha: .10) : scheme.surface,
                 borderRadius: BorderRadius.circular(24),
                 border: Border.all(
                   color: sel ? kPrimaryColor : scheme.outlineVariant,
@@ -1364,18 +1362,18 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
                 ),
                 boxShadow: sel
                     ? [
-                  // لمسة نيومورفيزم خفيفة عند الاختيار
-                  BoxShadow(
-                    color: Colors.white.withValues(alpha: .9),
-                    offset: const Offset(-3, -3),
-                    blurRadius: 6,
-                  ),
-                  BoxShadow(
-                    color: const Color(0xFFCFD8DC).withValues(alpha: .6),
-                    offset: const Offset(3, 3),
-                    blurRadius: 6,
-                  ),
-                ]
+                        // لمسة نيومورفيزم خفيفة عند الاختيار
+                        BoxShadow(
+                          color: Colors.white.withValues(alpha: .9),
+                          offset: const Offset(-3, -3),
+                          blurRadius: 6,
+                        ),
+                        BoxShadow(
+                          color: const Color(0xFFCFD8DC).withValues(alpha: .6),
+                          offset: const Offset(3, 3),
+                          blurRadius: 6,
+                        ),
+                      ]
                     : null,
               ),
               child: Text(
@@ -1445,7 +1443,8 @@ class _RemovableChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(text, style: TextStyle(color: scheme.onSurface.withValues(alpha: .9))),
+          Text(text,
+              style: TextStyle(color: scheme.onSurface.withValues(alpha: .9))),
           const SizedBox(width: 6),
           InkWell(
             onTap: onDelete,

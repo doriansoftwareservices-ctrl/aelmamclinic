@@ -572,7 +572,8 @@ class _DoctorImagingLabReportScreenState
                                   contentPadding: EdgeInsets.zero,
                                   leading: Container(
                                     decoration: BoxDecoration(
-                                      color: kPrimaryColor.withValues(alpha: .1),
+                                      color:
+                                          kPrimaryColor.withValues(alpha: .1),
                                       borderRadius: BorderRadius.circular(12),
                                     ),
                                     padding: const EdgeInsets.all(8),

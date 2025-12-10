@@ -3,8 +3,13 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
-Future<({String? supabaseUrl, String? supabaseAnonKey, List<String>? superAdminEmails, String? source})?>
-    loadSupabaseRuntimeOverrides({
+Future<
+    ({
+      String? supabaseUrl,
+      String? supabaseAnonKey,
+      List<String>? superAdminEmails,
+      String? source
+    })?> loadSupabaseRuntimeOverrides({
   required String windowsDataDir,
   required String legacyWindowsDataDir,
   required String linuxDataDir,
@@ -159,7 +164,8 @@ Future<({String? supabaseUrl, String? supabaseAnonKey, List<String>? superAdminE
 
 String expandHomeDir(String value) {
   if (!value.startsWith('~')) return value;
-  final home = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
+  final home =
+      Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
   if (home == null || home.isEmpty) {
     return value.replaceFirst('~', '');
   }

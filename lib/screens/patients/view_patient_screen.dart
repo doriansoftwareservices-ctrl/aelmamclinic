@@ -180,7 +180,7 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
 
     // رقم الإيصال التالي
     final docCounter =
-    await DBService.instance.getNextPrintCounterForDoctor(counterKey);
+        await DBService.instance.getNextPrintCounterForDoctor(counterKey);
     final counterStr = docCounter.toString();
 
     // الخطوط والشعار
@@ -222,7 +222,7 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
     final pdf = pw.Document();
 
     final baseText =
-    pw.TextStyle(font: cairoRegular, fontSize: 12, height: 1.35);
+        pw.TextStyle(font: cairoRegular, fontSize: 12, height: 1.35);
     final boldText = pw.TextStyle(font: cairoBold, fontSize: 12, height: 1.35);
 
     // صفحة A4
@@ -234,15 +234,15 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
     );
 
     pw.Widget thinDivider([double v = 6]) => pw.Padding(
-      padding: pw.EdgeInsets.symmetric(vertical: v),
-      child: pw.Container(height: 0.7, color: PdfColors.grey300),
-    );
+          padding: pw.EdgeInsets.symmetric(vertical: v),
+          child: pw.Container(height: 0.7, color: PdfColors.grey300),
+        );
 
     // سطر معلومات: العنوان (إنجليزي) يسار، والقيمة يمين
     pw.Widget infoRow(String labelEn, String value, {bool isRecordNo = false}) {
       final valueStyle = isRecordNo
           ? pw.TextStyle(
-          font: cairoBold, fontSize: 13, color: PdfColors.red, height: 1.4)
+              font: cairoBold, fontSize: 13, color: PdfColors.red, height: 1.4)
           : baseText;
       return pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
@@ -269,7 +269,7 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
                 pw.Expanded(
                   child: pw.Padding(
                     padding:
-                    const pw.EdgeInsets.only(right: 12), // إبعاد عن الشعار
+                        const pw.EdgeInsets.only(right: 12), // إبعاد عن الشعار
                     child: pw.Column(
                       crossAxisAlignment: pw.CrossAxisAlignment.start,
                       children: [
@@ -280,10 +280,10 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
                                 color: PdfColors.blueGrey)),
                         pw.Text('العنوان1 - العنوان2 - العنوان3',
                             style:
-                            pw.TextStyle(font: cairoRegular, fontSize: 9)),
+                                pw.TextStyle(font: cairoRegular, fontSize: 9)),
                         pw.Text('الهاتف: 12345678',
                             style:
-                            pw.TextStyle(font: cairoRegular, fontSize: 9)),
+                                pw.TextStyle(font: cairoRegular, fontSize: 9)),
                       ],
                     ),
                   ),
@@ -301,7 +301,7 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
                 pw.Expanded(
                   child: pw.Padding(
                     padding:
-                    const pw.EdgeInsets.only(left: 12), // إبعاد عن الشعار
+                        const pw.EdgeInsets.only(left: 12), // إبعاد عن الشعار
                     child: pw.Column(
                       crossAxisAlignment: pw.CrossAxisAlignment.end,
                       children: [
@@ -312,10 +312,10 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
                                 color: PdfColors.blueGrey)),
                         pw.Text('Address1 – Address2 - Address3',
                             style:
-                            pw.TextStyle(font: cairoRegular, fontSize: 9)),
+                                pw.TextStyle(font: cairoRegular, fontSize: 9)),
                         pw.Text('Tel: 12345678',
                             style:
-                            pw.TextStyle(font: cairoRegular, fontSize: 9)),
+                                pw.TextStyle(font: cairoRegular, fontSize: 9)),
                       ],
                     ),
                   ),
@@ -352,7 +352,7 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
               pw.Container(
                 margin: const pw.EdgeInsets.symmetric(horizontal: 8),
                 padding:
-                const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                    const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                 decoration: pw.BoxDecoration(
                   color: PdfColors.grey100,
                   border: pw.Border.all(color: PdfColors.grey400, width: 0.8),
@@ -380,12 +380,10 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
           infoRow('Age', patient.age.toString()),
           thinDivider(),
           infoRow(
-              'Phone',
-              patient.phoneNumber.isEmpty
-                  ? '—'
-                  : patient.phoneNumber),
+              'Phone', patient.phoneNumber.isEmpty ? '—' : patient.phoneNumber),
           thinDivider(),
-          infoRow('Service Type', _serviceType), // ← أضفنا نوع الخدمة في الـ PDF
+          infoRow(
+              'Service Type', _serviceType), // ← أضفنا نوع الخدمة في الـ PDF
           if (displayDoctorName != '---') ...[
             thinDivider(),
             infoRow('Doctor Name', displayDoctorName),
@@ -454,7 +452,7 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
                     ],
                   )
               else
-              // لو لا توجد خدمات (حالة مزامنة)، نظهر صفًا شكليًا بدل الجدول الفارغ
+                // لو لا توجد خدمات (حالة مزامنة)، نظهر صفًا شكليًا بدل الجدول الفارغ
                 pw.TableRow(
                   children: [
                     pw.Padding(
@@ -611,7 +609,7 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
                 _SectionHeader(title: 'Registration', color: scheme.primary),
                 NeuCard(
                   padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   child: _InfoTile(
                     icon: Icons.calendar_today,
                     label: 'تاريخ ووقت التسجيل',
@@ -622,7 +620,7 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
                 _SectionHeader(title: 'Patient Info', color: scheme.primary),
                 NeuCard(
                   padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   child: Column(
                     children: [
                       _InfoTile(
@@ -660,11 +658,10 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
                   ),
                 ),
                 const SizedBox(height: 14),
-
                 _SectionHeader(title: 'Service', color: scheme.primary),
                 NeuCard(
                   padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -686,13 +683,14 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
                           final svcs = snap.data ?? const <PatientService>[];
                           if (svcs.isEmpty) {
                             // حالة مزامنة بدون تفاصيل خدمات: نعرض توضيح + إجمالي من (مدفوع+متبقي)
-                            final fallbackTotal =
-                            (widget.patient.paidAmount + widget.patient.remaining)
+                            final fallbackTotal = (widget.patient.paidAmount +
+                                    widget.patient.remaining)
                                 .toStringAsFixed(2);
                             return Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text('لا توجد خدمات مسجلة (قد تكون أتت من المزامنة بدون تفاصيل).'),
+                                const Text(
+                                    'لا توجد خدمات مسجلة (قد تكون أتت من المزامنة بدون تفاصيل).'),
                                 const SizedBox(height: 8),
                                 _InfoTile(
                                   icon: Icons.summarize,
@@ -703,7 +701,7 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
                             );
                           }
                           final total =
-                          svcs.fold<double>(0, (p, e) => p + e.serviceCost);
+                              svcs.fold<double>(0, (p, e) => p + e.serviceCost);
 
                           return Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -714,12 +712,12 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
                                 children: svcs
                                     .map(
                                       (s) => Chip(
-                                    backgroundColor:
-                                    kPrimaryColor.withValues(alpha: .10),
-                                    label: Text(
-                                        '${s.serviceName} • ${s.serviceCost.toStringAsFixed(2)}'),
-                                  ),
-                                )
+                                        backgroundColor: kPrimaryColor
+                                            .withValues(alpha: .10),
+                                        label: Text(
+                                            '${s.serviceName} • ${s.serviceCost.toStringAsFixed(2)}'),
+                                      ),
+                                    )
                                     .toList(),
                               ),
                               const SizedBox(height: 8),
@@ -735,12 +733,11 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
                     ],
                   ),
                 ),
-
                 const SizedBox(height: 14),
                 _SectionHeader(title: 'Financials', color: scheme.primary),
                 NeuCard(
                   padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   child: Column(
                     children: [
                       _InfoTile(
@@ -777,7 +774,7 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
                 _SectionHeader(title: 'Notes', color: scheme.primary),
                 NeuCard(
                   padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   child: _InfoTile(
                     icon: Icons.note,
                     label: 'ملاحظات',
@@ -791,7 +788,7 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
                 _SectionHeader(title: 'Attachments', color: scheme.primary),
                 NeuCard(
                   padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   child: FutureBuilder<List<Attachment>>(
                     future: _attachmentsFuture,
                     builder: (ctx, snap) {
@@ -820,7 +817,8 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
                                 color: kPrimaryColor.withValues(alpha: .10),
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
-                                    color: kPrimaryColor.withValues(alpha: .25)),
+                                    color:
+                                        kPrimaryColor.withValues(alpha: .25)),
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
@@ -835,7 +833,7 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
                                   const SizedBox(width: 6),
                                   ConstrainedBox(
                                     constraints:
-                                    const BoxConstraints(maxWidth: 220),
+                                        const BoxConstraints(maxWidth: 220),
                                     child: Text(
                                       a.fileName,
                                       overflow: TextOverflow.ellipsis,
@@ -915,16 +913,16 @@ class _SectionHeader extends StatelessWidget {
   const _SectionHeader({required this.title, required this.color});
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 8),
-    child: Text(
-      title,
-      style: TextStyle(
-        fontSize: 18,
-        fontWeight: FontWeight.w900,
-        color: color,
-      ),
-    ),
-  );
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Text(
+          title,
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w900,
+            color: color,
+          ),
+        ),
+      );
 }
 
 /*──────── عنصر معلومات داخل بطاقة ────────*/

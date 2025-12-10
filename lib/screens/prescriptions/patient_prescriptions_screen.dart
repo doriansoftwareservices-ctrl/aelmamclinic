@@ -200,7 +200,7 @@ class _PatientPrescriptionsScreenState
                                   final key = _makeKey(rep);
                                   final exp = _expandedKeys.contains(key);
                                   final repsList = _patientsByKey[key] ?? [rep];
-          final phoneRaw = rep.phoneNumber;
+                                  final phoneRaw = rep.phoneNumber;
                                   final phoneShown =
                                       Formatters.normalizePhone(phoneRaw)
                                               .isEmpty
@@ -367,8 +367,9 @@ class _PatientPrescriptionsScreenState
                                                                     BoxDecoration(
                                                                   color: scheme
                                                                       .primary
-                                                                      .withValues(alpha: 
-                                                                          .10),
+                                                                      .withValues(
+                                                                          alpha:
+                                                                              .10),
                                                                   borderRadius:
                                                                       BorderRadius
                                                                           .circular(

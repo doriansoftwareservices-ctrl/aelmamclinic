@@ -218,7 +218,8 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
     }
   }
 
-  Future<List<Doctor>> _getDoctorsForCurrentUser({bool forceSelection = false}) async {
+  Future<List<Doctor>> _getDoctorsForCurrentUser(
+      {bool forceSelection = false}) async {
     if (_cachedDoctors != null) return _cachedDoctors!;
 
     final doctors = await DBService.instance.getAllDoctors();
@@ -306,9 +307,9 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
                   decoration: const InputDecoration(labelText: 'نوع الصنف'),
                   items: _invTypes
                       .map((t) => DropdownMenuItem(
-                    value: t['id'] as int,
-                    child: Text(t['name'] as String),
-                  ))
+                            value: t['id'] as int,
+                            child: Text(t['name'] as String),
+                          ))
                       .toList(),
                   onChanged: (v) async {
                     dlgTypeId = v;
@@ -327,9 +328,9 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
                     decoration: const InputDecoration(labelText: 'اسم الصنف'),
                     items: dlgItems
                         .map((i) => DropdownMenuItem(
-                      value: i['id'] as int,
-                      child: Text(i['name'] as String),
-                    ))
+                              value: i['id'] as int,
+                              child: Text(i['name'] as String),
+                            ))
                         .toList(),
                     onChanged: (v) {
                       dlgItemId = v;
@@ -344,7 +345,7 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
                   TextField(
                     controller: qtyCtrl,
                     decoration:
-                    const InputDecoration(labelText: 'الكمية المستخدمة'),
+                        const InputDecoration(labelText: 'الكمية المستخدمة'),
                     keyboardType: TextInputType.number,
                   ),
               ],
@@ -398,13 +399,14 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
   }
 
   Widget _usageChip(Map<String, dynamic> u, {required bool isNew}) {
-    final label = '${u['typeName']} > ${u['itemName']} × ${u['quantity']}${isNew ? ' (جديد)' : ''}';
+    final label =
+        '${u['typeName']} > ${u['itemName']} × ${u['quantity']}${isNew ? ' (جديد)' : ''}';
     final deleted = _deletedUsageIds.contains(u['consId']);
     final bg = isNew
         ? kPrimaryColor.withValues(alpha: 0.10)
         : deleted
-        ? Colors.red.shade100
-        : null;
+            ? Colors.red.shade100
+            : null;
 
     return FilterChip(
       backgroundColor: bg,
@@ -434,14 +436,14 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
       setState(() {
         _newAttachments.addAll(
             res.files.where((pf) => pf.path != null).map((pf) => Attachment(
-              id: null,
-              patientId: widget.patient.id!,
-              fileName: pf.name,
-              filePath: pf.path!,
-              mimeType:
-              lookupMimeType(pf.path!) ?? 'application/octet-stream',
-              createdAt: DateTime.now(),
-            )));
+                  id: null,
+                  patientId: widget.patient.id!,
+                  fileName: pf.name,
+                  filePath: pf.path!,
+                  mimeType:
+                      lookupMimeType(pf.path!) ?? 'application/octet-stream',
+                  createdAt: DateTime.now(),
+                )));
       });
     }
   }
@@ -525,7 +527,7 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
 
   void _recalcTotals() {
     final total =
-    _selectedServices.fold<double>(0.0, (p, e) => p + e.serviceCost);
+        _selectedServices.fold<double>(0.0, (p, e) => p + e.serviceCost);
     _totalCtrl.text = total.toStringAsFixed(2);
 
     final paid = _parseDouble(_paidCtrl.text);
@@ -580,27 +582,27 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
                   child: filtered.isEmpty
                       ? const Center(child: Text('لا يوجد نتائج'))
                       : ListView.builder(
-                    itemCount: filtered.length,
-                    itemBuilder: (c, i) {
-                      final d = filtered[i];
-                      return NeuCard(
-                        margin: const EdgeInsets.symmetric(vertical: 4),
-                        onTap: () => Navigator.pop(ctx, d),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 8),
-                        child: ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: Text('د/${d.name}',
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w700)),
-                          subtitle: Text(d.specialization),
-                          trailing:
-                          const Icon(Icons.chevron_left_rounded),
-                          onTap: () => Navigator.pop(ctx, d),
+                          itemCount: filtered.length,
+                          itemBuilder: (c, i) {
+                            final d = filtered[i];
+                            return NeuCard(
+                              margin: const EdgeInsets.symmetric(vertical: 4),
+                              onTap: () => Navigator.pop(ctx, d),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 8),
+                              child: ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                title: Text('د/${d.name}',
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.w700)),
+                                subtitle: Text(d.specialization),
+                                trailing:
+                                    const Icon(Icons.chevron_left_rounded),
+                                onTap: () => Navigator.pop(ctx, d),
+                              ),
+                            );
+                          },
                         ),
-                      );
-                    },
-                  ),
                 ),
               ],
             ),
@@ -653,27 +655,27 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
                   child: filtered.isEmpty
                       ? const Center(child: Text('لا يوجد نتائج'))
                       : ListView.builder(
-                    itemCount: filtered.length,
-                    itemBuilder: (c, i) {
-                      final d = filtered[i];
-                      return NeuCard(
-                        margin: const EdgeInsets.symmetric(vertical: 4),
-                        onTap: () => Navigator.pop(ctx, d),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 8),
-                        child: ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: Text('د/${d.name}',
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w700)),
-                          subtitle: Text(d.specialization),
-                          trailing:
-                          const Icon(Icons.chevron_left_rounded),
-                          onTap: () => Navigator.pop(ctx, d),
+                          itemCount: filtered.length,
+                          itemBuilder: (c, i) {
+                            final d = filtered[i];
+                            return NeuCard(
+                              margin: const EdgeInsets.symmetric(vertical: 4),
+                              onTap: () => Navigator.pop(ctx, d),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 8),
+                              child: ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                title: Text('د/${d.name}',
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.w700)),
+                                subtitle: Text(d.specialization),
+                                trailing:
+                                    const Icon(Icons.chevron_left_rounded),
+                                onTap: () => Navigator.pop(ctx, d),
+                              ),
+                            );
+                          },
                         ),
-                      );
-                    },
-                  ),
                 ),
               ],
             ),
@@ -704,7 +706,7 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
       return;
     }
     final svcs =
-    await DBService.instance.getDoctorGeneralServices(_selectedDoctorId!);
+        await DBService.instance.getDoctorGeneralServices(_selectedDoctorId!);
     if (svcs.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('لا توجد خدمات عامة لهذا الطبيب')));
@@ -733,8 +735,8 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
                   onChanged: (v) => setDlg(() {
                     filteredServices = svcs
                         .where((s) => (s['name'] as String)
-                        .toLowerCase()
-                        .contains(v.toLowerCase()))
+                            .toLowerCase()
+                            .contains(v.toLowerCase()))
                         .toList();
                   }),
                 ),
@@ -743,28 +745,28 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
                   child: filteredServices.isEmpty
                       ? const Center(child: Text('لا توجد نتائج'))
                       : ListView.builder(
-                    itemCount: filteredServices.length,
-                    itemBuilder: (c, i) {
-                      final s = filteredServices[i];
-                      return NeuCard(
-                        margin: const EdgeInsets.symmetric(vertical: 4),
-                        onTap: () => Navigator.pop(ctx, s),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 8),
-                        child: ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(s['name'] as String,
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w700)),
-                          subtitle: Text(
-                              'السعر: ${(s['cost'] as num).toStringAsFixed(2)}'),
-                          trailing:
-                          const Icon(Icons.chevron_left_rounded),
-                          onTap: () => Navigator.pop(ctx, s),
+                          itemCount: filteredServices.length,
+                          itemBuilder: (c, i) {
+                            final s = filteredServices[i];
+                            return NeuCard(
+                              margin: const EdgeInsets.symmetric(vertical: 4),
+                              onTap: () => Navigator.pop(ctx, s),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 8),
+                              child: ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                title: Text(s['name'] as String,
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.w700)),
+                                subtitle: Text(
+                                    'السعر: ${(s['cost'] as num).toStringAsFixed(2)}'),
+                                trailing:
+                                    const Icon(Icons.chevron_left_rounded),
+                                onTap: () => Navigator.pop(ctx, s),
+                              ),
+                            );
+                          },
                         ),
-                      );
-                    },
-                  ),
                 ),
               ],
             ),
@@ -811,7 +813,7 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
     );
     if (d != null) {
       final t =
-      await showTimePicker(context: context, initialTime: _registerTime);
+          await showTimePicker(context: context, initialTime: _registerTime);
       if (t != null) {
         setState(() {
           _registerDate = d;
@@ -853,7 +855,7 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
     );
 
     final total =
-    _selectedServices.fold<double>(0.0, (p, e) => p + e.serviceCost);
+        _selectedServices.fold<double>(0.0, (p, e) => p + e.serviceCost);
     final paid = _parseDouble(_paidCtrl.text);
     double remain = _parseDouble(_remainingCtrl.text);
     if ((paid + remain - total).abs() > 0.01) {
@@ -883,7 +885,7 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
       for (final s in _selectedServices) {
         if (_selectedDoctorId != null && s.serviceId != null) {
           final rows =
-          await DBService.instance.getDoctorSharesForService(s.serviceId!);
+              await DBService.instance.getDoctorSharesForService(s.serviceId!);
           final match = findDoctorShareRow(rows, _selectedDoctorId!);
           if (match != null) {
             final pctDoc = (match['sharePercentage'] as num).toDouble();
@@ -898,7 +900,7 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
       for (final s in _selectedServices) {
         if (_selectedDoctorId != null && s.serviceId != null) {
           final rows =
-          await DBService.instance.getDoctorSharesForService(s.serviceId!);
+              await DBService.instance.getDoctorSharesForService(s.serviceId!);
           final match = findDoctorShareRow(rows, _selectedDoctorId!);
           if (match != null) {
             final pctTower =
@@ -1257,17 +1259,17 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
                             runSpacing: 6,
                             children: _selectedServices
                                 .map((ps) => Chip(
-                              backgroundColor:
-                              kPrimaryColor.withValues(alpha: .12),
-                              label: Text(
-                                  '${ps.serviceName} • ${ps.serviceCost.toStringAsFixed(2)}'),
-                              onDeleted: () {
-                                setState(() {
-                                  _selectedServices.remove(ps);
-                                  _recalcTotals();
-                                });
-                              },
-                            ))
+                                      backgroundColor:
+                                          kPrimaryColor.withValues(alpha: .12),
+                                      label: Text(
+                                          '${ps.serviceName} • ${ps.serviceCost.toStringAsFixed(2)}'),
+                                      onDeleted: () {
+                                        setState(() {
+                                          _selectedServices.remove(ps);
+                                          _recalcTotals();
+                                        });
+                                      },
+                                    ))
                                 .toList(),
                           ),
                           const SizedBox(height: 10),
@@ -1287,9 +1289,9 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         if (_existingUsages
-                            .where((u) =>
-                        !_deletedUsageIds.contains(u['consId']))
-                            .isNotEmpty ||
+                                .where((u) =>
+                                    !_deletedUsageIds.contains(u['consId']))
+                                .isNotEmpty ||
                             _newUsages.isNotEmpty) ...[
                           Wrap(
                             spacing: 8,
@@ -1297,7 +1299,7 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
                             children: [
                               ..._existingUsages
                                   .where((u) =>
-                              !_deletedUsageIds.contains(u['consId']))
+                                      !_deletedUsageIds.contains(u['consId']))
                                   .map((u) => _usageChip(u, isNew: false)),
                               ..._newUsages
                                   .map((u) => _usageChip(u, isNew: true)),
@@ -1337,12 +1339,12 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
                               children: all.map((a) {
                                 final isNew = _newAttachments.contains(a);
                                 final isDeleted =
-                                _deletedAttachments.contains(a);
+                                    _deletedAttachments.contains(a);
                                 final bg = isDeleted
                                     ? Colors.red.shade100
                                     : isNew
-                                    ? kPrimaryColor.withValues(alpha: .14)
-                                    : null;
+                                        ? kPrimaryColor.withValues(alpha: .14)
+                                        : null;
                                 return FilterChip(
                                   backgroundColor: bg,
                                   label: Text(a.fileName +
@@ -1507,7 +1509,7 @@ class _MiniTotalCard extends StatelessWidget {
               style: TextStyle(fontWeight: FontWeight.w800)),
           Text(totalText,
               style:
-              const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+                  const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
         ],
       ),
     );

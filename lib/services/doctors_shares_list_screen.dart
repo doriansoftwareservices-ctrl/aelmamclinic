@@ -191,7 +191,8 @@ class _DoctorsSharesListScreenState extends State<DoctorsSharesListScreen> {
                     doctor.specialization,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: scheme.onSurface.withValues(alpha: .75)),
+                    style: TextStyle(
+                        color: scheme.onSurface.withValues(alpha: .75)),
                   ),
                   trailing: const Icon(Icons.chevron_left_rounded),
                   onTap: () => _chooseServiceType(doctor),
@@ -494,7 +495,8 @@ class _DoctorSharesByTypeWidgetState extends State<DoctorSharesByTypeWidget> {
                                   const TextStyle(fontWeight: FontWeight.w900)),
                           Text('الخدمات ($_typeLabel)',
                               style: TextStyle(
-                                  color: scheme.onSurface.withValues(alpha: .75))),
+                                  color:
+                                      scheme.onSurface.withValues(alpha: .75))),
                         ],
                       ),
                     ),
@@ -525,8 +527,8 @@ class _DoctorSharesByTypeWidgetState extends State<DoctorSharesByTypeWidget> {
               Expanded(
                 child: Center(
                   child: Text('لا توجد خدمات ($_typeLabel) بعد',
-                      style:
-                          TextStyle(color: scheme.onSurface.withValues(alpha: .65))),
+                      style: TextStyle(
+                          color: scheme.onSurface.withValues(alpha: .65))),
                 ),
               )
             else

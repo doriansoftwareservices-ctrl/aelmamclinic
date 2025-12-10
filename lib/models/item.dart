@@ -29,7 +29,7 @@ class Item {
   final int typeId;
   final String name;
   final double price;
-  final int stock;            // المتوفر في المخزون
+  final int stock; // المتوفر في المخزون
   final DateTime createdAt;
 
   /* ─── حقول مزامنة اختيارية (لا تُحفَظ محليًا) ─── */
@@ -94,49 +94,49 @@ class Item {
 
   /// محليًا نستخدم snake_case (متوافق مع DBService).
   Map<String, dynamic> toMap() => {
-    'id': id,
-    'type_id': typeId,
-    'name': name,
-    'price': price,
-    'stock': stock,
-    'created_at': createdAt.toIso8601String(),
-  };
+        'id': id,
+        'type_id': typeId,
+        'name': name,
+        'price': price,
+        'stock': stock,
+        'created_at': createdAt.toIso8601String(),
+      };
 
   /// تمثيل مخصص للسحابة (snake_case) مع حقول المزامنة الاختيارية.
   /// ملاحظة: لا نرسل isDeleted/deletedAt هنا—تُدار من DBService عند الحاجة.
   Map<String, dynamic> toCloudMap() => {
-    'local_id': localId ?? id,
-    // تعقيم الحقول الفارغة حتى لا تُرسل كسلاسل فارغة
-    'account_id': (accountId?.trim().isEmpty ?? true) ? null : accountId,
-    'device_id': (deviceId?.trim().isEmpty ?? true) ? null : deviceId,
-    'type_id': typeId,
-    'name': name,
-    'price': price,
-    'stock': stock,
-    'created_at': createdAt.toIso8601String(),
-    'updated_at': updatedAt?.toIso8601String(),
-  }..removeWhere((k, v) => v == null);
+        'local_id': localId ?? id,
+        // تعقيم الحقول الفارغة حتى لا تُرسل كسلاسل فارغة
+        'account_id': (accountId?.trim().isEmpty ?? true) ? null : accountId,
+        'device_id': (deviceId?.trim().isEmpty ?? true) ? null : deviceId,
+        'type_id': typeId,
+        'name': name,
+        'price': price,
+        'stock': stock,
+        'created_at': createdAt.toIso8601String(),
+        'updated_at': updatedAt?.toIso8601String(),
+      }..removeWhere((k, v) => v == null);
 
   Map<String, dynamic> toJson() => toCloudMap();
 
   /// يدعم camelCase و snake_case (قادمة من Supabase أو من جداول محلية قديمة)
   factory Item.fromMap(Map<String, dynamic> map) => Item(
-    id: _toIntN(map['id']),
-    typeId: _toInt(map['type_id'] ?? map['typeId']),
-    name: _toStr(map['name']),
-    price: _toDouble(map['price']),
-    stock: _toInt(map['stock']),
-    createdAt: _toDate(map['created_at'] ?? map['createdAt']),
-    accountId: _toStrN(map['accountId'] ?? map['account_id']),
-    deviceId: _toStrN(map['deviceId'] ?? map['device_id']),
-    localId: map['localId'] is int
-        ? map['localId'] as int
-        : (map['local_id'] is int
-        ? map['local_id'] as int
-        : map['id'] as int?),
-    // updatedAt تصبح null إذا لم تُرسل من المصدر (لا نُسقِط عليها now)
-    updatedAt: _toDateN(map['updatedAt'] ?? map['updated_at']),
-  );
+        id: _toIntN(map['id']),
+        typeId: _toInt(map['type_id'] ?? map['typeId']),
+        name: _toStr(map['name']),
+        price: _toDouble(map['price']),
+        stock: _toInt(map['stock']),
+        createdAt: _toDate(map['created_at'] ?? map['createdAt']),
+        accountId: _toStrN(map['accountId'] ?? map['account_id']),
+        deviceId: _toStrN(map['deviceId'] ?? map['device_id']),
+        localId: map['localId'] is int
+            ? map['localId'] as int
+            : (map['local_id'] is int
+                ? map['local_id'] as int
+                : map['id'] as int?),
+        // updatedAt تصبح null إذا لم تُرسل من المصدر (لا نُسقِط عليها now)
+        updatedAt: _toDateN(map['updatedAt'] ?? map['updated_at']),
+      );
 
   /*──────────── JSON (snake_case) إن احتجته مباشرة للسحابة ────────────*/
   Map<String, dynamic> toJsonSnake() => toCloudMap();
@@ -173,30 +173,30 @@ class Item {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-          other is Item &&
-              runtimeType == other.runtimeType &&
-              id == other.id &&
-              typeId == other.typeId &&
-              name == other.name &&
-              price == other.price &&
-              stock == other.stock &&
-              createdAt == other.createdAt &&
-              accountId == other.accountId &&
-              deviceId == other.deviceId &&
-              localId == other.localId &&
-              updatedAt == other.updatedAt;
+      other is Item &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          typeId == other.typeId &&
+          name == other.name &&
+          price == other.price &&
+          stock == other.stock &&
+          createdAt == other.createdAt &&
+          accountId == other.accountId &&
+          deviceId == other.deviceId &&
+          localId == other.localId &&
+          updatedAt == other.updatedAt;
 
   @override
   int get hashCode => Object.hash(
-    id,
-    typeId,
-    name,
-    price,
-    stock,
-    createdAt,
-    accountId,
-    deviceId,
-    localId,
-    updatedAt,
-  );
+        id,
+        typeId,
+        name,
+        price,
+        stock,
+        createdAt,
+        accountId,
+        deviceId,
+        localId,
+        updatedAt,
+      );
 }

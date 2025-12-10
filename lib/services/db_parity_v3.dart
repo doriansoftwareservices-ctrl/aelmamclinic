@@ -55,10 +55,10 @@ class DBParityV3 {
 
   /// تنفيذ السكربت بمراحل آمنة (نستمر عند أخطاء غير حرجة مثل تكرار عمود/فهرس).
   Future<void> run(
-      Database db, {
-        String? accountId,
-        bool verbose = false,
-      }) async {
+    Database db, {
+    String? accountId,
+    bool verbose = false,
+  }) async {
     final sw = Stopwatch()..start();
     void log(Object msg) {
       if (verbose) print('[parity_v3] $msg');
@@ -69,7 +69,8 @@ class DBParityV3 {
     await _q(db, 'PRAGMA journal_mode = WAL');
     await _q(db, 'PRAGMA synchronous = NORMAL');
     await _q(db, 'PRAGMA busy_timeout = 5000');
-    await _q(db, 'PRAGMA recursive_triggers = OFF'); // نتجنب استدعاء التريجر لنفسه
+    await _q(
+        db, 'PRAGMA recursive_triggers = OFF'); // نتجنب استدعاء التريجر لنفسه
 
     // 1) sync_identity (توليد device_id إن لم يوجد) + كتابة account_id لو مرّرتَه
     await _ensureSyncIdentity(db, accountId: accountId, verbose: verbose);
@@ -119,7 +120,8 @@ class DBParityV3 {
     }
   }
 
-  Future<void> _execOn(DatabaseExecutor ex, String sql, [List<Object?>? args]) async {
+  Future<void> _execOn(DatabaseExecutor ex, String sql,
+      [List<Object?>? args]) async {
     try {
       await ex.execute(sql, args);
     } catch (_) {
@@ -128,10 +130,10 @@ class DBParityV3 {
   }
 
   Future<void> _ensureSyncIdentity(
-      Database db, {
-        String? accountId,
-        bool verbose = false,
-      }) async {
+    Database db, {
+    String? accountId,
+    bool verbose = false,
+  }) async {
     await _exec(db, '''
       CREATE TABLE IF NOT EXISTS sync_identity(
         account_id TEXT,
@@ -197,12 +199,14 @@ class DBParityV3 {
   /// - drugs: (account_id, lower(trim(name)))
   /// - items: (account_id, type_id, trim(name))
   /// يتم داخل معاملة: بناء فائز/خاسر → إعادة ربط المراجع → حذف الخاسرين → تنظيف الأسماء
-  Future<void> _mergeNaturalDuplicates(Database db, {bool verbose = false}) async {
+  Future<void> _mergeNaturalDuplicates(Database db,
+      {bool verbose = false}) async {
     await db.transaction((txn) async {
       // ===== DRUGS =====
       // 1) جدول بالفائزين (الأحدث بـ updated_at ثم الأعلى rowid)
       await _execOn(txn, 'DROP TABLE IF EXISTS tmp_drug_winners');
-      await _execOn(txn, 'CREATE TEMP TABLE tmp_drug_winners(id INTEGER PRIMARY KEY)');
+      await _execOn(
+          txn, 'CREATE TEMP TABLE tmp_drug_winners(id INTEGER PRIMARY KEY)');
       await _execOn(txn, '''
         INSERT OR IGNORE INTO tmp_drug_winners(id)
         SELECT d.id
@@ -218,7 +222,8 @@ class DBParityV3 {
 
       // 2) خريطة الخاسر ← الفائز
       await _execOn(txn, 'DROP TABLE IF EXISTS tmp_drug_map');
-      await _execOn(txn, 'CREATE TEMP TABLE tmp_drug_map(loser_id INTEGER PRIMARY KEY, winner_id INTEGER NOT NULL)');
+      await _execOn(txn,
+          'CREATE TEMP TABLE tmp_drug_map(loser_id INTEGER PRIMARY KEY, winner_id INTEGER NOT NULL)');
       await _execOn(txn, '''
         INSERT OR IGNORE INTO tmp_drug_map(loser_id, winner_id)
         SELECT d.id, w.id
@@ -238,14 +243,17 @@ class DBParityV3 {
       ''');
 
       // 4) حذف الخاسرين
-      await _execOn(txn, 'DELETE FROM drugs WHERE id IN (SELECT loser_id FROM tmp_drug_map)');
+      await _execOn(txn,
+          'DELETE FROM drugs WHERE id IN (SELECT loser_id FROM tmp_drug_map)');
 
       // 5) تنظيف الأسماء (TRIM) بعد الدمج
-      await _execOn(txn, "UPDATE drugs SET name = TRIM(name) WHERE name IS NOT NULL");
+      await _execOn(
+          txn, "UPDATE drugs SET name = TRIM(name) WHERE name IS NOT NULL");
 
       // ===== ITEMS =====
       await _execOn(txn, 'DROP TABLE IF EXISTS tmp_item_winners');
-      await _execOn(txn, 'CREATE TEMP TABLE tmp_item_winners(id INTEGER PRIMARY KEY)');
+      await _execOn(
+          txn, 'CREATE TEMP TABLE tmp_item_winners(id INTEGER PRIMARY KEY)');
       await _execOn(txn, '''
         INSERT OR IGNORE INTO tmp_item_winners(id)
         SELECT i.id
@@ -261,7 +269,8 @@ class DBParityV3 {
       ''');
 
       await _execOn(txn, 'DROP TABLE IF EXISTS tmp_item_map');
-      await _execOn(txn, 'CREATE TEMP TABLE tmp_item_map(loser_id INTEGER PRIMARY KEY, winner_id INTEGER NOT NULL)');
+      await _execOn(txn,
+          'CREATE TEMP TABLE tmp_item_map(loser_id INTEGER PRIMARY KEY, winner_id INTEGER NOT NULL)');
       await _execOn(txn, '''
         INSERT OR IGNORE INTO tmp_item_map(loser_id, winner_id)
         SELECT i.id, w.id
@@ -298,10 +307,12 @@ class DBParityV3 {
       ''');
 
       // حذف الخاسرين
-      await _execOn(txn, 'DELETE FROM items WHERE id IN (SELECT loser_id FROM tmp_item_map)');
+      await _execOn(txn,
+          'DELETE FROM items WHERE id IN (SELECT loser_id FROM tmp_item_map)');
 
       // تنظيف أسماء العناصر
-      await _execOn(txn, "UPDATE items SET name = TRIM(name) WHERE name IS NOT NULL");
+      await _execOn(
+          txn, "UPDATE items SET name = TRIM(name) WHERE name IS NOT NULL");
 
       // إسقاط الجداول المؤقتة (اختياري)
       await _execOn(txn, 'DROP TABLE IF EXISTS tmp_drug_winners');
@@ -311,7 +322,8 @@ class DBParityV3 {
     });
 
     if (verbose) {
-      print('[parity_v3] natural duplicates merged for drugs/items (with repoint)');
+      print(
+          '[parity_v3] natural duplicates merged for drugs/items (with repoint)');
     }
   }
 

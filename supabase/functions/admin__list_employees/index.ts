@@ -13,7 +13,29 @@ const ANON_KEY = Deno.env.get("ANON_KEY") ?? Deno.env.get("SUPABASE_ANON_KEY")!;
 const SERVICE_ROLE_KEY =
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SERVICE_ROLE_KEY") ?? "";
 if (!SERVICE_ROLE_KEY) throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY / SERVICE_ROLE_KEY env");
-const SUPER_ADMIN_EMAIL = (Deno.env.get("SUPER_ADMIN_EMAIL") ?? "admin@elmam.com").toLowerCase();
+function normalizeEmail(email?: string | null) {
+  return (email ?? "").trim().toLowerCase();
+}
+
+async function isSuperAdminUser(userId: string | null, email: string | null) {
+  const normalized = normalizeEmail(email);
+  if (!userId && !normalized) return false;
+
+  let query = service.from("super_admins").select("id").limit(1);
+  if (userId && normalized) {
+    query = query.or(`user_uid.eq.${userId},email.eq.${normalized}`);
+  } else if (userId) {
+    query = query.eq("user_uid", userId);
+  } else {
+    query = query.eq("email", normalized);
+  }
+
+  const { data, error } = await query.maybeSingle();
+  if (error && error.code !== "PGRST116") {
+    throw new Error(`[admin__list_employees] super_admins lookup failed: ${error.message}`);
+  }
+  return !!data;
+}
 
 type RpcEmployeeRow = {
   user_uid: string;
@@ -64,23 +86,15 @@ serve(async (req: Request): Promise<Response> => {
     const { data: me, error: meErr } = await authed.auth.getUser();
     if (meErr || !me?.user) return json({ ok: false, message: "unauthenticated" }, 401);
 
-    const email = (me.user.email ?? "").toLowerCase();
     let isSuper = false;
-    if (SUPER_ADMIN_EMAIL && email === SUPER_ADMIN_EMAIL) {
-      isSuper = true;
-    } else {
-      const { data: saRow, error: saError } = await admin
-        .from("super_admins")
-        .select("user_uid")
-        .eq("user_uid", me.user.id)
-        .maybeSingle();
-      if (saError) {
-        return json(
-          { ok: false, message: "super_admins lookup failed", details: saError.message },
-          500,
-        );
-      }
-      isSuper = !!saRow;
+    try {
+      isSuper = await isSuperAdminUser(me.user.id, me.user.email);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      return json(
+        { ok: false, message: "super_admins lookup failed", details: detail },
+        500,
+      );
     }
 
     let allowed = isSuper;

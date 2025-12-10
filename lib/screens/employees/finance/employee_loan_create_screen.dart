@@ -238,7 +238,8 @@ class _EmployeeLoanCreateScreenState extends State<EmployeeLoanCreateScreen> {
           Text(
             '$label: ',
             style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .7),
+              color:
+                  Theme.of(context).colorScheme.onSurface.withValues(alpha: .7),
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -457,7 +458,8 @@ class _InfoRow extends StatelessWidget {
         title: Text(
           label,
           style: TextStyle(
-            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .7),
+            color:
+                Theme.of(context).colorScheme.onSurface.withValues(alpha: .7),
             fontWeight: FontWeight.w700,
           ),
         ),

@@ -365,7 +365,8 @@ class _EmployeeDiscountCreateScreenState
                                               : 'طبيب (ID: $_doctorId)')
                                           : 'غير طبيب',
                                       style: TextStyle(
-                                        color: cs.onSurface.withValues(alpha: .7),
+                                        color:
+                                            cs.onSurface.withValues(alpha: .7),
                                         fontWeight: FontWeight.w600,
                                       ),
                                     ),

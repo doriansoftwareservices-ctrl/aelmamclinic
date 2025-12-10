@@ -109,6 +109,23 @@ class FeaturePermissions {
   }
 }
 
+class FeaturePermissionsFetchException implements Exception {
+  final String message;
+  final FeaturePermissions? fallback;
+  final Object? cause;
+  final StackTrace? stackTrace;
+
+  const FeaturePermissionsFetchException({
+    required this.message,
+    this.fallback,
+    this.cause,
+    this.stackTrace,
+  });
+
+  @override
+  String toString() => message;
+}
+
 /// نتيجة إنشاء مستخدم (مالك/موظف) عبر أدوات السوبر أدمن.
 class ProvisioningResult {
   final String? accountId;
@@ -152,8 +169,7 @@ class ProvisioningValidationException implements Exception {
         warnings = List<String>.unmodifiable(warnings ?? const []);
 
   @override
-  String toString() =>
-      'ProvisioningValidationException: ${errors.join("; ")}';
+  String toString() => 'ProvisioningValidationException: ${errors.join("; ")}';
 }
 
 class _ProvisioningSeed {
@@ -654,8 +670,8 @@ class AuthSupabaseService {
   void _recordProvisioningWarning(
     List<String> warnings,
     String message, {
-      Object? error,
-      StackTrace? stackTrace,
+    Object? error,
+    StackTrace? stackTrace,
   }) {
     warnings.add(message);
     dev.log('Provisioning warning: $message',
@@ -2165,6 +2181,7 @@ class AuthSupabaseService {
 
   Future<FeaturePermissions> fetchMyFeaturePermissions({
     required String accountId,
+    FeaturePermissions? fallback,
   }) async {
     if (isSuperAdmin) {
       // سوبر أدمن: كل شيء مسموح
@@ -2177,7 +2194,12 @@ class AuthSupabaseService {
       return FeaturePermissions.fromRpcPayload(res);
     } catch (e, st) {
       dev.log('fetchMyFeaturePermissions failed', error: e, stackTrace: st);
-      return FeaturePermissions.defaultsAllAllowed();
+      throw FeaturePermissionsFetchException(
+        message: 'my_feature_permissions RPC failed',
+        fallback: fallback,
+        cause: e,
+        stackTrace: st,
+      );
     }
   }
 

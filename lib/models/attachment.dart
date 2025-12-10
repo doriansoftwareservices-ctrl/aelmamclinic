@@ -75,13 +75,13 @@ class Attachment {
 
   /// تحويل النموذج إلى Map (للإدراج/التحديث في SQLite).
   Map<String, dynamic> toMap() => {
-    'id': id,
-    'patientId': patientId,
-    'fileName': fileName,
-    'filePath': filePath,
-    'mimeType': mimeType,
-    'createdAt': createdAt.toIso8601String(),
-  };
+        'id': id,
+        'patientId': patientId,
+        'fileName': fileName,
+        'filePath': filePath,
+        'mimeType': mimeType,
+        'createdAt': createdAt.toIso8601String(),
+      };
 
   /// إنشاء نموذج من Map (يدعم camelCase وsnake_case للتوافق/الهجرة فقط).
   factory Attachment.fromMap(Map<String, dynamic> map) {

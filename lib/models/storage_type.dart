@@ -64,12 +64,12 @@ class StorageTypeParser {
 
     final s = v?.toString().trim().toLowerCase();
     switch (s) {
-    // Local
+      // Local
       case 'local':
       case 'محلي':
         return StorageType.local;
 
-    // Google Drive (أشكال متعددة)
+      // Google Drive (أشكال متعددة)
       case 'googledrive':
       case 'google_drive':
       case 'google-drive':

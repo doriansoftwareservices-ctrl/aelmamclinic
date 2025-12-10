@@ -159,8 +159,8 @@ class _DoctorsPatientsScreenState extends State<DoctorsPatientsScreen> {
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
-                                          color:
-                                              scheme.onSurface.withValues(alpha: .65),
+                                          color: scheme.onSurface
+                                              .withValues(alpha: .65),
                                           fontWeight: FontWeight.w600,
                                           fontSize: 13.2,
                                         ),

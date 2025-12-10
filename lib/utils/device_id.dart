@@ -17,7 +17,11 @@ class DeviceId {
   DeviceId._();
 
   static const String _prefsKey = 'device_id';
-  static const List<String> _legacyKeys = <String>['deviceId', 'deviceID', 'app_device_id'];
+  static const List<String> _legacyKeys = <String>[
+    'deviceId',
+    'deviceID',
+    'app_device_id'
+  ];
 
   static String? _cached;
   static Future<String>? _inflight;
@@ -161,8 +165,8 @@ class DeviceId {
       return Random.secure();
     } catch (_) {
       final seed = DateTime.now().microsecondsSinceEpoch ^
-      base64Url.encode(utf8.encode(_stackHint())).hashCode ^
-      Random().nextInt(1 << 31);
+          base64Url.encode(utf8.encode(_stackHint())).hashCode ^
+          Random().nextInt(1 << 31);
       return Random(seed);
     }
   }

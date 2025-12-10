@@ -30,7 +30,7 @@ class Drug {
   ''';
 
   /*────────────────────────── الحقول (محلي) ─────────────────────────*/
-  final int? id;           // محلي فقط (AutoIncrement)
+  final int? id; // محلي فقط (AutoIncrement)
   final String name;
   final String? notes;
   final DateTime createdAt;
@@ -87,37 +87,37 @@ class Drug {
 
   /*──────────────────────── SQLite Map (محلي) ───────────────────────*/
   Map<String, dynamic> toMap() => {
-    'id': id,
-    'name': name,
-    'notes': notes,
-    'createdAt': createdAt.toIso8601String(),
-  };
+        'id': id,
+        'name': name,
+        'notes': notes,
+        'createdAt': createdAt.toIso8601String(),
+      };
 
   /*──────────────────────── Cloud Map (سحابة) ───────────────────────*/
   Map<String, dynamic> toCloudMap() => {
-    'local_id': localId ?? id,
-    'account_id': (accountId?.trim().isEmpty ?? true) ? null : accountId,
-    'device_id': (deviceId?.trim().isEmpty ?? true) ? null : deviceId,
-    'name': name,
-    'notes': notes,
-    'created_at': createdAt.toIso8601String(),
-    'updated_at': updatedAt?.toIso8601String(),
-  }..removeWhere((k, v) => v == null);
+        'local_id': localId ?? id,
+        'account_id': (accountId?.trim().isEmpty ?? true) ? null : accountId,
+        'device_id': (deviceId?.trim().isEmpty ?? true) ? null : deviceId,
+        'name': name,
+        'notes': notes,
+        'created_at': createdAt.toIso8601String(),
+        'updated_at': updatedAt?.toIso8601String(),
+      }..removeWhere((k, v) => v == null);
 
   /// JSON (snake_case) — مرادف لـ toCloudMap
   Map<String, dynamic> toJson() => toCloudMap();
 
   /// يدعم مفاتيح camelCase و snake_case (قادمة من Supabase أو محلية)
   factory Drug.fromMap(Map<String, dynamic> row) => Drug(
-    id: _toIntN(row['id']),
-    name: _toStr(row['name']),
-    notes: _toStrN(row['notes']),
-    createdAt: _toDate(row['createdAt'] ?? row['created_at']),
-    accountId: _toStrN(row['accountId'] ?? row['account_id']),
-    deviceId: _toStrN(row['deviceId'] ?? row['device_id']),
-    localId: _toIntN(row['localId'] ?? row['local_id'] ?? row['id']),
-    updatedAt: _toDateN(row['updatedAt'] ?? row['updated_at']),
-  );
+        id: _toIntN(row['id']),
+        name: _toStr(row['name']),
+        notes: _toStrN(row['notes']),
+        createdAt: _toDate(row['createdAt'] ?? row['created_at']),
+        accountId: _toStrN(row['accountId'] ?? row['account_id']),
+        deviceId: _toStrN(row['deviceId'] ?? row['device_id']),
+        localId: _toIntN(row['localId'] ?? row['local_id'] ?? row['id']),
+        updatedAt: _toDateN(row['updatedAt'] ?? row['updated_at']),
+      );
 
   factory Drug.fromJson(Map<String, dynamic> json) => Drug.fromMap(json);
 
@@ -146,23 +146,23 @@ class Drug {
   @override
   String toString() =>
       'Drug(id: $id, name: $name, notes: $notes, createdAt: $createdAt, '
-          'accountId: $accountId, deviceId: $deviceId, localId: $localId, updatedAt: $updatedAt)';
+      'accountId: $accountId, deviceId: $deviceId, localId: $localId, updatedAt: $updatedAt)';
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-          other is Drug &&
-              runtimeType == other.runtimeType &&
-              id == other.id &&
-              name == other.name &&
-              notes == other.notes &&
-              createdAt == other.createdAt &&
-              accountId == other.accountId &&
-              deviceId == other.deviceId &&
-              localId == other.localId &&
-              updatedAt == other.updatedAt;
+      other is Drug &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          name == other.name &&
+          notes == other.notes &&
+          createdAt == other.createdAt &&
+          accountId == other.accountId &&
+          deviceId == other.deviceId &&
+          localId == other.localId &&
+          updatedAt == other.updatedAt;
 
   @override
-  int get hashCode =>
-      Object.hash(id, name, notes, createdAt, accountId, deviceId, localId, updatedAt);
+  int get hashCode => Object.hash(
+      id, name, notes, createdAt, accountId, deviceId, localId, updatedAt);
 }

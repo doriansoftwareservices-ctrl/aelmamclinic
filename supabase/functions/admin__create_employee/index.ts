@@ -7,10 +7,33 @@ const ANON_KEY =
   Deno.env.get("ANON_KEY") ?? Deno.env.get("SUPABASE_ANON_KEY")!;
 const SERVICE_ROLE_KEY =
   Deno.env.get("SERVICE_ROLE_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const SUPER_ADMIN_EMAIL = (Deno.env.get("SUPER_ADMIN_EMAIL") ?? "").toLowerCase();
 const ADMIN_INTERNAL_TOKEN = Deno.env.get("ADMIN_INTERNAL_TOKEN") ?? "";
 
 const service = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+
+function normalizeEmail(email?: string | null) {
+  return (email ?? "").trim().toLowerCase();
+}
+
+async function isSuperAdminUser(userId: string | null, email: string | null) {
+  const normalized = normalizeEmail(email);
+  if (!userId && !normalized) return false;
+
+  let query = service.from("super_admins").select("id").limit(1);
+  if (userId && normalized) {
+    query = query.or(`user_uid.eq.${userId},email.eq.${normalized}`);
+  } else if (userId) {
+    query = query.eq("user_uid", userId);
+  } else {
+    query = query.eq("email", normalized);
+  }
+
+  const { data, error } = await query.maybeSingle();
+  if (error && error.code !== "PGRST116") {
+    throw new Error(`[admin__create_employee] super_admins lookup failed: ${error.message}`);
+  }
+  return !!data;
+}
 
 async function fetchUserByEmail(email: string) {
   try {
@@ -43,10 +66,8 @@ async function assertSuperAdmin(req: Request) {
   if (!auth?.toLowerCase().startsWith("bearer ")) throw new Response(null, { status: 401 });
   const anon = createClient(SUPABASE_URL, ANON_KEY, { global: { headers: { Authorization: auth } } });
   const { data } = await anon.auth.getUser();
-  const email = (data?.user?.email ?? "").toLowerCase();
-  if (email === SUPER_ADMIN_EMAIL) return;
-  const { data: sa } = await service.from("super_admins").select("user_uid").eq("user_uid", data?.user?.id ?? "").maybeSingle();
-  if (!sa) throw new Response(null, { status: 403 });
+  const isSuper = await isSuperAdminUser(data?.user?.id ?? null, data?.user?.email ?? null);
+  if (!isSuper) throw new Response(null, { status: 403 });
 }
 
 Deno.serve(async (req) => {

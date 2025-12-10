@@ -6,32 +6,32 @@ import 'package:aelmamclinic/models/chat_models.dart';
 
 /// دالة مساعدة لفتح الـ BottomSheet بسهولة — متوافقة مع ChatRoomScreen.
 Future<void> showMessageActionsSheet(
-    BuildContext context, {
-      required ChatMessage message,
-      required String myUid,
+  BuildContext context, {
+  required ChatMessage message,
+  required String myUid,
 
-      /// رد على الرسالة المختارة
-      void Function(ChatMessage msg)? onReply,
+  /// رد على الرسالة المختارة
+  void Function(ChatMessage msg)? onReply,
 
-      /// ذكر المرسل (@email) — يعتمد على senderEmail داخل الرسالة
-      void Function(ChatMessage msg)? onMention,
+  /// ذكر المرسل (@email) — يعتمد على senderEmail داخل الرسالة
+  void Function(ChatMessage msg)? onMention,
 
-      /// نسخ النص
-      void Function(ChatMessage msg)? onCopy,
+  /// نسخ النص
+  void Function(ChatMessage msg)? onCopy,
 
-      /// تعديل الرسالة (يجب احترام صلاحيات الوقت من الخارج)
-      Future<void> Function(ChatMessage msg)? onEdit,
+  /// تعديل الرسالة (يجب احترام صلاحيات الوقت من الخارج)
+  Future<void> Function(ChatMessage msg)? onEdit,
 
-      /// حذف للجميع (يجب احترام صلاحيات الوقت من الخارج)
-      Future<void> Function(ChatMessage msg)? onDelete,
+  /// حذف للجميع (يجب احترام صلاحيات الوقت من الخارج)
+  Future<void> Function(ChatMessage msg)? onDelete,
 
-      /// تفاعل (إيموجي)
-      void Function(ChatMessage msg, String emoji)? onReact,
+  /// تفاعل (إيموجي)
+  void Function(ChatMessage msg, String emoji)? onReact,
 
-      /// تمرير صلاحيات جاهزة (تتجاوز الحساب التلقائي)
-      bool? canEdit,
-      bool? canDelete,
-    }) {
+  /// تمرير صلاحيات جاهزة (تتجاوز الحساب التلقائي)
+  bool? canEdit,
+  bool? canDelete,
+}) {
   return showModalBottomSheet<void>(
     context: context,
     useSafeArea: true,
@@ -86,8 +86,8 @@ class MessageActionsSheet extends StatelessWidget {
 
   bool get _computedCanEdit =>
       message.senderUid == myUid &&
-          message.kind == ChatMessageKind.text &&
-          !message.deleted;
+      message.kind == ChatMessageKind.text &&
+      !message.deleted;
 
   bool get _computedCanDelete => message.senderUid == myUid && !message.deleted;
 

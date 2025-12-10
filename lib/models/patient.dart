@@ -59,17 +59,17 @@ class Patient {
   final double? serviceCost;
 
   /// حقول التوزيع
-  final double doctorShare;     // نسبة الطبيب
-  final double doctorInput;     // مدخلات الطبيب المباشرة
-  final double towerShare;      // حصة المركز/البرج
+  final double doctorShare; // نسبة الطبيب
+  final double doctorInput; // مدخلات الطبيب المباشرة
+  final double towerShare; // حصة المركز/البرج
   final double departmentShare; // حصة القسم الفني
   final bool doctorReviewPending; // يحتاج الطبيب إلى معاينة المريض
   final DateTime? doctorReviewedAt; // آخر وقت أكّد فيه الطبيب المقابلة
 
   /*────────────────────── حقول مزامنة اختيارية (سحابة) ─────────────────────*/
-  final String? accountId;  // Supabase → accounts.id
-  final String? deviceId;   // معرّف الجهاز
-  final int? localId;       // مرجع السجل المحلي عند الرفع (إن لم يُمرر نضع id المحلي)
+  final String? accountId; // Supabase → accounts.id
+  final String? deviceId; // معرّف الجهاز
+  final int? localId; // مرجع السجل المحلي عند الرفع (إن لم يُمرر نضع id المحلي)
   final DateTime? updatedAt;
 
   Patient({
@@ -152,108 +152,109 @@ class Patient {
 
   /*──────────── fromMap (يدعم camel/snake) ────────────*/
   factory Patient.fromMap(Map<String, dynamic> map) => Patient(
-    id: _toIntN(map['id']),
-    name: _toStr0(map['name']),
-    age: _toInt0(map['age']),
-    diagnosis: _toStr0(map['diagnosis']),
-    paidAmount: _toDouble0(map['paidAmount'] ?? map['paid_amount']),
-    remaining: _toDouble0(map['remaining']),
-    registerDate: _toDateSafe(map['registerDate'] ?? map['register_date']),
-    phoneNumber: _toStr0(map['phoneNumber'] ?? map['phone_number']),
-    healthStatus: _toStrN(map['healthStatus'] ?? map['health_status']),
-    preferences: _toStrN(map['preferences']),
-    doctorId: _toIntN(map['doctorId'] ?? map['doctor_id']),
-    doctorName: _toStrN(map['doctorName'] ?? map['doctor_name']),
-    doctorSpecialization:
-    _toStrN(map['doctorSpecialization'] ?? map['doctor_specialization']),
-    notes: _toStrN(map['notes']),
-    serviceType: _toStrN(map['serviceType'] ?? map['service_type']),
-    serviceId: _toIntN(map['serviceId'] ?? map['service_id']),
-    serviceName: _toStrN(map['serviceName'] ?? map['service_name']),
-    serviceCost: _toDoubleN(map['serviceCost'] ?? map['service_cost']),
-    doctorShare: _toDouble0(map['doctorShare'] ?? map['doctor_share']),
-    doctorInput: _toDouble0(map['doctorInput'] ?? map['doctor_input']),
-    towerShare: _toDouble0(map['towerShare'] ?? map['tower_share']),
-    departmentShare:
-    _toDouble0(map['departmentShare'] ?? map['department_share']),
-    doctorReviewPending: _toBool(
-      map['doctorReviewPending'] ?? map['doctor_review_pending'],
-    ),
-    doctorReviewedAt:
-        _toDateN(map['doctorReviewedAt'] ?? map['doctor_reviewed_at']),
-    // حقول المزامنة (camel + snake)
-    accountId: _toStrN(map['accountId'] ?? map['account_id']),
-    deviceId: _toStrN(map['deviceId'] ?? map['device_id']),
-    localId: _toIntN(map['localId'] ?? map['local_id'] ?? map['id']),
-    updatedAt: _toDateN(map['updatedAt'] ?? map['updated_at']),
-  );
+        id: _toIntN(map['id']),
+        name: _toStr0(map['name']),
+        age: _toInt0(map['age']),
+        diagnosis: _toStr0(map['diagnosis']),
+        paidAmount: _toDouble0(map['paidAmount'] ?? map['paid_amount']),
+        remaining: _toDouble0(map['remaining']),
+        registerDate: _toDateSafe(map['registerDate'] ?? map['register_date']),
+        phoneNumber: _toStr0(map['phoneNumber'] ?? map['phone_number']),
+        healthStatus: _toStrN(map['healthStatus'] ?? map['health_status']),
+        preferences: _toStrN(map['preferences']),
+        doctorId: _toIntN(map['doctorId'] ?? map['doctor_id']),
+        doctorName: _toStrN(map['doctorName'] ?? map['doctor_name']),
+        doctorSpecialization: _toStrN(
+            map['doctorSpecialization'] ?? map['doctor_specialization']),
+        notes: _toStrN(map['notes']),
+        serviceType: _toStrN(map['serviceType'] ?? map['service_type']),
+        serviceId: _toIntN(map['serviceId'] ?? map['service_id']),
+        serviceName: _toStrN(map['serviceName'] ?? map['service_name']),
+        serviceCost: _toDoubleN(map['serviceCost'] ?? map['service_cost']),
+        doctorShare: _toDouble0(map['doctorShare'] ?? map['doctor_share']),
+        doctorInput: _toDouble0(map['doctorInput'] ?? map['doctor_input']),
+        towerShare: _toDouble0(map['towerShare'] ?? map['tower_share']),
+        departmentShare:
+            _toDouble0(map['departmentShare'] ?? map['department_share']),
+        doctorReviewPending: _toBool(
+          map['doctorReviewPending'] ?? map['doctor_review_pending'],
+        ),
+        doctorReviewedAt:
+            _toDateN(map['doctorReviewedAt'] ?? map['doctor_reviewed_at']),
+        // حقول المزامنة (camel + snake)
+        accountId: _toStrN(map['accountId'] ?? map['account_id']),
+        deviceId: _toStrN(map['deviceId'] ?? map['device_id']),
+        localId: _toIntN(map['localId'] ?? map['local_id'] ?? map['id']),
+        updatedAt: _toDateN(map['updatedAt'] ?? map['updated_at']),
+      );
 
   factory Patient.fromJson(Map<String, dynamic> json) => Patient.fromMap(json);
 
-  factory Patient.fromSupabase(Map<String, dynamic> map) => Patient.fromMap(map);
+  factory Patient.fromSupabase(Map<String, dynamic> map) =>
+      Patient.fromMap(map);
 
   /*──────────── إلى Map (لـ SQLite؛ SyncService سيحوّل للسحابة) ────────────*/
   Map<String, dynamic> toMap() => {
-    'id': id,
-    'name': name,
-    'age': age,
-    'diagnosis': diagnosis,
-    'paidAmount': paidAmount,
-    'remaining': remaining,
-    'registerDate': registerDate.toIso8601String(),
-    'phoneNumber': phoneNumber,
-    'healthStatus': healthStatus,
-    'preferences': preferences,
-    'doctorId': doctorId,
-    'doctorName': doctorName,
-    'doctorSpecialization': doctorSpecialization,
-    'notes': notes,
-    'serviceType': serviceType,
-    'serviceId': serviceId,
-    'serviceName': serviceName,
-    'serviceCost': serviceCost,
-    'doctorShare': doctorShare,
-    'doctorInput': doctorInput,
-    'towerShare': towerShare,
-    'departmentShare': departmentShare,
-    'doctorReviewPending': doctorReviewPending ? 1 : 0,
-    'doctorReviewedAt': doctorReviewedAt?.toIso8601String(),
-  };
+        'id': id,
+        'name': name,
+        'age': age,
+        'diagnosis': diagnosis,
+        'paidAmount': paidAmount,
+        'remaining': remaining,
+        'registerDate': registerDate.toIso8601String(),
+        'phoneNumber': phoneNumber,
+        'healthStatus': healthStatus,
+        'preferences': preferences,
+        'doctorId': doctorId,
+        'doctorName': doctorName,
+        'doctorSpecialization': doctorSpecialization,
+        'notes': notes,
+        'serviceType': serviceType,
+        'serviceId': serviceId,
+        'serviceName': serviceName,
+        'serviceCost': serviceCost,
+        'doctorShare': doctorShare,
+        'doctorInput': doctorInput,
+        'towerShare': towerShare,
+        'departmentShare': departmentShare,
+        'doctorReviewPending': doctorReviewPending ? 1 : 0,
+        'doctorReviewedAt': doctorReviewedAt?.toIso8601String(),
+      };
 
   /*──────────── خريطة سحابية (snake_case) للمزامنة ────────────*/
   Map<String, dynamic> toCloudMap() => {
-    'local_id': localId ?? id,
-    // تعقيم السلاسل الفارغة/المسافات
-    'account_id': (accountId?.trim().isEmpty ?? true) ? null : accountId,
-    'device_id': (deviceId?.trim().isEmpty ?? true) ? null : deviceId,
-    'name': name,
-    'age': age,
-    'diagnosis': diagnosis,
-    'paid_amount': paidAmount,
-    'remaining': remaining,
-    'register_date': registerDate.toIso8601String(),
-    'phone_number': phoneNumber,
-    'health_status': healthStatus,
-    'preferences': preferences,
-    'doctor_id': doctorId,
-    'doctor_name': doctorName,
-    'doctor_specialization': doctorSpecialization,
-    'notes': notes,
-    'service_type': serviceType,
-    'service_id': serviceId,
-    'service_name': serviceName,
-    'service_cost': serviceCost,
-    'doctor_share': doctorShare,
-    'doctor_input': doctorInput,
-    'tower_share': towerShare,
-    'department_share': departmentShare,
-    'doctor_review_pending': doctorReviewPending,
-    'doctor_reviewed_at': doctorReviewedAt?.toIso8601String(),
-    // ملاحظة: `created_at` غير موجود في allow-list لكن لا يضر وجوده (سيُحذف)،
-    // تركناه متاحًا إن رغبت الاعتماد عليه لاحقًا.
-    'created_at': registerDate.toIso8601String(),
-    'updated_at': updatedAt?.toIso8601String(),
-  }..removeWhere((k, v) => v == null);
+        'local_id': localId ?? id,
+        // تعقيم السلاسل الفارغة/المسافات
+        'account_id': (accountId?.trim().isEmpty ?? true) ? null : accountId,
+        'device_id': (deviceId?.trim().isEmpty ?? true) ? null : deviceId,
+        'name': name,
+        'age': age,
+        'diagnosis': diagnosis,
+        'paid_amount': paidAmount,
+        'remaining': remaining,
+        'register_date': registerDate.toIso8601String(),
+        'phone_number': phoneNumber,
+        'health_status': healthStatus,
+        'preferences': preferences,
+        'doctor_id': doctorId,
+        'doctor_name': doctorName,
+        'doctor_specialization': doctorSpecialization,
+        'notes': notes,
+        'service_type': serviceType,
+        'service_id': serviceId,
+        'service_name': serviceName,
+        'service_cost': serviceCost,
+        'doctor_share': doctorShare,
+        'doctor_input': doctorInput,
+        'tower_share': towerShare,
+        'department_share': departmentShare,
+        'doctor_review_pending': doctorReviewPending,
+        'doctor_reviewed_at': doctorReviewedAt?.toIso8601String(),
+        // ملاحظة: `created_at` غير موجود في allow-list لكن لا يضر وجوده (سيُحذف)،
+        // تركناه متاحًا إن رغبت الاعتماد عليه لاحقًا.
+        'created_at': registerDate.toIso8601String(),
+        'updated_at': updatedAt?.toIso8601String(),
+      }..removeWhere((k, v) => v == null);
 
   /*──────────── JSON عام — نُعيد خريطة السحابة افتراضيًا ────────────*/
   Map<String, dynamic> toSupabase() => toCloudMap();
@@ -303,8 +304,7 @@ class Patient {
         preferences: preferences ?? this.preferences,
         doctorId: doctorId ?? this.doctorId,
         doctorName: doctorName ?? this.doctorName,
-        doctorSpecialization:
-        doctorSpecialization ?? this.doctorSpecialization,
+        doctorSpecialization: doctorSpecialization ?? this.doctorSpecialization,
         notes: notes ?? this.notes,
         serviceType: serviceType ?? this.serviceType,
         serviceId: serviceId ?? this.serviceId,
@@ -314,8 +314,7 @@ class Patient {
         doctorInput: doctorInput ?? this.doctorInput,
         towerShare: towerShare ?? this.towerShare,
         departmentShare: departmentShare ?? this.departmentShare,
-        doctorReviewPending:
-            doctorReviewPending ?? this.doctorReviewPending,
+        doctorReviewPending: doctorReviewPending ?? this.doctorReviewPending,
         doctorReviewedAt: doctorReviewedAt ?? this.doctorReviewedAt,
         accountId: accountId ?? this.accountId,
         deviceId: deviceId ?? this.deviceId,
@@ -326,73 +325,73 @@ class Patient {
   @override
   String toString() =>
       'Patient(id:$id, name:$name, age:$age, diagnosis:$diagnosis, paid:$paidAmount, '
-          'remaining:$remaining, registerDate:$registerDate, accountId:$accountId, '
-          'deviceId:$deviceId, localId:$localId, updatedAt:$updatedAt, '
-          'doctorReviewPending:$doctorReviewPending, doctorReviewedAt:$doctorReviewedAt)';
+      'remaining:$remaining, registerDate:$registerDate, accountId:$accountId, '
+      'deviceId:$deviceId, localId:$localId, updatedAt:$updatedAt, '
+      'doctorReviewPending:$doctorReviewPending, doctorReviewedAt:$doctorReviewedAt)';
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-          other is Patient &&
-              runtimeType == other.runtimeType &&
-              id == other.id &&
-              name == other.name &&
-              age == other.age &&
-              diagnosis == other.diagnosis &&
-              paidAmount == other.paidAmount &&
-              remaining == other.remaining &&
-              registerDate == other.registerDate &&
-              phoneNumber == other.phoneNumber &&
-              healthStatus == other.healthStatus &&
-              preferences == other.preferences &&
-              doctorId == other.doctorId &&
-              doctorName == other.doctorName &&
-              doctorSpecialization == other.doctorSpecialization &&
-              notes == other.notes &&
-              serviceType == other.serviceType &&
-              serviceId == other.serviceId &&
-              serviceName == other.serviceName &&
-              serviceCost == other.serviceCost &&
-              doctorShare == other.doctorShare &&
-              doctorInput == other.doctorInput &&
-              towerShare == other.towerShare &&
-              departmentShare == other.departmentShare &&
-              doctorReviewPending == other.doctorReviewPending &&
-              doctorReviewedAt == other.doctorReviewedAt &&
-              accountId == other.accountId &&
-              deviceId == other.deviceId &&
-              localId == other.localId &&
-              updatedAt == other.updatedAt;
+      other is Patient &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          name == other.name &&
+          age == other.age &&
+          diagnosis == other.diagnosis &&
+          paidAmount == other.paidAmount &&
+          remaining == other.remaining &&
+          registerDate == other.registerDate &&
+          phoneNumber == other.phoneNumber &&
+          healthStatus == other.healthStatus &&
+          preferences == other.preferences &&
+          doctorId == other.doctorId &&
+          doctorName == other.doctorName &&
+          doctorSpecialization == other.doctorSpecialization &&
+          notes == other.notes &&
+          serviceType == other.serviceType &&
+          serviceId == other.serviceId &&
+          serviceName == other.serviceName &&
+          serviceCost == other.serviceCost &&
+          doctorShare == other.doctorShare &&
+          doctorInput == other.doctorInput &&
+          towerShare == other.towerShare &&
+          departmentShare == other.departmentShare &&
+          doctorReviewPending == other.doctorReviewPending &&
+          doctorReviewedAt == other.doctorReviewedAt &&
+          accountId == other.accountId &&
+          deviceId == other.deviceId &&
+          localId == other.localId &&
+          updatedAt == other.updatedAt;
 
   @override
   int get hashCode => Object.hashAll([
-    id,
-    name,
-    age,
-    diagnosis,
-    paidAmount,
-    remaining,
-    registerDate,
-    phoneNumber,
-    healthStatus,
-    preferences,
-    doctorId,
-    doctorName,
-    doctorSpecialization,
-    notes,
-    serviceType,
-    serviceId,
-    serviceName,
-    serviceCost,
-    doctorShare,
-    doctorInput,
-    towerShare,
-    departmentShare,
-    doctorReviewPending,
-    doctorReviewedAt,
-    accountId,
-    deviceId,
-    localId,
-    updatedAt,
-  ]);
+        id,
+        name,
+        age,
+        diagnosis,
+        paidAmount,
+        remaining,
+        registerDate,
+        phoneNumber,
+        healthStatus,
+        preferences,
+        doctorId,
+        doctorName,
+        doctorSpecialization,
+        notes,
+        serviceType,
+        serviceId,
+        serviceName,
+        serviceCost,
+        doctorShare,
+        doctorInput,
+        towerShare,
+        departmentShare,
+        doctorReviewPending,
+        doctorReviewedAt,
+        accountId,
+        deviceId,
+        localId,
+        updatedAt,
+      ]);
 }

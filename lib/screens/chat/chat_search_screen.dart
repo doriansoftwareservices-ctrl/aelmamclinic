@@ -105,10 +105,10 @@ class _ChatSearchScreenState extends State<ChatSearchScreen> {
       var req = _sb
           .from('chat_messages')
           .select(
-        'id, conversation_id, sender_uid, sender_email, kind, body, text, edited, deleted, created_at',
-      )
+            'id, conversation_id, sender_uid, sender_email, kind, body, text, edited, deleted, created_at',
+          )
           .eq('conversation_id', widget.conversationId)
-      // ✅ توحيد فلترة deleted مع بقية الطبقات
+          // ✅ توحيد فلترة deleted مع بقية الطبقات
           .or('deleted.is.false,deleted.is.null');
 
       // فلتر النوع
@@ -247,7 +247,9 @@ class _ChatSearchScreenState extends State<ChatSearchScreen> {
                   child: Text(
                     count == 0
                         ? '0/0'
-                        : (_selected == -1 ? '— / $count' : '${_selected + 1} / $count'),
+                        : (_selected == -1
+                            ? '— / $count'
+                            : '${_selected + 1} / $count'),
                     style: const TextStyle(fontWeight: FontWeight.w800),
                   ),
                 ),
@@ -284,10 +286,12 @@ class _ChatSearchScreenState extends State<ChatSearchScreen> {
             const Divider(height: 1),
             Expanded(
               child: _loading
-                  ? const _CenterMsg(icon: Icons.search_rounded, text: 'جارٍ البحث...')
+                  ? const _CenterMsg(
+                      icon: Icons.search_rounded, text: 'جارٍ البحث...')
                   : _error != null
-                  ? _CenterMsg(icon: Icons.error_outline_rounded, text: _error!)
-                  : _buildResults(),
+                      ? _CenterMsg(
+                          icon: Icons.error_outline_rounded, text: _error!)
+                      : _buildResults(),
             ),
           ],
         ),
@@ -326,7 +330,7 @@ class _ChatSearchScreenState extends State<ChatSearchScreen> {
             : _resolveTextContent(m);
 
         final borderColor =
-        isSelected ? kPrimaryColor : Theme.of(context).dividerColor;
+            isSelected ? kPrimaryColor : Theme.of(context).dividerColor;
 
         return Padding(
           key: _resultKeys[i],
@@ -340,7 +344,8 @@ class _ChatSearchScreenState extends State<ChatSearchScreen> {
               ),
               child: ListTile(
                 onTap: () => _jumpToSelectedInRoom(i),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 leading: CircleAvatar(
                   radius: 20,
                   backgroundColor: kPrimaryColor.withValues(alpha: .08),
@@ -364,17 +369,23 @@ class _ChatSearchScreenState extends State<ChatSearchScreen> {
                             textDirection: ui.TextDirection.ltr,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
                               fontWeight: FontWeight.w700,
                               fontSize: 12,
                             ),
                           ),
                         ),
-                      if ((m.senderEmail ?? '').isNotEmpty) const SizedBox(width: 6),
+                      if ((m.senderEmail ?? '').isNotEmpty)
+                        const SizedBox(width: 6),
                       Text(
                         time,
                         style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .6),
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurface
+                              .withValues(alpha: .6),
                           fontWeight: FontWeight.w700,
                           fontSize: 11.5,
                         ),
@@ -639,7 +650,10 @@ class _CenterMsg extends StatelessWidget {
             Text(
               text,
               style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .7),
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: .7),
                 fontWeight: FontWeight.w800,
               ),
             ),

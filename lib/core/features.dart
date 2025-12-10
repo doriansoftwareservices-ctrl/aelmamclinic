@@ -24,20 +24,20 @@ import 'package:aelmamclinic/providers/auth_provider.dart';
 
 /// مفاتيح الميزات كما تُخزّن في account_feature_permissions.allowed_features
 class FeatureKeys {
-  static const String dashboard     = 'dashboard';
-  static const String patientNew    = 'patients.new';
-  static const String patientsList  = 'patients.list';
-  static const String returns       = 'returns';
-  static const String employees     = 'employees';
-  static const String payments      = 'payments';
-  static const String labRadiology  = 'lab_radiology';
-  static const String charts        = 'charts';
-  static const String repository    = 'repository';
+  static const String dashboard = 'dashboard';
+  static const String patientNew = 'patients.new';
+  static const String patientsList = 'patients.list';
+  static const String returns = 'returns';
+  static const String employees = 'employees';
+  static const String payments = 'payments';
+  static const String labRadiology = 'lab_radiology';
+  static const String charts = 'charts';
+  static const String repository = 'repository';
   static const String prescriptions = 'prescriptions';
-  static const String backup        = 'backup';
-  static const String accounts      = 'accounts'; // إدارة المستخدمين داخل الحساب
-  static const String chat          = 'chat';     // 🔹 ميزة الدردشة
-  static const String auditLogs     = 'audit.logs';
+  static const String backup = 'backup';
+  static const String accounts = 'accounts'; // إدارة المستخدمين داخل الحساب
+  static const String chat = 'chat'; // 🔹 ميزة الدردشة
+  static const String auditLogs = 'audit.logs';
   static const String auditPermissions = 'audit.permissions';
 
   static const List<String> all = [
@@ -65,12 +65,16 @@ class FeatureNeeds {
   final bool update;
   final bool delete;
 
-  const FeatureNeeds({this.create = false, this.update = false, this.delete = false});
+  const FeatureNeeds(
+      {this.create = false, this.update = false, this.delete = false});
 
   static const none = FeatureNeeds();
-  FeatureNeeds requireCreate() => FeatureNeeds(create: true, update: update, delete: delete);
-  FeatureNeeds requireUpdate() => FeatureNeeds(create: create, update: true, delete: delete);
-  FeatureNeeds requireDelete() => FeatureNeeds(create: create, update: update, delete: true);
+  FeatureNeeds requireCreate() =>
+      FeatureNeeds(create: true, update: update, delete: delete);
+  FeatureNeeds requireUpdate() =>
+      FeatureNeeds(create: create, update: true, delete: delete);
+  FeatureNeeds requireDelete() =>
+      FeatureNeeds(create: create, update: update, delete: true);
 }
 
 /// خيارات التصرف عند المنع
@@ -157,7 +161,8 @@ class FeatureAccess {
   bool allowed(String featureKey, {FeatureNeeds needs = FeatureNeeds.none}) {
     // تيسير التطوير: حذّر في debug عند استخدام مفتاح غير معرّف (لا يوقف التنفيذ)
     if (kDebugMode && !FeatureKeys.all.contains(featureKey)) {
-      debugPrint('[FeatureAccess] تحذير: featureKey="$featureKey" غير موجود في FeatureKeys.all');
+      debugPrint(
+          '[FeatureAccess] تحذير: featureKey="$featureKey" غير موجود في FeatureKeys.all');
     }
 
     if (isSuperAdmin) return true;
@@ -220,13 +225,13 @@ class FeatureGate extends StatelessWidget {
         // حالة التعطيل: نغلف العنصر بـ IgnorePointer وطبقة تلتقط النقر لعرض رسالة
         final wrapper = _DisabledWrapper(
           onTap: onDeniedTap ??
-                  () => ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('ليس لديك صلاحية للوصول إلى هذه الميزة'),
-                  behavior: SnackBarBehavior.floating,
-                  duration: Duration(seconds: 2),
-                ),
-              ),
+              () => ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('ليس لديك صلاحية للوصول إلى هذه الميزة'),
+                      behavior: SnackBarBehavior.floating,
+                      duration: Duration(seconds: 2),
+                    ),
+                  ),
           child: child,
         );
 
@@ -338,9 +343,9 @@ class _FeatureLoadingPlaceholder extends StatelessWidget {
 extension FeatureContextX on BuildContext {
   /// اختصار: هل الميزة مسموحة؟ مع متطلبات CRUD اختيارية
   bool featureAllowed(
-      String featureKey, {
-        FeatureNeeds needs = FeatureNeeds.none,
-      }) {
+    String featureKey, {
+    FeatureNeeds needs = FeatureNeeds.none,
+  }) {
     final auth = this.read<AuthProvider>();
     return FeatureAccess(auth).allowed(featureKey, needs: needs);
   }

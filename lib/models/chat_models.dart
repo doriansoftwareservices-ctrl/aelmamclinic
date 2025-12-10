@@ -302,7 +302,8 @@ class ChatAttachment {
       final bucket = map['bucket']?.toString();
       final path = map['path']?.toString();
       if (bucket != null && path != null) {
-        url = 'storage://$bucket/$path'; // Placeholder محلي، وسيتم توقيعه لاحقًا
+        url =
+            'storage://$bucket/$path'; // Placeholder محلي، وسيتم توقيعه لاحقًا
       } else {
         url = '';
       }
@@ -406,13 +407,14 @@ class ChatConversation {
     };
   }
 
-  factory ChatConversation.fromMap(Map<String, dynamic> map, {String? currentUid}) {
+  factory ChatConversation.fromMap(Map<String, dynamic> map,
+      {String? currentUid}) {
     final isGroupFlag = (map['is_group'] == true) ||
         (map['is_group']?.toString() == 'true') ||
         (map['is_group'] == 1);
 
-    final type =
-    ChatConversationTypeX.fromDb(map['type']?.toString(), isGroupFlag: isGroupFlag);
+    final type = ChatConversationTypeX.fromDb(map['type']?.toString(),
+        isGroupFlag: isGroupFlag);
 
     return ChatConversation(
       id: map['id']?.toString() ?? '',
@@ -423,8 +425,8 @@ class ChatConversation {
       createdAt: _parseDate(map['created_at']) ?? DateTime.now().toUtc(),
       updatedAt: _parseDate(map['updated_at']),
       lastMsgAt: _parseDate(map['last_msg_at'] ?? map['last_message_at']),
-      lastMsgSnippet:
-      map['last_msg_snippet']?.toString() ?? map['last_message_text']?.toString(),
+      lastMsgSnippet: map['last_msg_snippet']?.toString() ??
+          map['last_message_text']?.toString(),
       unreadCount: _toInt(map['unread_count']),
     );
   }
@@ -440,7 +442,8 @@ class ChatConversation {
 class ConversationListItem {
   final ChatConversation conversation;
   final ChatMessage? lastMessage;
-  final String displayTitle; // DM: بريد الطرف الآخر، Group: عنوان/مركّب من إيميلات
+  final String
+      displayTitle; // DM: بريد الطرف الآخر، Group: عنوان/مركّب من إيميلات
   final int unreadCount;
   final String? clinicLabel;
   final bool isMuted;
@@ -476,7 +479,8 @@ class ConversationListItem {
     );
   }
 
-  static String _computeDisplayTitle(ChatConversation c, List<String> memberEmails) {
+  static String _computeDisplayTitle(
+      ChatConversation c, List<String> memberEmails) {
     final t = (c.title ?? '').trim();
     if (t.isNotEmpty) return t;
     if (c.type == ChatConversationType.direct) {
@@ -545,8 +549,8 @@ class ConversationListItem {
 
     // display title
     final displayTitle = (m['display_title'] ??
-        m['displayTitle'] ??
-        _computeDisplayTitle(conv, memberEmails))
+            m['displayTitle'] ??
+            _computeDisplayTitle(conv, memberEmails))
         .toString();
 
     // unread
@@ -557,15 +561,17 @@ class ConversationListItem {
 
     final clinicLabel = (m['clinic_label'] ?? m['clinicLabel'])?.toString();
     final isMuted = _isTruthy(m['muted']);
-    final isOnline =
-    (m.containsKey('is_online') || m.containsKey('online')) ? _isTruthy(m['is_online'] ?? m['online']) : null;
+    final isOnline = (m.containsKey('is_online') || m.containsKey('online'))
+        ? _isTruthy(m['is_online'] ?? m['online'])
+        : null;
 
     return ConversationListItem(
       conversation: conv,
       lastMessage: last,
       displayTitle: displayTitle,
       unreadCount: unreadCount,
-      clinicLabel: (clinicLabel ?? '').trim().isEmpty ? null : clinicLabel!.trim(),
+      clinicLabel:
+          (clinicLabel ?? '').trim().isEmpty ? null : clinicLabel!.trim(),
       isMuted: isMuted,
       isOnline: isOnline,
     );
@@ -592,7 +598,8 @@ class ChatDeliveryReceipt {
         'delivered_at': _fmtDate(deliveredAt),
       };
 
-  factory ChatDeliveryReceipt.fromMap(Map<String, dynamic> map) => ChatDeliveryReceipt(
+  factory ChatDeliveryReceipt.fromMap(Map<String, dynamic> map) =>
+      ChatDeliveryReceipt(
         userUid: map['user_uid']?.toString() ?? '',
         deliveredAt: _parseDate(map['delivered_at']) ?? DateTime.now().toUtc(),
       );
@@ -668,7 +675,8 @@ class ChatMessage {
 
   bool get hasText => (body?.trim().isNotEmpty ?? false);
   bool get hasAttachments => attachments.isNotEmpty;
-  bool get hasReply => (replyToMessageId != null && replyToMessageId!.isNotEmpty);
+  bool get hasReply =>
+      (replyToMessageId != null && replyToMessageId!.isNotEmpty);
 
   ChatMessage copyWith({
     String? id,
@@ -732,7 +740,8 @@ class ChatMessage {
       'created_at': _fmtDate(createdAt),
       'edited_at': _fmtDate(editedAt),
       'deleted_at': _fmtDate(deletedAt),
-      if (attachments.isNotEmpty) 'attachments': attachments.map((e) => e.toMap()).toList(),
+      if (attachments.isNotEmpty)
+        'attachments': attachments.map((e) => e.toMap()).toList(),
       if (replyToMessageId != null) 'reply_to_message_id': replyToMessageId,
       if (replyToSnippet != null) 'reply_to_snippet': replyToSnippet,
       if (mentions != null) 'mentions': mentions!.map(_lc).toList(),
@@ -774,7 +783,8 @@ class ChatMessage {
       if (localSeq != null) 'local_id': localSeq,
 
       // تمرير الـ attachments كـ payload لفنكشن إدراج مركّبة إن وُجدت
-      if (attachments.isNotEmpty) 'attachments': attachments.map((e) => e.toMap()).toList(),
+      if (attachments.isNotEmpty)
+        'attachments': attachments.map((e) => e.toMap()).toList(),
       if (deliveryReceipts.isNotEmpty)
         'delivery_receipts': deliveryReceipts.map((e) => e.toMap()).toList(),
     };
@@ -788,11 +798,14 @@ class ChatMessage {
     List<ChatAttachment> atts = const [];
     final rawAtt = map['attachments'];
     if (rawAtt is List) {
-      atts =
-          rawAtt.whereType<Map<String, dynamic>>().map(ChatAttachment.fromMap).toList();
+      atts = rawAtt
+          .whereType<Map<String, dynamic>>()
+          .map(ChatAttachment.fromMap)
+          .toList();
     } else if (map['image_url'] != null) {
       atts = [
-        ChatAttachment(type: ChatAttachmentType.image, url: map['image_url'].toString()),
+        ChatAttachment(
+            type: ChatAttachmentType.image, url: map['image_url'].toString()),
       ];
     }
 
@@ -824,7 +837,8 @@ class ChatMessage {
       if (hasExternalReceipt &&
           status != ChatMessageStatus.read &&
           status != ChatMessageStatus.failed) {
-        if (status == ChatMessageStatus.sending || status == ChatMessageStatus.sent) {
+        if (status == ChatMessageStatus.sending ||
+            status == ChatMessageStatus.sent) {
           status = ChatMessageStatus.delivered;
         }
       }
@@ -843,8 +857,9 @@ class ChatMessage {
     }
 
     final localIdClient = map['local_id_client']?.toString();
-    final localIdStr =
-        map['local_id'] != null && map['local_id'] is String ? map['local_id'] as String : null;
+    final localIdStr = map['local_id'] != null && map['local_id'] is String
+        ? map['local_id'] as String
+        : null;
     final localSeq = _toInt(map['local_id']);
 
     List<String>? mentions;

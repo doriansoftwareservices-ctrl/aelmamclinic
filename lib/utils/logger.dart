@@ -24,46 +24,46 @@ class _AppLoggerCore {
   static bool enabled = kChatDebugLogs;
 
   static void d(
-      Object? msg, {
-        String tag = 'CHAT',
-        Object? data,
-      }) =>
+    Object? msg, {
+    String tag = 'CHAT',
+    Object? data,
+  }) =>
       _log(LogLevel.debug, msg, tag: tag, data: data);
 
   static void i(
-      Object? msg, {
-        String tag = 'CHAT',
-        Object? data,
-      }) =>
+    Object? msg, {
+    String tag = 'CHAT',
+    Object? data,
+  }) =>
       _log(LogLevel.info, msg, tag: tag, data: data);
 
   static void w(
-      Object? msg, {
-        String tag = 'CHAT',
-        Object? data,
-        StackTrace? st,
-      }) =>
+    Object? msg, {
+    String tag = 'CHAT',
+    Object? data,
+    StackTrace? st,
+  }) =>
       _log(LogLevel.warn, msg, tag: tag, data: data, st: st);
 
   static void e(
-      Object? msg, {
-        String tag = 'CHAT',
-        Object? error,
-        StackTrace? st,
-      }) =>
+    Object? msg, {
+    String tag = 'CHAT',
+    Object? error,
+    StackTrace? st,
+  }) =>
       _log(LogLevel.error, msg, tag: tag, error: error, st: st);
 
   static _LogSpan span(String name, {String tag = 'CHAT'}) =>
       _LogSpan._(name, tag);
 
   static void _log(
-      LogLevel level,
-      Object? msg, {
-        required String tag,
-        Object? data,
-        Object? error,
-        StackTrace? st,
-      }) {
+    LogLevel level,
+    Object? msg, {
+    required String tag,
+    Object? data,
+    Object? error,
+    StackTrace? st,
+  }) {
     final now = DateTime.now().toIso8601String();
     final lvl = switch (level) {
       LogLevel.debug => 'D',
@@ -100,11 +100,11 @@ class _AppLoggerCore {
   }
 
   static String _stringify(
-      Object? msg, {
-        Object? data,
-        Object? error,
-        StackTrace? st,
-      }) {
+    Object? msg, {
+    Object? data,
+    Object? error,
+    StackTrace? st,
+  }) {
     final b = StringBuffer()..write(msg ?? '');
     if (data != null) b.write(' | data=$data');
     if (error != null) b.write(' | error=$error');
@@ -131,12 +131,10 @@ class _LogFacade {
   void i(Object? msg, {String tag = 'CHAT', Object? data}) =>
       _AppLoggerCore.i(msg, tag: tag, data: data);
 
-  void w(Object? msg,
-      {String tag = 'CHAT', Object? data, StackTrace? st}) =>
+  void w(Object? msg, {String tag = 'CHAT', Object? data, StackTrace? st}) =>
       _AppLoggerCore.w(msg, tag: tag, data: data, st: st);
 
-  void e(Object? msg,
-      {String tag = 'CHAT', Object? error, StackTrace? st}) =>
+  void e(Object? msg, {String tag = 'CHAT', Object? error, StackTrace? st}) =>
       _AppLoggerCore.e(msg, tag: tag, error: error, st: st);
 
   /// Span بسيط لقياس مدة تنفيذ مهمة

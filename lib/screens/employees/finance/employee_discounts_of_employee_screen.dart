@@ -306,13 +306,15 @@ class _EmployeeDiscountsOfEmployeeScreenState
                                     const SizedBox(height: 120),
                                     Icon(Icons.inbox_rounded,
                                         size: 48,
-                                        color: cs.onSurface.withValues(alpha: .35)),
+                                        color: cs.onSurface
+                                            .withValues(alpha: .35)),
                                     const SizedBox(height: 10),
                                     Center(
                                       child: Text(
                                         'لا توجد خصومات',
                                         style: TextStyle(
-                                          color: cs.onSurface.withValues(alpha: .6),
+                                          color: cs.onSurface
+                                              .withValues(alpha: .6),
                                           fontWeight: FontWeight.w600,
                                         ),
                                       ),
@@ -343,8 +345,8 @@ class _EmployeeDiscountsOfEmployeeScreenState
                                           // شارة المبلغ
                                           Container(
                                             decoration: BoxDecoration(
-                                              color: kPrimaryColor
-                                                  .withValues(alpha: .10),
+                                              color: kPrimaryColor.withValues(
+                                                  alpha: .10),
                                               borderRadius:
                                                   BorderRadius.circular(14),
                                             ),
@@ -384,7 +386,8 @@ class _EmployeeDiscountsOfEmployeeScreenState
                                                               .format(dt),
                                                       style: TextStyle(
                                                         color: cs.onSurface
-                                                            .withValues(alpha: .65),
+                                                            .withValues(
+                                                                alpha: .65),
                                                         fontWeight:
                                                             FontWeight.w700,
                                                         fontSize: 12.5,
@@ -401,7 +404,8 @@ class _EmployeeDiscountsOfEmployeeScreenState
                                                         TextOverflow.ellipsis,
                                                     style: TextStyle(
                                                       color: cs.onSurface
-                                                          .withValues(alpha: .85),
+                                                          .withValues(
+                                                              alpha: .85),
                                                       fontWeight:
                                                           FontWeight.w600,
                                                     ),

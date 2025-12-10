@@ -89,9 +89,15 @@ class _TypingIndicatorState extends State<TypingIndicator>
     )..repeat();
 
     // 3 نقاط بمرحلة مختلفة عبر Intervals
-    _a1 = CurvedAnimation(parent: _ctrl, curve: const Interval(0.00, 0.66, curve: Curves.easeInOut));
-    _a2 = CurvedAnimation(parent: _ctrl, curve: const Interval(0.15, 0.81, curve: Curves.easeInOut));
-    _a3 = CurvedAnimation(parent: _ctrl, curve: const Interval(0.30, 0.96, curve: Curves.easeInOut));
+    _a1 = CurvedAnimation(
+        parent: _ctrl,
+        curve: const Interval(0.00, 0.66, curve: Curves.easeInOut));
+    _a2 = CurvedAnimation(
+        parent: _ctrl,
+        curve: const Interval(0.15, 0.81, curve: Curves.easeInOut));
+    _a3 = CurvedAnimation(
+        parent: _ctrl,
+        curve: const Interval(0.30, 0.96, curve: Curves.easeInOut));
   }
 
   @override
@@ -105,8 +111,10 @@ class _TypingIndicatorState extends State<TypingIndicator>
     // نستخدم AnimatedSwitcher + SizeTransition لظهور/اختفاء ناعم
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 180),
-      transitionBuilder: (child, anim) =>
-          SizeTransition(sizeFactor: anim, axisAlignment: -1, child: FadeTransition(opacity: anim, child: child)),
+      transitionBuilder: (child, anim) => SizeTransition(
+          sizeFactor: anim,
+          axisAlignment: -1,
+          child: FadeTransition(opacity: anim, child: child)),
       child: (!widget.visible || widget.items.isEmpty)
           ? const SizedBox.shrink(key: ValueKey('hidden'))
           : _buildVisible(context),
@@ -118,12 +126,13 @@ class _TypingIndicatorState extends State<TypingIndicator>
 
     final alignment = widget.alignAsMine
         ? AlignmentDirectional.centerStart // start=يمين في RTL
-        : AlignmentDirectional.centerEnd;  // end=يسار في RTL
+        : AlignmentDirectional.centerEnd; // end=يسار في RTL
 
     // النص المتولد أو المخصّص
-    final typingText = (widget.textOverride != null && widget.textOverride!.trim().isNotEmpty)
-        ? widget.textOverride!.trim()
-        : _composeTypingText(widget.items, widget.maxNamesToShow);
+    final typingText =
+        (widget.textOverride != null && widget.textOverride!.trim().isNotEmpty)
+            ? widget.textOverride!.trim()
+            : _composeTypingText(widget.items, widget.maxNamesToShow);
 
     final dotSize = widget.dotSize ?? (widget.compact ? 7.0 : 6.0);
 
@@ -132,52 +141,55 @@ class _TypingIndicatorState extends State<TypingIndicator>
       child: Align(
         alignment: alignment,
         child: Padding(
-          padding: widget.margin ?? const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+          padding: widget.margin ??
+              const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
           child: widget.compact
-          // في النمط المدمج: نقاط فقط + Semantics ليُنطق النص
+              // في النمط المدمج: نقاط فقط + Semantics ليُنطق النص
               ? Semantics(
-            label: typingText,
-            child: _DotsRow(a1: _a1, a2: _a2, a3: _a3, size: dotSize),
-          )
-          // في النمط الكامل: فقاعة + نص (NeuCard أو حاوية بسيطة)
+                  label: typingText,
+                  child: _DotsRow(a1: _a1, a2: _a2, a3: _a3, size: dotSize),
+                )
+              // في النمط الكامل: فقاعة + نص (NeuCard أو حاوية بسيطة)
               : (widget.glass
-              ? NeuCard(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: _RowContent(
-              a1: _a1,
-              a2: _a2,
-              a3: _a3,
-              size: dotSize,
-              text: typingText,
-              textStyle: widget.textStyle ??
-                  TextStyle(
-                    color: scheme.onSurface.withValues(alpha: .80),
-                    fontWeight: FontWeight.w800,
-                    fontSize: 13.5,
-                  ),
-            ),
-          )
-              : Container(
-            decoration: BoxDecoration(
-              color: scheme.surface.withValues(alpha: .6),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: scheme.outlineVariant),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: _RowContent(
-              a1: _a1,
-              a2: _a2,
-              a3: _a3,
-              size: dotSize,
-              text: typingText,
-              textStyle: widget.textStyle ??
-                  TextStyle(
-                    color: scheme.onSurface.withValues(alpha: .80),
-                    fontWeight: FontWeight.w800,
-                    fontSize: 13.5,
-                  ),
-            ),
-          )),
+                  ? NeuCard(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      child: _RowContent(
+                        a1: _a1,
+                        a2: _a2,
+                        a3: _a3,
+                        size: dotSize,
+                        text: typingText,
+                        textStyle: widget.textStyle ??
+                            TextStyle(
+                              color: scheme.onSurface.withValues(alpha: .80),
+                              fontWeight: FontWeight.w800,
+                              fontSize: 13.5,
+                            ),
+                      ),
+                    )
+                  : Container(
+                      decoration: BoxDecoration(
+                        color: scheme.surface.withValues(alpha: .6),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: scheme.outlineVariant),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      child: _RowContent(
+                        a1: _a1,
+                        a2: _a2,
+                        a3: _a3,
+                        size: dotSize,
+                        text: typingText,
+                        textStyle: widget.textStyle ??
+                            TextStyle(
+                              color: scheme.onSurface.withValues(alpha: .80),
+                              fontWeight: FontWeight.w800,
+                              fontSize: 13.5,
+                            ),
+                      ),
+                    )),
         ),
       ),
     );
@@ -268,7 +280,8 @@ class _RowContent extends StatelessWidget {
 class _DotsRow extends StatelessWidget {
   final Animation<double> a1, a2, a3;
   final double size;
-  const _DotsRow({required this.a1, required this.a2, required this.a3, this.size = 6});
+  const _DotsRow(
+      {required this.a1, required this.a2, required this.a3, this.size = 6});
 
   @override
   Widget build(BuildContext context) {

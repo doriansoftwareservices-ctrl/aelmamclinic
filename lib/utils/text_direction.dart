@@ -82,10 +82,10 @@ bool isPurelyNeutral(String s) {
 /// - إن كانت LTR فقط → LTR.
 /// - إن كان مختلطًا → يُفضَّل RTL لتطبيق عربي (إلا إن مررت defaultDirection=LTR).
 ui.TextDirection textDirectionFor(
-    String text, {
-      ui.TextDirection defaultDirection = ui.TextDirection.rtl,
-      bool treatEmailAndUrlAsLtr = true,
-    }) {
+  String text, {
+  ui.TextDirection defaultDirection = ui.TextDirection.rtl,
+  bool treatEmailAndUrlAsLtr = true,
+}) {
   final s = text.trim();
   if (s.isEmpty) return defaultDirection;
 
@@ -118,7 +118,9 @@ ui.TextDirection? firstStrongDirection(String text) {
 /// هذا مفيد عند تضمين إيميل (LTR) داخل واجهة RTL أو العكس.
 String bidiWrap(String text, ui.TextDirection direction) {
   if (text.isEmpty) return text;
-  return (direction == ui.TextDirection.ltr) ? '$_lri$text$_pdi' : '$_rli$text$_pdi';
+  return (direction == ui.TextDirection.ltr)
+      ? '$_lri$text$_pdi'
+      : '$_rli$text$_pdi';
 }
 
 /// يضمن عرض السلسلة LTR داخل سياق RTL (بوضع LRI…PDI).
@@ -130,10 +132,10 @@ String ensureRtl(String text) => bidiWrap(text, ui.TextDirection.rtl);
 /// يقرر الاتجاه ثم يلف النص تلقائيًا بعلامات العزل المناسبة.
 /// مفيد عند عرض نصوص قد تكون بريد/رابط/عربي… داخل عناصر RTL.
 String autoBidiWrap(
-    String text, {
-      ui.TextDirection defaultDirection = ui.TextDirection.rtl,
-      bool treatEmailAndUrlAsLtr = true,
-    }) {
+  String text, {
+  ui.TextDirection defaultDirection = ui.TextDirection.rtl,
+  bool treatEmailAndUrlAsLtr = true,
+}) {
   final dir = textDirectionFor(
     text,
     defaultDirection: defaultDirection,
@@ -156,7 +158,14 @@ ui.TextDirection ltrIfEmailOrLatinElseRtl(String text) {
 String stripBidiControls(String text) {
   if (text.isEmpty) return text;
   const controls = [
-    _lri, _rli, _pdi, _lrm, _rlm, _lre, _rle, _pdf,
+    _lri,
+    _rli,
+    _pdi,
+    _lrm,
+    _rlm,
+    _lre,
+    _rle,
+    _pdf,
   ];
   var out = text;
   for (final c in controls) {
@@ -168,10 +177,10 @@ String stripBidiControls(String text) {
 /// قطع نص طويل مع مراعاة اتجاه افتراضي عند التساوي.
 /// (أداة صغيرة بديلة لـ TextOverflow.ellipsis في غير الواجهات)
 String safeEllipsis(
-    String text,
-    int maxChars, {
-      ui.TextDirection? resolvedDirection,
-    }) {
+  String text,
+  int maxChars, {
+  ui.TextDirection? resolvedDirection,
+}) {
   if (text.length <= maxChars) return text;
   // يمكن لاحقًا استخدام علامة U+2026 (…) بدل الثلاث نقاط.
   return text.substring(0, maxChars).trimRight() + '…';

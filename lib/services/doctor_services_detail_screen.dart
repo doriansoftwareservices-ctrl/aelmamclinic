@@ -137,7 +137,7 @@ class _DoctorServicesDetailScreenState
 
     if (isEditMode) {
       final old = _doctorServices.firstWhere(
-            (e) => e['id'] == serviceId && e['shareId'] != null,
+        (e) => e['id'] == serviceId && e['shareId'] != null,
         orElse: () => {},
       );
       if (old.isNotEmpty) {
@@ -150,9 +150,9 @@ class _DoctorServicesDetailScreenState
 
     _serviceNameCtrl.text = initialName ?? '';
     _serviceCostCtrl.text =
-    initialCost != null ? initialCost.toStringAsFixed(2) : '';
+        initialCost != null ? initialCost.toStringAsFixed(2) : '';
     _towerShareCtrl.text =
-    initialTowerShare != null ? initialTowerShare.toStringAsFixed(2) : '';
+        initialTowerShare != null ? initialTowerShare.toStringAsFixed(2) : '';
 
     await showDialog(
       context: context,
@@ -174,7 +174,7 @@ class _DoctorServicesDetailScreenState
                   NeuField(
                     controller: _serviceCostCtrl,
                     keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
+                        const TextInputType.numberWithOptions(decimal: true),
                     labelText: 'مبلغ الخدمة',
                     prefix: const Icon(Icons.attach_money_rounded),
                     textDirection: TextDirection.ltr,
@@ -184,7 +184,7 @@ class _DoctorServicesDetailScreenState
                   NeuField(
                     controller: _towerShareCtrl,
                     keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
+                        const TextInputType.numberWithOptions(decimal: true),
                     labelText: 'نسبة المركز الطبي (%)',
                     prefix: const Icon(Icons.percent_rounded),
                     textDirection: TextDirection.ltr,
@@ -355,7 +355,7 @@ class _DoctorServicesDetailScreenState
           actions: [
             IconButton(
               tooltip:
-              _showHidden ? 'إخفاء العناصر المخفية' : 'عرض العناصر المخفية',
+                  _showHidden ? 'إخفاء العناصر المخفية' : 'عرض العناصر المخفية',
               icon: Icon(_showHidden
                   ? Icons.visibility_off_rounded
                   : Icons.visibility_rounded),
@@ -451,7 +451,7 @@ class _DoctorServicesDetailScreenState
                         final name = item['name'] as String;
                         final cost = (item['cost'] as num).toDouble();
                         final towerShare =
-                        (item['towerSharePercentage'] as num).toDouble();
+                            (item['towerSharePercentage'] as num).toDouble();
                         final hidden = (item['isHidden'] as int) == 1;
 
                         final badge = Container(
@@ -508,7 +508,7 @@ class _DoctorServicesDetailScreenState
                                           fontSize: 16,
                                           color: hidden
                                               ? scheme.onSurface
-                                              .withValues(alpha: .55)
+                                                  .withValues(alpha: .55)
                                               : scheme.onSurface,
                                         ),
                                       ),
@@ -533,7 +533,7 @@ class _DoctorServicesDetailScreenState
                                         icon: Icons.percent_rounded,
                                         label: 'نسبة المركز',
                                         value:
-                                        '${towerShare.toStringAsFixed(2)} %',
+                                            '${towerShare.toStringAsFixed(2)} %',
                                       ),
                                     ),
                                   ],

@@ -94,8 +94,8 @@ class _ChatComposerState extends State<ChatComposer> {
   void dispose() {
     _typingTimer?.cancel();
     // أرسل إشارة توقف الكتابة
-    unawaited(ChatService.instance
-        .pingTyping(widget.conversationId, typing: false));
+    unawaited(
+        ChatService.instance.pingTyping(widget.conversationId, typing: false));
     if (widget.controller == null) _ctrl.dispose();
     if (widget.focusNode == null) _focus.dispose();
     super.dispose();
@@ -117,8 +117,8 @@ class _ChatComposerState extends State<ChatComposer> {
     if (typing && !_typingActive) {
       _typingActive = true;
       context.read<ChatProvider>().setTyping(widget.conversationId, true);
-      unawaited(ChatService.instance
-          .pingTyping(widget.conversationId, typing: true));
+      unawaited(
+          ChatService.instance.pingTyping(widget.conversationId, typing: true));
     }
 
     // سنوقف الكتابة بعد 4 ثوانٍ من عدم النشاط
@@ -191,9 +191,9 @@ class _ChatComposerState extends State<ChatComposer> {
 
         try {
           await context.read<ChatProvider>().sendImages(
-            conversationId: widget.conversationId,
-            files: _images.map((e) => e.file).toList(),
-          );
+                conversationId: widget.conversationId,
+                files: _images.map((e) => e.file).toList(),
+              );
 
           // نجاح: أفرغ القائمة
           setState(() => _images.clear());
@@ -236,8 +236,10 @@ class _ChatComposerState extends State<ChatComposer> {
         child: Shortcuts(
           shortcuts: <LogicalKeySet, Intent>{
             // Ctrl/Cmd + Enter للإرسال على سطح المكتب
-            LogicalKeySet(LogicalKeyboardKey.enter, LogicalKeyboardKey.control): const _SendIntent(),
-            LogicalKeySet(LogicalKeyboardKey.enter, LogicalKeyboardKey.meta): const _SendIntent(),
+            LogicalKeySet(LogicalKeyboardKey.enter, LogicalKeyboardKey.control):
+                const _SendIntent(),
+            LogicalKeySet(LogicalKeyboardKey.enter, LogicalKeyboardKey.meta):
+                const _SendIntent(),
           },
           child: Actions(
             actions: <Type, Action<Intent>>{
@@ -255,8 +257,8 @@ class _ChatComposerState extends State<ChatComposer> {
                   // Reply preview (واجهة مبسّطة)
                   if ((widget.replyToSnippet ?? '').trim().isNotEmpty)
                     Padding(
-                      padding:
-                      const EdgeInsets.symmetric(horizontal: 10).copyWith(top: 6),
+                      padding: const EdgeInsets.symmetric(horizontal: 10)
+                          .copyWith(top: 6),
                       child: Row(
                         children: [
                           Expanded(
@@ -276,7 +278,8 @@ class _ChatComposerState extends State<ChatComposer> {
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
-                                  color: Theme.of(context).colorScheme.onSurface,
+                                  color:
+                                      Theme.of(context).colorScheme.onSurface,
                                   fontWeight: FontWeight.w800,
                                   fontSize: 12.5,
                                 ),
@@ -296,8 +299,8 @@ class _ChatComposerState extends State<ChatComposer> {
                   // Selected attachments preview
                   if (_images.isNotEmpty)
                     Padding(
-                      padding:
-                      const EdgeInsets.symmetric(horizontal: 8).copyWith(top: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 8)
+                          .copyWith(top: 8),
                       child: Align(
                         alignment: AlignmentDirectional.centerStart,
                         child: Wrap(
@@ -312,8 +315,8 @@ class _ChatComposerState extends State<ChatComposer> {
                                 onRemove: _sending
                                     ? null
                                     : () {
-                                  setState(() => _images.remove(p));
-                                },
+                                        setState(() => _images.remove(p));
+                                      },
                                 compact: true,
                               ),
                           ],
@@ -323,19 +326,20 @@ class _ChatComposerState extends State<ChatComposer> {
 
                   // Composer box
                   Padding(
-                    padding:
-                    const EdgeInsets.symmetric(horizontal: 8).copyWith(top: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 8)
+                        .copyWith(top: 8),
                     child: NeuCard(
-                      padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 8),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           // Attach
                           IconButton(
                             tooltip: 'إرفاق صورة',
-                            onPressed:
-                            (_sending || !widget.enableImages) ? null : _pickImages,
+                            onPressed: (_sending || !widget.enableImages)
+                                ? null
+                                : _pickImages,
                             icon: const Icon(Icons.photo_library_rounded),
                             color: scheme.onSurface.withValues(alpha: .85),
                           ),
@@ -350,9 +354,11 @@ class _ChatComposerState extends State<ChatComposer> {
                                   focusNode: _focus,
                                   maxLines: null,
                                   minLines: 1,
-                                  textCapitalization: TextCapitalization.sentences,
+                                  textCapitalization:
+                                      TextCapitalization.sentences,
                                   onChanged: _onChanged,
-                                  onTapOutside: (_) => _setTyping(false, immediate: true),
+                                  onTapOutside: (_) =>
+                                      _setTyping(false, immediate: true),
                                   textDirection: currentDir,
                                   textInputAction: TextInputAction.newline,
                                   decoration: InputDecoration(
@@ -360,7 +366,8 @@ class _ChatComposerState extends State<ChatComposer> {
                                     border: InputBorder.none,
                                     isDense: true,
                                     hintStyle: TextStyle(
-                                      color: scheme.onSurface.withValues(alpha: .45),
+                                      color: scheme.onSurface
+                                          .withValues(alpha: .45),
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),
@@ -431,18 +438,18 @@ class _SendButton extends StatelessWidget {
           elevation: enabled ? 1.5 : 0,
           padding: EdgeInsets.zero,
           shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
         child: sending
             ? SizedBox(
-          width: 18,
-          height: 18,
-          child: CircularProgressIndicator(
-            strokeWidth: 2.4,
-            valueColor: AlwaysStoppedAnimation<Color>(
-                enabled ? Colors.white : scheme.onSurfaceVariant),
-          ),
-        )
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.4,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                      enabled ? Colors.white : scheme.onSurfaceVariant),
+                ),
+              )
             : const Icon(Icons.send_rounded, size: 20),
       ),
     );

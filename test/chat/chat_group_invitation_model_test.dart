@@ -30,7 +30,9 @@ void main() {
       expect(inv.isGroup, isTrue);
     });
 
-    test('accepts legacy inviter/invitee columns and lowercases email on output', () {
+    test(
+        'accepts legacy inviter/invitee columns and lowercases email on output',
+        () {
       final createdAt = DateTime.parse('2025-11-07T01:02:03Z');
       final inv = ChatGroupInvitation.fromMap({
         'id': '2',

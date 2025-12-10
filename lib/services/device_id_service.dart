@@ -89,7 +89,8 @@ class DeviceIdService {
     if (Platform.isWindows) {
       // 0) مسار مخصّص عبر متغيّر بيئي AELMAM_DIR (إن وُجد)
       try {
-        final env = Platform.environment; // قد يرمي فقط على منصّات غير مدعومة، وهنا نحن على ويندوز.
+        final env = Platform
+            .environment; // قد يرمي فقط على منصّات غير مدعومة، وهنا نحن على ويندوز.
         final customRoot = env['AELMAM_DIR'] ?? env['AELMAM_CLINIC_DIR'];
         if (customRoot != null && customRoot.trim().isNotEmpty) {
           final d = Directory(customRoot.trim());

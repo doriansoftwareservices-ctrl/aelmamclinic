@@ -14,23 +14,23 @@ import 'chat_models.dart';
 
 export 'chat_models.dart'
     show
-    // الرسائل والمرفقات
-    ChatMessage,
-    ChatMessageKind,
-    ChatMessageKindX,
-    ChatMessageStatus,
-    ChatMessageStatusX,
-    ChatAttachment,
-    ChatAttachmentType,
-    ChatAttachmentTypeX,
-    // المحادثات ونوعها + عنصر القائمة
-    ChatConversation,
-    ChatConversationType,
-    ChatConversationTypeX,
-    ConversationListItem,
-    // كيانات إضافية شائعة
-    ChatParticipant,
-    ChatReadState;
+        // الرسائل والمرفقات
+        ChatMessage,
+        ChatMessageKind,
+        ChatMessageKindX,
+        ChatMessageStatus,
+        ChatMessageStatusX,
+        ChatAttachment,
+        ChatAttachmentType,
+        ChatAttachmentTypeX,
+        // المحادثات ونوعها + عنصر القائمة
+        ChatConversation,
+        ChatConversationType,
+        ChatConversationTypeX,
+        ConversationListItem,
+        // كيانات إضافية شائعة
+        ChatParticipant,
+        ChatReadState;
 
 // توافق قديم: اسم الحالة القديم كان ChatDeliveryStatus.
 // نخليه alias لـ ChatMessageStatus حتى يشتغل أي كود قديم بدون تعديل.
@@ -42,14 +42,15 @@ extension ChatMessageCompatX on ChatMessage {
   bool get isImage => kind == ChatMessageKind.image;
 
   // دعم واجهة قديمة:
-  bool get isFile => kind == ChatMessageKind.file; // كان false دائمًا، صححناه حسب النوع
+  bool get isFile =>
+      kind == ChatMessageKind.file; // كان false دائمًا، صححناه حسب النوع
   bool get isSystem => false; // لا يوجد نوع system لدينا
 
   /// أول مرفق صورة (إن وُجد) وإلا نرجع عنصرًا افتراضيًا.
   ChatAttachment get firstImageAttachment => attachments.firstWhere(
         (a) => a.isImage,
-    orElse: () => const ChatAttachment.empty(),
-  );
+        orElse: () => const ChatAttachment.empty(),
+      );
 
   /// هل توجد صورة قابلة للعرض داخل الفقاعة؟
   bool get hasDisplayableImage => attachments.any((a) => a.isImage) || isImage;

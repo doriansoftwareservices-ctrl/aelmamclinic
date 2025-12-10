@@ -20,7 +20,8 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui show TextDirection;
 
-import 'package:flutter/foundation.dart' show consolidateHttpClientResponseBytes;
+import 'package:flutter/foundation.dart'
+    show consolidateHttpClientResponseBytes;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -68,17 +69,17 @@ class ImageViewerScreen extends StatefulWidget {
     this.caption,
     this.heroTag,
   }) : assert(items.length > 0 || imageUrl != null,
-  'مرّر items غير فارغة أو imageUrl واحدة على الأقل');
+            'مرّر items غير فارغة أو imageUrl واحدة على الأقل');
 
   /// مساعد فتح الشاشة (قائمة)
   static Future<void> push(
-      BuildContext context, {
-        required List<ImageViewerItem> items,
-        int initialIndex = 0,
-        void Function(int, ImageViewerItem)? onDelete,
-        void Function(int, ImageViewerItem)? onShare,
-        void Function(int, ImageViewerItem)? onSave,
-      }) {
+    BuildContext context, {
+    required List<ImageViewerItem> items,
+    int initialIndex = 0,
+    void Function(int, ImageViewerItem)? onDelete,
+    void Function(int, ImageViewerItem)? onShare,
+    void Function(int, ImageViewerItem)? onSave,
+  }) {
     return Navigator.of(context).push(
       PageRouteBuilder(
         opaque: true,
@@ -98,14 +99,14 @@ class ImageViewerScreen extends StatefulWidget {
 
   /// مساعد فتح الشاشة (صورة واحدة — توافقًا خلفيًا)
   static Future<void> pushSingle(
-      BuildContext context, {
-        required String imageUrl,
-        String? caption,
-        String? heroTag,
-        void Function(int, ImageViewerItem)? onDelete,
-        void Function(int, ImageViewerItem)? onShare,
-        void Function(int, ImageViewerItem)? onSave,
-      }) {
+    BuildContext context, {
+    required String imageUrl,
+    String? caption,
+    String? heroTag,
+    void Function(int, ImageViewerItem)? onDelete,
+    void Function(int, ImageViewerItem)? onShare,
+    void Function(int, ImageViewerItem)? onSave,
+  }) {
     return Navigator.of(context).push(
       PageRouteBuilder(
         opaque: true,
@@ -155,20 +156,20 @@ class _ImageViewerScreenState extends State<ImageViewerScreen>
     _items = widget.items.isNotEmpty
         ? widget.items
         : [
-      ImageViewerItem(
-        url: widget.imageUrl!,
-        caption: widget.caption,
-        heroTag: widget.heroTag ?? widget.imageUrl,
-      )
-    ];
+            ImageViewerItem(
+              url: widget.imageUrl!,
+              caption: widget.caption,
+              heroTag: widget.heroTag ?? widget.imageUrl,
+            )
+          ];
 
     _index = widget.initialIndex.clamp(0, _items.length - 1);
     _pageController = PageController(initialPage: _index);
     _controllers =
         List.generate(_items.length, (_) => TransformationController());
 
-    _springCtrl =
-        AnimationController(vsync: this, duration: const Duration(milliseconds: 220));
+    _springCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 220));
     _springAnim =
         CurvedAnimation(parent: _springCtrl, curve: Curves.easeOutCubic);
 
@@ -262,12 +263,13 @@ class _ImageViewerScreenState extends State<ImageViewerScreen>
     // ارجع للصفر بسلاسة
     final start = _dragOffsetY;
     _springCtrl.reset();
-    _springAnim = CurvedAnimation(parent: _springCtrl, curve: Curves.easeOutCubic)
-      ..addListener(() {
-        setState(() {
-          _dragOffsetY = start * (1 - _springAnim.value);
-        });
-      });
+    _springAnim =
+        CurvedAnimation(parent: _springCtrl, curve: Curves.easeOutCubic)
+          ..addListener(() {
+            setState(() {
+              _dragOffsetY = start * (1 - _springAnim.value);
+            });
+          });
     _springCtrl.forward();
   }
 
@@ -354,53 +356,53 @@ class _ImageViewerScreenState extends State<ImageViewerScreen>
 
                 final image = isLocal && localPath != null
                     ? Image.file(
-                  File(localPath),
-                  fit: BoxFit.contain,
-                  gaplessPlayback: true,
-                  errorBuilder: (_, __, ___) => const Icon(
-                    Icons.broken_image_rounded,
-                    color: Colors.white54,
-                    size: 64,
-                  ),
-                )
-                    : Image.network(
-                  it.url,
-                  fit: BoxFit.contain,
-                  gaplessPlayback: true,
-                  // مؤشر تحميل مع نسبة مئوية إن أمكن
-                  loadingBuilder: (_, child, progress) {
-                    if (progress == null) return child;
-                    final total = progress.expectedTotalBytes ?? 0;
-                    final loaded = progress.cumulativeBytesLoaded;
-                    final v = total > 0 ? loaded / total : null;
-                    return Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        const SizedBox(
-                          width: 56,
-                          height: 56,
-                          child: CircularProgressIndicator(),
+                        File(localPath),
+                        fit: BoxFit.contain,
+                        gaplessPlayback: true,
+                        errorBuilder: (_, __, ___) => const Icon(
+                          Icons.broken_image_rounded,
+                          color: Colors.white54,
+                          size: 64,
                         ),
-                        if (v != null)
-                          Positioned(
-                            bottom: 40,
-                            child: Text(
-                              '${(v * 100).clamp(0, 100).toStringAsFixed(0)}%',
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontWeight: FontWeight.w800,
+                      )
+                    : Image.network(
+                        it.url,
+                        fit: BoxFit.contain,
+                        gaplessPlayback: true,
+                        // مؤشر تحميل مع نسبة مئوية إن أمكن
+                        loadingBuilder: (_, child, progress) {
+                          if (progress == null) return child;
+                          final total = progress.expectedTotalBytes ?? 0;
+                          final loaded = progress.cumulativeBytesLoaded;
+                          final v = total > 0 ? loaded / total : null;
+                          return Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              const SizedBox(
+                                width: 56,
+                                height: 56,
+                                child: CircularProgressIndicator(),
                               ),
-                            ),
-                          ),
-                      ],
-                    );
-                  },
-                  errorBuilder: (_, __, ___) => const Icon(
-                    Icons.broken_image_rounded,
-                    color: Colors.white54,
-                    size: 64,
-                  ),
-                );
+                              if (v != null)
+                                Positioned(
+                                  bottom: 40,
+                                  child: Text(
+                                    '${(v * 100).clamp(0, 100).toStringAsFixed(0)}%',
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          );
+                        },
+                        errorBuilder: (_, __, ___) => const Icon(
+                          Icons.broken_image_rounded,
+                          color: Colors.white54,
+                          size: 64,
+                        ),
+                      );
 
                 final viewer = InteractiveViewer(
                   transformationController: _controllers[i],
@@ -419,7 +421,8 @@ class _ImageViewerScreenState extends State<ImageViewerScreen>
                   onDoubleTapDown: _onDoubleTapDown,
                   onDoubleTap: () {}, // الفعل يتم في onDoubleTapDown
                   onVerticalDragStart: isCurrent ? _onVerticalDragStart : null,
-                  onVerticalDragUpdate: isCurrent ? _onVerticalDragUpdate : null,
+                  onVerticalDragUpdate:
+                      isCurrent ? _onVerticalDragUpdate : null,
                   onVerticalDragEnd: isCurrent ? _onVerticalDragEnd : null,
                   child: Center(
                     child: Hero(
@@ -536,7 +539,8 @@ class _ImageViewerScreenState extends State<ImageViewerScreen>
                       if (p == null || !File(p).existsSync()) {
                         if (!mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('تعذر الوصول للملف المحلي.')),
+                          const SnackBar(
+                              content: Text('تعذر الوصول للملف المحلي.')),
                         );
                         return;
                       }
@@ -586,7 +590,9 @@ class _ImageViewerScreenState extends State<ImageViewerScreen>
       }
       final filePath = _uniquePath(
         dirPath,
-        suggestedName ?? _fileNameFromAny(url) ?? 'image_${DateTime.now().millisecondsSinceEpoch}.jpg',
+        suggestedName ??
+            _fileNameFromAny(url) ??
+            'image_${DateTime.now().millisecondsSinceEpoch}.jpg',
       );
       final f = File(filePath);
       await f.create(recursive: true);
@@ -604,7 +610,8 @@ class _ImageViewerScreenState extends State<ImageViewerScreen>
     }
   }
 
-  Future<void> _copyLocalToDownloads(String srcPath, {String? suggestedName}) async {
+  Future<void> _copyLocalToDownloads(String srcPath,
+      {String? suggestedName}) async {
     _showProgress();
     try {
       final dirPath = await _resolveDownloadsDir();
@@ -613,7 +620,9 @@ class _ImageViewerScreenState extends State<ImageViewerScreen>
       }
       final filePath = _uniquePath(
         dirPath,
-        suggestedName ?? _fileNameFromAny(srcPath) ?? 'image_${DateTime.now().millisecondsSinceEpoch}.jpg',
+        suggestedName ??
+            _fileNameFromAny(srcPath) ??
+            'image_${DateTime.now().millisecondsSinceEpoch}.jpg',
       );
       await File(srcPath).copy(filePath);
       if (!mounted) return;
@@ -817,7 +826,7 @@ class _CaptionBar extends StatelessWidget {
       child: Text(
         text,
         textDirection:
-        _looksLtr(text) ? ui.TextDirection.ltr : ui.TextDirection.rtl,
+            _looksLtr(text) ? ui.TextDirection.ltr : ui.TextDirection.rtl,
         style: const TextStyle(
           color: Colors.white,
           fontWeight: FontWeight.w700,

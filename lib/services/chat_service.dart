@@ -137,7 +137,7 @@ class ChatService {
   }
 
   Future<({String? accountId, String? role, String? email, String? deviceId})>
-  _myAccountRow() async {
+      _myAccountRow() async {
     final u = _sb.auth.currentUser;
     if (u == null) {
       return (accountId: null, role: null, email: null, deviceId: null);
@@ -228,9 +228,8 @@ class ChatService {
       } catch (_) {}
       // 2) fallback: createSignedUrl من Storage
       try {
-        final s = await _sb.storage
-            .from(bucket)
-            .createSignedUrl(path, _signedUrlTTL);
+        final s =
+            await _sb.storage.from(bucket).createSignedUrl(path, _signedUrlTTL);
         if (s.trim().isNotEmpty) return s;
       } catch (_) {}
     }
@@ -245,9 +244,8 @@ class ChatService {
 
   String _friendlyFileName(File file, {String fallback = 'file'}) {
     try {
-      final uriName = file.uri.pathSegments.isNotEmpty
-          ? file.uri.pathSegments.last
-          : null;
+      final uriName =
+          file.uri.pathSegments.isNotEmpty ? file.uri.pathSegments.last : null;
       final pathName = p.basename(file.path);
       final candidate = (uriName ?? pathName).trim();
       return _safeFileName(candidate.isEmpty ? fallback : candidate);
@@ -344,13 +342,10 @@ class ChatService {
     required String snippet,
   }) async {
     try {
-      await _sb
-          .from(_tblConvs)
-          .update({
-            'last_msg_at': lastAt.toUtc().toIso8601String(),
-            'last_msg_snippet': snippet,
-          })
-          .eq('id', conversationId);
+      await _sb.from(_tblConvs).update({
+        'last_msg_at': lastAt.toUtc().toIso8601String(),
+        'last_msg_snippet': snippet,
+      }).eq('id', conversationId);
     } catch (_) {}
   }
 
@@ -369,8 +364,8 @@ class ChatService {
       if (last == null) {
         await _sb
             .from(_tblConvs)
-            .update({'last_msg_at': null, 'last_msg_snippet': null})
-            .eq('id', conversationId);
+            .update({'last_msg_at': null, 'last_msg_snippet': null}).eq(
+                'id', conversationId);
         return;
       }
 
@@ -395,15 +390,12 @@ class ChatService {
     required String uidB,
   }) async {
     // ملاحظة: حدّد اسم علاقة الـ FK صراحةً لتفادي التباس PostgREST.
-    final rows = await _sb
-        .from(_tblParts)
-        .select('''
+    final rows = await _sb.from(_tblParts).select('''
     conversation_id,
     conversation:${_tblConvs}!fk_chat_participants_conversation(
       id, is_group, account_id, title, created_at, created_by, last_msg_at, last_msg_snippet
     )
-  ''')
-        .inFilter('user_uid', [uidA, uidB]);
+  ''').inFilter('user_uid', [uidA, uidB]);
 
     final countByConv = <String, int>{};
     final mapConv = <String, Map<String, dynamic>>{};
@@ -631,10 +623,8 @@ class ChatService {
         .toSet();
 
     // (2) + محادثات أنا منشئها، حتى لو لم أُدرج كمشارك
-    final createdRows = await _sb
-        .from(_tblConvs)
-        .select('id')
-        .eq('created_by', u.id);
+    final createdRows =
+        await _sb.from(_tblConvs).select('id').eq('created_by', u.id);
     final createdConvIds = (createdRows as List)
         .whereType<Map<String, dynamic>>()
         .map((e) => e['id'].toString())
@@ -677,9 +667,8 @@ class ChatService {
     for (final r in (readsRows as List).whereType<Map<String, dynamic>>()) {
       final cid = r['conversation_id'].toString();
       final ts = r['last_read_at'];
-      lastReadAtByConv[cid] = ts == null
-          ? null
-          : DateTime.tryParse(ts.toString())?.toUtc();
+      lastReadAtByConv[cid] =
+          ts == null ? null : DateTime.tryParse(ts.toString())?.toUtc();
     }
 
     final items = <ConversationListItem>[];
@@ -694,11 +683,11 @@ class ChatService {
 
       String title = (c.isGroup)
           ? (c.title?.trim().isNotEmpty == true
-                ? c.title!.trim()
-                : emails
-                      .where((e) => e != (u.email ?? '').toLowerCase())
-                      .take(3)
-                      .join('، '))
+              ? c.title!.trim()
+              : emails
+                  .where((e) => e != (u.email ?? '').toLowerCase())
+                  .take(3)
+                  .join('، '))
           : (emails.firstWhere(
               (e) => e != (u.email ?? '').toLowerCase(),
               orElse: () => emails.isNotEmpty ? emails.first : 'محادثة',
@@ -706,8 +695,7 @@ class ChatService {
 
       final lastMsgAt = c.lastMsgAt;
       final lastReadAt = lastReadAtByConv[c.id];
-      final hasUnread =
-          (lastMsgAt != null &&
+      final hasUnread = (lastMsgAt != null &&
           (lastReadAt == null || lastMsgAt.isAfter(lastReadAt)));
 
       final convForList = c.copyWith(unreadCount: hasUnread ? 1 : 0);
@@ -968,9 +956,7 @@ class ChatService {
       if (!c.isClosed) c.add(_sortedAsc(map.values.toList()));
     }());
 
-    final ch = _sb
-        .channel('room:$conversationId')
-        .onPostgresChanges(
+    final ch = _sb.channel('room:$conversationId').onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: _tblMsgs,
@@ -1017,9 +1003,8 @@ class ChatService {
                     );
                     if (normalized.isNotEmpty) {
                       msg = msg.copyWith(
-                        attachments: normalized
-                            .map(ChatAttachment.fromMap)
-                            .toList(),
+                        attachments:
+                            normalized.map(ChatAttachment.fromMap).toList(),
                       );
                     }
                   } catch (_) {}
@@ -1111,8 +1096,7 @@ class ChatService {
     final now = DateTime.now().toUtc();
 
     // حرصاً على وجود local_id دائم
-    final seq =
-        localSeq ??
+    final seq = localSeq ??
         (await _nextSeqForMe()) ??
         DateTime.now().microsecondsSinceEpoch;
 
@@ -1293,13 +1277,11 @@ class ChatService {
       final now = DateTime.now().toUtc();
 
       // ✅ نضمن دومًا وجود local_id
-      final seq =
-          localSeq ??
+      final seq = localSeq ??
           (await _nextSeqForMe()) ??
           DateTime.now().microsecondsSinceEpoch;
 
-      final convAcc =
-          (await _conversationAccountId(conversationId)) ??
+      final convAcc = (await _conversationAccountId(conversationId)) ??
           (me.accountId ?? '');
 
       final payload = <String, dynamic>{
@@ -1367,8 +1349,7 @@ class ChatService {
         }
         await _sb
             .from(_tblMsgs)
-            .update({'attachments': inline})
-            .eq('id', msg.id);
+            .update({'attachments': inline}).eq('id', msg.id);
         final normalized = await _normalizeAttachmentsToHttp(inline);
         msg = msg.copyWith(
           attachments: normalized.map(ChatAttachment.fromMap).toList(),
@@ -1406,15 +1387,12 @@ class ChatService {
       throw 'لا يمكن تعديل هذا النوع من الرسائل.';
     }
 
-    await _sb
-        .from(_tblMsgs)
-        .update({
-          'body': newBody,
-          'text': newBody,
-          'edited': true,
-          'edited_at': DateTime.now().toUtc().toIso8601String(),
-        })
-        .eq('id', messageId);
+    await _sb.from(_tblMsgs).update({
+      'body': newBody,
+      'text': newBody,
+      'edited': true,
+      'edited_at': DateTime.now().toUtc().toIso8601String(),
+    }).eq('id', messageId);
 
     await refreshConversationLastSummary(row['conversation_id'].toString());
   }
@@ -1433,15 +1411,12 @@ class ChatService {
       throw 'لا يمكنك حذف رسالة ليست لك.';
     }
 
-    await _sb
-        .from(_tblMsgs)
-        .update({
-          'deleted': true,
-          'deleted_at': DateTime.now().toUtc().toIso8601String(),
-          'body': null,
-          'text': null,
-        })
-        .eq('id', messageId);
+    await _sb.from(_tblMsgs).update({
+      'deleted': true,
+      'deleted_at': DateTime.now().toUtc().toIso8601String(),
+      'body': null,
+      'text': null,
+    }).eq('id', messageId);
 
     await refreshConversationLastSummary(row['conversation_id'].toString());
   }
@@ -1541,7 +1516,7 @@ class ChatService {
     // ✅ استخدم زمن إنشاء آخر رسالة كوقت قراءة
     final lastCreated =
         DateTime.tryParse(lastRow['created_at'].toString())?.toUtc() ??
-        DateTime.now().toUtc();
+            DateTime.now().toUtc();
 
     await _sb.from(_tblReads).upsert({
       'conversation_id': conversationId,
@@ -1572,11 +1547,10 @@ class ChatService {
       event: 'typing',
       callback: (payload, [_]) {
         if (payload is! Map) return;
-        final cid =
-            (payload['conversation_id'] ??
-                    payload['conversationId'] ??
-                    payload['cid'])
-                ?.toString();
+        final cid = (payload['conversation_id'] ??
+                payload['conversationId'] ??
+                payload['cid'])
+            ?.toString();
         if (cid == null) return;
         final c = _typingCtlrs[cid];
         if (c != null && !c.isClosed) {
@@ -1677,10 +1651,10 @@ class ChatService {
         final ev = payload.eventType;
         final Map<String, dynamic> newRow =
             (payload.newRecord as Map<String, dynamic>?) ??
-            const <String, dynamic>{};
+                const <String, dynamic>{};
         final Map<String, dynamic> oldRow =
             (payload.oldRecord as Map<String, dynamic>?) ??
-            const <String, dynamic>{};
+                const <String, dynamic>{};
 
         String? mid;
         if (ev == PostgresChangeEvent.delete) {
@@ -1836,8 +1810,8 @@ class _ChatParticipant {
   });
 
   factory _ChatParticipant.fromMap(Map<String, dynamic> m) => _ChatParticipant(
-    conversationId: m['conversation_id']?.toString() ?? '',
-    userUid: m['user_uid']?.toString() ?? '',
-    email: m['email']?.toString(),
-  );
+        conversationId: m['conversation_id']?.toString() ?? '',
+        userUid: m['user_uid']?.toString() ?? '',
+        email: m['email']?.toString(),
+      );
 }

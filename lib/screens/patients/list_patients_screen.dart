@@ -464,7 +464,8 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
                   final allSvcs = grp
                       .where((pp) => pp.id != null)
                       .expand(
-                        (pp) => _servicesByPatient[pp.id!] ??
+                        (pp) =>
+                            _servicesByPatient[pp.id!] ??
                             const <PatientService>[],
                       )
                       .toList();
@@ -476,9 +477,8 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
                       ? '—'
                       : p.diagnosis;
                   final needsAttention = p.doctorReviewPending;
-                  final pendingLabel = needsAttention
-                      ? ' • بانتظار مقابلة الطبيب'
-                      : '';
+                  final pendingLabel =
+                      needsAttention ? ' • بانتظار مقابلة الطبيب' : '';
 
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 10),

@@ -106,10 +106,10 @@ class RealtimeHub {
       filter: (_accountId == null)
           ? null
           : PostgresChangeFilter(
-        type: PostgresChangeFilterType.eq,
-        column: 'account_id',
-        value: _accountId,
-      ),
+              type: PostgresChangeFilterType.eq,
+              column: 'account_id',
+              value: _accountId,
+            ),
       callback: (_) => _onConversationsChanged!.call(),
     );
 
@@ -121,10 +121,10 @@ class RealtimeHub {
       filter: (_myUid == null)
           ? null
           : PostgresChangeFilter(
-        type: PostgresChangeFilterType.eq,
-        column: 'user_uid',
-        value: _myUid,
-      ),
+              type: PostgresChangeFilterType.eq,
+              column: 'user_uid',
+              value: _myUid,
+            ),
       callback: (_) => _onParticipantsChanged!.call(),
     );
 
@@ -136,10 +136,10 @@ class RealtimeHub {
       filter: (_myUid == null)
           ? null
           : PostgresChangeFilter(
-        type: PostgresChangeFilterType.eq,
-        column: 'user_uid',
-        value: _myUid,
-      ),
+              type: PostgresChangeFilterType.eq,
+              column: 'user_uid',
+              value: _myUid,
+            ),
       callback: (_) => _onConversationsChanged!.call(),
     );
 
@@ -151,10 +151,10 @@ class RealtimeHub {
       filter: (_accountId == null)
           ? null
           : PostgresChangeFilter(
-        type: PostgresChangeFilterType.eq,
-        column: 'account_id',
-        value: _accountId,
-      ),
+              type: PostgresChangeFilterType.eq,
+              column: 'account_id',
+              value: _accountId,
+            ),
       callback: (payload) => _onMessageChanged!.call(payload),
     );
 

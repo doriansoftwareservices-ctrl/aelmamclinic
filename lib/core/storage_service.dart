@@ -85,15 +85,15 @@ class UploadResult {
   });
 
   Map<String, dynamic> toMap() => {
-    'bucket': bucket,
-    'path': path,
-    'mime_type': mimeType,
-    'size_bytes': sizeBytes,
-    if (width != null) 'width': width,
-    if (height != null) 'height': height,
-    'public_url': publicUrl,
-    if (signedUrl != null) 'signed_url': signedUrl,
-  };
+        'bucket': bucket,
+        'path': path,
+        'mime_type': mimeType,
+        'size_bytes': sizeBytes,
+        if (width != null) 'width': width,
+        if (height != null) 'height': height,
+        'public_url': publicUrl,
+        if (signedUrl != null) 'signed_url': signedUrl,
+      };
 }
 
 class StorageService {
@@ -133,10 +133,10 @@ class StorageService {
   /// محاولة إنشاء رابط موقَّع عبر Edge Function (إن وُجدت) ثم fallback إلى
   /// createSignedUrl من Supabase Storage.
   Future<String?> signUrl(
-      String bucket,
-      String path, {
-        Duration expiresIn = const Duration(minutes: 15),
-      }) async {
+    String bucket,
+    String path, {
+    Duration expiresIn = const Duration(minutes: 15),
+  }) async {
     // 1) جرّب الـ Edge Function (sign-attachment)
     try {
       final res = await _sb.functions.invoke(
@@ -160,8 +160,9 @@ class StorageService {
 
     // 2) fallback: createSignedUrl من Storage (تعيد String في ^2.x)
     try {
-      final signed =
-      await _sb.storage.from(bucket).createSignedUrl(path, expiresIn.inSeconds);
+      final signed = await _sb.storage
+          .from(bucket)
+          .createSignedUrl(path, expiresIn.inSeconds);
       return signed;
     } catch (_) {
       return null;
@@ -176,12 +177,12 @@ class StorageService {
 
   /// يعيد رابطًا موقَّعًا Cached إن كان صالحًا، وإلا يولّده ويخزّنه.
   Future<String?> signedUrlCached(
-      String bucket,
-      String path, {
-        Duration expiresIn = const Duration(minutes: 15),
-        // نخفّض الصلاحية الفعلية قليلًا داخل الكاش لتجنّب الانقضاء الفوري
-        Duration safety = const Duration(seconds: 20),
-      }) async {
+    String bucket,
+    String path, {
+    Duration expiresIn = const Duration(minutes: 15),
+    // نخفّض الصلاحية الفعلية قليلًا داخل الكاش لتجنّب الانقضاء الفوري
+    Duration safety = const Duration(seconds: 20),
+  }) async {
     final key = _signedKey(bucket, path);
     final now = DateTime.now();
     final hit = _signedCache[key];
@@ -202,14 +203,15 @@ class StorageService {
 
   /// يحوِّل storage://bucket/path إلى http(s) URL (موقّع أو عام)
   Future<String> resolveUrl(
-      String maybeStorageUrl, {
-        bool preferSigned = false,
-        Duration signedTtl = const Duration(minutes: 15),
-      }) async {
+    String maybeStorageUrl, {
+    bool preferSigned = false,
+    Duration signedTtl = const Duration(minutes: 15),
+  }) async {
     final sp = StoragePath.tryParse(maybeStorageUrl);
     if (sp == null) return maybeStorageUrl; // أصلًا http(s) أو غير معروف
     if (preferSigned) {
-      final signed = await signedUrlCached(sp.bucket, sp.path, expiresIn: signedTtl);
+      final signed =
+          await signedUrlCached(sp.bucket, sp.path, expiresIn: signedTtl);
       if (signed != null) return signed;
     }
     return publicUrl(sp.bucket, sp.path);
@@ -270,8 +272,9 @@ class StorageService {
     Duration signedTtl = const Duration(minutes: 15),
   }) async {
     // 1) حدد الاسم والنوع
-    final origName =
-    file.uri.pathSegments.isNotEmpty ? file.uri.pathSegments.last : 'image.jpg';
+    final origName = file.uri.pathSegments.isNotEmpty
+        ? file.uri.pathSegments.last
+        : 'image.jpg';
     var fname = safeFileName(fileNameOverride ?? origName);
     if (!fname.contains('.')) {
       fname = '$fname.jpg';
@@ -289,10 +292,10 @@ class StorageService {
 
     // 3) الرفع
     await _sb.storage.from(chatBucket).upload(
-      path,
-      file,
-      fileOptions: FileOptions(contentType: mime, upsert: upsert),
-    );
+          path,
+          file,
+          fileOptions: FileOptions(contentType: mime, upsert: upsert),
+        );
 
     // 4) إحصاءات
     final stat = await file.stat();
@@ -301,7 +304,8 @@ class StorageService {
 
     // 5) الروابط
     final pub = publicUrl(chatBucket, path);
-    final signed = await signedUrlCached(chatBucket, path, expiresIn: signedTtl);
+    final signed =
+        await signedUrlCached(chatBucket, path, expiresIn: signedTtl);
 
     return UploadResult(
       bucket: chatBucket,
@@ -340,9 +344,9 @@ class StorageService {
 
     while (true) {
       final List<FileObject> list = await _sb.storage.from(bucket).list(
-        path: prefix,
-        searchOptions: SearchOptions(limit: limit, offset: offset),
-      );
+            path: prefix,
+            searchOptions: SearchOptions(limit: limit, offset: offset),
+          );
       if (list.isEmpty) break;
 
       for (final obj in list) {

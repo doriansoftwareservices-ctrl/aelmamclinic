@@ -106,19 +106,17 @@ class AlertSetting {
 
   /// يدعم camelCase و snake_case
   factory AlertSetting.fromMap(Map<String, dynamic> map) => AlertSetting(
-    id: _toIntN(map['id']),
-    itemId: _toInt0(map['item_id'] ?? map['itemId']),
-    threshold: _toDouble0(map['threshold']),
-    isEnabled: _toBool(map['is_enabled'] ?? map['isEnabled'] ?? 1),
-    lastTriggered:
-    _toDateN(map['last_triggered'] ?? map['lastTriggered']),
-    notifyTime: _toDateN(map['notify_time'] ?? map['notifyTime']),
-    itemUuid: _toStrN(
-        map[alerts_domain.AlertSettingsFields.itemUuid] ??
+        id: _toIntN(map['id']),
+        itemId: _toInt0(map['item_id'] ?? map['itemId']),
+        threshold: _toDouble0(map['threshold']),
+        isEnabled: _toBool(map['is_enabled'] ?? map['isEnabled'] ?? 1),
+        lastTriggered: _toDateN(map['last_triggered'] ?? map['lastTriggered']),
+        notifyTime: _toDateN(map['notify_time'] ?? map['notifyTime']),
+        itemUuid: _toStrN(map[alerts_domain.AlertSettingsFields.itemUuid] ??
             map[alerts_domain.AlertSettingsFields.itemUuidCamel]),
-    createdAt:
-    _toDateN(map['created_at'] ?? map['createdAt']) ?? DateTime.now(),
-  );
+        createdAt:
+            _toDateN(map['created_at'] ?? map['createdAt']) ?? DateTime.now(),
+      );
 
   AlertSetting copyWith({
     int? id,

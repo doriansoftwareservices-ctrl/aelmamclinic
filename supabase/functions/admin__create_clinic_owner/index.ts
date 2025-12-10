@@ -15,8 +15,35 @@ const ANON_KEY =
   Deno.env.get("ANON_KEY") ?? Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const SERVICE_ROLE_KEY =
   Deno.env.get("SERVICE_ROLE_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-const SUPER_ADMIN_EMAIL = (Deno.env.get("SUPER_ADMIN_EMAIL") ?? "").toLowerCase();
 const ADMIN_INTERNAL_TOKEN = Deno.env.get("ADMIN_INTERNAL_TOKEN") ?? "";
+
+function normalizeEmail(email?: string | null) {
+  return (email ?? "").trim().toLowerCase();
+}
+
+async function isSuperAdminUser(
+  adminClient: ReturnType<typeof createClient>,
+  userId: string | null,
+  email: string | null,
+) {
+  const normalized = normalizeEmail(email);
+  if (!userId && !normalized) return false;
+
+  let query = adminClient.from("super_admins").select("id").limit(1);
+  if (userId && normalized) {
+    query = query.or(`user_uid.eq.${userId},email.eq.${normalized}`);
+  } else if (userId) {
+    query = query.eq("user_uid", userId);
+  } else {
+    query = query.eq("email", normalized);
+  }
+
+  const { data, error } = await query.maybeSingle();
+  if (error && error.code !== "PGRST116") {
+    throw new Error(`[admin__create_clinic_owner] super_admins lookup failed: ${error.message}`);
+  }
+  return !!data;
+}
 
 function json(status: number, payload: unknown) {
   return new Response(JSON.stringify(payload, null, 2), {
@@ -53,21 +80,13 @@ serve(async (req) => {
       if (uerr || !ures?.user) return json(401, { error: "invalid jwt", details: uerr?.message });
 
       // طريقتان: بالبريد أو بعضوية الجدول
-      const userEmail = (ures.user.email ?? "").toLowerCase();
-
-      let isSuper = false;
-      if (SUPER_ADMIN_EMAIL && userEmail === SUPER_ADMIN_EMAIL) {
-        isSuper = true;
-      } else {
-        const { data: rows, error: qerr } = await adminClient
-          .from("super_admins")
-          .select("user_uid")
-          .eq("user_uid", ures.user.id)
-          .limit(1);
-        if (qerr) return json(500, { error: "superadmins query failed", details: qerr.message });
-        isSuper = (rows?.length ?? 0) > 0;
+      try {
+        const isSuper = await isSuperAdminUser(adminClient, ures.user.id, ures.user.email);
+        if (!isSuper) return json(403, { error: "not a super admin" });
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        return json(500, { error: "superadmins query failed", details: detail });
       }
-      if (!isSuper) return json(403, { error: "not a super admin" });
     }
 
     // 4) جسد الطلب

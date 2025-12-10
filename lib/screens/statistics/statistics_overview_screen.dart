@@ -410,7 +410,8 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
     final titleStyle = TextStyle(
       fontWeight: FontWeight.w700,
       fontSize: 13.5,
-      color: enabled ? scheme.onSurface : scheme.onSurface.withValues(alpha: .35),
+      color:
+          enabled ? scheme.onSurface : scheme.onSurface.withValues(alpha: .35),
     );
 
     return Padding(
@@ -495,8 +496,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
     final canManageAccounts = _isFeatureAllowed(auth, FeatureKeys.accounts);
     final canManagePermissions =
         _isFeatureAllowed(auth, FeatureKeys.auditPermissions);
-    final canViewAuditLogs =
-        _isFeatureAllowed(auth, FeatureKeys.auditLogs);
+    final canViewAuditLogs = _isFeatureAllowed(auth, FeatureKeys.auditLogs);
     final showAdminSection =
         canManageAccounts || canManagePermissions || canViewAuditLogs;
 

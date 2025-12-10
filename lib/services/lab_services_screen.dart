@@ -144,9 +144,9 @@ class _LabServicesScreenState extends State<LabServicesScreen> {
         return AlertDialog(
           backgroundColor: scheme.surface,
           shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title:
-          Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+              Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -160,7 +160,7 @@ class _LabServicesScreenState extends State<LabServicesScreen> {
                 NeuField(
                   controller: _serviceCostCtrl,
                   keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
+                      const TextInputType.numberWithOptions(decimal: true),
                   labelText: 'الكلفة',
                   prefix: const Icon(Icons.attach_money_rounded),
                   textDirection: TextDirection.ltr,
@@ -560,7 +560,7 @@ class _LabServicesScreenState extends State<LabServicesScreen> {
                 /*──────── رأس الصفحة ────────*/
                 NeuCard(
                   padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   child: Row(
                     children: [
                       Container(

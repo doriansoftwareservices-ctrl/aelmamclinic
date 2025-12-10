@@ -13,7 +13,7 @@ class LocalSeq {
   static final LocalSeq instance = LocalSeq._();
 
   static const String _dbName = 'local_seq.db';
-  static const String _table  = 'counters';
+  static const String _table = 'counters';
 
   Database? _db;
 
@@ -37,7 +37,8 @@ CREATE TABLE $_table(
   val INTEGER NOT NULL
 );
 ''');
-        await db.execute('CREATE INDEX IF NOT EXISTS idx_counters_key ON $_table(key);');
+        await db.execute(
+            'CREATE INDEX IF NOT EXISTS idx_counters_key ON $_table(key);');
       },
     );
     return _db!;
@@ -50,8 +51,10 @@ CREATE TABLE $_table(
     String? deviceId,
   }) {
     final parts = <String>['ns:$namespace'];
-    if (accountId != null && accountId.trim().isNotEmpty) parts.add('acc:${accountId.trim()}');
-    if (deviceId  != null && deviceId.trim().isNotEmpty) parts.add('dev:${deviceId.trim()}');
+    if (accountId != null && accountId.trim().isNotEmpty)
+      parts.add('acc:${accountId.trim()}');
+    if (deviceId != null && deviceId.trim().isNotEmpty)
+      parts.add('dev:${deviceId.trim()}');
     if (conversationId != null && conversationId.trim().isNotEmpty) {
       parts.add('conv:${conversationId.trim()}');
     }
@@ -60,8 +63,9 @@ CREATE TABLE $_table(
 
   Future<int?> currentRawKey(String key) async {
     final db = await _open();
-    final row = (await db.query(_table, where: 'key = ?', whereArgs: [key], limit: 1))
-        .firstOrNull;
+    final row =
+        (await db.query(_table, where: 'key = ?', whereArgs: [key], limit: 1))
+            .firstOrNull;
     if (row == null) return null;
     final v = row['val'];
     if (v is int) return v;
@@ -72,7 +76,8 @@ CREATE TABLE $_table(
   Future<void> seedRawKey(String key, int value) async {
     final db = await _open();
     await db.transaction((txn) async {
-      final row = (await txn.query(_table, where: 'key = ?', whereArgs: [key], limit: 1))
+      final row = (await txn.query(_table,
+              where: 'key = ?', whereArgs: [key], limit: 1))
           .firstOrNull;
       if (row == null) {
         await txn.insert(_table, {'key': key, 'val': value});
@@ -82,7 +87,8 @@ CREATE TABLE $_table(
           ? row['val'] as int
           : int.tryParse(row['val']?.toString() ?? '') ?? 0;
       if (value > cur) {
-        await txn.update(_table, {'val': value}, where: 'key = ?', whereArgs: [key]);
+        await txn.update(_table, {'val': value},
+            where: 'key = ?', whereArgs: [key]);
       }
     });
   }
@@ -97,13 +103,14 @@ CREATE TABLE $_table(
   }
 
   Future<int> nextRawKey(
-      String key, {
-        int step = 1,
-        int startAt = 1,
-      }) async {
+    String key, {
+    int step = 1,
+    int startAt = 1,
+  }) async {
     final db = await _open();
     return await db.transaction((txn) async {
-      final row = (await txn.query(_table, where: 'key = ?', whereArgs: [key], limit: 1))
+      final row = (await txn.query(_table,
+              where: 'key = ?', whereArgs: [key], limit: 1))
           .firstOrNull;
       if (row == null) {
         final init = (startAt <= 0) ? 1 : startAt;
@@ -114,7 +121,8 @@ CREATE TABLE $_table(
           ? row['val'] as int
           : int.tryParse(row['val']?.toString() ?? '') ?? 0;
       final next = cur + (step <= 0 ? 1 : step);
-      await txn.update(_table, {'val': next}, where: 'key = ?', whereArgs: [key]);
+      await txn.update(_table, {'val': next},
+          where: 'key = ?', whereArgs: [key]);
       return next;
     });
   }
@@ -130,12 +138,14 @@ CREATE TABLE $_table(
     return currentRawKey(key);
   }
 
-  Future<int> nextForConversation(String conversationId, {String namespace = 'msg'}) {
+  Future<int> nextForConversation(String conversationId,
+      {String namespace = 'msg'}) {
     final key = buildKey(namespace: namespace, conversationId: conversationId);
     return nextRawKey(key);
   }
 
-  Future<int?> currentForConversation(String conversationId, {String namespace = 'msg'}) {
+  Future<int?> currentForConversation(String conversationId,
+      {String namespace = 'msg'}) {
     final key = buildKey(namespace: namespace, conversationId: conversationId);
     return currentRawKey(key);
   }
@@ -145,7 +155,8 @@ CREATE TABLE $_table(
     String? accountId,
     String namespace = 'msg',
   }) {
-    final key = buildKey(namespace: namespace, accountId: accountId, deviceId: deviceId);
+    final key = buildKey(
+        namespace: namespace, accountId: accountId, deviceId: deviceId);
     return nextRawKey(key);
   }
 
@@ -154,7 +165,8 @@ CREATE TABLE $_table(
     String? accountId,
     String namespace = 'msg',
   }) {
-    final key = buildKey(namespace: namespace, accountId: accountId, deviceId: deviceId);
+    final key = buildKey(
+        namespace: namespace, accountId: accountId, deviceId: deviceId);
     return currentRawKey(key);
   }
 

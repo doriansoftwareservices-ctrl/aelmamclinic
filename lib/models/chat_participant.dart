@@ -114,20 +114,25 @@ class ChatParticipant {
 
     final id = _trimOrNull(getKey(const ['id']));
     final conversationId =
-    (getKey(const ['conversation_id', 'conversationId']) ?? '').toString();
+        (getKey(const ['conversation_id', 'conversationId']) ?? '').toString();
     final userUid = (getKey(const ['user_uid', 'userUid']) ?? '').toString();
 
     final email = _trimOrNull(getKey(const ['email']));
-    final displayName = _trimOrNull(getKey(const ['display_name', 'displayName', 'nickname']));
+    final displayName =
+        _trimOrNull(getKey(const ['display_name', 'displayName', 'nickname']));
     final role = _trimOrNull(getKey(const ['role']));
 
-    final joinedAt = t.parseDateFlexibleUtc(getKey(const ['joined_at', 'joinedAt']));
-    final lastReadAt = t.parseDateFlexibleUtc(getKey(const ['last_read_at', 'lastReadAt']));
+    final joinedAt =
+        t.parseDateFlexibleUtc(getKey(const ['joined_at', 'joinedAt']));
+    final lastReadAt =
+        t.parseDateFlexibleUtc(getKey(const ['last_read_at', 'lastReadAt']));
 
     final muted = _toBool(getKey(const ['muted', 'is_muted', 'isMuted']));
     final pinned = _toBool(getKey(const ['pinned', 'is_pinned', 'isPinned']));
-    final archived = _toBool(getKey(const ['archived', 'is_archived', 'isArchived']));
-    final blocked = _toBool(getKey(const ['blocked', 'is_blocked', 'isBlocked']));
+    final archived =
+        _toBool(getKey(const ['archived', 'is_archived', 'isArchived']));
+    final blocked =
+        _toBool(getKey(const ['blocked', 'is_blocked', 'isBlocked']));
 
     // واجهة:
     final isTyping = _toBool(getKey(const ['isTyping', 'typing']));
@@ -158,51 +163,51 @@ class ChatParticipant {
       ChatParticipant.fromMap(json);
 
   Map<String, dynamic> toJson() => {
-    'id': id,
-    'conversationId': conversationId,
-    'userUid': userUid,
-    'email': email,
-    'displayName': displayName,
-    'role': role,
-    'joinedAt': t.toIsoUtc(joinedAt),
-    'lastReadAt': t.toIsoUtc(lastReadAt),
-    'muted': muted,
-    'pinned': pinned,
-    'archived': archived,
-    'blocked': blocked,
-    // UI-only:
-    'isTyping': isTyping,
-    'isOnline': isOnline,
-    'unreadCount': unreadCount,
-  };
+        'id': id,
+        'conversationId': conversationId,
+        'userUid': userUid,
+        'email': email,
+        'displayName': displayName,
+        'role': role,
+        'joinedAt': t.toIsoUtc(joinedAt),
+        'lastReadAt': t.toIsoUtc(lastReadAt),
+        'muted': muted,
+        'pinned': pinned,
+        'archived': archived,
+        'blocked': blocked,
+        // UI-only:
+        'isTyping': isTyping,
+        'isOnline': isOnline,
+        'unreadCount': unreadCount,
+      };
 
   /// خريطة إدراج إلى Supabase (snake_case). تجاهَل الحقول غير الموجودة في الجدول.
   Map<String, dynamic> toRemoteInsertMap() => {
-    if (id != null) 'id': id,
-    'conversation_id': conversationId,
-    'user_uid': userUid,
-    if (email != null) 'email': email,
-    if (displayName != null) 'display_name': displayName,
-    if (role != null) 'role': role,
-    if (joinedAt != null) 'joined_at': t.toIsoUtc(joinedAt),
-    if (lastReadAt != null) 'last_read_at': t.toIsoUtc(lastReadAt),
-    'muted': muted,
-    'pinned': pinned,
-    'archived': archived,
-    'blocked': blocked,
-  };
+        if (id != null) 'id': id,
+        'conversation_id': conversationId,
+        'user_uid': userUid,
+        if (email != null) 'email': email,
+        if (displayName != null) 'display_name': displayName,
+        if (role != null) 'role': role,
+        if (joinedAt != null) 'joined_at': t.toIsoUtc(joinedAt),
+        if (lastReadAt != null) 'last_read_at': t.toIsoUtc(lastReadAt),
+        'muted': muted,
+        'pinned': pinned,
+        'archived': archived,
+        'blocked': blocked,
+      };
 
   /// خريطة تحديث إلى Supabase (snake_case).
   Map<String, dynamic> toRemoteUpdateMap() => {
-    if (email != null) 'email': email,
-    if (displayName != null) 'display_name': displayName,
-    if (role != null) 'role': role,
-    'muted': muted,
-    'pinned': pinned,
-    'archived': archived,
-    'blocked': blocked,
-    'last_read_at': t.toIsoUtc(lastReadAt),
-  };
+        if (email != null) 'email': email,
+        if (displayName != null) 'display_name': displayName,
+        if (role != null) 'role': role,
+        'muted': muted,
+        'pinned': pinned,
+        'archived': archived,
+        'blocked': blocked,
+        'last_read_at': t.toIsoUtc(lastReadAt),
+      };
 
   ChatParticipant copyWith({
     String? id,

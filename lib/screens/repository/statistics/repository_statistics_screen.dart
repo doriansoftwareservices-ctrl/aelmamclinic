@@ -180,7 +180,8 @@ class _RepositoryStatisticsScreenState
                                       const EdgeInsets.symmetric(horizontal: 6),
                                   leading: Container(
                                     decoration: BoxDecoration(
-                                      color: kPrimaryColor.withValues(alpha: .10),
+                                      color:
+                                          kPrimaryColor.withValues(alpha: .10),
                                       borderRadius: BorderRadius.circular(14),
                                     ),
                                     padding: const EdgeInsets.all(8),
@@ -200,8 +201,8 @@ class _RepositoryStatisticsScreenState
                                         ? '— لا أصناف —'
                                         : 'عدد الأصناف: ${items.length}',
                                     style: TextStyle(
-                                        color:
-                                            scheme.onSurface.withValues(alpha: .75)),
+                                        color: scheme.onSurface
+                                            .withValues(alpha: .75)),
                                   ),
                                   trailing: Row(
                                     mainAxisSize: MainAxisSize.min,
@@ -254,7 +255,8 @@ class _RepositoryStatisticsScreenState
                                                   '— لا أصناف —',
                                                   style: TextStyle(
                                                       color: scheme.onSurface
-                                                          .withValues(alpha: .7)),
+                                                          .withValues(
+                                                              alpha: .7)),
                                                 ),
                                               ),
                                             ]
@@ -347,8 +349,9 @@ class _RepositoryStatisticsScreenState
                                                               style: TextStyle(
                                                                 color: scheme
                                                                     .onSurface
-                                                                    .withValues(alpha: 
-                                                                        .80),
+                                                                    .withValues(
+                                                                        alpha:
+                                                                            .80),
                                                                 fontWeight:
                                                                     FontWeight
                                                                         .w600,

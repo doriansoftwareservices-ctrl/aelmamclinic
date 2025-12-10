@@ -13,8 +13,10 @@ class AccountUserSummary {
   });
 
   factory AccountUserSummary.fromMap(Map<String, dynamic> map) {
-    final uid = (map['user_uid'] ?? map['uid'] ?? map['userUid'])?.toString() ?? '';
-    final email = (map['email'] ?? map['user_email'] ?? map['mail'])?.toString() ?? '';
+    final uid =
+        (map['user_uid'] ?? map['uid'] ?? map['userUid'])?.toString() ?? '';
+    final email =
+        (map['email'] ?? map['user_email'] ?? map['mail'])?.toString() ?? '';
     final disabledValue = map['disabled'];
     final disabled = disabledValue is bool
         ? disabledValue

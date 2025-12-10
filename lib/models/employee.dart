@@ -112,36 +112,36 @@ class Employee {
 
   /// نخزّن محليًا بصيغة camelCase.
   Map<String, dynamic> toMap() => {
-    'id': id,
-    'name': name,
-    'identityNumber': identityNumber,
-    'phoneNumber': phoneNumber,
-    'jobTitle': jobTitle,
-    'address': address,
-    'maritalStatus': maritalStatus,
-    'basicSalary': basicSalary,
-    'finalSalary': finalSalary,
-    'isDoctor': isDoctor ? 1 : 0,
-    'userUid': userUid,
-  };
+        'id': id,
+        'name': name,
+        'identityNumber': identityNumber,
+        'phoneNumber': phoneNumber,
+        'jobTitle': jobTitle,
+        'address': address,
+        'maritalStatus': maritalStatus,
+        'basicSalary': basicSalary,
+        'finalSalary': finalSalary,
+        'isDoctor': isDoctor ? 1 : 0,
+        'userUid': userUid,
+      };
 
   /// تمثيل سحابي (snake_case) للاستخدام عند الدفع إلى Supabase.
   Map<String, dynamic> toCloudMap() => {
-    'local_id': localId ?? id,
-    'account_id': accountId,
-    'device_id': deviceId,
-    'name': name,
-    'identity_number': identityNumber,
-    'phone_number': phoneNumber,
-    'job_title': jobTitle,
-    'address': address,
-    'marital_status': maritalStatus,
-    'basic_salary': basicSalary,
-    'final_salary': finalSalary,
-    'is_doctor': isDoctor,
-    'user_uid': userUid,
-    'updated_at': updatedAt?.toIso8601String(),
-  }..removeWhere((k, v) => v == null);
+        'local_id': localId ?? id,
+        'account_id': accountId,
+        'device_id': deviceId,
+        'name': name,
+        'identity_number': identityNumber,
+        'phone_number': phoneNumber,
+        'job_title': jobTitle,
+        'address': address,
+        'marital_status': maritalStatus,
+        'basic_salary': basicSalary,
+        'final_salary': finalSalary,
+        'is_doctor': isDoctor,
+        'user_uid': userUid,
+        'updated_at': updatedAt?.toIso8601String(),
+      }..removeWhere((k, v) => v == null);
 
   /// JSON عام — نُعيد خريطة السحابة افتراضيًا
   Map<String, dynamic> toJson() => toCloudMap();
@@ -193,7 +193,8 @@ class Employee {
     );
   }
 
-  factory Employee.fromJson(Map<String, dynamic> json) => Employee.fromMap(json);
+  factory Employee.fromJson(Map<String, dynamic> json) =>
+      Employee.fromMap(json);
 
   Employee copyWith({
     int? id,
@@ -237,40 +238,40 @@ class Employee {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-          other is Employee &&
-              runtimeType == other.runtimeType &&
-              id == other.id &&
-              name == other.name &&
-              identityNumber == other.identityNumber &&
-              phoneNumber == other.phoneNumber &&
-              jobTitle == other.jobTitle &&
-              address == other.address &&
-              maritalStatus == other.maritalStatus &&
-              basicSalary == other.basicSalary &&
-              finalSalary == other.finalSalary &&
-              isDoctor == other.isDoctor &&
-              userUid == other.userUid &&
-              accountId == other.accountId &&
-              deviceId == other.deviceId &&
-              localId == other.localId &&
-              updatedAt == other.updatedAt;
+      other is Employee &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          name == other.name &&
+          identityNumber == other.identityNumber &&
+          phoneNumber == other.phoneNumber &&
+          jobTitle == other.jobTitle &&
+          address == other.address &&
+          maritalStatus == other.maritalStatus &&
+          basicSalary == other.basicSalary &&
+          finalSalary == other.finalSalary &&
+          isDoctor == other.isDoctor &&
+          userUid == other.userUid &&
+          accountId == other.accountId &&
+          deviceId == other.deviceId &&
+          localId == other.localId &&
+          updatedAt == other.updatedAt;
 
   @override
   int get hashCode => Object.hash(
-    id,
-    name,
-    identityNumber,
-    phoneNumber,
-    jobTitle,
-    address,
-    maritalStatus,
-    basicSalary,
-    finalSalary,
-    isDoctor,
-    userUid,
-    accountId,
-    deviceId,
-    localId,
-    updatedAt,
-  );
+        id,
+        name,
+        identityNumber,
+        phoneNumber,
+        jobTitle,
+        address,
+        maritalStatus,
+        basicSalary,
+        finalSalary,
+        isDoctor,
+        userUid,
+        accountId,
+        deviceId,
+        localId,
+        updatedAt,
+      );
 }

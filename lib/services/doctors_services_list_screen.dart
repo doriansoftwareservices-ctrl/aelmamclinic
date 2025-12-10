@@ -154,7 +154,8 @@ class _DoctorsServicesListScreenState extends State<DoctorsServicesListScreen> {
                   doctor.specialization,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: scheme.onSurface.withValues(alpha: .75)),
+                  style:
+                      TextStyle(color: scheme.onSurface.withValues(alpha: .75)),
                 ),
                 trailing: const Icon(Icons.chevron_left_rounded),
                 onTap: () {

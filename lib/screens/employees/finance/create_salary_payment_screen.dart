@@ -221,7 +221,8 @@ class _CreateSalaryPaymentScreenState extends State<CreateSalaryPaymentScreen> {
                                       child: Text(
                                         'لا توجد نتائج',
                                         style: TextStyle(
-                                          color: cs.onSurface.withValues(alpha: .6),
+                                          color: cs.onSurface
+                                              .withValues(alpha: .6),
                                           fontWeight: FontWeight.w600,
                                         ),
                                       ),
@@ -334,7 +335,8 @@ class _CreateSalaryPaymentScreenState extends State<CreateSalaryPaymentScreen> {
         contentPadding: EdgeInsets.zero,
         leading: Container(
           decoration: BoxDecoration(
-            color: (isPaid ? Colors.green : Colors.redAccent).withValues(alpha: .12),
+            color: (isPaid ? Colors.green : Colors.redAccent)
+                .withValues(alpha: .12),
             borderRadius: BorderRadius.circular(12),
           ),
           padding: const EdgeInsets.all(10),
@@ -352,7 +354,8 @@ class _CreateSalaryPaymentScreenState extends State<CreateSalaryPaymentScreen> {
               ? 'تم صرف الراتب لـ ${_fmtYearMonth()}'
               : 'لم يتم صرف الراتب لـ ${_fmtYearMonth()}',
           style: TextStyle(
-            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .7),
+            color:
+                Theme.of(context).colorScheme.onSurface.withValues(alpha: .7),
             fontWeight: FontWeight.w600,
           ),
         ),

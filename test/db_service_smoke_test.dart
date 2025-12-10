@@ -98,12 +98,14 @@ void main() {
     await legacyDb.close();
 
     final db = await DBService.instance.database;
-    final pragma = await db.rawQuery("PRAGMA table_info(${AlertSetting.table})");
+    final pragma =
+        await db.rawQuery("PRAGMA table_info(${AlertSetting.table})");
     final thresholdCol = pragma.firstWhere(
       (row) => ((row['name'] ?? '') as String).toLowerCase() == 'threshold',
       orElse: () => {},
     );
-    expect(((thresholdCol['type'] ?? '') as String).toUpperCase(), contains('REAL'));
+    expect(((thresholdCol['type'] ?? '') as String).toUpperCase(),
+        contains('REAL'));
 
     final rows = await db.query(AlertSetting.table);
     expect(rows, isNotEmpty);

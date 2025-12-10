@@ -84,8 +84,8 @@ class _DrugListScreenState extends State<DrugListScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('تأكيد الحذف'),
-        content:
-        const Text('سيتم حذف الدواء (حذف منطقي) وإرسال التغيير للسحابة. تأكيد؟'),
+        content: const Text(
+            'سيتم حذف الدواء (حذف منطقي) وإرسال التغيير للسحابة. تأكيد؟'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -95,8 +95,8 @@ class _DrugListScreenState extends State<DrugListScreen> {
               child: const Text('حذف')),
         ],
         backgroundColor: scheme.surface,
-        shape:
-        RoundedRectangleBorder(borderRadius: BorderRadius.circular(kRadius)),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(kRadius)),
       ),
     );
     if (ok != true) return;
@@ -155,20 +155,20 @@ class _DrugListScreenState extends State<DrugListScreen> {
                   suffix: (_searchCtrl.text.isEmpty)
                       ? null
                       : IconButton(
-                    tooltip: 'مسح',
-                    icon: const Icon(Icons.close_rounded),
-                    onPressed: () {
-                      _searchCtrl.clear();
-                      _applyFilter();
-                    },
-                  ),
+                          tooltip: 'مسح',
+                          icon: const Icon(Icons.close_rounded),
+                          onPressed: () {
+                            _searchCtrl.clear();
+                            _applyFilter();
+                          },
+                        ),
                 ),
                 const SizedBox(height: 12),
 
                 // بطاقة عدّاد بسيطة
                 NeuCard(
                   padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   child: Row(
                     children: [
                       const Text('الإجمالي: ',
@@ -196,111 +196,108 @@ class _DrugListScreenState extends State<DrugListScreen> {
                   child: _loading
                       ? const Center(child: CircularProgressIndicator())
                       : _filteredDrugs.isEmpty
-                      ? Center(
-                    child: Text(
-                      'لا توجد بيانات',
-                      style: TextStyle(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onSurface
-                            .withValues(alpha: .6),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  )
-                      : RefreshIndicator(
-                    onRefresh: _loadDrugs,
-                    child: ListView.builder(
-                      physics:
-                      const AlwaysScrollableScrollPhysics(),
-                      itemCount: _filteredDrugs.length,
-                      itemBuilder: (_, i) {
-                        final d = _filteredDrugs[i];
-                        return NeuCard(
-                          margin: const EdgeInsets.symmetric(
-                              vertical: 6),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 6),
-                          child: ListTile(
-                            contentPadding:
-                            const EdgeInsets.symmetric(
-                                horizontal: 8),
-                            leading: Container(
-                              decoration: BoxDecoration(
-                                color: kPrimaryColor
-                                    .withValues(alpha: .10),
-                                borderRadius:
-                                BorderRadius.circular(12),
-                              ),
-                              padding: const EdgeInsets.all(10),
-                              child: const Icon(
-                                Icons.medication_outlined,
-                                color: kPrimaryColor,
-                              ),
-                            ),
-                            title: Text(d.name,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w800)),
-                            subtitle: (d.notes?.isNotEmpty ?? false)
-                                ? Text(
-                              d.notes!,
-                              maxLines: 1,
-                              overflow:
-                              TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurface
-                                    .withValues(alpha: .75),
-                                fontWeight: FontWeight.w600,
+                          ? Center(
+                              child: Text(
+                                'لا توجد بيانات',
+                                style: TextStyle(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurface
+                                      .withValues(alpha: .6),
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             )
-                                : null,
-                            trailing: PopupMenuButton<String>(
-                              icon: const Icon(
-                                  Icons.more_vert_rounded),
-                              onSelected: (v) {
-                                if (v == 'edit') {
-                                  _openNewDrug(d);
-                                } else if (v == 'del') {
-                                  _deleteDrug(d.id!);
-                                }
-                              },
-                              itemBuilder: (ctx) => [
-                                PopupMenuItem(
-                                  value: 'edit',
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.edit_rounded,
-                                          size: 20,
-                                          color:
-                                          Theme.of(context)
-                                              .colorScheme
-                                              .primary),
-                                      const SizedBox(width: 8),
-                                      const Text('تعديل'),
-                                    ],
-                                  ),
-                                ),
-                                const PopupMenuItem(
-                                  value: 'del',
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.delete_rounded,
-                                          size: 20,
-                                          color: Colors.red),
-                                      SizedBox(width: 8),
-                                      Text('حذف'),
-                                    ],
-                                  ),
-                                ),
-                              ],
+                          : RefreshIndicator(
+                              onRefresh: _loadDrugs,
+                              child: ListView.builder(
+                                physics: const AlwaysScrollableScrollPhysics(),
+                                itemCount: _filteredDrugs.length,
+                                itemBuilder: (_, i) {
+                                  final d = _filteredDrugs[i];
+                                  return NeuCard(
+                                    margin:
+                                        const EdgeInsets.symmetric(vertical: 6),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 6),
+                                    child: ListTile(
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                              horizontal: 8),
+                                      leading: Container(
+                                        decoration: BoxDecoration(
+                                          color: kPrimaryColor.withValues(
+                                              alpha: .10),
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                        ),
+                                        padding: const EdgeInsets.all(10),
+                                        child: const Icon(
+                                          Icons.medication_outlined,
+                                          color: kPrimaryColor,
+                                        ),
+                                      ),
+                                      title: Text(d.name,
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.w800)),
+                                      subtitle: (d.notes?.isNotEmpty ?? false)
+                                          ? Text(
+                                              d.notes!,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                color: Theme.of(context)
+                                                    .colorScheme
+                                                    .onSurface
+                                                    .withValues(alpha: .75),
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            )
+                                          : null,
+                                      trailing: PopupMenuButton<String>(
+                                        icon:
+                                            const Icon(Icons.more_vert_rounded),
+                                        onSelected: (v) {
+                                          if (v == 'edit') {
+                                            _openNewDrug(d);
+                                          } else if (v == 'del') {
+                                            _deleteDrug(d.id!);
+                                          }
+                                        },
+                                        itemBuilder: (ctx) => [
+                                          PopupMenuItem(
+                                            value: 'edit',
+                                            child: Row(
+                                              children: [
+                                                Icon(Icons.edit_rounded,
+                                                    size: 20,
+                                                    color: Theme.of(context)
+                                                        .colorScheme
+                                                        .primary),
+                                                const SizedBox(width: 8),
+                                                const Text('تعديل'),
+                                              ],
+                                            ),
+                                          ),
+                                          const PopupMenuItem(
+                                            value: 'del',
+                                            child: Row(
+                                              children: [
+                                                Icon(Icons.delete_rounded,
+                                                    size: 20,
+                                                    color: Colors.red),
+                                                SizedBox(width: 8),
+                                                Text('حذف'),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
                             ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
                 ),
               ],
             ),

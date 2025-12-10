@@ -218,7 +218,8 @@ class _ViewPrescriptionScreenState extends State<ViewPrescriptionScreen> {
                           ? Center(
                               child: Text('لا توجد أدوية',
                                   style: TextStyle(
-                                      color: scheme.onSurface.withValues(alpha: .6))),
+                                      color: scheme.onSurface
+                                          .withValues(alpha: .6))),
                             )
                           : ListView.separated(
                               itemCount: data.items.length,
@@ -234,8 +235,8 @@ class _ViewPrescriptionScreenState extends State<ViewPrescriptionScreen> {
                                     children: [
                                       Container(
                                         decoration: BoxDecoration(
-                                          color:
-                                              scheme.primary.withValues(alpha: .10),
+                                          color: scheme.primary
+                                              .withValues(alpha: .10),
                                           borderRadius:
                                               BorderRadius.circular(14),
                                         ),

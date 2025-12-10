@@ -30,7 +30,7 @@ class ReplyPreview extends StatelessWidget {
   const ReplyPreview({
     super.key,
     this.message,
-    this.text,              // ← دعم مقتطف نصّي مباشر (للتوافق مع ChatComposer)
+    this.text, // ← دعم مقتطف نصّي مباشر (للتوافق مع ChatComposer)
     this.onCancel,
     this.onTapOriginal,
     this.meUid,
@@ -73,12 +73,13 @@ class ReplyPreview extends StatelessWidget {
     // المرسل
     String senderLabel;
     if (m != null) {
-      final isMine = (myUid != null && myUid.isNotEmpty && m.senderUid == myUid);
+      final isMine =
+          (myUid != null && myUid.isNotEmpty && m.senderUid == myUid);
       senderLabel = isMine
           ? 'أنت'
           : ((m.senderEmail ?? '').trim().isNotEmpty
-          ? bidi.ensureLtr(m.senderEmail!.trim())
-          : 'مستخدم');
+              ? bidi.ensureLtr(m.senderEmail!.trim())
+              : 'مستخدم');
     } else {
       // عندما لا توجد رسالة (نص فقط)
       senderLabel = 'مقتطف';
@@ -115,7 +116,7 @@ class ReplyPreview extends StatelessWidget {
           ),
           child: Column(
             crossAxisAlignment:
-            isRtl ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                isRtl ? CrossAxisAlignment.end : CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
@@ -179,7 +180,8 @@ class ReplyPreview extends StatelessWidget {
       label: 'معاينة الرد',
       onTapHint: onTapOriginal != null ? 'الانتقال للرسالة الأصلية' : null,
       child: Container(
-        margin: margin ?? const EdgeInsets.symmetric(horizontal: 8).copyWith(top: 6),
+        margin: margin ??
+            const EdgeInsets.symmetric(horizontal: 8).copyWith(top: 6),
         decoration: BoxDecoration(
           color: surface,
           borderRadius: BorderRadius.circular(12),

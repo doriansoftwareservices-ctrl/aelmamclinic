@@ -110,11 +110,11 @@ CREATE TABLE IF NOT EXISTS $_tableMeta(
   }
 
   static Future<void> _tryAddColumn(
-      Database db,
-      String table,
-      String column,
-      String type,
-      ) async {
+    Database db,
+    String table,
+    String column,
+    String type,
+  ) async {
     try {
       await db.execute('ALTER TABLE $table ADD COLUMN $column $type');
     } catch (_) {}
@@ -133,8 +133,9 @@ CREATE TABLE IF NOT EXISTS $_tableMeta(
       final batch = txn.batch();
       for (final m in msgs) {
         final attachmentsJson =
-        jsonEncode(m.attachments.map((e) => e.toMap()).toList());
-        final mentionsJson = (m.mentions == null) ? null : jsonEncode(m.mentions);
+            jsonEncode(m.attachments.map((e) => e.toMap()).toList());
+        final mentionsJson =
+            (m.mentions == null) ? null : jsonEncode(m.mentions);
 
         batch.insert(
           _table,
@@ -182,11 +183,11 @@ CREATE TABLE IF NOT EXISTS $_tableMeta(
   // جلب صفحة رسائل
   // ---------------------------------------------------------------------------
   Future<List<ChatMessage>> getMessages(
-      String conversationId, {
-        String? beforeIso,
-        int limit = 30,
-        bool includeDeleted = false,
-      }) async {
+    String conversationId, {
+    String? beforeIso,
+    int limit = 30,
+    bool includeDeleted = false,
+  }) async {
     final db = await _open();
     final where = StringBuffer('conversation_id = ?');
     final args = <Object?>[conversationId];
@@ -247,8 +248,9 @@ CREATE TABLE IF NOT EXISTS $_tableMeta(
           attachments: atts,
           edited: (r['edited'] as int? ?? 0) == 1,
           deleted: (r['deleted'] as int? ?? 0) == 1,
-          createdAt: DateTime.tryParse((r['created_at'] as String?) ?? '')?.toUtc() ??
-              DateTime.now().toUtc(),
+          createdAt:
+              DateTime.tryParse((r['created_at'] as String?) ?? '')?.toUtc() ??
+                  DateTime.now().toUtc(),
           editedAt: (r['edited_at'] as String?) != null
               ? DateTime.tryParse(r['edited_at'] as String)?.toUtc()
               : null,
@@ -331,8 +333,10 @@ CREATE TABLE IF NOT EXISTS $_tableMeta(
   // ---------------------------------------------------------------------------
   Future<void> clearConversation(String conversationId) async {
     final db = await _open();
-    await db.delete(_table, where: 'conversation_id = ?', whereArgs: [conversationId]);
-    await db.delete(_tableMeta, where: 'conversation_id = ?', whereArgs: [conversationId]);
+    await db.delete(_table,
+        where: 'conversation_id = ?', whereArgs: [conversationId]);
+    await db.delete(_tableMeta,
+        where: 'conversation_id = ?', whereArgs: [conversationId]);
   }
 
   Future<void> clearAll() async {
@@ -371,7 +375,8 @@ CREATE TABLE IF NOT EXISTS $_tableMeta(
   // ---------------------------------------------------------------------------
   // Pruning: إبقاء آخر N من الرسائل لكل محادثة
   // ---------------------------------------------------------------------------
-  Future<void> pruneConversation(String conversationId, {int keep = _maxPerConversation}) async {
+  Future<void> pruneConversation(String conversationId,
+      {int keep = _maxPerConversation}) async {
     final db = await _open();
     if (keep <= 0) return;
 

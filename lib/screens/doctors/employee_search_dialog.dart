@@ -147,7 +147,8 @@ class _EmployeeSearchDialogState extends State<EmployeeSearchDialog> {
                                 subtitle: Text(
                                   job.isEmpty ? '—' : job,
                                   style: TextStyle(
-                                    color: scheme.onSurface.withValues(alpha: .65),
+                                    color:
+                                        scheme.onSurface.withValues(alpha: .65),
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
@@ -189,4 +190,3 @@ class _EmployeeSearchDialogState extends State<EmployeeSearchDialog> {
     );
   }
 }
-

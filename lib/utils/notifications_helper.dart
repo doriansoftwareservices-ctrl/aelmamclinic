@@ -30,15 +30,15 @@ class NotificationsHelper {
   static final NotificationsHelper instance = NotificationsHelper._();
 
   final FlutterLocalNotificationsPlugin _fln =
-  FlutterLocalNotificationsPlugin();
+      FlutterLocalNotificationsPlugin();
 
   /// قناة أندرويد لتنبيهات انخفاض المخزون
   static const AndroidNotificationChannel _lowStockChannel =
-  AndroidNotificationChannel(
+      AndroidNotificationChannel(
     'low_stock_channel',
     'تنبيهات انخفاض المخزون',
     description:
-    'يتم استخدام هذه القناة لتنبيهك عندما يقترب مخزون صنف من النفاد.',
+        'يتم استخدام هذه القناة لتنبيهك عندما يقترب مخزون صنف من النفاد.',
     importance: Importance.max,
   );
 
@@ -49,7 +49,7 @@ class NotificationsHelper {
 
   // بثّ نقرات الإشعارات (foreground/background)
   final StreamController<String> _tapCtrl =
-  StreamController<String>.broadcast();
+      StreamController<String>.broadcast();
   Stream<String> get onTap => _tapCtrl.stream;
 
   /* ─── التهيئة + طلب الأذونات ─── */
@@ -89,7 +89,7 @@ class NotificationsHelper {
     // إنشاء القناة (Android)
     await _fln
         .resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>()
+            AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(_lowStockChannel);
 
     // اطلب أذونات النظام عند الحاجة (Android 13+ / iOS / macOS)
@@ -103,19 +103,19 @@ class NotificationsHelper {
     // iOS
     await _fln
         .resolvePlatformSpecificImplementation<
-        IOSFlutterLocalNotificationsPlugin>()
+            IOSFlutterLocalNotificationsPlugin>()
         ?.requestPermissions(alert: true, badge: true, sound: true);
 
     // macOS
     await _fln
         .resolvePlatformSpecificImplementation<
-        MacOSFlutterLocalNotificationsPlugin>()
+            MacOSFlutterLocalNotificationsPlugin>()
         ?.requestPermissions(alert: true, badge: true, sound: true);
 
     // Android 13+
     await _fln
         .resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>()
+            AndroidFlutterLocalNotificationsPlugin>()
         ?.requestNotificationsPermission();
   }
 
@@ -174,7 +174,7 @@ class NotificationsHelper {
           'low_stock_channel',
           'تنبيهات انخفاض المخزون',
           channelDescription:
-          'يتم استخدام هذه القناة لتنبيهك عندما يقترب مخزون صنف من النفاد.',
+              'يتم استخدام هذه القناة لتنبيهك عندما يقترب مخزون صنف من النفاد.',
           styleInformation: DefaultStyleInformation(true, true),
           groupKey: _lowStockGroupKey,
           setAsGroupSummary: true,

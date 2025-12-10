@@ -54,7 +54,8 @@ class Clinic {
 
   static DateTime _epochToDate(num n) {
     if (n < 1000000000000) {
-      return DateTime.fromMillisecondsSinceEpoch(n.toInt() * 1000, isUtc: false);
+      return DateTime.fromMillisecondsSinceEpoch(n.toInt() * 1000,
+          isUtc: false);
     } else if (n < 10000000000000000) {
       return DateTime.fromMillisecondsSinceEpoch(n.toInt(), isUtc: false);
     } else {
@@ -71,20 +72,20 @@ class Clinic {
 
   // ─── التحويلات ───
   factory Clinic.fromJson(Map<String, dynamic> json) => Clinic(
-    id: _toStr(json['id']),
-    name: _toStr(json['name']),
-    isFrozen: _toBool(json['frozen'] ?? json['is_frozen'], false),
-    createdAt: _toDate(json['created_at'] ?? json['createdAt']),
-  );
+        id: _toStr(json['id']),
+        name: _toStr(json['name']),
+        isFrozen: _toBool(json['frozen'] ?? json['is_frozen'], false),
+        createdAt: _toDate(json['created_at'] ?? json['createdAt']),
+      );
 
   factory Clinic.fromMap(Map<String, dynamic> map) => Clinic.fromJson(map);
 
   Map<String, dynamic> toJson() => {
-    'id': id,
-    'name': name,
-    'frozen': isFrozen,
-    'created_at': createdAt.toIso8601String(),
-  };
+        'id': id,
+        'name': name,
+        'frozen': isFrozen,
+        'created_at': createdAt.toIso8601String(),
+      };
 
   Map<String, dynamic> toMap() => toJson();
 
@@ -102,20 +103,22 @@ class Clinic {
     );
   }
 
-  int compareByCreatedAtDesc(Clinic other) => other.createdAt.compareTo(createdAt);
+  int compareByCreatedAtDesc(Clinic other) =>
+      other.createdAt.compareTo(createdAt);
 
   @override
-  String toString() => 'Clinic(id: $id, name: $name, frozen: $isFrozen, createdAt: $createdAt)';
+  String toString() =>
+      'Clinic(id: $id, name: $name, frozen: $isFrozen, createdAt: $createdAt)';
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-          other is Clinic &&
-              runtimeType == other.runtimeType &&
-              id == other.id &&
-              name == other.name &&
-              isFrozen == other.isFrozen &&
-              createdAt == other.createdAt;
+      other is Clinic &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          name == other.name &&
+          isFrozen == other.isFrozen &&
+          createdAt == other.createdAt;
 
   @override
   int get hashCode => Object.hash(id, name, isFrozen, createdAt);

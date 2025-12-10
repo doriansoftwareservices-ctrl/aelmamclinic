@@ -68,29 +68,29 @@ class Consumption {
 
   /// خريطة للحفظ في SQLite (camelCase) — التحويل إلى snake_case يتم في SyncService عند الرفع.
   Map<String, dynamic> toMap() => {
-    'id': id,
-    'patientId': patientId,
-    'itemId': itemId,
-    'quantity': quantity,
-    'amount': amount,
-    'note': note,
-    'date': _storedDate.toIso8601String(),
-  };
+        'id': id,
+        'patientId': patientId,
+        'itemId': itemId,
+        'quantity': quantity,
+        'amount': amount,
+        'note': note,
+        'date': _storedDate.toIso8601String(),
+      };
 
   /// خريطة لاستخدامها في السحابة (snake_case)
   /// ✅ تم اعتماد 'date' بدل 'consumed_at' لتتوافق مع allow-list في SyncService.
   Map<String, dynamic> toCloudMap() => {
-    'local_id': localId ?? id,
-    'account_id': (accountId?.isEmpty ?? true) ? null : accountId,
-    'device_id': (deviceId?.isEmpty ?? true) ? null : deviceId,
-    'patient_id': patientId,
-    'item_id': itemId,
-    'quantity': quantity,
-    'amount': amount,
-    'note': note,
-    'date': _storedDate.toIso8601String(),
-    'updated_at': updatedAt?.toIso8601String(),
-  }..removeWhere((k, v) => v == null);
+        'local_id': localId ?? id,
+        'account_id': (accountId?.isEmpty ?? true) ? null : accountId,
+        'device_id': (deviceId?.isEmpty ?? true) ? null : deviceId,
+        'patient_id': patientId,
+        'item_id': itemId,
+        'quantity': quantity,
+        'amount': amount,
+        'note': note,
+        'date': _storedDate.toIso8601String(),
+        'updated_at': updatedAt?.toIso8601String(),
+      }..removeWhere((k, v) => v == null);
 
   /// مرادف عندما يلزم JSON (نستخدم تمثيل السحابة افتراضيًا)
   Map<String, dynamic> toJson() => toCloudMap();
@@ -207,32 +207,32 @@ class Consumption {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-          other is Consumption &&
-              runtimeType == other.runtimeType &&
-              id == other.id &&
-              patientId == other.patientId &&
-              itemId == other.itemId &&
-              quantity == other.quantity &&
-              amount == other.amount &&
-              note == other.note &&
-              _storedDate == other._storedDate &&
-              accountId == other.accountId &&
-              deviceId == other.deviceId &&
-              localId == other.localId &&
-              updatedAt == other.updatedAt;
+      other is Consumption &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          patientId == other.patientId &&
+          itemId == other.itemId &&
+          quantity == other.quantity &&
+          amount == other.amount &&
+          note == other.note &&
+          _storedDate == other._storedDate &&
+          accountId == other.accountId &&
+          deviceId == other.deviceId &&
+          localId == other.localId &&
+          updatedAt == other.updatedAt;
 
   @override
   int get hashCode => Object.hash(
-    id,
-    patientId,
-    itemId,
-    quantity,
-    amount,
-    note,
-    _storedDate,
-    accountId,
-    deviceId,
-    localId,
-    updatedAt,
-  );
+        id,
+        patientId,
+        itemId,
+        quantity,
+        amount,
+        note,
+        _storedDate,
+        accountId,
+        deviceId,
+        localId,
+        updatedAt,
+      );
 }

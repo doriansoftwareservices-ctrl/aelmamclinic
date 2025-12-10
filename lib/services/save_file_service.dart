@@ -19,7 +19,8 @@
 
 import 'dart:io';
 import 'dart:typed_data';
-import 'package:flutter/foundation.dart' show kIsWeb; // احتياط (لو تم الاستيراد للويب)
+import 'package:flutter/foundation.dart'
+    show kIsWeb; // احتياط (لو تم الاستيراد للويب)
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:fluttertoast/fluttertoast.dart';
@@ -70,7 +71,8 @@ Future<Directory> _resolveTargetDirectory() async {
     } catch (_) {}
     // 2) بناء مسار Downloads يدويًا
     try {
-      final home = Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'];
+      final home =
+          Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'];
       if (home != null && home.isNotEmpty) {
         final manual = Directory(p.join(home, 'Downloads'));
         if (manual.existsSync()) return manual;
@@ -89,7 +91,8 @@ Future<Directory> _resolveTargetDirectory() async {
   if (Platform.isAndroid) {
     // 1) جرّب مجلد التنزيلات العام (قد يفشل بسبب الصلاحيات/Scoped Storage)
     try {
-      final list = await getExternalStorageDirectories(type: StorageDirectory.downloads);
+      final list =
+          await getExternalStorageDirectories(type: StorageDirectory.downloads);
       if (list != null && list.isNotEmpty) {
         return list.first;
       }
@@ -119,12 +122,31 @@ String _sanitizeFileName(String input) {
   name = name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
   // منع الأسماء المحجوزة على ويندوز مثل CON و PRN...
   const reserved = {
-    'CON', 'PRN', 'AUX', 'NUL',
-    'COM1','COM2','COM3','COM4','COM5','COM6','COM7','COM8','COM9',
-    'LPT1','LPT2','LPT3','LPT4','LPT5','LPT6','LPT7','LPT8','LPT9',
+    'CON',
+    'PRN',
+    'AUX',
+    'NUL',
+    'COM1',
+    'COM2',
+    'COM3',
+    'COM4',
+    'COM5',
+    'COM6',
+    'COM7',
+    'COM8',
+    'COM9',
+    'LPT1',
+    'LPT2',
+    'LPT3',
+    'LPT4',
+    'LPT5',
+    'LPT6',
+    'LPT7',
+    'LPT8',
+    'LPT9',
   };
   final base = p.basenameWithoutExtension(name).toUpperCase();
-  final ext  = p.extension(name);
+  final ext = p.extension(name);
   if (reserved.contains(base)) {
     name = '${base}_$ext';
   }
@@ -142,7 +164,7 @@ Future<String> _uniqueFilePath(String dirPath, String fileName) async {
   if (!await File(candidate).exists()) return candidate;
 
   final name = p.basenameWithoutExtension(fileName);
-  final ext  = p.extension(fileName).replaceFirst('.', '');
+  final ext = p.extension(fileName).replaceFirst('.', '');
   var i = 1;
   while (true) {
     final alt = p.join(dirPath, '$name ($i)${ext.isNotEmpty ? '.$ext' : ''}');
