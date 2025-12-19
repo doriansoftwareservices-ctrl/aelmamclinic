@@ -58,3 +58,8 @@
 - function:
     schema: public
     name: fn_is_super_admin
+  configuration:
+    exposed_as: query
+  permissions:
+    - role: me
+    - role: user
