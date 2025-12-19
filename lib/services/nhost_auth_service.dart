@@ -1,16 +1,47 @@
 import 'dart:async';
+import 'dart:developer' as dev;
 
+import 'package:graphql_flutter/graphql_flutter.dart';
 import 'package:nhost_dart/nhost_dart.dart';
+import 'package:nhost_sdk/nhost_sdk.dart' show AuthResponse, User;
 
+import '../core/constants.dart';
+import '../core/active_account_store.dart';
 import '../core/nhost_manager.dart';
+import '../models/account_policy.dart';
+import '../models/backend_errors.dart';
+import '../models/feature_permissions.dart';
+import 'db_parity_v3.dart';
+import 'db_service.dart';
+import 'device_id_service.dart';
+import 'nhost_graphql_service.dart';
+import 'sync_service.dart';
 
-/// مصادقة Nhost: هذه الخدمة ستحل تدريجيًا محل `auth_supabase_service`.
+/// مصادقة Nhost مع ربط المزامنة المحلية وحراسة الحساب.
 /// توفر عمليات الدخول والخروج ومراقبة حالة الجلسة باستخدام `nhost_dart`.
 class NhostAuthService {
-  final NhostClient _client;
+  NhostAuthService({NhostClient? client, GraphQLClient? gql})
+      : _client = client ?? NhostManager.client,
+        _gql = gql ?? NhostGraphqlService.buildClient() {
+    _authUnsub = _client.auth.addAuthStateChangedCallback((state) {
+      NhostGraphqlService.refreshClient(client: _client);
+      _authStateController.add(state);
+      if (state == AuthenticationState.signedOut) {
+        unawaited(_disposeSync());
+      }
+    });
+  }
 
-  NhostAuthService({NhostClient? client})
-      : _client = client ?? NhostManager.client;
+  final NhostClient _client;
+  final GraphQLClient _gql;
+  final StreamController<AuthenticationState> _authStateController =
+      StreamController.broadcast();
+  UnsubscribeDelegate? _authUnsub;
+
+  SyncService? _sync;
+  String? _boundAccountId;
+
+  NhostClient get client => _client;
 
   /// يسجّل الدخول بواسطة البريد وكلمة السر.
   Future<AuthResponse> signInWithEmailPassword({
@@ -24,7 +55,10 @@ class NhostAuthService {
   }
 
   /// يسجّل الخروج من الجلسة الحالية.
-  Future<void> signOut() => _client.auth.signOut();
+  Future<void> signOut() async {
+    await _client.auth.signOut();
+    await _disposeSync();
+  }
 
   /// يسجّل حسابًا جديدًا بالبريد وكلمة السر.
   Future<AuthResponse> signUpWithEmailPassword({
@@ -32,7 +66,7 @@ class NhostAuthService {
     required String password,
     String? locale,
   }) {
-    return _client.auth.signUpEmailPassword(
+    return _client.auth.signUp(
       email: email.trim(),
       password: password,
       locale: locale,
@@ -40,11 +74,446 @@ class NhostAuthService {
   }
 
   /// المستخدم الحالي (إن وُجد).
-  NhostUser? get currentUser => _client.auth.currentUser;
+  User? get currentUser => _client.auth.currentUser;
 
   /// رمز الـ JWT الحالي (إن وُجد). يستخدم لاحقًا في GraphQL/Storage.
   String? get accessToken => _client.auth.accessToken;
 
   /// بث للتغييرات في حالة المصادقة (يساعد في تحديث مزودي الحالة).
-  Stream<AuthState> get authStateChanges => _client.auth.authStateChanges;
+  Stream<AuthenticationState> get authStateChanges =>
+      _authStateController.stream;
+
+  /// تغيير كلمة المرور للمستخدم الحالي.
+  Future<void> changePassword(String newPassword) {
+    return _client.auth.changePassword(newPassword: newPassword);
+  }
+
+  /// طلب إعادة تعيين كلمة المرور.
+  Future<void> requestPasswordReset(String email, {String? redirectTo}) {
+    return _client.auth.resetPassword(email: email, redirectTo: redirectTo);
+  }
+
+  /// محاولة تحديث الجلسة من refreshToken (إن وُجد).
+  Future<void> refreshSession() async {
+    final refreshToken = _client.auth.userSession.session?.refreshToken;
+    if (refreshToken == null || refreshToken.isEmpty) return;
+    await _client.auth.signInWithRefreshToken(refreshToken);
+  }
+
+  Future<void> dispose() async {
+    _authUnsub?.call();
+    await _disposeSync();
+    await _authStateController.close();
+  }
+
+  // ───────────────────────── GraphQL helpers ─────────────────────────
+
+  Future<Map<String, dynamic>> _runQuery(
+    String doc,
+    Map<String, dynamic> variables,
+  ) async {
+    final result = await _gql.query(
+      QueryOptions(
+        document: gql(doc),
+        variables: variables,
+        fetchPolicy: FetchPolicy.noCache,
+      ),
+    );
+    if (result.hasException) {
+      final ex = result.exception!;
+      if (_isSchemaError(ex)) {
+        throw BackendSchemaException(_formatOperationException(ex));
+      }
+      throw ex;
+    }
+    return result.data ?? <String, dynamic>{};
+  }
+
+  List<Map<String, dynamic>> _rowsFromData(
+    Map<String, dynamic> data,
+    String key,
+  ) {
+    final raw = data[key];
+    if (raw is List) {
+      return raw
+          .whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList();
+    }
+    return const <Map<String, dynamic>>[];
+  }
+
+  Future<Map<String, dynamic>?> _fetchAccountUserRow({
+    required String uid,
+    String? accountId,
+  }) async {
+    if (accountId != null && accountId.trim().isNotEmpty) {
+      final data = await _runQuery(
+        '''
+        query AccountUserByAccount(\$uid: uuid!, \$account: uuid!) {
+          account_users(
+            where: {user_uid: {_eq: \$uid}, account_id: {_eq: \$account}}
+            limit: 1
+          ) {
+            account_id
+            role
+            disabled
+          }
+        }
+        ''',
+        {'uid': uid, 'account': accountId},
+      );
+      final rows = _rowsFromData(data, 'account_users');
+      return rows.isEmpty ? null : rows.first;
+    }
+
+    final data = await _runQuery(
+      '''
+      query AccountUserLatest(\$uid: uuid!) {
+        account_users(
+          where: {user_uid: {_eq: \$uid}}
+          order_by: {created_at: desc}
+          limit: 1
+        ) {
+          account_id
+          role
+          disabled
+        }
+      }
+      ''',
+      {'uid': uid},
+    );
+    final rows = _rowsFromData(data, 'account_users');
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  bool _isSchemaError(OperationException ex) {
+    final message = _formatOperationException(ex);
+    final lower = message.toLowerCase();
+    return lower.contains('not found in type') ||
+        lower.contains('field') && lower.contains('not found') ||
+        lower.contains('does not exist') && lower.contains('relation');
+  }
+
+  String _formatOperationException(OperationException ex) {
+    if (ex.graphqlErrors.isEmpty) {
+      return ex.toString();
+    }
+    return ex.graphqlErrors.map((e) => e.message).join(' | ');
+  }
+
+  bool _isSuperAdminEmail(String? email) {
+    final normalized = (email ?? '').trim().toLowerCase();
+    if (normalized.isEmpty) return false;
+    return AppConstants.superAdminEmails.contains(normalized);
+  }
+
+  Future<bool> _resolveSuperAdminFlag({String? fallbackEmail}) async {
+    try {
+      final data = await _runQuery('query { fn_is_super_admin }', const {});
+      final value = data['fn_is_super_admin'];
+      if (value is bool) return value;
+    } catch (_) {}
+    return _isSuperAdminEmail(fallbackEmail);
+  }
+
+  /// يجلب معلومات المستخدم الحالي (accountId/role/disabled/isSuperAdmin).
+  Future<Map<String, dynamic>> fetchCurrentUser() async {
+    final user = _client.auth.currentUser;
+    if (user == null) return <String, dynamic>{};
+
+    String? accountId;
+    String? role;
+    bool disabled = false;
+
+    try {
+      final preferred = await ActiveAccountStore.readAccountId();
+      final row = await _fetchAccountUserRow(
+            uid: user.id,
+            accountId: preferred,
+          ) ??
+          await _fetchAccountUserRow(uid: user.id);
+      if (row != null) {
+        accountId = row['account_id']?.toString();
+        role = row['role']?.toString();
+        disabled = row['disabled'] == true;
+        if (accountId != null && accountId!.isNotEmpty) {
+          await ActiveAccountStore.writeAccountId(accountId);
+        }
+      }
+    } catch (_) {}
+
+    final isSuper = await _resolveSuperAdminFlag(fallbackEmail: user.email);
+
+    return {
+      'uid': user.id,
+      'email': user.email,
+      'accountId': accountId,
+      'role': role,
+      'disabled': disabled,
+      'isSuperAdmin': isSuper,
+    };
+  }
+
+  Future<String?> resolveAccountId() async {
+    final user = _client.auth.currentUser;
+    if (user == null) return null;
+
+    final preferred = await ActiveAccountStore.readAccountId();
+    if (preferred != null && preferred.isNotEmpty) {
+      try {
+        final row = await _fetchAccountUserRow(
+          uid: user.id,
+          accountId: preferred,
+        );
+        if (row != null) {
+          return row['account_id']?.toString();
+        }
+      } catch (_) {}
+    }
+
+    try {
+      final data = await _runQuery('query { my_account_id }', const {});
+      final acc = data['my_account_id']?.toString();
+      if (acc != null && acc.isNotEmpty && acc != 'null') {
+        await ActiveAccountStore.writeAccountId(acc);
+        return acc;
+      }
+    } catch (_) {}
+
+    try {
+      final data = await _runQuery(
+        '''
+        query AccountIdFallback(\$uid: uuid!) {
+          account_users(
+            where: {user_uid: {_eq: \$uid}}
+            order_by: {created_at: desc}
+            limit: 1
+          ) {
+            account_id
+          }
+        }
+        ''',
+        {'uid': user.id},
+      );
+      final rows = _rowsFromData(data, 'account_users');
+      if (rows.isNotEmpty) {
+        final acc = rows.first['account_id']?.toString();
+        if (acc != null && acc.isNotEmpty) {
+          await ActiveAccountStore.writeAccountId(acc);
+          return acc;
+        }
+      }
+    } catch (_) {}
+
+    return null;
+  }
+
+  Future<ActiveAccount> resolveActiveAccountOrThrow() async {
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      throw StateError('Not signed in.');
+    }
+
+    String? accountId;
+    String role = 'employee';
+    bool disabled = false;
+
+    try {
+      final preferred = await ActiveAccountStore.readAccountId();
+      final row = await _fetchAccountUserRow(
+            uid: user.id,
+            accountId: preferred,
+          ) ??
+          await _fetchAccountUserRow(uid: user.id);
+      if (row != null) {
+        accountId = row['account_id']?.toString();
+        role = (row['role'] as String?) ?? role;
+        disabled = row['disabled'] == true;
+      }
+    } catch (_) {}
+
+    accountId ??= await resolveAccountId();
+    if (accountId == null || accountId.isEmpty) {
+      throw StateError('No active clinic found for this user.');
+    }
+
+    if (disabled) {
+      throw AccountUserDisabledException(accountId);
+    }
+
+    try {
+      final data = await _runQuery(
+        '''
+        query ClinicFrozen(\$id: uuid!) {
+          clinics_by_pk(id: \$id) {
+            frozen
+          }
+        }
+        ''',
+        {'id': accountId},
+      );
+      final frozen = (data['clinics_by_pk'] as Map?)?['frozen'] == true;
+      if (frozen) {
+        throw AccountFrozenException(accountId);
+      }
+    } catch (e) {
+      if (e is AccountFrozenException) rethrow;
+    }
+
+    await ActiveAccountStore.writeAccountId(accountId);
+    return ActiveAccount(id: accountId, role: role, canWrite: true);
+  }
+
+  Future<FeaturePermissions> fetchMyFeaturePermissions({
+    required String accountId,
+    FeaturePermissions? fallback,
+  }) async {
+    if (accountId.trim().isEmpty) {
+      return FeaturePermissions.defaultsAllAllowed();
+    }
+
+    try {
+      final data = await _runQuery(
+        '''
+        query MyFeaturePermissions(\$account: uuid!) {
+          my_feature_permissions(args: {p_account: \$account}) {
+            allowed_features
+            can_create
+            can_update
+            can_delete
+          }
+        }
+        ''',
+        {'account': accountId},
+      );
+      final rows = _rowsFromData(data, 'my_feature_permissions');
+      if (rows.isEmpty) {
+        return FeaturePermissions.defaultsAllAllowed();
+      }
+      return FeaturePermissions.fromRpcPayload(rows.first);
+    } catch (e, st) {
+      throw FeaturePermissionsFetchException(
+        message: 'fetchMyFeaturePermissions failed',
+        fallback: fallback,
+        cause: e,
+        stackTrace: st,
+      );
+    }
+  }
+
+  // ───────────────────────── Sync bootstrap ─────────────────────────
+
+  Future<void> bootstrapSyncForCurrentUser({
+    bool pull = true,
+    bool realtime = true,
+    bool enableLogs = false,
+    Duration debounce = const Duration(seconds: 1),
+    bool wipeLocalFirst = false,
+  }) async {
+    final acc = await resolveActiveAccountOrThrow();
+    final devId = await DeviceIdService.getId();
+    final db = await DBService.instance.database;
+
+    try {
+      final lastAcc = await _readLastSyncedAccountId(db);
+      final accountChangedBetweenLaunches =
+          (lastAcc != null && lastAcc.isNotEmpty && lastAcc != acc.id);
+      if (accountChangedBetweenLaunches) {
+        dev.log(
+            'Detected account change since last launch → clearing local tables.');
+        await DBService.instance.clearAllLocalTables();
+      }
+    } catch (e) {
+      dev.log('read last sync_identity failed: $e');
+    }
+
+    if (_sync != null) {
+      final accountChanged =
+          (_boundAccountId != null && _boundAccountId != acc.id);
+      if (wipeLocalFirst && accountChanged) {
+        await DBService.instance.clearAllLocalTables();
+      }
+      await _disposeSync();
+    }
+
+    await _upsertSyncIdentity(db, accountId: acc.id, deviceId: devId);
+
+    try {
+      await DBParityV3().run(db, accountId: acc.id, verbose: enableLogs);
+    } catch (e, st) {
+      dev.log('DBParityV3.run failed (continue anyway)',
+          error: e, stackTrace: st);
+    }
+
+    _sync = SyncService(
+      db,
+      acc.id,
+      deviceId: devId,
+      enableLogs: enableLogs,
+      pushDebounce: debounce,
+    );
+    _boundAccountId = acc.id;
+
+    _bindDbPush(_sync!);
+
+    await _sync!.pushAll();
+    await _sync!.bootstrap(pull: pull, realtime: realtime);
+  }
+
+  void _bindDbPush(SyncService sync) {
+    DBService.instance.bindSyncPush(sync.pushFor);
+  }
+
+  Future<void> _disposeSync() async {
+    final sync = _sync;
+    if (sync == null) return;
+    _sync = null;
+    DBService.instance.onLocalChange = null;
+    try {
+      await sync.stopRealtime();
+    } catch (_) {}
+  }
+
+  Future<void> _upsertSyncIdentity(
+    dynamic db, {
+    required String accountId,
+    required String deviceId,
+  }) async {
+    try {
+      await db.execute(
+          'CREATE TABLE IF NOT EXISTS sync_identity(account_id TEXT, device_id TEXT)');
+      await db.rawInsert(
+        'INSERT INTO sync_identity(account_id, device_id) '
+        'SELECT ?, ? WHERE NOT EXISTS(SELECT 1 FROM sync_identity)',
+        [accountId, deviceId],
+      );
+      await db.rawUpdate(
+        'UPDATE sync_identity SET account_id = ?, device_id = ?',
+        [accountId, deviceId],
+      );
+    } catch (e) {
+      dev.log('sync_identity write failed: $e');
+    }
+  }
+
+  Future<String?> _readLastSyncedAccountId(dynamic db) async {
+    try {
+      final rows = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name = ?",
+        ['sync_identity'],
+      );
+      if (rows is List && rows.isNotEmpty) {
+        final r =
+            await db.rawQuery('SELECT account_id FROM sync_identity LIMIT 1');
+        if (r is List && r.isNotEmpty) {
+          final v = r.first['account_id']?.toString();
+          return (v != null && v.isNotEmpty) ? v : null;
+        }
+      }
+    } catch (e) {
+      dev.log('_readLastSyncedAccountId failed: $e');
+    }
+    return null;
+  }
 }

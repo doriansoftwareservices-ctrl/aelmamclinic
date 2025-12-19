@@ -4,7 +4,7 @@ import 'package:aelmamclinic/models/chat_invitation.dart';
 
 void main() {
   group('ChatGroupInvitation model', () {
-    test('parses Supabase view rows with normalized email', () {
+    test('parses remote view rows with normalized email', () {
       final inv = ChatGroupInvitation.fromMap({
         'id': '1',
         'conversation_id': 'conv-1',

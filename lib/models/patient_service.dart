@@ -1,7 +1,7 @@
 // lib/models/patient_service.dart
-/* ── نموذج خدمات المريض (محلي + متوافق مع المزامنة لسحابة Supabase)
+/* ── نموذج خدمات المريض (محلي + متوافق مع المزامنة لسحابة Remote)
    - محليًا (SQLite): مفاتيح camelCase
-   - سحابيًا (Supabase): تتحول للمفاتيح snake_case عبر toCloudMap()/SyncService
+   - سحابيًا (Remote): تتحول للمفاتيح snake_case عبر toCloudMap()/SyncService
    - fromMap يدعم camelCase و snake_case لمرونة القراءة
 ──────────────────────────────────────────────────────────────*/
 
@@ -35,7 +35,7 @@ class PatientService {
   final double serviceCost;
 
   /*──────── حقول مزامنة اختيارية (لا تُحفَظ محليًا) ────────*/
-  final String? accountId; // Supabase → accounts.id
+  final String? accountId; // Remote → accounts.id
   final String? deviceId; // معرّف الجهاز
   final int? localId; // مرجع السجل المحلي عند الرفع (إن لم يُمرّر نستخدم id)
   final DateTime? updatedAt;

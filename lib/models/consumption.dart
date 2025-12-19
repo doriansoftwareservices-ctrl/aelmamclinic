@@ -36,7 +36,7 @@ class Consumption {
   DateTime _storedDate;
 
   /*────────────────────────── حقول مزامنة اختيارية ─────────────────────────*/
-  /// معرّف الحساب في السحابة (Supabase → accounts.id)
+  /// معرّف الحساب في السحابة (Remote → accounts.id)
   String? accountId;
 
   /// معرّف الجهاز (لتتبّع المصدر أثناء المزامنة)

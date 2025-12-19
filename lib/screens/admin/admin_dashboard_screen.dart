@@ -2,8 +2,11 @@
 import 'package:flutter/material.dart';
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
-import 'package:aelmamclinic/services/auth_supabase_service.dart';
+import 'package:aelmamclinic/services/nhost_admin_service.dart';
 import 'package:aelmamclinic/models/clinic.dart';
+import 'package:aelmamclinic/models/provisioning_result.dart';
+import 'package:aelmamclinic/providers/auth_provider.dart';
+import 'package:provider/provider.dart';
 
 /*──────── شاشات للتنقّل ────────*/
 import 'package:aelmamclinic/screens/statistics/statistics_overview_screen.dart';
@@ -25,7 +28,7 @@ class AdminDashboardScreen extends StatefulWidget {
 class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     with SingleTickerProviderStateMixin {
   // ---------- Services & Controllers ----------
-  final AuthSupabaseService _authService = AuthSupabaseService();
+  final NhostAdminService _adminService = NhostAdminService();
 
   // عيادات
   List<Clinic> _clinics = [];
@@ -54,7 +57,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
 
     // حارس وصول: إن لم يكن المستخدم سوبر أدمن، لا يسمح بالبقاء هنا
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_authService.isSuperAdmin) {
+      final auth = context.read<AuthProvider>();
+      final isSuper = _adminService.isSuperAdmin || auth.isSuperAdmin;
+      if (!isSuper) {
         if (!mounted) return;
         Navigator.of(context).pushReplacementNamed('/');
         return;
@@ -124,7 +129,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   Future<void> _fetchClinics() async {
     try {
       setState(() => _loadingClinics = true);
-      final data = await _authService.fetchClinics();
+    final data = await _adminService.fetchClinics();
       if (!mounted) return;
       setState(() {
         _clinics = data;
@@ -168,7 +173,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     FocusScope.of(context).unfocus();
     setState(() => _busy = true);
     try {
-      final result = await _authService.createClinicAccount(
+      final result = await _adminService.createClinicAccount(
         clinicName: name,
         ownerEmail: email,
         ownerPassword: pass,
@@ -216,7 +221,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     FocusScope.of(context).unfocus();
     setState(() => _busy = true);
     try {
-      final result = await _authService.createEmployeeAccount(
+      final result = await _adminService.createEmployeeAccount(
         clinicId: _selectedClinic!.id,
         email: email,
         password: pass,
@@ -238,7 +243,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      await _authService.freezeClinic(clinic.id, !clinic.isFrozen);
+      await _adminService.freezeClinic(clinic.id, !clinic.isFrozen);
       _snack(clinic.isFrozen ? 'تم تفعيل العيادة' : 'تم تجميد العيادة');
       await _fetchClinics();
     } catch (e) {
@@ -276,7 +281,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
 
     setState(() => _busy = true);
     try {
-      await _authService.deleteClinic(clinic.id);
+      await _adminService.deleteClinic(clinic.id);
       _snack('🗑️ تم حذف العيادة');
       await _fetchClinics();
     } catch (e) {
@@ -303,7 +308,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   /// تسجيل الخروج وإرجاع المستخدم إلى شاشة تسجيل الدخول
   Future<void> _logout() async {
     try {
-      await _authService.signOut();
+      await _adminService.signOut();
     } catch (_) {/* تجاهل */}
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(

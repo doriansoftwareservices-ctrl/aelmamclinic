@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:graphql_flutter/graphql_flutter.dart';
 
 /*── تصميم TBIAN ─*/
 import 'package:aelmamclinic/core/theme.dart';
@@ -38,6 +38,8 @@ import '/services/lab_and_radiology_home_screen.dart';
 /*── استيرادات لإدارة الحسابات ─*/
 import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:aelmamclinic/screens/users/users_screen.dart';
+import 'package:aelmamclinic/core/nhost_manager.dart';
+import 'package:aelmamclinic/services/nhost_graphql_service.dart';
 
 /*── شاشات التدقيق والصلاحيات (جديدة في الـ Drawer للمالك فقط) ─*/
 import 'package:aelmamclinic/screens/audit/logs_screen.dart';
@@ -47,7 +49,6 @@ import 'package:aelmamclinic/screens/audit/permissions_screen.dart';
 import 'package:aelmamclinic/screens/chat/chat_home_screen.dart';
 
 /*── لتسجيل الخروج ─*/
-import 'package:aelmamclinic/services/auth_supabase_service.dart';
 import 'package:aelmamclinic/screens/auth/login_screen.dart';
 
 /// غيّر هذا الثابت حسب المطلوب:
@@ -84,10 +85,7 @@ class StatisticsOverviewScreen extends StatefulWidget {
 
 class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
-  final AuthSupabaseService _authService = AuthSupabaseService();
-
-  // Supabase client
-  final SupabaseClient _sb = Supabase.instance.client;
+  final GraphQLClient _gql = NhostGraphqlService.buildClient();
 
   // عدّاد المحادثات غير المقروءة + مؤقّت تحديث دوري
   int _unreadChatsCount = 0;
@@ -112,23 +110,47 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
     super.dispose();
   }
 
+  Future<Map<String, dynamic>> _runQuery(
+    String doc,
+    Map<String, dynamic> variables,
+  ) async {
+    final result = await _gql.query(
+      QueryOptions(
+        document: gql(doc),
+        variables: variables,
+        fetchPolicy: FetchPolicy.noCache,
+      ),
+    );
+    if (result.hasException) {
+      throw result.exception!;
+    }
+    return result.data ?? <String, dynamic>{};
+  }
+
   /*────────────────── عدّاد المحادثات غير المقروءة ──────────────────*/
   Future<void> _refreshUnreadChatsCount() async {
     try {
-      final uid = _sb.auth.currentUser?.id;
+      final uid = NhostManager.client.auth.currentUser?.id;
       if (uid == null || uid.isEmpty) {
         if (mounted) setState(() => _unreadChatsCount = 0);
         return;
       }
 
       // 1) المحادثات التي أشارك فيها
-      final partRows = await _sb
-          .from('chat_participants')
-          .select('conversation_id')
-          .eq('user_uid', uid);
-
-      final convIds = (partRows as List)
-          .whereType<Map<String, dynamic>>()
+      final partsData = await _runQuery(
+        '''
+        query ChatParticipants(\$uid: uuid!) {
+          chat_participants(where: {user_uid: {_eq: \$uid}}) {
+            conversation_id
+          }
+        }
+        ''',
+        {'uid': uid},
+      );
+      final partRows =
+          (partsData['chat_participants'] as List?) ?? const [];
+      final convIds = partRows
+          .whereType<Map>()
           .map((r) => r['conversation_id']?.toString())
           .whereType<String>()
           .toSet()
@@ -140,16 +162,37 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
       }
 
       // 2) آخر نشاط للمحادثات (last_msg_at) + 3) آخر قراءة لي
-      final convRows = await _sb
-          .from('chat_conversations')
-          .select('id,last_msg_at')
-          .inFilter('id', convIds);
+      final convData = await _runQuery(
+        '''
+        query Conversations(\$ids: [uuid!]!) {
+          chat_conversations(where: {id: {_in: \$ids}}) {
+            id
+            last_msg_at
+          }
+        }
+        ''',
+        {'ids': convIds},
+      );
+      final convRows =
+          (convData['chat_conversations'] as List?) ?? const [];
 
-      final readRows = await _sb
-          .from('chat_reads')
-          .select('conversation_id,last_read_at')
-          .eq('user_uid', uid)
-          .inFilter('conversation_id', convIds);
+      final readData = await _runQuery(
+        '''
+        query Reads(\$uid: uuid!, \$ids: [uuid!]!) {
+          chat_reads(
+            where: {
+              user_uid: {_eq: \$uid}
+              conversation_id: {_in: \$ids}
+            }
+          ) {
+            conversation_id
+            last_read_at
+          }
+        }
+        ''',
+        {'uid': uid, 'ids': convIds},
+      );
+      final readRows = (readData['chat_reads'] as List?) ?? const [];
 
       DateTime? _parse(dynamic v) {
         if (v == null) return null;
@@ -161,13 +204,13 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
       }
 
       final lastByConv = <String, DateTime?>{};
-      for (final r in (convRows as List).whereType<Map<String, dynamic>>()) {
+      for (final r in convRows.whereType<Map>()) {
         final id = r['id']?.toString() ?? '';
         lastByConv[id] = _parse(r['last_msg_at']);
       }
 
       final readByConv = <String, DateTime?>{};
-      for (final r in (readRows as List).whereType<Map<String, dynamic>>()) {
+      for (final r in readRows.whereType<Map>()) {
         final id = r['conversation_id']?.toString() ?? '';
         readByConv[id] = _parse(r['last_read_at']);
       }
@@ -222,7 +265,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
   /// ثم يضع العلامة ليصبح لاحقًا "مرحبًا بعودتك".
   Future<bool> _getAndMarkFirstOpenForUser() async {
     final prefs = await SharedPreferences.getInstance();
-    final uid = Supabase.instance.client.auth.currentUser?.id ?? 'anonymous';
+    final uid = NhostManager.client.auth.currentUser?.id ?? 'anonymous';
     final key = 'welcome_seen_$uid';
     final seen = prefs.getBool(key) ?? false;
     if (!seen) {
@@ -766,7 +809,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
 
   Future<void> _logout() async {
     try {
-      await _authService.signOut();
+      await context.read<AuthProvider>().signOut();
     } catch (_) {
       // تجاهل الخطأ إن وُجد
     }

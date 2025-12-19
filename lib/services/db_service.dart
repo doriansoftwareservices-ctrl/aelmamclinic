@@ -483,127 +483,6 @@ class DBService {
     }
   }
 
-  Future<void> _migrateAlertThresholdToReal(Database db) async {
-    try {
-      final cols = await db.rawQuery("PRAGMA table_info(alert_settings)");
-      bool has(String name) => cols.any((c) =>
-          ((c['name'] ?? '') as String).toLowerCase() == name.toLowerCase());
-
-      final thresholdInfo = cols.cast<Map<String, Object?>>().firstWhere(
-            (c) => ((c['name'] ?? '') as String).toLowerCase() == 'threshold',
-            orElse: () => const {},
-          );
-      final currentType =
-          ((thresholdInfo['type'] ?? '') as String).toUpperCase().trim();
-      if (currentType.isNotEmpty && !currentType.contains('INT')) {
-        return;
-      }
-
-      if (!has('threshold_tmp')) {
-        await db.execute(
-            'ALTER TABLE alert_settings ADD COLUMN threshold_tmp REAL NOT NULL DEFAULT 0');
-      }
-      await db.execute('UPDATE alert_settings SET threshold_tmp = threshold');
-
-      try {
-        await db.execute('ALTER TABLE alert_settings DROP COLUMN threshold');
-        await db.execute(
-            'ALTER TABLE alert_settings RENAME COLUMN threshold_tmp TO threshold');
-        await _ensureAlertSettingsColumns(db);
-      } catch (_) {
-        await _rebuildAlertSettingsWithRealThreshold(db);
-      }
-    } catch (e) {
-      print('migrateAlertThresholdToReal: $e');
-    }
-  }
-
-  Future<void> _rebuildAlertSettingsWithRealThreshold(Database db) async {
-    try {
-      final cols = await db.rawQuery("PRAGMA table_info(alert_settings)");
-      bool has(String name) => cols.any((c) =>
-          ((c['name'] ?? '') as String).toLowerCase() == name.toLowerCase());
-
-      await db
-          .execute('ALTER TABLE alert_settings RENAME TO alert_settings_old');
-      await db.execute('DROP TABLE IF EXISTS alert_settings_new');
-
-      final columnDefs = <String>[
-        'id INTEGER PRIMARY KEY AUTOINCREMENT',
-        'item_id INTEGER NOT NULL UNIQUE',
-        if (has('itemId')) 'itemId INTEGER',
-        'threshold REAL NOT NULL',
-        'is_enabled INTEGER NOT NULL DEFAULT 1',
-        if (has('isEnabled')) 'isEnabled INTEGER',
-        'last_triggered TEXT',
-        if (has('lastTriggered')) 'lastTriggered TEXT',
-        if (has('notify_time')) 'notify_time TEXT',
-        if (has('notifyTime')) 'notifyTime TEXT',
-        "created_at TEXT NOT NULL DEFAULT (datetime('now'))",
-        if (has('createdAt')) 'createdAt TEXT',
-      ];
-
-      final createSql = '''
-        CREATE TABLE alert_settings_new (
-          ${columnDefs.join(',\n          ')},
-          FOREIGN KEY(item_id) REFERENCES ${Item.table}(id) ON DELETE CASCADE
-        );
-      ''';
-      await db.execute(createSql);
-
-      final insertCols = <String>['id', 'item_id'];
-      final selectCols = <String>['id', 'item_id'];
-      if (has('itemId')) {
-        insertCols.add('itemId');
-        selectCols.add('itemId');
-      }
-      insertCols.add('threshold');
-      final thresholdSource =
-          has('threshold_tmp') ? 'threshold_tmp' : 'threshold';
-      selectCols.add(thresholdSource);
-      insertCols.add('is_enabled');
-      selectCols.add('is_enabled');
-      if (has('isEnabled')) {
-        insertCols.add('isEnabled');
-        selectCols.add('isEnabled');
-      }
-      insertCols.add('last_triggered');
-      selectCols.add('last_triggered');
-      if (has('lastTriggered')) {
-        insertCols.add('lastTriggered');
-        selectCols.add('lastTriggered');
-      }
-      if (has('notify_time')) {
-        insertCols.add('notify_time');
-        selectCols.add('notify_time');
-      }
-      if (has('notifyTime')) {
-        insertCols.add('notifyTime');
-        selectCols.add('notifyTime');
-      }
-      insertCols.add('created_at');
-      selectCols.add('created_at');
-      if (has('createdAt')) {
-        insertCols.add('createdAt');
-        selectCols.add('createdAt');
-      }
-
-      final insertSql = '''
-        INSERT INTO alert_settings_new (${insertCols.join(', ')})
-        SELECT ${selectCols.join(', ')}
-        FROM alert_settings_old;
-      ''';
-      await db.execute(insertSql);
-
-      await db.execute('DROP TABLE alert_settings_old');
-      await db
-          .execute('ALTER TABLE alert_settings_new RENAME TO alert_settings');
-      await _ensureAlertSettingsColumns(db);
-    } catch (e) {
-      print('rebuildAlertSettingsWithRealThreshold: $e');
-    }
-  }
-
   /// يضمن أعمدة الحذف المنطقي لكل الجداول المحلية + فهرس isDeleted (idempotent)
   Future<void> _ensureSoftDeleteColumns(Database db) async {
     final tables = <String>[
@@ -1668,7 +1547,6 @@ class DBService {
   }
 
   Future<int> deletePurchase(int id) async {
-    final db = await database;
     final rows = await _softDeleteById(Purchase.table, id);
     await _markChanged(Purchase.table);
     return rows;
@@ -1704,7 +1582,6 @@ class DBService {
   }
 
   Future<int> deleteAlert(int id) async {
-    final db = await database;
     final rows = await _softDeleteById(AlertSetting.table, id);
     await _markChanged(AlertSetting.table);
     return rows;
@@ -1765,7 +1642,6 @@ class DBService {
   }
 
   Future<int> deleteReturn(int id) async {
-    final db = await database;
     try {
       final notificationId = id % 1000000;
       await NotificationService().cancelNotification(notificationId);
@@ -1907,7 +1783,6 @@ class DBService {
   }
 
   Future<int> deleteDoctor(int id) async {
-    final db = await database;
     final rows = await _softDeleteById('doctors', id);
     await _markChanged('doctors');
     return rows;
@@ -2453,7 +2328,6 @@ class DBService {
   }
 
   Future<int> deleteEmployeeDiscount(int discountId) async {
-    final db = await database;
     final rows = await _softDeleteById('employees_discounts', discountId);
     await _markChanged('employees_discounts');
     return rows;

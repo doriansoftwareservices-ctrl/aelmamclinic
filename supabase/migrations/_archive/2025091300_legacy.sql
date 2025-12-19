@@ -1,1 +1,0 @@
--- Legacy migration placeholder to align with remote version 2025091300.

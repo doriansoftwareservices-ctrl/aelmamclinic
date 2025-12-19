@@ -8,12 +8,12 @@
 // - بالضغط على نتيجة: نُعيد messageId إلى الشاشة السابقة لتنتقل إليها
 //
 // الملاحظات:
-// - نعتمد مباشرة على Supabase (بدون مزوّد) لتكون الشاشة مستقلة.
+// - نعتمد مباشرة على ChatService (GraphQL) لتكون الشاشة مستقلة.
 // - البحث يطابق body/text بـ ILIKE ويستثني الرسائل المحذوفة.
 // - ترقيم النتائج محلي، مع أزرار تنقل بين النتائج (السهمين).
 //
 // الاعتمادات:
-//   - supabase_flutter
+//   - chat_service
 //   - core/neumorphism.dart
 //   - core/theme.dart
 //   - models/chat_models.dart
@@ -24,11 +24,11 @@ import 'dart:async';
 import 'dart:ui' as ui show TextDirection;
 
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-
 import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/core/theme.dart';
+import 'package:aelmamclinic/core/nhost_manager.dart';
 import 'package:aelmamclinic/models/chat_models.dart';
+import 'package:aelmamclinic/services/chat_service.dart';
 import 'package:aelmamclinic/utils/time.dart' as t;
 import 'package:aelmamclinic/utils/text_direction.dart' as bidi;
 
@@ -49,7 +49,6 @@ class ChatSearchScreen extends StatefulWidget {
 }
 
 class _ChatSearchScreenState extends State<ChatSearchScreen> {
-  final _sb = Supabase.instance.client;
   final _controller = TextEditingController();
   final _scroll = ScrollController();
 
@@ -100,52 +99,39 @@ class _ChatSearchScreenState extends State<ChatSearchScreen> {
     });
 
     try {
-      final uid = _sb.auth.currentUser?.id ?? '';
-
-      var req = _sb
-          .from('chat_messages')
-          .select(
-            'id, conversation_id, sender_uid, sender_email, kind, body, text, edited, deleted, created_at',
-          )
-          .eq('conversation_id', widget.conversationId)
-          // ✅ توحيد فلترة deleted مع بقية الطبقات
-          .or('deleted.is.false,deleted.is.null');
+      final uid = NhostManager.client.auth.currentUser?.id ?? '';
+      List<ChatMessage> list;
+      if (q.isEmpty) {
+        list = await ChatService.instance.fetchMessages(
+          conversationId: widget.conversationId,
+          limit: 200,
+        );
+      } else {
+        list = await ChatService.instance.searchMessages(
+          conversationId: widget.conversationId,
+          query: q,
+          limit: 200,
+        );
+      }
 
       // فلتر النوع
-      switch (_kind) {
-        case _KindFilter.texts:
-          req = req.eq('kind', ChatMessageKind.text.dbValue);
-          break;
-        case _KindFilter.images:
-          req = req.eq('kind', ChatMessageKind.image.dbValue);
-          break;
-        case _KindFilter.all:
-          break;
-      }
+      list = list.where((m) {
+        switch (_kind) {
+          case _KindFilter.texts:
+            return m.kind == ChatMessageKind.text;
+          case _KindFilter.images:
+            return m.kind == ChatMessageKind.image;
+          case _KindFilter.all:
+            return true;
+        }
+      }).toList();
 
       // فلتر "منّي فقط"
       if (_onlyMine && uid.isNotEmpty) {
-        req = req.eq('sender_uid', uid);
+        list = list.where((m) => m.senderUid == uid).toList();
       }
 
-      // نص البحث
-      if (q.isNotEmpty) {
-        // or(body.ilike.%q%,text.ilike.%q%)
-        final esc = q.replaceAll('%', r'\%').replaceAll('_', r'\_');
-        req = req.or('body.ilike.%$esc%,text.ilike.%$esc%');
-      }
-
-      final rows = await req.order('created_at', ascending: false).limit(200);
-
-      final list = (rows as List)
-          .whereType<Map<String, dynamic>>()
-          .map(
-            (row) => ChatMessage.fromMap(
-              row as Map<String, dynamic>,
-              currentUid: Supabase.instance.client.auth.currentUser?.id,
-            ),
-          )
-          .toList();
+      list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
       setState(() {
         _results = list;

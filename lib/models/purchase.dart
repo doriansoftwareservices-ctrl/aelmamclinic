@@ -105,7 +105,7 @@ class Purchase {
 
   Map<String, dynamic> toJson() => toCloudMap();
 
-  /// يدعم مفاتيح camelCase أو snake_case (قادمة من Supabase)
+  /// يدعم مفاتيح camelCase أو snake_case (قادمة من Remote)
   factory Purchase.fromMap(Map<String, dynamic> map) => Purchase(
         id: _asIntN(map['id']),
         itemId: _asInt(map['itemId'] ?? map['item_id']),

@@ -47,7 +47,7 @@ class Employee {
   final String? userUid;
 
   /*────────────────────────── حقول مزامنة اختيارية (سحابة) ─────────────────────────*/
-  /// معرّف الحساب (Supabase → accounts.id)
+  /// معرّف الحساب (Remote → accounts.id)
   final String? accountId;
 
   /// معرّف الجهاز (لتتبّع المصدر أثناء المزامنة)
@@ -125,7 +125,7 @@ class Employee {
         'userUid': userUid,
       };
 
-  /// تمثيل سحابي (snake_case) للاستخدام عند الدفع إلى Supabase.
+  /// تمثيل سحابي (snake_case) للاستخدام عند الدفع إلى Remote.
   Map<String, dynamic> toCloudMap() => {
         'local_id': localId ?? id,
         'account_id': accountId,

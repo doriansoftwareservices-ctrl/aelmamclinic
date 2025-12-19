@@ -23,7 +23,7 @@ class Appointment {
   String notes; // ملاحظات
 
   /*────────────────────────── حقول مزامنة اختيارية ─────────────────────────*/
-  String? accountId; // Supabase account
+  String? accountId; // Remote account
   String? deviceId; // مصدر الجهاز
   int? localId; // مرجع السجل المحلي
   DateTime? updatedAt;

@@ -249,7 +249,6 @@ class ConversationTile extends StatelessWidget {
       case ChatConversationType.announcement:
         return 'إعلان';
       case ChatConversationType.direct:
-      default:
         return 'محادثة';
     }
   }

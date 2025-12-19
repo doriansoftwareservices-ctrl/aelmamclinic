@@ -8,7 +8,7 @@
 // - واجهة سهلة:
 //     * await AttachmentCache.instance.fileFor(url)            → يعيد File ويوفّره محليًا
 //     * await AttachmentCache.instance.ensureFileFor(url)      → يعيد String? لمسار الملف
-//     * await AttachmentCache.instance.ensureFileForSupabase(
+//     * await AttachmentCache.instance.ensureFileForStorage(
 //           bucket, path, url: signedOrPublicUrl)              → يعيد String?
 //     * AttachmentCache.instance.localPathIfAny(url)
 //       AttachmentCache.instance.localPathIfAny(bucket, path)  → مسار محلي إن وُجد
@@ -70,7 +70,7 @@ class AttachmentCache {
   /// - localPathIfAny(bucket, path)
   Future<String?> localPathIfAny(String a, [String? b]) async {
     final root = await _ensureRoot();
-    final key = (b == null) ? _keyForUrl(a) : _keyForSupabase(a, b);
+    final key = (b == null) ? _keyForUrl(a) : _keyForStorage(a, b);
     final f = File('${root.path}/$key');
     if (await f.exists()) {
       _touchMeta(key);
@@ -84,7 +84,7 @@ class AttachmentCache {
   /// - localPathSyncIfAny(bucket, path)
   String? localPathSyncIfAny(String a, [String? b]) {
     try {
-      final key = (b == null) ? _keyForUrl(a) : _keyForSupabase(a, b);
+      final key = (b == null) ? _keyForUrl(a) : _keyForStorage(a, b);
       final f = File('$_rootPathGuess/$key');
       return f.existsSync() ? f.path : null;
     } catch (_) {
@@ -132,21 +132,21 @@ class AttachmentCache {
     }
   }
 
-  /// مفتاح ثابت لموارد سوبابيس (يعتمد bucket+path فقط) لتفادي تكرار التنزيل
+  /// مفتاح ثابت لموارد التخزين (يعتمد bucket+path فقط) لتفادي تكرار التنزيل
   /// عند اختلاف معلمات الاستعلام في الروابط الموقعة.
-  String _keyForSupabase(String bucket, String path) =>
-      _fnv1a64hex(utf8.encode('supabase://$bucket/$path'));
+  String _keyForStorage(String bucket, String path) =>
+      _fnv1a64hex(utf8.encode('storage://$bucket/$path'));
 
-  /// يضمن وجود ملف محلي لمسار سوبابيس (bucket+path).
+  /// يضمن وجود ملف محلي لمسار التخزين (bucket+path).
   /// إن لم يكن موجودًا سيستخدم [url] (موقّع/عام) للتنزيل.
   /// يعيد مسارًا محليًا أو null عند الفشل.
-  Future<String?> ensureFileForSupabase(
+  Future<String?> ensureFileForStorage(
     String bucket,
     String path, {
     String? url,
   }) async {
     final root = await _ensureRoot();
-    final key = _keyForSupabase(bucket, path);
+    final key = _keyForStorage(bucket, path);
     final dest = File('${root.path}/$key');
 
     if (await dest.exists()) {
@@ -170,7 +170,7 @@ class AttachmentCache {
       await _writeMeta(
         key,
         _CacheMeta(
-          url: 'supabase://$bucket/$path',
+          url: 'storage://$bucket/$path',
           createdAt: DateTime.now().toUtc(),
           lastAccess: DateTime.now().toUtc(),
           contentType: mime,

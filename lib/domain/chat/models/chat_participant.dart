@@ -44,7 +44,7 @@ class ChatParticipantFields {
   static const String blocked = 'blocked';
   static const String blockedCamel = 'blocked';
 
-  /// Columns that should be selected from Supabase for a participant row.
+  /// Columns that should be selected from Remote for a participant row.
   static const List<String> remoteColumns = <String>[
     accountId,
     conversationId,

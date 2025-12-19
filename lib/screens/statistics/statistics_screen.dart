@@ -1544,7 +1544,7 @@ class _DoctorShareByDateWidgetState extends State<_DoctorShareByDateWidget> {
     final m = <String, double>{};
     for (final p in filtered) {
       final k = df.format(p.registerDate);
-      m[k] = (m[k] ?? 0) + (p.doctorShare ?? 0);
+      m[k] = (m[k] ?? 0) + p.doctorShare;
     }
     setState(() => _shareByDate = m);
   }
@@ -1757,7 +1757,7 @@ class _NetProfitWidgetState extends State<_NetProfitWidget> {
         p.registerDate.isBefore(to.add(const Duration(days: 1))))) {
       final k = df.format(p.registerDate);
       income[k] = (income[k] ?? 0) + p.paidAmount;
-      share[k] = (share[k] ?? 0) + (p.doctorShare ?? 0);
+      share[k] = (share[k] ?? 0) + p.doctorShare;
     }
 
     final cons = <String, double>{};

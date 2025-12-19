@@ -1,6 +1,6 @@
 // lib/models/chat_attachment_record.dart
 //
-// نموذج "سجل مرفق" مطابق لجدول Supabase: public.chat_attachments
+// نموذج "سجل مرفق" مطابق لجدول Remote: public.chat_attachments
 // لا يحتوي حقول واجهة مثل حالة الرفع/التقدّم... إلخ.
 // يدعم camelCase وsnake_case في fromMap.
 //

@@ -1,7 +1,0 @@
-project_id = "kdcgpgcyxpameowcopqb"
-
-[functions]
-[functions.admin__create_clinic_owner]
-verify_jwt = true
-[functions."sign-attachment"]
-verify_jwt = true

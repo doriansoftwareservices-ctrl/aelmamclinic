@@ -1,6 +1,6 @@
 // lib/services/db_parity_v3.dart
 //
-// AELMAM CLINIC - Local SQLite parity with Supabase (v3)
+// AELMAM CLINIC - Local SQLite parity with the cloud backend (v3)
 // يعمل على أندرويد وسطح المكتب. يولِّد نفس تأثير سكربت
 // aelmam_parity_v3.sql الذي زوّدتني به، مع احترام قيود
 // SQLite 3.10 (بدون window functions).

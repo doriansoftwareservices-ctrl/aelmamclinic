@@ -1,13 +1,13 @@
 # aelmamclinic
 
-إدارة متكاملة لعيادة ألمام مبنية على Flutter مع تخزين محلي SQLite ومزامنة Supabase.
+إدارة متكاملة لعيادة ألمام مبنية على Flutter مع تخزين محلي SQLite ومزامنة Nhost (Postgres + Hasura).
 
 ## المتطلبات
 
 - Flutter 3.35 أو أحدث.
 - Dart 3.9 أو أحدث.
-- Supabase CLI (اختياري للتشغيل المحلي).
-- حساب Supabase مع مشروع مهيأ مسبقاً.
+- Nhost CLI 1.31 أو أحدث (`nhost config pull/apply`).
+- حساب Nhost مع مشروع مهيأ (plbwpsqxtizkxnqgxgfm أو ما يعادله).
 
 ## الإعداد السريع
 
@@ -15,26 +15,35 @@
    ```bash
    flutter pub get
    ```
-2. **تهيئة مفاتيح Supabase**
-   استخدم ‎`--dart-define`‎ أو ملف ‎`.env`‎ (حسب بيئة النشر) لتوفير:
-   - `SUPABASE_URL`
-   - `SUPABASE_ANON_KEY`
+2. **سحب إعدادات Nhost وتوفير المفاتيح**
+   ```bash
+   nhost config pull
+   ```
+   يُنشئ الملف `nhost/nhost.toml` وملف الأسرار `.secrets` (مضاف تلقائياً إلى
+   `.gitignore`). عدل `.secrets` لتضع القيم:
 
-   بديلًا عن إعادة بناء التطبيق يمكن وضع ملف ‎`config.json`‎ في مجلد البيانات الخاص
-   بالمنصّة (مثل `C:\aelmam_clinic\config.json` على ويندوز) يحتوي على:
+   - `HASURA_GRAPHQL_ADMIN_SECRET`
+   - `HASURA_GRAPHQL_JWT_SECRET`
+   - `NHOST_WEBHOOK_SECRET`
+
+   يمكن تمرير override إضافي عبر `--dart-define NHOST_GRAPHQL_URL=...` أو عبر
+   ملف `config.json` في مجلد البيانات الخاص بالمنصة (مثل
+   `C:\aelmam_clinic\config.json`). مثال مبسط:
 
    ```json
    {
-     "supabaseUrl": "https://your-project.supabase.co",
-     "supabaseAnonKey": "ey..."
+     "nhostSubdomain": "plbwpsqxtizkxnqgxgfm",
+     "nhostRegion": "ap-southeast-1",
+     "nhostGraphqlUrl": "https://plbwpsqxtizkxnqgxgfm.graphql.ap-southeast-1.nhost.run/v1",
+     "nhostAuthUrl": "https://plbwpsqxtizkxnqgxgfm.auth.ap-southeast-1.nhost.run/v1",
+     "nhostStorageUrl": "https://plbwpsqxtizkxnqgxgfm.storage.ap-southeast-1.nhost.run/v1"
    }
    ```
 
-   تُحمَّل هذه القيم تلقائيًا عند الإقلاع وتتفوق على الإعدادات المضمّنة. على
-   ويندوز يتم البحث أيضًا في المسارات `D:\aelmam_clinic`, ومساري
-   `%APPDATA%\aelmam_clinic` و`%LOCALAPPDATA%\aelmam_clinic`. يمكن تمرير مسار
-   ملف مخصّص عبر المتغير البيئي `AELMAM_SUPABASE_CONFIG` أو `AELMAM_CONFIG`
-   (أو تحديد مجلد عبر `AELMAM_DIR` / `AELMAM_CLINIC_DIR`).
+   تُحمَّل هذه القيم تلقائيًا عند الإقلاع وتتفوق على الإعدادات المضمّنة. تستمر
+   آلية البحث عن الملف في نفس المسارات (`C:\aelmam_clinic`, `D:\aelmam_clinic`,
+   `%APPDATA%\aelmam_clinic`, إلخ) ويمكن تمرير مسار مخصّص عبر المتغيرات
+   `AELMAM_SUPABASE_CONFIG` / `AELMAM_CONFIG` (للتوافق مع الإصدارات السابقة).
 
 3. **تهيئة Firebase (اختياري)**
    استورد إعدادات `firebase_options.dart` المطابقة لبيئتك.

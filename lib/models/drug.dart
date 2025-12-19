@@ -5,7 +5,7 @@
   محليًا (SQLite - camelCase):
     id, name, notes, createdAt
 
-  سحابيًا (Supabase - snake_case عبر SyncService):
+  سحابيًا (Remote - snake_case عبر SyncService):
     account_id, device_id, local_id, name, notes, created_at, updated_at
     - local_id يُرسل كبصمة تربط سجل السحابة بالسجل المحلي (id إن لم يُمرّر localId)
 ───────────────────────────────────────────────────────────────────────────*/
@@ -36,7 +36,7 @@ class Drug {
   final DateTime createdAt;
 
   /*──────────────────────── حقول المزامنة (سحابة) ───────────────────*/
-  /// معرّف الحساب (Supabase → accounts.id)
+  /// معرّف الحساب (Remote → accounts.id)
   final String? accountId;
 
   /// معرّف الجهاز (لتتبع المصدر أثناء المزامنة)
@@ -107,7 +107,7 @@ class Drug {
   /// JSON (snake_case) — مرادف لـ toCloudMap
   Map<String, dynamic> toJson() => toCloudMap();
 
-  /// يدعم مفاتيح camelCase و snake_case (قادمة من Supabase أو محلية)
+  /// يدعم مفاتيح camelCase و snake_case (قادمة من Remote أو محلية)
   factory Drug.fromMap(Map<String, dynamic> row) => Drug(
         id: _toIntN(row['id']),
         name: _toStr(row['name']),

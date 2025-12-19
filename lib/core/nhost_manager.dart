@@ -19,19 +19,31 @@ class NhostManager {
   }
 
   static NhostClient _buildClient() {
+    final authUrl = NhostConfig.authUrl.trim();
+    final graphqlUrl = NhostConfig.graphqlUrl.trim();
+    final storageUrl = NhostConfig.storageUrl.trim();
+    final functionsUrl = NhostConfig.functionsUrl.trim();
+
+    final hasServiceUrls = authUrl.isNotEmpty &&
+        graphqlUrl.isNotEmpty &&
+        storageUrl.isNotEmpty &&
+        functionsUrl.isNotEmpty;
+
     return NhostClient(
-      subdomain: NhostConfig.subdomain,
-      region: NhostConfig.region,
-      adminSecret:
-          NhostConfig.adminSecret.isEmpty ? null : NhostConfig.adminSecret,
-      authUrlOverride: NhostConfig.authUrl.isEmpty ? null : NhostConfig.authUrl,
-      graphqlUrlOverride:
-          NhostConfig.graphqlUrl.isEmpty ? null : NhostConfig.graphqlUrl,
-      storageUrlOverride:
-          NhostConfig.storageUrl.isEmpty ? null : NhostConfig.storageUrl,
-      functionsUrlOverride: NhostConfig.functionsUrl.isEmpty
+      serviceUrls: hasServiceUrls
+          ? ServiceUrls(
+              authUrl: authUrl,
+              graphqlUrl: graphqlUrl,
+              storageUrl: storageUrl,
+              functionsUrl: functionsUrl,
+            )
+          : null,
+      subdomain: hasServiceUrls
           ? null
-          : NhostConfig.functionsUrl,
+          : Subdomain(
+              subdomain: NhostConfig.subdomain,
+              region: NhostConfig.region,
+            ),
     );
   }
 }

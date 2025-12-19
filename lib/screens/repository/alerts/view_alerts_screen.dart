@@ -349,7 +349,6 @@ class _ViewAlertsScreenState extends State<ViewAlertsScreen> {
                     ] else ...[
                       // القائمة
                       ...data.map((a) {
-                        final critical = a.currentStock <= a.threshold;
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 10),
                           child: NeuCard(

@@ -214,8 +214,9 @@ class _DoctorServicesDetailScreenState
                   }
 
                   if (isEditMode && shareId != null) {
+                    final int currentServiceId = serviceId;
                     await DBService.instance.updateMedicalService(
-                      id: serviceId!,
+                      id: currentServiceId,
                       name: name,
                       cost: cost,
                       serviceType: 'doctorGeneral',

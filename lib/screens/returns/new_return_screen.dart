@@ -167,9 +167,9 @@ class _NewReturnScreenState extends State<NewReturnScreen> {
     );
     if (selected != null) {
       _patientNameCtrl.text = selected.name;
-      _phoneCtrl.text = (selected.phoneNumber ?? '').trim();
-      _diagnosisCtrl.text = (selected.diagnosis ?? '').trim();
-      _ageCtrl.text = (selected.age ?? 0).toString();
+      _phoneCtrl.text = selected.phoneNumber.trim();
+      _diagnosisCtrl.text = selected.diagnosis.trim();
+      _ageCtrl.text = selected.age.toString();
       _doctorCtrl.text = (selected.doctorName ?? '').trim();
     }
   }
@@ -389,7 +389,7 @@ class _PatientSearchSheetState extends State<_PatientSearchSheet> {
     setState(() {
       _filtered = _all.where((p) {
         final name = (p.name).toLowerCase();
-        final phone = (p.phoneNumber ?? '').toLowerCase();
+        final phone = p.phoneNumber.toLowerCase();
         return q.isEmpty || name.contains(q) || phone.contains(q);
       }).toList();
     });
@@ -471,7 +471,7 @@ class _PatientSearchSheetState extends State<_PatientSearchSheet> {
                                           fontWeight: FontWeight.w800),
                                     ),
                                     subtitle: Text(
-                                      'هاتف: ${(p.phoneNumber ?? '—')}',
+                                      'هاتف: ${p.phoneNumber.isEmpty ? '—' : p.phoneNumber}',
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(

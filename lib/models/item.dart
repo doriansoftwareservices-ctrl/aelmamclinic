@@ -119,7 +119,7 @@ class Item {
 
   Map<String, dynamic> toJson() => toCloudMap();
 
-  /// يدعم camelCase و snake_case (قادمة من Supabase أو من جداول محلية قديمة)
+  /// يدعم camelCase و snake_case (قادمة من Remote أو من جداول محلية قديمة)
   factory Item.fromMap(Map<String, dynamic> map) => Item(
         id: _toIntN(map['id']),
         typeId: _toInt(map['type_id'] ?? map['typeId']),

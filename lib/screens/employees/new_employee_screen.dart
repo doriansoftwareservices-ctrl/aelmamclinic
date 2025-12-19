@@ -11,7 +11,7 @@ import 'package:aelmamclinic/core/formatters.dart';
 import 'package:aelmamclinic/models/account_user_summary.dart';
 import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:aelmamclinic/services/db_service.dart';
-import 'package:aelmamclinic/services/auth_supabase_service.dart';
+import 'package:aelmamclinic/services/nhost_admin_service.dart';
 import 'package:aelmamclinic/widgets/user_account_picker_dialog.dart';
 
 class NewEmployeeScreen extends StatefulWidget {
@@ -36,7 +36,7 @@ class _NewEmployeeScreenState extends State<NewEmployeeScreen> {
   bool _isDoctor = false;
   bool _saving = false;
   bool _loadingAccounts = false;
-  final AuthSupabaseService _authService = AuthSupabaseService();
+  final NhostAdminService _adminService = NhostAdminService();
   List<AccountUserSummary> _availableAccounts = const [];
   AccountUserSummary? _selectedAccount;
   String? _selectedUserUid;
@@ -170,7 +170,7 @@ class _NewEmployeeScreenState extends State<NewEmployeeScreen> {
     }
     setState(() => _loadingAccounts = true);
     try {
-      final accounts = await _authService.listAccountUsersWithEmail(
+      final accounts = await _adminService.listAccountUsersWithEmail(
         accountId: accountId,
         includeDisabled: false,
       );
@@ -395,7 +395,7 @@ class _NewEmployeeScreenState extends State<NewEmployeeScreen> {
                               ),
                             ),
                             title: Text(
-                              _selectedUserEmail ?? 'اختيار حساب Supabase',
+                              _selectedUserEmail ?? 'اختيار حساب',
                               style:
                                   const TextStyle(fontWeight: FontWeight.w800),
                             ),
@@ -493,7 +493,7 @@ class _NewEmployeeScreenState extends State<NewEmployeeScreen> {
                                   ? 'جارٍ تحميل الحسابات…'
                                   : _availableAccounts.isEmpty
                                       ? 'لا توجد حسابات موظفين متاحة للربط'
-                                      : 'اضغط لاختيار حساب Supabase المرتبط بهذا الموظف',
+                                      : 'اضغط لاختيار حساب مرتبط بهذا الموظف',
                               style: TextStyle(
                                 color: scheme.onSurface.withValues(alpha: .6),
                                 fontWeight: FontWeight.w600,

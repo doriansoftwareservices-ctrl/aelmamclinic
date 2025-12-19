@@ -1,7 +1,10 @@
 // tool/insert_random_drugs_cloud.dart
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
-import 'package:supabase/supabase.dart';
+
+import 'package:aelmamclinic/core/nhost_config.dart';
+import 'package:http/http.dart' as http;
 
 String _reqEnv(String key) {
   final v = Platform.environment[key];
@@ -13,9 +16,21 @@ String _reqEnv(String key) {
 }
 
 Future<void> main(List<String> args) async {
-  // بيئة Supabase
-  final url = _reqEnv('SUPABASE_URL');
-  final anonKey = _reqEnv('SUPABASE_ANON_KEY');
+  // بيئة Nhost
+  final url = Platform.environment['NHOST_GRAPHQL_URL'] ??
+      Platform.environment['HASURA_GRAPHQL_URL'] ??
+      NhostConfig.graphqlUrl;
+  final adminSecret = Platform.environment['HASURA_GRAPHQL_ADMIN_SECRET'] ??
+      Platform.environment['NHOST_ADMIN_SECRET'] ??
+      NhostConfig.adminSecret;
+  if (url.trim().isEmpty) {
+    stderr.writeln('Missing env var: NHOST_GRAPHQL_URL');
+    exit(2);
+  }
+  if (adminSecret.trim().isEmpty) {
+    stderr.writeln('Missing env var: HASURA_GRAPHQL_ADMIN_SECRET');
+    exit(2);
+  }
 
   // هوية المزامنة
   final accountId = _reqEnv('ACCOUNT_ID');
@@ -24,7 +39,6 @@ Future<void> main(List<String> args) async {
   // عدد الإدخالات (اختياري: أول وسيطة)، الافتراضي 10
   final count = args.isNotEmpty ? int.tryParse(args.first) ?? 10 : 10;
 
-  final client = SupabaseClient(url, anonKey);
   final now = DateTime.now().toUtc();
   final iso = now.toIso8601String();
 
@@ -55,23 +69,56 @@ Future<void> main(List<String> args) async {
   }
 
   stdout.writeln(
-      '→ Upserting $count drugs to Supabase as account=$accountId device=$deviceId ...');
+      '→ Upserting $count drugs to Nhost as account=$accountId device=$deviceId ...');
 
   try {
-    final resp = await client
-        .from('drugs')
-        .upsert(
-          rows,
-          onConflict: 'account_id,device_id,local_id',
-          ignoreDuplicates: false,
-        )
-        .select();
+    final constraint = Platform.environment['DRUGS_CONSTRAINT'] ??
+        'drugs_account_id_device_id_local_id_key';
+    final payload = {
+      'query': r'''
+        mutation InsertDrugs($objects: [drugs_insert_input!]!, $constraint: drugs_constraint!) {
+          insert_drugs(
+            objects: $objects,
+            on_conflict: {
+              constraint: $constraint,
+              update_columns: [name, notes, updated_at]
+            }
+          ) {
+            affected_rows
+            returning {
+              name
+              local_id
+            }
+          }
+        }
+      ''',
+      'variables': {
+        'objects': rows,
+        'constraint': constraint,
+      },
+    };
 
-    stdout.writeln('✅ Upsert finished. Server echoed ${resp.length} rows.');
-    for (final r in resp.take(5)) {
+    final resp = await http.post(
+      Uri.parse(url),
+      headers: {
+        'Content-Type': 'application/json',
+        'x-hasura-admin-secret': adminSecret,
+      },
+      body: jsonEncode(payload),
+    );
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      stderr.writeln('❌ Error during upsert: ${resp.statusCode} ${resp.body}');
+      exit(1);
+    }
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    final result = (data['data']?['insert_drugs'] as Map?) ?? const {};
+    final returning = (result['returning'] as List?) ?? const [];
+    stdout.writeln(
+        '✅ Upsert finished. Server echoed ${returning.length} rows.');
+    for (final r in returning.take(5).whereType<Map>()) {
       stdout.writeln(' • ${r['name']} (local_id=${r['local_id']})');
     }
-    if (resp.length > 5) stdout.writeln(' • ...');
+    if (returning.length > 5) stdout.writeln(' • ...');
   } catch (e) {
     stderr.writeln('❌ Error during upsert: $e');
     exit(1);

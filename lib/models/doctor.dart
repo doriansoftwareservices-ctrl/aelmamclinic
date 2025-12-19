@@ -1,6 +1,6 @@
 // lib/models/doctor.dart
 //
-// نموذج الطبيب: يدعم تخزين SQLite (camelCase) ومزامنة Supabase (snake_case).
+// نموذج الطبيب: يدعم تخزين SQLite (camelCase) ومزامنة Remote (snake_case).
 
 class Doctor {
   static const String table = 'doctors';
@@ -23,7 +23,7 @@ class Doctor {
 
   final int? id;
   final int? employeeId;
-  final String? userUid; // Supabase auth.users.id
+  final String? userUid; // Remote auth.users.id
   final String name;
   final String specialization;
   final String phoneNumber;

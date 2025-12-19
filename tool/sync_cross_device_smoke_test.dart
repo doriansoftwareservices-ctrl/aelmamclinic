@@ -3,8 +3,6 @@
 // اختبار دخاني بسيط بدون اتصال حقيقي بـ Supabase.
 // يفحص منطق تشكيل صف الدفع (payload) والحذف بناءً على deviceId/localId الأصلية.
 
-import 'dart:math';
-
 /// نسخة مصغّرة من المنطق الجديد في _toRemoteRow (مجرّد محاكاة)
 Map<String, dynamic> toRemoteRowSim({
   required String accountId,
@@ -93,14 +91,6 @@ void main() {
   const empDev = 'device-employee';
 
   // 1) المالك أنشأ سجلًا محليًا id=12
-  final ownerLocal = {
-    'id': 12,
-    'name': 'Test Drug',
-    'deviceId': ownerDev,
-    'localId': 12,
-    'isDeleted': 0,
-  };
-
   // 2) الموظف قام بالسحب فأصبح لديه سجل مركّب id>=1e9 لكن مع meta أصلية
   final pulledOnEmployee = {
     'id': 1234567890, // مركّب (مثال)

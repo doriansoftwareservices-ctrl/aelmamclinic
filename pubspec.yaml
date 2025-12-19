@@ -68,11 +68,11 @@ dependencies:
   syncfusion_flutter_charts: 29.1.33
 
   # الشبكات والمزامنة
-  supabase_flutter: ^2.10.0
   nhost_dart: any
   graphql_flutter: any
   uuid: ^4.4.0
   http: any
+  http_parser: any
   image_picker: ^1.2.0
   flutter_timezone: 4.1.1
 
@@ -81,10 +81,8 @@ dev_dependencies:
     sdk: flutter
   flutter_launcher_icons: ^0.13.1
   flutter_lints: any
-  supabase: ^2.9.0
   integration_test:
     sdk: flutter
-  supabase_codegen: ^3.0.1
 
 flutter_launcher_icons:
   android: true

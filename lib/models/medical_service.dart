@@ -3,7 +3,7 @@
 /// نموذج خدمة طبية.
 /// متوافق مع:
 /// - SQLite محليًا: medical_services بالأعمدة (id, name, cost, serviceType)
-/// - Supabase: نفس القيم لكن تتحول المفاتيح تلقائيًا إلى snake_case عبر SyncService (service_type).
+/// - Remote: نفس القيم لكن تتحول المفاتيح تلقائيًا إلى snake_case عبر SyncService (service_type).
 class MedicalService {
   static const String table = 'medical_services';
 
@@ -31,7 +31,7 @@ class MedicalService {
   final String serviceType;
 
   /* ─── حقول مزامنة اختيارية (لا تُحفَظ محليًا) ─── */
-  final String? accountId; // Supabase → accounts.id
+  final String? accountId; // Remote → accounts.id
   final String? deviceId; // للتتبّع حسب الجهاز
   final int? localId; // مرجع السجل المحلي عند الرفع (defaults to id)
   final DateTime? updatedAt; // آخر تحديث (اختياري)

@@ -1,0 +1,239 @@
+==[A] auth.uid/auth.jwt (Supabase-specific) ==
+nhost/migrations/default/20250901090100_rpc_my_account_id_and_my_accounts/up.sql:98:    or lower(coalesce(auth.jwt()->>'role', '')) = 'superadmin'
+nhost/migrations/default/20250901090100_rpc_my_account_id_and_my_accounts/up.sql:99:    or lower(coalesce(auth.jwt()->>'email', '')) = 'admin@elmam.com';
+nhost/migrations/default/20250901090100_rpc_my_account_id_and_my_accounts/up.sql:167:    or lower(coalesce(auth.jwt()->>'role', '')) = 'superadmin'
+nhost/migrations/default/20250901090100_rpc_my_account_id_and_my_accounts/up.sql:168:    or lower(coalesce(auth.jwt()->>'email', '')) = 'admin@elmam.com';
+nhost/migrations/default/20250901090100_rpc_my_account_id_and_my_accounts/up.sql:218:    or lower(coalesce(auth.jwt()->>'role', '')) = 'superadmin'
+nhost/migrations/default/20250901090100_rpc_my_account_id_and_my_accounts/up.sql:219:    or lower(coalesce(auth.jwt()->>'email', '')) = 'admin@elmam.com';
+nhost/migrations/default/20250901090100_rpc_my_account_id_and_my_accounts/up.sql:273:    or lower(coalesce(auth.jwt()->>'role', '')) = 'superadmin'
+nhost/migrations/default/20250901090100_rpc_my_account_id_and_my_accounts/up.sql:274:    or lower(coalesce(auth.jwt()->>'email', '')) = 'admin@elmam.com';
+nhost/migrations/default/20250901090100_rpc_my_account_id_and_my_accounts/up.sql:303:    or lower(coalesce(auth.jwt()->>'role', '')) = 'superadmin'
+nhost/migrations/default/20250901090100_rpc_my_account_id_and_my_accounts/up.sql:304:    or lower(coalesce(auth.jwt()->>'email', '')) = 'admin@elmam.com';
+nhost/migrations/default/20250901090100_rpc_my_account_id_and_my_accounts/up.sql:342:    or lower(coalesce(auth.jwt()->>'role', '')) = 'superadmin'
+nhost/migrations/default/20250901090100_rpc_my_account_id_and_my_accounts/up.sql:343:    or lower(coalesce(auth.jwt()->>'email', '')) = 'admin@elmam.com';
+nhost/migrations/default/20250913040000_restore_admin_bootstrap/up.sql:94:    OR lower(coalesce(auth.jwt()->>'role', '')) = 'superadmin'
+nhost/migrations/default/20250913040000_restore_admin_bootstrap/up.sql:95:    OR lower(coalesce(auth.jwt()->>'email', '')) = 'admin@elmam.com';
+nhost/migrations/default/20251106090000_phase1_backend_fixes/up.sql:31:    or lower(coalesce(auth.jwt()->>'role', '')) = 'superadmin'
+nhost/migrations/default/20251106090000_phase1_backend_fixes/up.sql:32:    or lower(coalesce(auth.jwt()->>'email', '')) = 'admin@elmam.com';
+nhost/migrations/default/20251201090000_super_admin_unification/up.sql:129:    OR lower(coalesce(auth.jwt()->>'role', '')) = 'superadmin'
+nhost/migrations/default/20251201090000_super_admin_unification/up.sql:130:    OR public.fn_is_super_admin_email(auth.jwt()->>'email');
+
+==[B] request_uid_text usage (likely uuid=text) ==
+nhost/migrations/default/20250901090100_rpc_my_account_id_and_my_accounts/up.sql:13:  where user_uid = public.request_uid_text()
+nhost/migrations/default/20250901090100_rpc_my_account_id_and_my_accounts/up.sql:28:  where user_uid = public.request_uid_text()
+nhost/migrations/default/20250901090100_rpc_my_account_id_and_my_accounts/up.sql:70:    where u.id = public.request_uid_text()
+nhost/migrations/default/20250901090100_rpc_my_account_id_and_my_accounts/up.sql:96:  v_uid uuid := public.request_uid_text();
+nhost/migrations/default/20250901090100_rpc_my_account_id_and_my_accounts/up.sql:315:        and au.user_uid = public.request_uid_text()
+nhost/migrations/default/20250901090100_rpc_my_account_id_and_my_accounts/up.sql:354:        and au.user_uid = public.request_uid_text()
+nhost/migrations/default/20250912235900_fn_is_super_admin_stub/up.sql:10:  v_uid uuid := public.request_uid_text();
+nhost/migrations/default/20250913020000_restore_domain_policies/up.sql:15:      AND au.user_uid::text = public.request_uid_text()::text
+nhost/migrations/default/2025091402_chat_policies/up.sql:16:           WHERE s.user_uid::text = public.request_uid_text()::text
+nhost/migrations/default/2025091402_chat_policies/up.sql:21:           WHERE au.user_uid::text = public.request_uid_text()::text
+nhost/migrations/default/2025091402_chat_policies/up.sql:37:  WHERE au.user_uid::text = public.request_uid_text()::text
+nhost/migrations/default/2025091402_chat_policies/up.sql:69:          AND p.user_uid::text = public.request_uid_text()::text
+nhost/migrations/default/2025091402_chat_policies/up.sql:87:      created_by::text = public.request_uid_text()::text
+nhost/migrations/default/2025091402_chat_policies/up.sql:95:            AND au.user_uid::text = public.request_uid_text()::text
+nhost/migrations/default/2025091402_chat_policies/up.sql:115:      fn_is_super_admin() = true OR created_by::text = public.request_uid_text()::text
+nhost/migrations/default/2025091402_chat_policies/up.sql:124:          AND au.user_uid::text = public.request_uid_text()::text
+nhost/migrations/default/2025091402_chat_policies/up.sql:149:          AND p2.user_uid::text = public.request_uid_text()::text
+nhost/migrations/default/2025091402_chat_policies/up.sql:171:          AND c.created_by::text = public.request_uid_text()::text
+nhost/migrations/default/2025091402_chat_policies/up.sql:193:          AND c.created_by::text = public.request_uid_text()::text
+nhost/migrations/default/2025091402_chat_policies/up.sql:201:          AND c.created_by::text = public.request_uid_text()::text
+nhost/migrations/default/2025091402_chat_policies/up.sql:222:          AND c.created_by::text = public.request_uid_text()::text
+nhost/migrations/default/2025091402_chat_policies/up.sql:246:          AND p.user_uid::text = public.request_uid_text()::text
+nhost/migrations/default/2025091402_chat_policies/up.sql:264:      sender_uid::text = public.request_uid_text()::text
+nhost/migrations/default/2025091402_chat_policies/up.sql:268:          AND p.user_uid::text = public.request_uid_text()::text
+nhost/migrations/default/2025091402_chat_policies/up.sql:285:    USING (fn_is_super_admin() = true OR sender_uid::text = public.request_uid_text()::text)
+nhost/migrations/default/2025091402_chat_policies/up.sql:286:    WITH CHECK (fn_is_super_admin() = true OR sender_uid::text = public.request_uid_text()::text);
+nhost/migrations/default/2025091402_chat_policies/up.sql:300:    USING (fn_is_super_admin() = true OR sender_uid::text = public.request_uid_text()::text);
+nhost/migrations/default/2025091402_chat_policies/up.sql:320:        user_uid::text = public.request_uid_text()::text
+nhost/migrations/default/2025091402_chat_policies/up.sql:324:            AND p.user_uid::text = public.request_uid_text()::text
+nhost/migrations/default/2025091402_chat_policies/up.sql:343:      user_uid::text = public.request_uid_text()::text
+nhost/migrations/default/2025091402_chat_policies/up.sql:347:          AND p.user_uid::text = public.request_uid_text()::text
+nhost/migrations/default/2025091402_chat_policies/up.sql:367:        user_uid::text = public.request_uid_text()::text
+nhost/migrations/default/2025091402_chat_policies/up.sql:371:            AND p.user_uid::text = public.request_uid_text()::text
+nhost/migrations/default/2025091402_chat_policies/up.sql:378:        user_uid::text = public.request_uid_text()::text
+nhost/migrations/default/2025091402_chat_policies/up.sql:382:            AND p.user_uid::text = public.request_uid_text()::text
+nhost/migrations/default/2025091402_chat_policies/up.sql:410:          AND p.user_uid::text = public.request_uid_text()::text
+nhost/migrations/default/2025091402_chat_policies/up.sql:435:          AND p.user_uid::text = public.request_uid_text()::text
+nhost/migrations/default/2025091402_chat_policies/up.sql:458:          AND m.sender_uid::text = public.request_uid_text()::text
+nhost/migrations/default/2025091404_fn_sign_chat_attachment/up.sql:60:      AND p.user_uid = public.request_uid_text()
+nhost/migrations/default/2025091405_views_chat/up.sql:70:-- آخر قراءة للمستخدم الحالي (حسب public.request_uid_text())
+nhost/migrations/default/2025091405_views_chat/up.sql:77:WHERE r.user_uid = public.request_uid_text()::uuid;
+nhost/migrations/default/2025091405_views_chat/up.sql:79:IS 'Per-conversation last read state for the current authenticated user (via public.request_uid_text()).';
+nhost/migrations/default/2025091405_views_chat/up.sql:86:  WHERE p.user_uid = public.request_uid_text()::uuid
+nhost/migrations/default/2025091405_views_chat/up.sql:141:IS 'Conversations for current user (member via chat_participants + public.request_uid_text()) with last message and unread counters.';
+nhost/migrations/default/2025091506_fix_chat_participants_policies/up.sql:23:USING ( user_uid = public.request_uid_text()::uuid OR fn_is_super_admin() );
+nhost/migrations/default/2025091506_fix_chat_participants_policies/up.sql:35:        AND c.created_by = public.request_uid_text()::uuid
+nhost/migrations/default/2025091506_fix_chat_participants_policies/up.sql:43:USING ( user_uid = public.request_uid_text()::uuid OR fn_is_super_admin() )
+nhost/migrations/default/2025091506_fix_chat_participants_policies/up.sql:44:WITH CHECK ( user_uid = public.request_uid_text()::uuid OR fn_is_super_admin() );
+nhost/migrations/default/2025091506_fix_chat_participants_policies/up.sql:56:        AND c.created_by = public.request_uid_text()::uuid
+nhost/migrations/default/20250921000000_chat_reactions/up.sql:9:  user_uid  uuid NOT NULL, -- يطابق public.request_uid_text(); لا نضع FK على auth.users لتفادي صلاحيات عبر المخططات
+nhost/migrations/default/20250921000000_chat_reactions/up.sql:28:     AND p.user_uid = public.request_uid_text()
+nhost/migrations/default/20250921000000_chat_reactions/up.sql:32:-- 4) سياسة INSERT — يجب أن يكون المُدخل مشاركًا، وباسمه فقط (user_uid = public.request_uid_text())
+nhost/migrations/default/20250921000000_chat_reactions/up.sql:39:  user_uid = public.request_uid_text()
+nhost/migrations/default/20250921000000_chat_reactions/up.sql:45:     AND p.user_uid = public.request_uid_text()
+nhost/migrations/default/20250921000000_chat_reactions/up.sql:56:  user_uid = public.request_uid_text()
+nhost/migrations/default/20250921000000_chat_reactions/up.sql:62:     AND p.user_uid = public.request_uid_text()
+nhost/migrations/default/2025092102_storage_chat_attachments/up.sql:58:          and p.user_uid = public.request_uid_text()::uuid
+nhost/migrations/default/2025092102_storage_chat_attachments/up.sql:76:          and p.user_uid = public.request_uid_text()::uuid
+nhost/migrations/default/2025092102_storage_chat_attachments/up.sql:94:          and p.user_uid = public.request_uid_text()::uuid
+nhost/migrations/default/20250923000000_profiles_table/up.sql:43:        OR id::text = public.request_uid_text()::text
+nhost/migrations/default/20250923000000_profiles_table/up.sql:48:              AND au.user_uid::text = public.request_uid_text()::text
+nhost/migrations/default/20250923000000_profiles_table/up.sql:70:              AND au.user_uid::text = public.request_uid_text()::text
+nhost/migrations/default/20250923000000_profiles_table/up.sql:89:        OR id::text = public.request_uid_text()::text
+nhost/migrations/default/20250923000000_profiles_table/up.sql:94:              AND au.user_uid::text = public.request_uid_text()::text
+nhost/migrations/default/20250923000000_profiles_table/up.sql:102:        OR id::text = public.request_uid_text()::text
+nhost/migrations/default/20250923000000_profiles_table/up.sql:107:              AND au.user_uid::text = public.request_uid_text()::text
+nhost/migrations/default/20250923000000_profiles_table/up.sql:130:              AND au.user_uid::text = public.request_uid_text()::text
+nhost/migrations/default/20250924000000_admin_attach_employee_redeploy/up.sql:22:                AND au.user_uid::text = public.request_uid_text()::text
+nhost/migrations/default/20251025080000_patch/up.sql:23:    USING (user_uid = public.request_uid_text());
+nhost/migrations/default/20251025080000_patch/up.sql:123:          AND au.user_uid   = public.request_uid_text()
+nhost/migrations/default/20251025080000_patch/up.sql:125:      OR EXISTS (SELECT 1 FROM public.super_admins sa WHERE sa.user_uid = public.request_uid_text())
+nhost/migrations/default/20251025080000_patch/up.sql:143:          AND au.user_uid   = public.request_uid_text()
+nhost/migrations/default/20251025080000_patch/up.sql:163:          AND au.user_uid   = public.request_uid_text()
+nhost/migrations/default/20251025080000_patch/up.sql:173:          AND au.user_uid   = public.request_uid_text()
+nhost/migrations/default/20251025080000_patch/up.sql:193:          AND au.user_uid   = public.request_uid_text()
+nhost/migrations/default/20251025080000_patch/up.sql:237:  WHERE u.id = public.request_uid_text()
+nhost/migrations/default/20251025080000_patch/up.sql:262:  WHERE au.user_uid = public.request_uid_text()
+nhost/migrations/default/20251025080000_patch/up.sql:302:          AND p.user_uid = public.request_uid_text()
+nhost/migrations/default/20251025080000_patch/up.sql:400:          AND au.user_uid = public.request_uid_text()
+nhost/migrations/default/20251031100500_account_users_policy_fix/up.sql:15:      AND au.user_uid::text = public.request_uid_text()::text
+nhost/migrations/default/20251031100500_account_users_policy_fix/up.sql:31:  OR account_users.user_uid::text = public.request_uid_text()::text
+nhost/migrations/default/20251105010000_accounts_rls/up.sql:28:  OR account_users.user_uid::text = public.request_uid_text()::text
+nhost/migrations/default/20251105011000_chat_delivery_and_aliases/up.sql:45:            AND p.user_uid::text = public.request_uid_text()::text
+nhost/migrations/default/20251105011000_chat_delivery_and_aliases/up.sql:70:            AND p.user_uid::text = public.request_uid_text()::text
+nhost/migrations/default/20251105011000_chat_delivery_and_aliases/up.sql:71:            AND chat_delivery_receipts.user_uid = public.request_uid_text()
+nhost/migrations/default/20251105011000_chat_delivery_and_aliases/up.sql:89:      USING (chat_delivery_receipts.user_uid::text = public.request_uid_text()::text);
+nhost/migrations/default/20251105011000_chat_delivery_and_aliases/up.sql:105:      USING (chat_delivery_receipts.user_uid::text = public.request_uid_text()::text);
+nhost/migrations/default/20251105011000_chat_delivery_and_aliases/up.sql:116:  v_uid uuid := public.request_uid_text();
+nhost/migrations/default/20251105011000_chat_delivery_and_aliases/up.sql:181:      USING (owner_uid::text = public.request_uid_text()::text);
+nhost/migrations/default/20251105011000_chat_delivery_and_aliases/up.sql:197:      USING (owner_uid::text = public.request_uid_text()::text)
+nhost/migrations/default/20251105011000_chat_delivery_and_aliases/up.sql:198:      WITH CHECK (owner_uid::text = public.request_uid_text()::text);
+nhost/migrations/default/20251105012000_chat_group_invitations/up.sql:51:    inviter = public.request_uid_text()
+nhost/migrations/default/20251105012000_chat_group_invitations/up.sql:52:    OR invitee_user = public.request_uid_text()
+nhost/migrations/default/20251105012000_chat_group_invitations/up.sql:57:        AND p.user_uid = public.request_uid_text()
+nhost/migrations/default/20251105012000_chat_group_invitations/up.sql:66:    inviter = public.request_uid_text()
+nhost/migrations/default/20251105012000_chat_group_invitations/up.sql:71:        AND p.user_uid = public.request_uid_text()
+nhost/migrations/default/20251105012000_chat_group_invitations/up.sql:79:  USING (inviter = public.request_uid_text() OR invitee_user = public.request_uid_text())
+nhost/migrations/default/20251105012000_chat_group_invitations/up.sql:80:  WITH CHECK (inviter = public.request_uid_text() OR invitee_user = public.request_uid_text());
+nhost/migrations/default/20251105012000_chat_group_invitations/up.sql:86:  USING (inviter = public.request_uid_text());
+nhost/migrations/default/20251106090000_phase1_backend_fixes/up.sql:29:  v_uid uuid := public.request_uid_text();
+nhost/migrations/default/20251106090000_phase1_backend_fixes/up.sql:123:          AND p.user_uid = public.request_uid_text()
+nhost/migrations/default/20251106090000_phase1_backend_fixes/up.sql:141:          AND p.user_uid = public.request_uid_text()
+nhost/migrations/default/20251106090000_phase1_backend_fixes/up.sql:198:    inv.invitee_uid IS NOT NULL AND inv.invitee_uid = public.request_uid_text()
+nhost/migrations/default/20251106090000_phase1_backend_fixes/up.sql:217:  v_uid uuid := public.request_uid_text();
+nhost/migrations/default/20251106090000_phase1_backend_fixes/up.sql:282:  v_uid uuid := public.request_uid_text();
+nhost/migrations/default/20251108090000_chat_invitation_account_guard/up.sql:23:  v_uid uuid := public.request_uid_text();
+nhost/migrations/default/20251121060000_fix_my_profile_security/up.sql:24:    where au.user_uid = public.request_uid_text()
+nhost/migrations/default/20251121060000_fix_my_profile_security/up.sql:36:  where u.id = public.request_uid_text()
+nhost/migrations/default/20251122090000_profiles_email_and_disabled/up.sql:92:                AND au.user_uid::text = public.request_uid_text()::text
+nhost/migrations/default/20251123010000_fix_admin_provisioning_and_membership/up.sql:132:         AND au.user_uid::text = public.request_uid_text()::text
+nhost/migrations/default/20251123020000_fn_is_account_member_rows_off/up.sql:29:         AND au.user_uid::text = public.request_uid_text()::text
+nhost/migrations/default/20251123031000_membership_functions_rls_off/up.sql:19:   where user_uid = public.request_uid_text()
+nhost/migrations/default/20251123031000_membership_functions_rls_off/up.sql:43:   where user_uid = public.request_uid_text()
+nhost/migrations/default/20251123031000_membership_functions_rls_off/up.sql:75:    where au.user_uid = public.request_uid_text()
+nhost/migrations/default/20251123031000_membership_functions_rls_off/up.sql:87:  where u.id = public.request_uid_text()
+nhost/migrations/default/20251201090000_super_admin_unification/up.sql:40:  v_uid uuid := public.request_uid_text();
+nhost/migrations/default/20251201090000_super_admin_unification/up.sql:127:  v_uid uuid := public.request_uid_text();
+
+==[C] Comparisons to request_uid_text WITHOUT cast ==
+
+==[D] TO/GRANT authenticated/service_role (role missing in Nhost) ==
+nhost/migrations/default/20250913040000_restore_admin_bootstrap/up.sql:80:GRANT EXECUTE ON FUNCTION public.admin_bootstrap_clinic_for_email(text, text, text) TO service_role;
+nhost/migrations/default/2025091404_fn_sign_chat_attachment/up.sql:89:-- GRANT EXECUTE ON FUNCTION public.fn_sign_chat_attachment(text, text, integer) TO service_role;
+nhost/migrations/default/2025091405_views_chat/up.sql:153:-- GRANT SELECT ON TABLE public.v_chat_messages_with_attachments TO service_role;
+nhost/migrations/default/2025091405_views_chat/up.sql:154:-- GRANT SELECT ON TABLE public.v_chat_last_message TO service_role;
+nhost/migrations/default/2025091405_views_chat/up.sql:155:-- GRANT SELECT ON TABLE public.v_chat_reads_for_me TO service_role;
+nhost/migrations/default/2025091405_views_chat/up.sql:156:-- GRANT SELECT ON TABLE public.v_chat_conversations_for_me TO service_role;;
+nhost/migrations/default/20250924000000_admin_attach_employee_redeploy/up.sql:67:GRANT EXECUTE ON FUNCTION public.admin_attach_employee(uuid, uuid, text) TO service_role;
+nhost/migrations/default/20251025080000_patch/up.sql:33:    TO service_role
+nhost/migrations/default/20251025080000_patch/up.sql:44:    TO service_role
+nhost/migrations/default/20251025080000_patch/up.sql:208:    TO service_role
+nhost/migrations/default/20251025080000_patch/up.sql:312:    TO service_role
+nhost/migrations/default/20251025080000_patch/up.sql:384:GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.audit_logs TO service_role;
+nhost/migrations/default/20251025080000_patch/up.sql:413:    TO service_role
+nhost/migrations/default/20251122090000_profiles_email_and_disabled/up.sql:147:GRANT EXECUTE ON FUNCTION public.admin_attach_employee(uuid, uuid, text) TO service_role;
+nhost/migrations/default/20251123010000_fix_admin_provisioning_and_membership/up.sql:106:GRANT EXECUTE ON FUNCTION public.admin_resolve_or_create_auth_user(text, text, text) TO service_role;
+nhost/migrations/default/20251123010000_fix_admin_provisioning_and_membership/up.sql:245:GRANT EXECUTE ON FUNCTION public.admin_create_owner_full(text, text, text) TO service_role;
+nhost/migrations/default/20251123010000_fix_admin_provisioning_and_membership/up.sql:432:GRANT EXECUTE ON FUNCTION public.admin_create_employee_full(uuid, text, text) TO service_role;
+nhost/migrations/default/20251201090000_super_admin_unification/up.sql:29:GRANT EXECUTE ON FUNCTION public.fn_is_super_admin_email(text) TO service_role;
+nhost/migrations/default/20251201090000_super_admin_unification/up.sql:80:GRANT EXECUTE ON FUNCTION public.fn_is_super_admin() TO service_role;
+nhost/migrations/default/20251201090000_super_admin_unification/up.sql:110:GRANT EXECUTE ON FUNCTION public.admin_sync_super_admin_emails(text[]) TO service_role;
+nhost/migrations/default/20251201090000_super_admin_unification/up.sql:474:GRANT EXECUTE ON FUNCTION public.admin_create_owner_full(text, text, text) TO service_role;
+nhost/migrations/default/20251201090000_super_admin_unification/up.sql:654:GRANT EXECUTE ON FUNCTION public.admin_create_employee_full(uuid, text, text) TO service_role;
+nhost/migrations/default/20250901090100_rpc_my_account_id_and_my_accounts/up.sql:19:grant execute on function public.my_account_id() to authenticated;
+nhost/migrations/default/20250901090100_rpc_my_account_id_and_my_accounts/up.sql:33:grant execute on function public.my_accounts() to authenticated;
+nhost/migrations/default/20250901090100_rpc_my_account_id_and_my_accounts/up.sql:82:grant execute on function public.my_profile() to authenticated;
+nhost/migrations/default/20250901090100_rpc_my_account_id_and_my_accounts/up.sql:154:grant execute on function public.my_feature_permissions(uuid) to authenticated;
+nhost/migrations/default/20250901090100_rpc_my_account_id_and_my_accounts/up.sql:205:grant execute on function public.admin_create_owner_full(text, text, text) to authenticated;
+nhost/migrations/default/20250901090100_rpc_my_account_id_and_my_accounts/up.sql:259:grant execute on function public.admin_create_employee_full(uuid, text, text) to authenticated;
+nhost/migrations/default/20250901090100_rpc_my_account_id_and_my_accounts/up.sql:291:grant execute on function public.admin_list_clinics() to authenticated;
+nhost/migrations/default/20250901090100_rpc_my_account_id_and_my_accounts/up.sql:333:grant execute on function public.admin_set_clinic_frozen(uuid, boolean) to authenticated;
+nhost/migrations/default/20250901090100_rpc_my_account_id_and_my_accounts/up.sql:371:grant execute on function public.admin_delete_clinic(uuid) to authenticated;
+nhost/migrations/default/20250901090200_rpc_list_employees_with_email/up.sql:51:grant execute on function public.list_employees_with_email(uuid) to authenticated;
+nhost/migrations/default/20250901090300_rpc_set_employee_disabled/up.sql:58:grant execute on function public.set_employee_disabled(uuid, uuid, boolean) to authenticated;
+nhost/migrations/default/20250901090400_rpc_delete_employee/up.sql:44:grant execute on function public.delete_employee(uuid, uuid) to authenticated;
+nhost/migrations/default/20250912235900_fn_is_super_admin_stub/up.sql:71:grant execute on function public.fn_is_super_admin() to authenticated;
+nhost/migrations/default/20250912235900_fn_is_super_admin_stub/up.sql:72:grant execute on function public.fn_is_super_admin() to service_role;
+nhost/migrations/default/20251031090000_harden_admin_rpcs/up.sql:16:      EXECUTE format('grant execute on function %s to authenticated',to_regprocedure(fn_sig));
+nhost/migrations/default/20251031090000_harden_admin_rpcs/up.sql:17:      EXECUTE format('grant execute on function %s to service_role', to_regprocedure(fn_sig));
+nhost/migrations/default/20251104000000_fix_admin_create_owner/up.sql:55:grant execute on function public.admin_create_owner_full(text, text, text) to authenticated;
+nhost/migrations/default/20251104000000_fix_admin_create_owner/up.sql:56:grant execute on function public.admin_create_owner_full(text, text, text) to service_role;
+nhost/migrations/default/20251104000000_fix_admin_create_owner/up.sql:73:grant execute on function public.admin_bootstrap_clinic_for_email(text, text) to authenticated;
+nhost/migrations/default/20251104000000_fix_admin_create_owner/up.sql:74:grant execute on function public.admin_bootstrap_clinic_for_email(text, text) to service_role;
+nhost/migrations/default/20251104001000_fix_admin_bootstrap/up.sql:17:         grant execute on function public.admin_bootstrap_clinic(text, text, text) to authenticated;
+nhost/migrations/default/20251104001000_fix_admin_bootstrap/up.sql:18:         grant execute on function public.admin_bootstrap_clinic(text, text, text) to service_role;
+nhost/migrations/default/20251121060000_fix_my_profile_security/up.sql:41:grant execute on function public.my_profile() to authenticated;
+nhost/migrations/default/20251122093000_fix_admin_bootstrap_loop/up.sql:65:grant execute on function public.admin_bootstrap_clinic_for_email(text, text, text) to authenticated;
+nhost/migrations/default/20251122093000_fix_admin_bootstrap_loop/up.sql:82:grant execute on function public.admin_bootstrap_clinic_for_email(text, text) to authenticated;
+nhost/migrations/default/20251123031000_membership_functions_rls_off/up.sql:29:grant execute on function public.my_account_id() to authenticated;
+nhost/migrations/default/20251123031000_membership_functions_rls_off/up.sql:50:grant execute on function public.my_accounts() to authenticated;
+nhost/migrations/default/20251123031000_membership_functions_rls_off/up.sql:93:grant execute on function public.my_profile() to authenticated;
+nhost/migrations/default/20251123031000_membership_functions_rls_off/up.sql:148:grant execute on function public.list_employees_with_email(uuid) to authenticated;
+
+==[E] storage differences (Nhost != Supabase) ==
+nhost/migrations/default/20250916_chat_rls_cleanup/up.sql:18:-- ───────── storage.objects (bucket: chat-attachments) ─────────
+nhost/migrations/default/20250916_chat_rls_cleanup/up.sql:20:drop policy if exists "read chat bucket"   on storage.objects;
+nhost/migrations/default/20250916_chat_rls_cleanup/up.sql:21:drop policy if exists "upload chat bucket" on storage.objects;
+nhost/migrations/default/20250916_chat_rls_cleanup/up.sql:23:--   storage.objects: chat_insert_if_participant, chat_delete_if_participant
+nhost/migrations/default/2025092102_storage_chat_attachments/up.sql:2:-- Nhost note: storage schema may differ from Supabase (storage.objects may be absent).
+nhost/migrations/default/2025092102_storage_chat_attachments/up.sql:3:-- This migration becomes a no-op when storage.objects doesn't exist, so migrations can continue.
+nhost/migrations/default/2025092102_storage_chat_attachments/up.sql:25:  -- Guard: if Nhost storage doesn't have storage.objects, skip this migration
+nhost/migrations/default/2025092102_storage_chat_attachments/up.sql:26:  IF to_regclass('storage.objects') IS NULL THEN
+nhost/migrations/default/2025092102_storage_chat_attachments/up.sql:27:    RAISE NOTICE 'storage.objects not found; skipping chat-attachments storage policies';
+nhost/migrations/default/2025092102_storage_chat_attachments/up.sql:33:    EXECUTE 'alter table storage.objects enable row level security';
+nhost/migrations/default/2025092102_storage_chat_attachments/up.sql:46:  EXECUTE 'drop policy if exists "chat-attachments read for participants" on storage.objects';
+nhost/migrations/default/2025092102_storage_chat_attachments/up.sql:49:    on storage.objects
+nhost/migrations/default/2025092102_storage_chat_attachments/up.sql:64:  EXECUTE 'drop policy if exists "chat-attachments insert for participants" on storage.objects';
+nhost/migrations/default/2025092102_storage_chat_attachments/up.sql:67:    on storage.objects
+nhost/migrations/default/2025092102_storage_chat_attachments/up.sql:82:  EXECUTE 'drop policy if exists "chat-attachments delete for participants" on storage.objects';
+nhost/migrations/default/2025092102_storage_chat_attachments/up.sql:85:    on storage.objects
+nhost/migrations/default/20251025080000_patch/up.sql:285:  EXECUTE 'ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY';
+nhost/migrations/default/20251025080000_patch/up.sql:287:  EXECUTE $q$DROP POLICY IF EXISTS chat_read_by_participants ON storage.objects$q$;
+nhost/migrations/default/20251025080000_patch/up.sql:290:    ON storage.objects
+nhost/migrations/default/20251025080000_patch/up.sql:301:          AND a.path   = storage.objects.name
+nhost/migrations/default/20251025080000_patch/up.sql:307:  EXECUTE $q$DROP POLICY IF EXISTS chat_write_service_only ON storage.objects$q$;
+nhost/migrations/default/20251025080000_patch/up.sql:310:    ON storage.objects
+nhost/migrations/default/20251106090000_phase1_backend_fixes/up.sql:108:  EXECUTE 'ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY';
+nhost/migrations/default/20251106090000_phase1_backend_fixes/up.sql:110:  EXECUTE 'DROP POLICY IF EXISTS chat_attachments_insert_participant ON storage.objects';
+nhost/migrations/default/20251106090000_phase1_backend_fixes/up.sql:113:    ON storage.objects
+nhost/migrations/default/20251106090000_phase1_backend_fixes/up.sql:128:  EXECUTE 'DROP POLICY IF EXISTS chat_attachments_delete_participant ON storage.objects';
+nhost/migrations/default/20251106090000_phase1_backend_fixes/up.sql:131:    ON storage.objects
+nhost/migrations/default/20251025080000_patch/up.sql:268:INSERT INTO storage.buckets (id, name, public)
+
+==[F] supabase_realtime publication ==
+nhost/migrations/default/2025091406_publication_safe_add_chat/up.sql:9:    execute 'alter publication supabase_realtime add table chat_messages';
+nhost/migrations/default/2025091406_publication_safe_add_chat/up.sql:16:    execute 'alter publication supabase_realtime add table chat_conversations';
+nhost/migrations/default/2025091406_publication_safe_add_chat/up.sql:23:    execute 'alter publication supabase_realtime add table chat_participants';
+nhost/migrations/default/2025091406_publication_safe_add_chat/up.sql:30:    execute 'alter publication supabase_realtime add table chat_reads';
+nhost/migrations/default/2025091503_publication_guard/up.sql:4:    alter publication supabase_realtime add table
+nhost/migrations/default/2025092101_publication_add_chat_reactions/up.sql:6:  -- نتأكد أن الـ publication موجودة (Supabase ينشئ supabase_realtime افتراضيًا)
+
+==[G] set local role supabase_storage_admin (may fail) ==
+nhost/migrations/default/2025092102_storage_chat_attachments/up.sql:40:    EXECUTE 'set local role supabase_storage_admin';
+nhost/migrations/default/20251025080000_patch/up.sql:275:    EXECUTE 'set local role supabase_storage_admin';
+nhost/migrations/default/20251106090000_phase1_backend_fixes/up.sql:98:    EXECUTE 'set local role supabase_storage_admin';
+
+==[H] Empty SQL files (will cause EmptyQuery) ==
+empty_sql_files=0

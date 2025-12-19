@@ -13,45 +13,45 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:graphql_flutter/graphql_flutter.dart';
 
 import 'package:aelmamclinic/local/chat_local_store.dart';
 import 'package:aelmamclinic/models/chat_invitation.dart';
 import 'package:aelmamclinic/models/chat_models.dart' as CM;
+import 'package:aelmamclinic/core/constants.dart';
+import 'package:aelmamclinic/core/active_account_store.dart';
+import 'package:aelmamclinic/core/nhost_manager.dart';
 import 'package:aelmamclinic/services/chat_service.dart';
 import 'package:aelmamclinic/services/chat_realtime_notifier.dart';
 import 'package:aelmamclinic/services/attachment_cache.dart';
+import 'package:aelmamclinic/services/nhost_graphql_service.dart';
+import 'package:aelmamclinic/services/nhost_storage_service.dart';
 import 'package:aelmamclinic/utils/logger.dart';
 
 class ChatProvider extends ChangeNotifier {
   ChatProvider();
 
   // جداول
-  static const String tableConversations = 'chat_conversations';
   static const String tableParticipants = 'chat_participants';
-  static const String tableMessages = 'chat_messages';
   static const String tableAccountUsers = 'account_users';
   static const String tableProfiles = 'profiles';
   static const String tableReads = 'chat_reads';
-  static const String tableAttachments = 'chat_attachments';
   static const String storageBucketChat = ChatService.attachmentsBucket;
 
   // نوافذ صلاحيات
   static const Duration editWindow = Duration(hours: 2);
   static const Duration deleteWindow = Duration(hours: 12);
 
-  // تفضيل روابط موقعة
-  final bool _preferSignedUrls = true;
-  static const int _signedUrlTTL = 3600;
-
   // خدمات
-  final SupabaseClient _sb = Supabase.instance.client;
+  GraphQLClient get _gql => NhostGraphqlService.client;
+  final NhostStorageService _storage = NhostStorageService();
   final ChatService _chat = ChatService.instance;
   final ChatRealtimeNotifier _rt = ChatRealtimeNotifier.instance;
   final AttachmentCache _attCache = AttachmentCache.instance; // ✅
+  final Map<String, ({String url, DateTime expiresAt})> _signedUrlCache = {};
 
   // هوية
-  String get currentUid => _sb.auth.currentUser?.id ?? '';
+  String get currentUid => NhostManager.client.auth.currentUser?.id ?? '';
   String? _myEmailCache;
 
   // حالة عامة
@@ -102,12 +102,12 @@ class ChatProvider extends ChangeNotifier {
   // اشتراكات
   StreamSubscription<List<CM.ChatMessage>>? _roomMsgsSub;
   StreamSubscription<Map<String, dynamic>>? _typingSub;
-  RealtimeChannel? _readsChannel;
+  StreamSubscription<QueryResult>? _readsSub;
 
   // RealtimeNotifier subs
   StreamSubscription<void>? _rtConvSub;
   StreamSubscription<void>? _rtPartSub;
-  StreamSubscription<PostgresChangePayload>? _rtMsgSub;
+  StreamSubscription<Map<String, dynamic>>? _rtMsgSub;
 
   // Anti-dup / Throttling
   bool _listLoading = false;
@@ -145,6 +145,7 @@ class ChatProvider extends ChangeNotifier {
     busy = true;
     _safeNotify();
     try {
+      await _primeMyEmail();
       final accId = accountId ?? await fetchAccountIdForCurrentUser();
       final accountFilter =
           (accId == null || accId.trim().isEmpty) ? null : accId.trim();
@@ -194,9 +195,7 @@ class ChatProvider extends ChangeNotifier {
       _rtMsgSub = _rt.messageEvents.listen((payload) {
         if (_disposed) return;
         try {
-          if (payload.eventType == PostgresChangeEvent.insert) {
-            _handleMessageInsert(payload);
-          }
+          _handleMessageInsert(payload);
         } catch (_) {}
         _scheduleConversationsRefresh();
       });
@@ -216,12 +215,21 @@ class ChatProvider extends ChangeNotifier {
     final uid = currentUid;
     if (uid.isEmpty) return null;
 
+    final preferred = await ActiveAccountStore.readAccountId();
+    if (preferred != null && preferred.isNotEmpty) {
+      return preferred;
+    }
+
     try {
-      final row = await _sb
-          .from(tableProfiles)
-          .select('account_id')
-          .eq('id', uid)
-          .maybeSingle();
+      final query = '''
+        query ProfileAccount(\$id: uuid!) {
+          ${tableProfiles}_by_pk(id: \$id) {
+            account_id
+          }
+        }
+      ''';
+      final data = await _runQuery(query, {'id': uid});
+      final row = data['${tableProfiles}_by_pk'] as Map?;
       final acc = row?['account_id']?.toString();
       if (acc != null && acc.isNotEmpty) return acc;
     } catch (e, st) {
@@ -229,22 +237,33 @@ class ChatProvider extends ChangeNotifier {
     }
 
     try {
-      final res = await _sb.rpc('my_account_id');
-      final acc = (res ?? '').toString();
+      final query = '''
+        query MyAccountId {
+          my_account_id
+        }
+      ''';
+      final data = await _runQuery(query, const {});
+      final acc = (data['my_account_id'] ?? '').toString();
       if (acc.isNotEmpty && acc != 'null') return acc;
     } catch (e, st) {
       _rpcWarn('my_account_id RPC failed', e, st);
     }
 
     try {
-      final row = await _sb
-          .from(tableAccountUsers)
-          .select('account_id')
-          .eq('user_uid', uid)
-          .order('created_at', ascending: false)
-          .limit(1)
-          .maybeSingle();
-      final acc = row?['account_id']?.toString();
+      final query = '''
+        query AccountUserAccount(\$uid: uuid!) {
+          ${tableAccountUsers}(
+            where: {user_uid: {_eq: \$uid}},
+            order_by: {created_at: desc},
+            limit: 1
+          ) {
+            account_id
+          }
+        }
+      ''';
+      final data = await _runQuery(query, {'uid': uid});
+      final rows = _rowsFromData(data, tableAccountUsers);
+      final acc = rows.isEmpty ? null : rows.first['account_id']?.toString();
       if (acc != null && acc.isNotEmpty) return acc;
     } catch (e, st) {
       _rpcWarn('account_users account_id lookup failed', e, st);
@@ -257,20 +276,27 @@ class ChatProvider extends ChangeNotifier {
 
   // Helpers
   Future<void> _primeMyEmail() async {
-    final e = (_sb.auth.currentUser?.email ?? '').toLowerCase();
+    final e = (NhostManager.client.auth.currentUser?.email ?? '').toLowerCase();
     if (e.isNotEmpty) {
       _myEmailCache = e;
       return;
     }
     try {
-      final row = await _sb
-          .from(tableAccountUsers)
-          .select('email')
-          .eq('user_uid', currentUid)
-          .order('created_at', ascending: false)
-          .limit(1)
-          .maybeSingle();
-      final em = (row?['email']?.toString() ?? '').toLowerCase();
+      final query = '''
+        query MyEmail(\$uid: uuid!) {
+          ${tableAccountUsers}(
+            where: {user_uid: {_eq: \$uid}},
+            order_by: {created_at: desc},
+            limit: 1
+          ) {
+            email
+          }
+        }
+      ''';
+      final data = await _runQuery(query, {'uid': currentUid});
+      final rows = _rowsFromData(data, tableAccountUsers);
+      final em = (rows.isEmpty ? '' : rows.first['email']?.toString() ?? '')
+          .toLowerCase();
       if (em.isNotEmpty) {
         _myEmailCache = em;
         return;
@@ -281,74 +307,66 @@ class ChatProvider extends ChangeNotifier {
 
   String get myEmail => _myEmailCache ?? 'unknown@local';
 
+  bool _looksLikeUuid(String value) {
+    final v = value.trim();
+    if (v.isEmpty) return false;
+    final re = RegExp(
+      r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+    );
+    return re.hasMatch(v);
+  }
+
+  Future<String?> _resolveFileId(String bucket, String path) async {
+    final trimmed = path.trim();
+    if (_looksLikeUuid(trimmed)) return trimmed;
+    if (bucket.trim().isEmpty) return null;
+    try {
+      final query = '''
+        query StorageFileId(\$bucket: String!, \$name: String!) {
+          files(where: {bucketId: {_eq: \$bucket}, name: {_eq: \$name}}, limit: 1) {
+            id
+          }
+        }
+      ''';
+      final data = await _runQuery(query, {'bucket': bucket, 'name': trimmed});
+      final rows = (data['files'] as List?) ?? const [];
+      final row = rows.isEmpty ? null : Map<String, dynamic>.from(rows.first);
+      final id = row['id']?.toString();
+      return (id == null || id.isEmpty) ? null : id;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<String> _signedOrPublicUrl(String bucket, String path) async {
-    if (_preferSignedUrls) {
-      try {
-        final signed =
-            await _sb.storage.from(bucket).createSignedUrl(path, _signedUrlTTL);
-        if (signed.trim().isNotEmpty) return signed;
-      } catch (_) {}
+    if (AppConstants.chatPreferPublicUrls) {
+      return _storage.publicFileUrl(path);
     }
-    return _sb.storage.from(bucket).getPublicUrl(path);
-  }
 
-  // ✅ دمج رابط HTTP مع مسار محلي إن وجد في الكاش (لا يفرض تنزيلًا هنا)
-  Future<List<Map<String, dynamic>>> _normalizeAttachmentsToHttp(
-    List<dynamic> rawList,
-  ) async {
-    final result = <Map<String, dynamic>>[];
-    for (final e in rawList.whereType<Map<String, dynamic>>()) {
-      final bucket = e['bucket']?.toString();
-      final path = e['path']?.toString();
-      final url = (bucket != null && path != null)
-          ? await _signedOrPublicUrl(bucket, path)
-          : (e['url']?.toString() ?? '');
+    final cacheKey = '$bucket|$path';
+    final cached = _signedUrlCache[cacheKey];
+    if (cached != null && DateTime.now().isBefore(cached.expiresAt)) {
+      return cached.url;
+    }
 
-      // تحقق من وجود نسخة محلية عبر "URL"
-      String? localPath;
-      if (url.isNotEmpty) {
-        try {
-          localPath = await _attCache.localPathIfAny(url);
-        } catch (_) {}
+    final fileId = await _resolveFileId(bucket, path);
+    if (fileId != null && fileId.isNotEmpty) {
+      final signed = await _storage.createSignedUrl(
+        fileId,
+        expiresInSeconds: AppConstants.storageSignedUrlTTLSeconds,
+      );
+      if (signed != null && signed.isNotEmpty) {
+        final ttl = Duration(seconds: AppConstants.storageSignedUrlTTLSeconds);
+        _signedUrlCache[cacheKey] = (
+          url: signed,
+          expiresAt: DateTime.now().add(ttl - const Duration(seconds: 30)),
+        );
+        return signed;
       }
-
-      // دمج extra موجود مسبقًا
-      Map<String, dynamic> extra = {};
-      final ex = e['extra'];
-      if (ex is Map<String, dynamic>) extra = Map.of(ex);
-
-      if (localPath != null) {
-        extra['local_path'] = localPath;
-      }
-
-      result.add({
-        'id': e['id']?.toString(),
-        'type': e['type']?.toString() ?? 'image',
-        'url': url,
-        'bucket': bucket,
-        'path': path,
-        'mime_type': e['mime_type'] ?? e['mimeType'],
-        'size_bytes': e['size_bytes'],
-        'width': e['width'],
-        'height': e['height'],
-        'created_at': e['created_at'] ?? e['createdAt'],
-        'extra': extra,
-      });
+      return _storage.publicFileUrl(fileId);
     }
-    return result;
-  }
 
-  Future<Map<String, dynamic>> _withHttpAttachments(
-    Map<String, dynamic> msgRow,
-  ) async {
-    final att = msgRow['attachments'];
-    if (att is List) {
-      final normalized = await _normalizeAttachmentsToHttp(att);
-      final copy = Map<String, dynamic>.from(msgRow);
-      copy['attachments'] = normalized;
-      return copy;
-    }
-    return msgRow;
+    return _storage.publicFileUrl(path);
   }
 
   // --------------------------------------------------------------------------
@@ -366,16 +384,11 @@ class ChatProvider extends ChangeNotifier {
     final myRev = ++_listRev;
 
     try {
-      // IDs لمحاوراتي
-      final partRows = await _sb
-          .from(tableParticipants)
-          .select('conversation_id')
-          .eq('user_uid', currentUid);
-
-      final convIds = (partRows as List)
-          .whereType<Map<String, dynamic>>()
-          .map((r) => r['conversation_id']?.toString())
-          .whereType<String>()
+      final List<CM.ConversationListItem> overview =
+          await _chat.fetchMyConversationsOverview();
+      final convIds = overview
+          .map((item) => item.conversation.id)
+          .where((id) => id.isNotEmpty)
           .toSet()
           .toList();
 
@@ -390,34 +403,29 @@ class ChatProvider extends ChangeNotifier {
         return;
       }
 
-      // دفعات
+      // دفعات المشاركين
       const chunk = 100;
-      final fetched = <CM.ChatConversation>[];
       final tmpParticipantsByConv = <String, List<ChatParticipantLocal>>{};
 
       for (var i = 0; i < convIds.length; i += chunk) {
         final end = (i + chunk > convIds.length) ? convIds.length : i + chunk;
         final slice = convIds.sublist(i, end);
 
-        final rows = await _sb
-            .from(tableConversations)
-            .select(
-              'id, account_id, is_group, title, created_at, created_by, last_msg_at, last_msg_snippet',
-            )
-            .inFilter('id', slice);
+        final query = '''
+          query Participants(\$ids: [uuid!]!) {
+            ${tableParticipants}(where: {conversation_id: {_in: \$ids}}) {
+              conversation_id
+              user_uid
+              email
+              joined_at
+              nickname
+            }
+          }
+        ''';
+        final data = await _runQuery(query, {'ids': slice});
+        final partsRows = _rowsFromData(data, tableParticipants);
 
-        fetched.addAll(
-          (rows as List).whereType<Map<String, dynamic>>().map(
-                CM.ChatConversation.fromMap,
-              ),
-        );
-
-        final partsRows = await _sb
-            .from(tableParticipants)
-            .select('conversation_id, user_uid, email, joined_at, nickname')
-            .inFilter('conversation_id', slice);
-
-        for (final r in (partsRows as List).whereType<Map<String, dynamic>>()) {
+        for (final r in partsRows) {
           final cid = r['conversation_id']?.toString();
           if (cid == null) continue;
           final p = ChatParticipantLocal.fromMap(r);
@@ -425,12 +433,13 @@ class ChatProvider extends ChangeNotifier {
         }
       }
 
-      // إزالة تكرار المحادثات
-      final byId = <String, CM.ChatConversation>{};
-      for (final c in fetched) {
-        if (c.id.isNotEmpty) byId[c.id] = c;
-      }
-      final serverList = byId.values.toList();
+      final serverList = overview
+          .map(
+            (item) => item.conversation.copyWith(
+              unreadCount: item.unreadCount,
+            ),
+          )
+          .toList();
 
       // عنونة العرض
       final aliasByUser = await _chat.fetchAliasMap();
@@ -465,20 +474,12 @@ class ChatProvider extends ChangeNotifier {
         }
       }
 
-      // آخر قراءة لي
-      final readsRows = await _sb
-          .from(tableReads)
-          .select('conversation_id,last_read_at')
-          .eq('user_uid', currentUid)
-          .inFilter('conversation_id', convIds);
-
       final lastReadByConv = <String, DateTime?>{};
-      for (final r in (readsRows as List).whereType<Map<String, dynamic>>()) {
-        final cid = (r['conversation_id'] ?? '').toString();
-        final lr = DateTime.tryParse(
-          (r['last_read_at'] ?? '').toString(),
-        )?.toUtc();
-        if (cid.isNotEmpty) lastReadByConv[cid] = lr;
+      for (final item in overview) {
+        final cid = item.conversation.id;
+        if (cid.isNotEmpty) {
+          lastReadByConv[cid] = item.lastReadAt;
+        }
       }
 
       // دمج مع الحالة السابقة لمنع رجوع الخلف في snippet/lastMsgAt + منع وميض unread
@@ -505,18 +506,10 @@ class ChatProvider extends ChangeNotifier {
         }
 
         // unread تقدير سريع ثم max(prev, server) لغير المفتوح
-        int serverUc = 0;
-        final lr = lastReadByConv[srv.id];
-        if (lr == null || effAt.isAfter(lr)) {
-          serverUc = 1;
-        }
-
-        var uc = serverUc;
-        if (openedId == srv.id) {
-          uc = 0;
-        } else if (prev != null) {
-          uc = max(uc, prev.unreadCount ?? 0);
-        }
+        final serverUc = srv.unreadCount ?? 0;
+        final uc = (openedId == srv.id)
+            ? 0
+            : (prev != null ? max(serverUc, prev.unreadCount ?? 0) : serverUc);
 
         return srv.copyWith(
           lastMsgAt: effAt,
@@ -651,6 +644,37 @@ class ChatProvider extends ChangeNotifier {
 
   void _rpcWarn(String label, Object error, [StackTrace? st]) {
     log.w('Chat RPC warning: $label -> $error', tag: 'CHAT_RPC', st: st);
+  }
+
+  Future<Map<String, dynamic>> _runQuery(
+    String doc,
+    Map<String, dynamic> variables,
+  ) async {
+    final result = await _gql.query(
+      QueryOptions(
+        document: gql(doc),
+        variables: variables,
+        fetchPolicy: FetchPolicy.noCache,
+      ),
+    );
+    if (result.hasException) {
+      throw result.exception!;
+    }
+    return result.data ?? <String, dynamic>{};
+  }
+
+  List<Map<String, dynamic>> _rowsFromData(
+    Map<String, dynamic> data,
+    String key,
+  ) {
+    final raw = data[key];
+    if (raw is List) {
+      return raw
+          .whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList();
+    }
+    return const <Map<String, dynamic>>[];
   }
 
   // --------------------------------------------------------------------------
@@ -801,52 +825,41 @@ class ChatProvider extends ChangeNotifier {
     _typingSub = _chat.typingStream(conversationId).listen((payload) {
       if (_disposed) return;
       final String convId = (payload['conversation_id'] ?? '').toString();
-      final String? uid = payload['uid']?.toString();
-      final bool typing = payload['typing'] == true;
-
-      if (convId.isEmpty ||
-          convId != conversationId ||
-          uid == null ||
-          uid == currentUid) {
-        return;
+      if (convId.isEmpty || convId != conversationId) return;
+      final active = (payload['active_uids'] as List?) ?? const [];
+      final set = <String>{};
+      for (final raw in active) {
+        final uid = raw?.toString();
+        if (uid != null && uid.isNotEmpty && uid != currentUid) {
+          set.add(uid);
+        }
       }
-      final set = (_typingUidsByConv[convId] ??= <String>{});
-      if (typing) {
-        set.add(uid);
-      } else {
-        set.remove(uid);
-      }
+      _typingUidsByConv[convId] = set;
       _safeNotify();
     });
 
     try {
-      _readsChannel?.unsubscribe();
+      await _readsSub?.cancel();
     } catch (_) {}
-    _readsChannel = _sb
-        .channel('chat:reads:$conversationId')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.insert,
-          schema: 'public',
-          table: tableReads,
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'conversation_id',
-            value: conversationId,
+    final readsSubDoc = '''
+      subscription Reads(\$cid: uuid!, \$uid: uuid!) {
+        $tableReads(
+          where: {conversation_id: {_eq: \$cid}, user_uid: {_eq: \$uid}}
+        ) {
+          conversation_id
+          last_read_at
+        }
+      }
+    ''';
+    _readsSub = _gql
+        .subscribe(
+          SubscriptionOptions(
+            document: gql(readsSubDoc),
+            variables: {'cid': conversationId, 'uid': currentUid},
+            fetchPolicy: FetchPolicy.noCache,
           ),
-          callback: (_) => _applyReadsToOutgoing(conversationId),
         )
-        .onPostgresChanges(
-          event: PostgresChangeEvent.update,
-          schema: 'public',
-          table: tableReads,
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'conversation_id',
-            value: conversationId,
-          ),
-          callback: (_) => _applyReadsToOutgoing(conversationId),
-        )
-        .subscribe();
+        .listen((_) => _applyReadsToOutgoing(conversationId));
 
     await markConversationRead(conversationId);
     await _applyReadsToOutgoing(conversationId);
@@ -863,14 +876,9 @@ class ChatProvider extends ChangeNotifier {
       _typingSub = null;
     } catch (_) {}
     try {
-      _readsChannel?.unsubscribe();
+      await _readsSub?.cancel();
     } catch (_) {}
-    try {
-      if (_readsChannel != null) {
-        _sb.removeChannel(_readsChannel!);
-      }
-    } catch (_) {}
-    _readsChannel = null;
+    _readsSub = null;
 
     try {
       _listDebounce?.cancel();
@@ -881,36 +889,24 @@ class ChatProvider extends ChangeNotifier {
   // --------------------------------------------------------------------------
   // جلب دفعات رسائل
   // --------------------------------------------------------------------------
-  Future<List<CM.ChatMessage>> _fetchRecentBatchFromSupabase({
+  Future<List<CM.ChatMessage>> _fetchRecentBatchFromBackend({
     required String conversationId,
     int limit = 40,
     DateTime? before,
   }) async {
-    final query = _sb
-        .from(tableMessages)
-        .select('''
-          id, conversation_id, sender_uid, sender_email, kind,
-          body, text, edited, deleted, created_at, edited_at, deleted_at,
-          reply_to_message_id, reply_to_snippet, mentions,
-          attachments:$tableAttachments (
-            id, message_id, bucket, path, mime_type, size_bytes, width, height, created_at
-          )
-        ''')
-        .eq('conversation_id', conversationId)
-        .or('deleted.is.false,deleted.is.null');
-
     if (before != null) {
-      query.lt('created_at', before.toUtc().toIso8601String());
+      final list = await _chat.fetchOlderMessages(
+        conversationId: conversationId,
+        beforeCreatedAt: before,
+        limit: limit,
+      );
+      return List<CM.ChatMessage>.from(list.reversed);
     }
-
-    final rows = await query.order('created_at', ascending: false).limit(limit);
-
-    final list = <CM.ChatMessage>[];
-    for (final r in (rows as List).whereType<Map<String, dynamic>>()) {
-      final normalized = await _withHttpAttachments(r);
-      list.add(CM.ChatMessage.fromMap(normalized, currentUid: currentUid));
-    }
-    return list;
+    final list = await _chat.fetchMessages(
+      conversationId: conversationId,
+      limit: limit,
+    );
+    return List<CM.ChatMessage>.from(list.reversed);
   }
 
   // --------------------------------------------------------------------------
@@ -920,7 +916,7 @@ class ChatProvider extends ChangeNotifier {
     try {
       final DateTime? before = _olderCursorByConv[conversationId];
 
-      final listDesc = await _fetchRecentBatchFromSupabase(
+      final listDesc = await _fetchRecentBatchFromBackend(
         conversationId: conversationId,
         limit: 40,
         before: before,
@@ -1303,13 +1299,18 @@ class ChatProvider extends ChangeNotifier {
   // تطبيق قراءة الآخرين على رسائلي
   Future<void> _applyReadsToOutgoing(String conversationId) async {
     try {
-      final rows = await _sb
-          .from(tableReads)
-          .select('user_uid,last_read_at')
-          .eq('conversation_id', conversationId);
+      final query = '''
+        query ReadsForConversation(\$cid: uuid!) {
+          $tableReads(where: {conversation_id: {_eq: \$cid}}) {
+            user_uid
+            last_read_at
+          }
+        }
+      ''';
+      final data = await _runQuery(query, {'cid': conversationId});
+      final rows = _rowsFromData(data, tableReads);
 
-      final othersReadTimes = (rows as List)
-          .whereType<Map<String, dynamic>>()
+      final othersReadTimes = rows
           .where((r) => r['user_uid']?.toString() != currentUid)
           .map((r) => DateTime.tryParse((r['last_read_at'] ?? '').toString()))
           .whereType<DateTime>()
@@ -1358,13 +1359,6 @@ class ChatProvider extends ChangeNotifier {
   // --------------------------------------------------------------------------
   // بحث داخل المحادثة
   // --------------------------------------------------------------------------
-  String _escapeIlike(String q) {
-    return q
-        .replaceAll(r'\', r'\\')
-        .replaceAll('%', r'\%')
-        .replaceAll('_', r'\_');
-  }
-
   Future<List<CM.ChatMessage>> searchInConversation({
     required String conversationId,
     required String query,
@@ -1374,26 +1368,11 @@ class ChatProvider extends ChangeNotifier {
     if (q.isEmpty) return const <CM.ChatMessage>[];
 
     try {
-      final esc = _escapeIlike(q);
-      final rows = await _sb
-          .from(tableMessages)
-          .select()
-          .eq('conversation_id', conversationId)
-          .or('deleted.is.false,deleted.is.null')
-          .or('body.ilike.%$esc%,text.ilike.%$esc%')
-          .order('created_at', ascending: false)
-          .limit(limit);
-
-      final list = (rows as List)
-          .whereType<Map<String, dynamic>>()
-          .map(
-            (row) => CM.ChatMessage.fromMap(
-              row as Map<String, dynamic>,
-              currentUid: currentUid,
-            ),
-          )
-          .toList();
-
+      final list = await _chat.searchMessages(
+        conversationId: conversationId,
+        query: q,
+        limit: limit,
+      );
       return list;
     } catch (_) {
       final cached = await _local.getMessages(conversationId, limit: 500);
@@ -1489,16 +1468,16 @@ class ChatProvider extends ChangeNotifier {
     if (!name.contains('.')) name = '$name.jpg';
     final mime = _guessMime(name);
 
-    final path = 'attachments/$conversationId/$messageId/$name';
-
-    await _sb.storage.from(storageBucketChat).upload(
-          path,
-          file,
-          fileOptions: FileOptions(upsert: false, contentType: mime),
-        );
-
-    final url = await _signedOrPublicUrl(storageBucketChat, path);
-    return (url, path);
+    final storageName = 'attachments/$conversationId/$messageId/$name';
+    final res = await _storage.uploadFile(
+      file: file,
+      name: storageName,
+      bucketId: storageBucketChat,
+      mimeType: mime,
+    );
+    final fileId = res['id']?.toString() ?? '';
+    final url = await _signedOrPublicUrl(storageBucketChat, fileId);
+    return (url, fileId);
   }
 
   @Deprecated(
@@ -1516,16 +1495,16 @@ class ChatProvider extends ChangeNotifier {
     if (!name.contains('.')) name = '$name.jpg';
     final mime = _guessMime(name);
 
-    final path = 'attachments/$conversationId/legacy/$rnd/$name';
-
-    await _sb.storage.from(storageBucketChat).upload(
-          path,
-          file,
-          fileOptions: FileOptions(upsert: false, contentType: mime),
-        );
-
-    final url = await _signedOrPublicUrl(storageBucketChat, path);
-    return (url, path);
+    final storageName = 'attachments/$conversationId/legacy/$rnd/$name';
+    final res = await _storage.uploadFile(
+      file: file,
+      name: storageName,
+      bucketId: storageBucketChat,
+      mimeType: mime,
+    );
+    final fileId = res['id']?.toString() ?? '';
+    final url = await _signedOrPublicUrl(storageBucketChat, fileId);
+    return (url, fileId);
   }
 
   // --------------------------------------------------------------------------
@@ -1685,14 +1664,9 @@ class ChatProvider extends ChangeNotifier {
       _typingSub = null;
     } catch (_) {}
     try {
-      _readsChannel?.unsubscribe();
+      _readsSub?.cancel();
     } catch (_) {}
-    try {
-      if (_readsChannel != null) {
-        _sb.removeChannel(_readsChannel!);
-      }
-    } catch (_) {}
-    _readsChannel = null;
+    _readsSub = null;
 
     try {
       _listDebounce?.cancel();

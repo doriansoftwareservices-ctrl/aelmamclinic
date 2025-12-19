@@ -3,13 +3,15 @@
 
 import 'dart:async';
 import 'dart:math';
-import 'package:supabase_flutter/supabase_flutter.dart';
+
+import 'package:graphql_flutter/graphql_flutter.dart';
 import 'package:sqflite_common/sqlite_api.dart';
-import 'package:postgrest/postgrest.dart' show PostgrestException;
 import 'package:uuid/enums.dart';
 import 'package:uuid/uuid.dart';
+
 import 'package:aelmamclinic/data/sync/alert_settings_sync_service.dart';
 import 'package:aelmamclinic/services/db_service.dart';
+import 'package:aelmamclinic/services/nhost_graphql_service.dart';
 
 /// كلاس مساعد اختياري لتحويل الحقول عند الدفع/السحب.
 /// ضع أي من الدالتين إن كنت تحتاج مسار تحويل مخصص لهذا الجدول.
@@ -142,7 +144,7 @@ class MissingRemoteMappingException implements Exception {
   }
 }
 
-/// خدمة للمزامنة بين SQLite المحلي و Supabase.
+/// خدمة للمزامنة بين SQLite المحلي و Nhost/Hasura عبر GraphQL.
 ///
 /// المتطلبات السحابية:
 /// - أعمدة التزامن: account_id, device_id, local_id, updated_at
@@ -155,7 +157,7 @@ class MissingRemoteMappingException implements Exception {
 /// - attachments محلية فقط.
 /// - حذف منطقي محلي، مع حذف سحابي فعلي لسجلات هذا الجهاز (id < 1e9).
 class SyncService {
-  final SupabaseClient _client = Supabase.instance.client;
+  GraphQLClient get _client => NhostGraphqlService.client;
   final Database _db;
   final RemoteIdMapper _remoteIds;
 
@@ -167,7 +169,6 @@ class SyncService {
   /// تأخير دفع التغييرات المتتالية لنفس الجدول (دمجها بعد 1 ثانية).
   final Duration pushDebounce;
 
-  static const String _conflictKey = 'account_id,device_id,local_id';
   static const int _pushChunkSize = 500;
   static const int _pullPageSize = 1000;
 
@@ -340,6 +341,33 @@ class SyncService {
       'service_name',
       'service_cost'
     },
+  };
+
+  /// أسماء قيود unique المركّبة المستخدمة في on_conflict
+  /// (متطابقة مع migration: 20251220090000_add_sync_unique_constraints).
+  static const Map<String, String> _syncConstraints = {
+    'patients': 'patients_account_id_device_id_local_id_key',
+    'returns': 'returns_account_id_device_id_local_id_key',
+    'consumptions': 'consumptions_account_id_device_id_local_id_key',
+    'drugs': 'drugs_account_id_device_id_local_id_key',
+    'prescriptions': 'prescriptions_account_id_device_id_local_id_key',
+    'prescription_items': 'prescription_items_account_id_device_id_local_id_key',
+    'complaints': 'complaints_account_id_device_id_local_id_key',
+    'appointments': 'appointments_account_id_device_id_local_id_key',
+    'doctors': 'doctors_account_id_device_id_local_id_key',
+    'consumption_types': 'consumption_types_account_id_device_id_local_id_key',
+    'medical_services': 'medical_services_account_id_device_id_local_id_key',
+    'service_doctor_share': 'service_doctor_share_account_id_device_id_local_id_key',
+    'employees': 'employees_account_id_device_id_local_id_key',
+    'employees_loans': 'employees_loans_account_id_device_id_local_id_key',
+    'employees_salaries': 'employees_salaries_account_id_device_id_local_id_key',
+    'employees_discounts': 'employees_discounts_account_id_device_id_local_id_key',
+    'item_types': 'item_types_account_id_device_id_local_id_key',
+    'items': 'items_account_id_device_id_local_id_key',
+    'purchases': 'purchases_account_id_device_id_local_id_key',
+    'alert_settings': 'alert_settings_account_id_device_id_local_id_key',
+    'financial_logs': 'financial_logs_account_id_device_id_local_id_key',
+    'patient_services': 'patient_services_account_id_device_id_local_id_key',
   };
 
   /// أعمدة Boolean على السحابة (نحوّل 0/1 المحلي إلى true/false عند الدفع).
@@ -534,12 +562,27 @@ class SyncService {
     this.enableLogs = false,
     this.pushDebounce = const Duration(seconds: 1),
   })  : _db = database,
-        _remoteIds = RemoteIdMapper(database);
+        _remoteIds = RemoteIdMapper(database) {
+    _validateConstraintMap();
+    _clientListener = _handleClientRefresh;
+    NhostGraphqlService.buildNotifier().addListener(_clientListener!);
+  }
 
   void _log(String msg) {
     if (enableLogs) {
       // ignore: avoid_print
       print('[SYNC] $msg');
+    }
+  }
+
+  void _validateConstraintMap() {
+    for (final table in _remoteAllow.keys) {
+      if (!_syncConstraints.containsKey(table)) {
+        _log(
+          'Missing sync constraint mapping for table=$table. '
+          'Add a UNIQUE (account_id, device_id, local_id) constraint in Nhost.',
+        );
+      }
     }
   }
 
@@ -719,21 +762,6 @@ class SyncService {
     return uuid;
   }
 
-  Future<int?> _getRecordIdForUuid(String table, String uuid) async {
-    if (uuid.trim().isEmpty) return null;
-    final rows = await _db.query(
-      _uuidMappingTable,
-      columns: const ['record_id'],
-      where: 'table_name = ? AND uuid = ?',
-      whereArgs: [table, uuid.trim()],
-      limit: 1,
-    );
-    if (rows.isEmpty) return null;
-    final value = rows.first['record_id'];
-    if (value is num) return value.toInt();
-    return int.tryParse('${value ?? ''}');
-  }
-
   Future<void> _deleteUuidMapping({
     required String table,
     int? recordId,
@@ -775,16 +803,6 @@ class SyncService {
   // يختار اسم العمود المتاح محليًا (camel أو snake)
   String? _col(Set<String> cols, String camel, String snake) =>
       cols.contains(camel) ? camel : (cols.contains(snake) ? snake : null);
-
-  List<List<T>> _chunkify<T>(List<T> list, int chunkSize) {
-    if (list.isEmpty) return const [];
-    final chunks = <List<T>>[];
-    for (var i = 0; i < list.length; i += chunkSize) {
-      final end = (i + chunkSize < list.length) ? i + chunkSize : list.length;
-      chunks.add(list.sublist(i, end));
-    }
-    return chunks;
-  }
 
   Future<Set<String>> _getLocalColumns(String table) async {
     if (_localColsCache.containsKey(table)) return _localColsCache[table]!;
@@ -1023,15 +1041,23 @@ class SyncService {
 
     if (!_hasAccount) return null;
     try {
-      final remote = await _withRetry(() async {
-        return await _client
-            .from(table)
-            .select('device_id, local_id')
-            .eq('account_id', accountId)
-            .eq('id', remoteId)
-            .maybeSingle();
+      final query = '''
+        query ResolveLocalPk(\$accountId: uuid!, \$id: uuid!) {
+          $table(where: {account_id: {_eq: \$accountId}, id: {_eq: \$id}}, limit: 1) {
+            device_id
+            local_id
+          }
+        }
+      ''';
+      final data = await _withRetry(() async {
+        return await _runQuery(
+          query,
+          {'accountId': accountId, 'id': remoteId},
+        );
       });
-      if (remote == null) return null;
+      final remoteRows = (data[table] as List?) ?? const [];
+      if (remoteRows.isEmpty) return null;
+      final remote = Map<String, dynamic>.from(remoteRows.first as Map);
       final String deviceId = (remote['device_id'] ?? '').toString();
       final dynamic localDyn = remote['local_id'];
       final int? remoteLocal = localDyn is num
@@ -1091,16 +1117,30 @@ class SyncService {
 
       if (rawLocal == null) return null;
 
-      final remote = await _withRetry(() async {
-        return await _client
-            .from(table)
-            .select('id')
-            .eq('account_id', accountId)
-            .eq('device_id', deviceId)
-            .eq('local_id', rawLocal!)
-            .maybeSingle();
+      final query = '''
+        query ResolveRemoteId(\$accountId: uuid!, \$deviceId: String!, \$localId: bigint!) {
+          $table(
+            where: {
+              account_id: {_eq: \$accountId},
+              device_id: {_eq: \$deviceId},
+              local_id: {_eq: \$localId}
+            },
+            limit: 1
+          ) {
+            id
+          }
+        }
+      ''';
+      final data = await _withRetry(() async {
+        return await _runQuery(
+          query,
+          {'accountId': accountId, 'deviceId': deviceId, 'localId': rawLocal},
+        );
       });
-      final remoteId = (remote?['id'] ?? '').toString();
+      final remoteRows = (data[table] as List?) ?? const [];
+      if (remoteRows.isEmpty) return null;
+      final remote = Map<String, dynamic>.from(remoteRows.first as Map);
+      final remoteId = (remote['id'] ?? '').toString();
       if (remoteId.isEmpty) return null;
 
       await _cacheRemoteMapping(
@@ -1286,8 +1326,165 @@ class SyncService {
     }
 
     cols.removeWhere((element) => element.trim().isEmpty);
-    if (cols.isEmpty) return '*';
-    return cols.join(',');
+    if (cols.isEmpty) {
+      cols.addAll(_reservedCols);
+      cols.add('id');
+    }
+    return cols.join(' ');
+  }
+
+  String _formatGqlError(OperationException error) {
+    if (error.graphqlErrors.isNotEmpty) {
+      return error.graphqlErrors.map((e) => e.message).join(' | ');
+    }
+    return error.toString();
+  }
+
+  bool _isUniqueViolation(OperationException error, List<String> hints) {
+    final text = _formatGqlError(error).toLowerCase();
+    if (!text.contains('duplicate') && !text.contains('unique')) {
+      return false;
+    }
+    for (final hint in hints) {
+      if (text.contains(hint.toLowerCase())) return true;
+    }
+    return false;
+  }
+
+  Future<Map<String, dynamic>> _runQuery(
+    String doc,
+    Map<String, dynamic> variables,
+  ) async {
+    final result = await _client.query(
+      QueryOptions(
+        document: gql(doc),
+        variables: variables,
+        fetchPolicy: FetchPolicy.noCache,
+      ),
+    );
+    if (result.hasException) {
+      throw result.exception!;
+    }
+    return result.data ?? <String, dynamic>{};
+  }
+
+  Future<Map<String, dynamic>> _runMutation(
+    String doc,
+    Map<String, dynamic> variables,
+  ) async {
+    final result = await _client.mutate(
+      MutationOptions(
+        document: gql(doc),
+        variables: variables,
+        fetchPolicy: FetchPolicy.noCache,
+      ),
+    );
+    if (result.hasException) {
+      throw result.exception!;
+    }
+    return result.data ?? <String, dynamic>{};
+  }
+
+  Stream<QueryResult> _runSubscription(
+    String doc,
+    Map<String, dynamic> variables,
+  ) {
+    return _client.subscribe(
+      SubscriptionOptions(
+        document: gql(doc),
+        variables: variables,
+        fetchPolicy: FetchPolicy.noCache,
+      ),
+    );
+  }
+
+  String _compositeConstraintName(String table) {
+    final explicit = _syncConstraints[table];
+    if (explicit != null && explicit.isNotEmpty) {
+      return explicit;
+    }
+    final fallback = '${table}_account_id_device_id_local_id_key';
+    _log('Using fallback constraint name for $table -> $fallback');
+    return fallback;
+  }
+
+  String _insertFieldName(String table) => 'insert_$table';
+
+  String _updateFieldName(String table) => 'update_$table';
+
+  String _deleteFieldName(String table) => 'delete_$table';
+
+  Set<String> _updateColumnsForTable(String table) {
+    final allowed = _remoteAllow[table] ?? <String>{};
+    final cols = <String>{...allowed, 'updated_at'};
+    cols.remove('account_id');
+    cols.remove('device_id');
+    cols.remove('local_id');
+    cols.remove('id');
+    return cols;
+  }
+
+  Future<List<Map<String, dynamic>>> _upsertRemoteRows(
+    String table,
+    List<Map<String, dynamic>> objects,
+  ) async {
+    final updateCols = _updateColumnsForTable(table);
+    final safeUpdateCols =
+        updateCols.isEmpty ? const <String>{'updated_at'} : updateCols;
+    final updateClause = safeUpdateCols.join(', ');
+    final mutation = '''
+      mutation Upsert(\$objects: [${table}_insert_input!]!) {
+        ${_insertFieldName(table)}(
+          objects: \$objects,
+          on_conflict: {
+            constraint: ${_compositeConstraintName(table)},
+            update_columns: [$updateClause]
+          }
+        ) {
+          returning { id device_id local_id }
+        }
+      }
+    ''';
+    final data = await _runMutation(mutation, {'objects': objects});
+    final payload = data[_insertFieldName(table)] as Map?;
+    final rows = (payload?['returning'] as List?) ?? const [];
+    return rows
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
+  Future<int> _updateRemoteWhere(
+    String table, {
+    required Map<String, dynamic> where,
+    required Map<String, dynamic> set,
+  }) async {
+    final mutation = '''
+      mutation UpdateRows(\$where: ${table}_bool_exp!, \$_set: ${table}_set_input!) {
+        ${_updateFieldName(table)}(where: \$where, _set: \$_set) {
+          affected_rows
+        }
+      }
+    ''';
+    final data = await _runMutation(mutation, {'where': where, '_set': set});
+    final payload = data[_updateFieldName(table)] as Map?;
+    return (payload?['affected_rows'] as num?)?.toInt() ?? 0;
+  }
+
+  Future<int> _deleteRemoteWhere(
+    String table, {
+    required Map<String, dynamic> where,
+  }) async {
+    final mutation = '''
+      mutation DeleteRows(\$where: ${table}_bool_exp!) {
+        ${_deleteFieldName(table)}(where: \$where) {
+          affected_rows
+        }
+      }
+    ''';
+    final data = await _runMutation(mutation, {'where': where});
+    final payload = data[_deleteFieldName(table)] as Map?;
+    return (payload?['affected_rows'] as num?)?.toInt() ?? 0;
   }
 
   dynamic _toRemoteValue(String table, String snakeKey, dynamic value) {
@@ -1441,12 +1638,12 @@ class SyncService {
     while (true) {
       try {
         return await action();
-      } on PostgrestException catch (e) {
+      } on OperationException catch (e) {
         attempt++;
         if (attempt >= maxAttempts) rethrow;
         final d = firstDelay * attempt;
         _log(
-          'Retry after PostgrestException (attempt $attempt/$maxAttempts): code=${e.code} msg=${e.message}',
+          'Retry after GraphQL error (attempt $attempt/$maxAttempts): ${_formatGqlError(e)}',
         );
         await Future.delayed(d);
       } catch (e) {
@@ -1550,7 +1747,7 @@ class SyncService {
 
     if (accCol != null) row[accCol] = accountId;
     if (devCol != null) row[devCol] = writeDeviceId;
-    if (locCol != null) row[locCol] = writeLocalId ?? localId;
+    if (locCol != null) row[locCol] = writeLocalId;
     if (updCol != null) row[updCol] = DateTime.now().toIso8601String();
 
     if (row.isEmpty) return;
@@ -1826,34 +2023,17 @@ class SyncService {
           _log(
               'PUSH $remoteTable: ${chunk.length} rows (acc=$accountId, dev=$_safeDeviceId)');
           final response = await _withRetry(() async {
-            return await _client
-                .from(remoteTable)
-                .upsert(
-                  chunk,
-                  onConflict: _conflictKey,
-                  ignoreDuplicates: false,
-                )
-                .select('id, device_id, local_id');
+            return await _upsertRemoteRows(remoteTable, chunk);
           });
-          if (response is List) {
-            await _cacheRemoteIdsFromResponse(remoteTable, response, metaChunk);
-          } else if (response is Map<String, dynamic>) {
-            await _cacheRemoteIdsFromResponse(
-                remoteTable, [response], metaChunk);
-          }
-        } on PostgrestException catch (e) {
-          final String code = e.code ?? '';
-          final String msg = e.message;
-          final String det = e.details?.toString() ?? '';
-
-          // 1) تعارض الاسم الفريد (drugs)
+          await _cacheRemoteIdsFromResponse(remoteTable, response, metaChunk);
+        } on OperationException catch (e) {
           final bool isNameUniqueConflict = (remoteTable == 'drugs') &&
-              code == '23505' &&
-              (msg.contains('uidx_drugs_name_per_account') ||
-                  msg.contains('drugs_unique_name_per_account') ||
-                  (msg.contains('unique') && msg.contains('name')) ||
-                  det.contains('uidx_drugs_name_per_account') ||
-                  det.contains('drugs_unique_name_per_account'));
+              _isUniqueViolation(e, const [
+                'drugs_unique_name_per_account',
+                'uidx_drugs_name_per_account',
+                'drugs',
+                'name'
+              ]);
 
           if (isNameUniqueConflict) {
             _log(
@@ -1864,12 +2044,13 @@ class SyncService {
             continue;
           }
 
-          // 1-b) تعارض فريد مركّب لعناصر المخزون (type_id,name)
           final bool isItemsCompositeConflict = (remoteTable == 'items') &&
-              code == '23505' &&
-              ((msg.contains('type_id') && msg.contains('name')) ||
-                  msg.contains('items_type_name') ||
-                  (det.contains('type_id') && det.contains('name')));
+              _isUniqueViolation(e, const [
+                'items_type_name',
+                'items',
+                'type_id',
+                'name'
+              ]);
 
           if (isItemsCompositeConflict) {
             _log(
@@ -1885,15 +2066,12 @@ class SyncService {
             continue;
           }
 
-          // 2) تعارض الفهرس المركب (account_id,device_id,local_id)
-          final bool looksLikeComposite = code == '23505' &&
-              (msg.contains('uix_acc_dev_local') ||
-                  msg.contains('account_local_idx') ||
-                  msg.contains('account_device_local_idx') ||
-                  msg.contains('account_id, device_id, local_id') ||
-                  (det.contains('account_id') &&
-                      det.contains('device_id') &&
-                      det.contains('local_id')));
+          final bool looksLikeComposite = _isUniqueViolation(e, [
+            _compositeConstraintName(remoteTable),
+            'account_id',
+            'device_id',
+            'local_id',
+          ]);
 
           if (looksLikeComposite) {
             _log(
@@ -1904,10 +2082,9 @@ class SyncService {
             continue;
           }
 
-          _log(
-              'PUSH FAILED for $remoteTable: code=$code message=$msg details=$det');
+          _log('PUSH FAILED for $remoteTable: ${_formatGqlError(e)}');
           await _ensureChunkRemoteMappings(remoteTable, metaChunk);
-          continue; // لا نرمي الاستثناء
+          continue;
         } catch (e) {
           _log('PUSH FAILED for $remoteTable: $e');
           await _ensureChunkRemoteMappings(remoteTable, metaChunk);
@@ -1946,12 +2123,19 @@ class SyncService {
           continue;
         }
 
-        final q = _client.from(remoteTable).update(updateMap);
-        if (accountScoped) {
-          await q.eq('account_id', accountId).eq(key, val);
-        } else {
-          await q.eq(key, val);
-        }
+        final where = accountScoped
+            ? {
+                'account_id': {'_eq': accountId},
+                key: {'_eq': val},
+              }
+            : {
+                key: {'_eq': val},
+              };
+        await _updateRemoteWhere(
+          remoteTable,
+          where: where,
+          set: updateMap,
+        );
       } catch (e) {
         _log('mergeByNaturalKey($remoteTable) failed: $e');
       }
@@ -1988,14 +2172,18 @@ class SyncService {
         }
         if (updateMap.isEmpty) continue;
 
-        var q = _client.from(remoteTable).update(updateMap);
+        final where = <String, dynamic>{};
         if (accountScoped) {
-          q = q.eq('account_id', accountId);
+          where['account_id'] = {'_eq': accountId};
         }
         for (final k in keys) {
-          q = q.eq(k, row[k]);
+          where[k] = {'_eq': row[k]};
         }
-        await q;
+        await _updateRemoteWhere(
+          remoteTable,
+          where: where,
+          set: updateMap,
+        );
       } catch (e) {
         _log('mergeByCompositeNaturalKeys($remoteTable) failed: $e');
       }
@@ -2026,7 +2214,7 @@ class SyncService {
           // لا يوجد ما يُحدَّث؛ جرّب الإدراج مباشرة
           try {
             await _withRetry(() async {
-              await _client.from(remoteTable).insert(row);
+              await _upsertRemoteRows(remoteTable, [row]);
             });
           } catch (e) {
             _log(
@@ -2038,17 +2226,17 @@ class SyncService {
         // 1) UPDATE وقراءة عدد الصفوف المتأثرة
         int updatedCount = 0;
         try {
-          final res = await _withRetry(() async {
-            final List<dynamic> r = await _client
-                .from(remoteTable)
-                .update(updateMap)
-                .eq('account_id', acc)
-                .eq('device_id', dev)
-                .eq('local_id', loc)
-                .select('local_id');
-            return r.length;
+          updatedCount = await _withRetry(() async {
+            return await _updateRemoteWhere(
+              remoteTable,
+              where: {
+                'account_id': {'_eq': acc},
+                'device_id': {'_eq': dev},
+                'local_id': {'_eq': loc},
+              },
+              set: updateMap,
+            );
           });
-          updatedCount = res;
         } catch (e) {
           _log('fallbackUpdateByComposite[$remoteTable]: update error → $e');
         }
@@ -2057,26 +2245,24 @@ class SyncService {
         if (updatedCount == 0) {
           try {
             await _withRetry(() async {
-              await _client.from(remoteTable).insert(row);
+              await _upsertRemoteRows(remoteTable, [row]);
             });
-          } on PostgrestException catch (e) {
-            // لو حصل سباق وأعطى duplicate مرة أخرى، أعد UPDATE وتجاوز
-            final code = e.code ?? '';
-            final msg = e.message;
-            if (code == '23505' &&
-                msg.contains('acc') &&
-                msg.contains('local')) {
+          } on OperationException catch (e) {
+            if (_isUniqueViolation(e, const ['account_id', 'device_id', 'local_id'])) {
               try {
-                await _client
-                    .from(remoteTable)
-                    .update(updateMap)
-                    .eq('account_id', acc)
-                    .eq('device_id', dev)
-                    .eq('local_id', loc);
+                await _updateRemoteWhere(
+                  remoteTable,
+                  where: {
+                    'account_id': {'_eq': acc},
+                    'device_id': {'_eq': dev},
+                    'local_id': {'_eq': loc},
+                  },
+                  set: updateMap,
+                );
               } catch (_) {/* تجاهل */}
             } else {
               _log(
-                  'fallbackUpdateByComposite[$remoteTable]: insert failed: $e');
+                  'fallbackUpdateByComposite[$remoteTable]: insert failed: ${_formatGqlError(e)}');
             }
           } catch (e) {
             _log('fallbackUpdateByComposite[$remoteTable]: insert failed: $e');
@@ -2088,7 +2274,7 @@ class SyncService {
     }
   }
 
-  /// ✅ حذف الصفوف من Supabase التي وُسمت محليًا isDeleted=1 (بغض النظر عن id < 1e9)
+  /// ✅ حذف الصفوف من Nhost التي وُسمت محليًا isDeleted=1 (بغض النظر عن id < 1e9)
   /// الحذف يتم حسب أصل السجل (deviceId/localId) إن وُجدا محليًا.
   Future<void> _pushDeletedRows(String localTable, String remoteTable) async {
     if (!_hasAccount) return;
@@ -2130,12 +2316,14 @@ class SyncService {
         _log(
             'PUSH DELETE $remoteTable: (acc=$accountId, dev=$originDev, local=$originLocal)');
         await _withRetry(() async {
-          await _client
-              .from(remoteTable)
-              .delete()
-              .eq('account_id', accountId)
-              .eq('device_id', originDev)
-              .eq('local_id', originLocal);
+          await _deleteRemoteWhere(
+            remoteTable,
+            where: {
+              'account_id': {'_eq': accountId},
+              'device_id': {'_eq': originDev},
+              'local_id': {'_eq': originLocal},
+            },
+          );
         });
         await _deleteUuidMapping(
           table: remoteTable,
@@ -2192,17 +2380,28 @@ class SyncService {
     final myDeviceId = _safeDeviceId;
 
     while (true) {
-      final to = from + _pullPageSize - 1;
       List<dynamic> remoteRows;
       try {
-        remoteRows = await _withRetry(() async {
-          return await _client
-              .from(remoteTable)
-              .select(selectClause)
-              .eq('account_id', accountId)
-              .order('local_id', ascending: true)
-              .range(from, to);
+        final query = '''
+          query PullTable(\$accountId: uuid!, \$limit: Int!, \$offset: Int!) {
+            $remoteTable(
+              where: {account_id: {_eq: \$accountId}},
+              order_by: [{local_id: asc}, {id: asc}],
+              limit: \$limit,
+              offset: \$offset
+            ) {
+              $selectClause
+            }
+          }
+        ''';
+        final data = await _withRetry(() async {
+          return await _runQuery(query, {
+            'accountId': accountId,
+            'limit': _pullPageSize,
+            'offset': from,
+          });
         });
+        remoteRows = (data[remoteTable] as List?) ?? const [];
       } catch (e) {
         _log('PULL FAILED for $remoteTable: $e');
         break;
@@ -2253,7 +2452,7 @@ class SyncService {
           }
         }
 
-        final int resolvedLocalId = localId!;
+        final int resolvedLocalId = localId;
 
         final String remoteId = remoteUuid ?? '';
         if (remoteId.isNotEmpty && resolvedLocalId > 0) {
@@ -2416,17 +2615,28 @@ class SyncService {
     final myDeviceId = _safeDeviceId;
 
     while (true) {
-      final to = from + _pullPageSize - 1;
       List<dynamic> remoteRows;
       try {
-        remoteRows = await _withRetry(() async {
-          return await _client
-              .from(remoteTable)
-              .select(selectClause)
-              .eq('account_id', accountId)
-              .order('local_id', ascending: true)
-              .range(from, to);
+        final query = '''
+          query PullTable(\$accountId: uuid!, \$limit: Int!, \$offset: Int!) {
+            $remoteTable(
+              where: {account_id: {_eq: \$accountId}},
+              order_by: [{local_id: asc}, {id: asc}],
+              limit: \$limit,
+              offset: \$offset
+            ) {
+              $selectClause
+            }
+          }
+        ''';
+        final data = await _withRetry(() async {
+          return await _runQuery(query, {
+            'accountId': accountId,
+            'limit': _pullPageSize,
+            'offset': from,
+          });
         });
+        remoteRows = (data[remoteTable] as List?) ?? const [];
       } catch (e) {
         _log('PULL FAILED for $remoteTable: $e');
         break;
@@ -2478,7 +2688,7 @@ class SyncService {
           }
         }
 
-        final int resolvedLocalId = localId!;
+        final int resolvedLocalId = localId;
 
         final String remoteId = remoteUuid ?? '';
         if (remoteId.isNotEmpty && resolvedLocalId > 0) {
@@ -2572,13 +2782,55 @@ class SyncService {
 
   /*──────────────────── Realtime (اشتراك لحظي) ────────────────────*/
 
-  final Map<String, RealtimeChannel> _channels = {};
+  final Map<String, StreamSubscription<QueryResult>> _subscriptions = {};
+  final Map<String, Map<String, String>> _realtimeRowVersions = {};
+  bool _realtimeEnabled = false;
+  VoidCallback? _clientListener;
 
-  RealtimeChannel _ensureChannel(String key) {
-    return _channels.putIfAbsent(key, () {
-      final ch = _client.channel(key);
-      return ch;
-    });
+  bool _remoteRowIsDeleted(Map<String, dynamic> row) {
+    final v = row.containsKey('is_deleted')
+        ? row['is_deleted']
+        : row['isDeleted'];
+    if (v == null) return false;
+    if (v is bool) return v;
+    if (v is num) return v != 0;
+    final s = v.toString().trim().toLowerCase();
+    return s == '1' || s == 'true';
+  }
+
+  Future<void> _handleRealtimeRows(
+    String localTable,
+    String remoteTable,
+    List<dynamic> rows, {
+    Map<String, String>? fkParentTables,
+  }) async {
+    if (rows.isEmpty) return;
+    final versions =
+        _realtimeRowVersions.putIfAbsent(remoteTable, () => <String, String>{});
+
+    for (final row in rows.whereType<Map>()) {
+      final data = Map<String, dynamic>.from(row);
+      final id = data['id']?.toString() ?? '';
+      final updatedAt = data['updated_at']?.toString() ?? '';
+      if (id.isNotEmpty && updatedAt.isNotEmpty) {
+        final prev = versions[id];
+        if (prev == updatedAt) {
+          continue;
+        }
+        versions[id] = updatedAt;
+      }
+
+      if (_remoteRowIsDeleted(data)) {
+        await _applyRealtimeDelete(localTable, data);
+      } else {
+        await _applyRealtimeUpsert(
+          localTable,
+          remoteTable,
+          data,
+          fkParentTables,
+        );
+      }
+    }
   }
 
   Future<void> _subscribeTableRealtime(
@@ -2588,75 +2840,48 @@ class SyncService {
   }) async {
     if (!_hasAccount) return;
     final key = 'rt:$remoteTable:$accountId';
-    // إغلاق القناة القديمة إن وُجدت بنفس المفتاح لتفادي الازدواج
-    if (_channels.containsKey(key)) {
+
+    if (_subscriptions.containsKey(key)) {
       try {
-        await _channels[key]!.unsubscribe();
-        _client.removeChannel(_channels[key]!);
+        await _subscriptions[key]!.cancel();
       } catch (_) {}
-      _channels.remove(key);
+      _subscriptions.remove(key);
     }
 
-    final ch = _ensureChannel(key);
+    final allowedCols = await _getLocalColumns(localTable);
+    final selectClause = _buildSelectClause(
+      allowedCols,
+      extraCols: fkParentTables?.keys ?? const [],
+      remoteAllowed: _remoteAllow[remoteTable],
+    );
 
-    ch.onPostgresChanges(
-      event: PostgresChangeEvent.insert,
-      schema: 'public',
-      table: remoteTable,
-      filter: PostgresChangeFilter(
-        type: PostgresChangeFilterType.eq,
-        column: 'account_id',
-        value: accountId,
-      ),
-      callback: (payload) async {
-        await _applyRealtimeUpsert(
+    final doc = '''
+      subscription SyncTable(\$accountId: uuid!) {
+        $remoteTable(where: {account_id: {_eq: \$accountId}}) {
+          $selectClause
+        }
+      }
+    ''';
+
+    final sub = _runSubscription(doc, {'accountId': accountId}).listen(
+      (result) async {
+        if (result.hasException) {
+          _log(
+              'Realtime subscription error for $remoteTable: ${_formatGqlError(result.exception!)}');
+          return;
+        }
+        final rows = (result.data?[remoteTable] as List?) ?? const [];
+        await _handleRealtimeRows(
           localTable,
           remoteTable,
-          payload.newRecord,
-          fkParentTables,
+          rows,
+          fkParentTables: fkParentTables,
         );
       },
     );
 
-    ch.onPostgresChanges(
-      event: PostgresChangeEvent.update,
-      schema: 'public',
-      table: remoteTable,
-      filter: PostgresChangeFilter(
-        type: PostgresChangeFilterType.eq,
-        column: 'account_id',
-        value: accountId,
-      ),
-      callback: (payload) async {
-        await _applyRealtimeUpsert(
-          localTable,
-          remoteTable,
-          payload.newRecord,
-          fkParentTables,
-        );
-      },
-    );
-
-    ch.onPostgresChanges(
-      event: PostgresChangeEvent.delete,
-      schema: 'public',
-      table: remoteTable,
-      filter: PostgresChangeFilter(
-        type: PostgresChangeFilterType.eq,
-        column: 'account_id',
-        value: accountId,
-      ),
-      callback: (payload) async {
-        await _applyRealtimeDelete(localTable, payload.oldRecord);
-      },
-    );
-
-    try {
-      ch.subscribe();
-      _log('Realtime subscribed: $remoteTable (acc=$accountId)');
-    } catch (e) {
-      _log('Realtime subscribe failed for $remoteTable: $e');
-    }
+    _subscriptions[key] = sub;
+    _log('Realtime subscribed (GraphQL): $remoteTable (acc=$accountId)');
   }
 
   Future<void> _applyRealtimeUpsert(
@@ -2708,7 +2933,7 @@ class SyncService {
       }
     }
 
-    final int resolvedLocalId = localId!;
+    final int resolvedLocalId = localId;
 
     final String remoteId = remoteUuid ?? '';
     if (remoteId.isNotEmpty && resolvedLocalId > 0) {
@@ -2837,7 +3062,7 @@ class SyncService {
       }
     }
 
-    final int resolvedLocalId = localId!;
+    final int resolvedLocalId = localId;
 
     if (resolvedLocalId <= 0) return;
 
@@ -2975,17 +3200,19 @@ class SyncService {
       'patient_services',
       fkParentTables: _fkMap['patient_services'],
     );
+    _realtimeEnabled = true;
   }
 
   /// إلغاء جميع الاشتراكات.
   Future<void> stopRealtime() async {
-    for (final ch in _channels.values) {
+    for (final sub in _subscriptions.values) {
       try {
-        await ch.unsubscribe();
-        _client.removeChannel(ch);
+        await sub.cancel();
       } catch (_) {}
     }
-    _channels.clear();
+    _subscriptions.clear();
+    _realtimeRowVersions.clear();
+    _realtimeEnabled = false;
     _log('Realtime unsubscribed from all tables');
   }
 
@@ -3043,11 +3270,25 @@ class SyncService {
   /// تنظيف سريع
   Future<void> dispose() async {
     await stopRealtime();
+    if (_clientListener != null) {
+      NhostGraphqlService.buildNotifier().removeListener(_clientListener!);
+      _clientListener = null;
+    }
     // أوقف كل مؤقّتات الدفع المؤجّل
     for (final t in _pushTimers.values) {
       t.cancel();
     }
     _pushTimers.clear();
+  }
+
+  void _handleClientRefresh() {
+    if (!_realtimeEnabled || !_hasAccount) return;
+    unawaited(_restartRealtimeForClientRefresh());
+  }
+
+  Future<void> _restartRealtimeForClientRefresh() async {
+    await stopRealtime();
+    await startRealtime();
   }
 
   /*──────────────────── جداول محددة (واجهات علنية) ───────────────────*/

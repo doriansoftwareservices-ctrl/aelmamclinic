@@ -11,13 +11,12 @@ class _FakeAuth {
   final bool Function(String key) featureAllowedHandler;
 
   _FakeAuth({
-    this.isSuperAdmin = false,
     this.permissionsLoaded = false,
     this.canCreate = false,
     this.canUpdate = false,
     this.canDelete = false,
     required this.featureAllowedHandler,
-  });
+  }) : isSuperAdmin = false;
 
   bool featureAllowed(String key) => featureAllowedHandler(key);
 }

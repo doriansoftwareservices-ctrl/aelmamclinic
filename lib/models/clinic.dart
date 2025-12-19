@@ -1,13 +1,13 @@
 // lib/models/clinic.dart
 
-/// موديل عيادة مطابق لصفوف جدول `accounts` في Supabase.
+/// موديل عيادة مطابق لصفوف جدول `accounts` في Remote.
 /// الأعمدة المتوقعة:
 /// - id (uuid)
 /// - name (text)
 /// - frozen (bool)
 /// - created_at (timestamptz)
 class Clinic {
-  /// اسم جدول Supabase
+  /// اسم جدول Remote
   static const String table = 'accounts';
 
   final String id;

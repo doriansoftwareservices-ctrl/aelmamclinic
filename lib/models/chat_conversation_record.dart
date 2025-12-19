@@ -1,6 +1,6 @@
 // lib/models/chat_conversation_record.dart
 //
-// سجل محادثة متوافق مع جدول Supabase: public.chat_conversations
+// سجل محادثة متوافق مع جدول Remote: public.chat_conversations
 // ملاحظة: هذا "سجل" DB. نموذج الواجهة ChatConversation موجود في chat_models.dart.
 
 import 'package:aelmamclinic/utils/time.dart' as t;

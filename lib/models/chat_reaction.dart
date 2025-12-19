@@ -91,7 +91,7 @@ class ChatReaction {
         'createdAt': t.toIsoUtc(createdAt),
       };
 
-  /// خريطة للإدراج على Supabase (snake_case).
+  /// خريطة للإدراج على Remote (snake_case).
   Map<String, dynamic> toRemoteInsertMap() => {
         if (id != null) 'id': id,
         'message_id': messageId,

@@ -1,7 +1,7 @@
 // lib/widgets/chat/image_viewer_screen.dart
 //
 // شاشة عرض الصور (عارض كامل مع تكبير/تصغير وسحب أفقي بين الصور).
-// - تدعم مصادر Supabase Storage عبر StorageService.resolveUrl (موقّع/عام).
+// - تدعم مصادر Nhost Storage عبر تحويل fileId إلى رابط عام.
 // - دعم RTL، شريط علوي/سفلي يظهران/يختفيان عند الضغط.
 // - تكبير/تصغير عبر السحب/القرص + نقر مزدوج (toggle).
 // - إجراءات: نسخ الرابط، معلومات، حذف اختياري، و✅ تنزيل إلى مجلد Downloads في Windows/Android.
@@ -19,7 +19,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:aelmamclinic/core/theme.dart' show kPrimaryColor;
-import 'package:aelmamclinic/core/storage_service.dart';
+import 'package:aelmamclinic/services/nhost_storage_service.dart';
 import 'package:aelmamclinic/models/chat_models.dart' show ChatAttachment;
 import 'package:aelmamclinic/utils/time.dart' as time;
 
@@ -57,7 +57,7 @@ class _ImageItem {
 
   factory _ImageItem.fromAttachment(ChatAttachment a) {
     return _ImageItem(
-      displayName: a.path?.split('/').last ?? a.url?.split('/').last,
+      displayName: a.path?.split('/').last ?? a.url.split('/').last,
       url: a.url, // قد يكون موجودًا بعد _normalizeAttachmentsToHttp
       bucket: a.bucket,
       path: a.path,
@@ -147,6 +147,7 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
 
   // كاش روابط موقعة/نهائية
   final Map<int, Future<String>> _resolvedUrlFutures = {};
+  final NhostStorageService _storage = NhostStorageService();
 
   @override
   void initState() {
@@ -159,11 +160,14 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
 
   Future<String> _resolveAt(int i) async {
     final item = widget.items[i];
-    final storage = StorageService.instance;
-    // إن كانت http(s) نعيدها كما هي، غير ذلك نستخدم storage://
-    final src = item.url ?? item.storageUrl;
-    if (src == null) throw Exception('No URL or storage path to resolve.');
-    return await storage.resolveUrl(src, preferSigned: true);
+    if (item.url != null && item.url!.startsWith('http')) {
+      return item.url!;
+    }
+    final fileId = item.path;
+    if (fileId != null && fileId.isNotEmpty) {
+      return _storage.publicFileUrl(fileId);
+    }
+    throw Exception('No URL or file id to resolve.');
   }
 
   void _toggleChrome() => setState(() => _chromeVisible = !_chromeVisible);

@@ -21,7 +21,7 @@
 // - utils/text_direction.dart (ensureLtr / textDirectionFor)
 
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:aelmamclinic/core/nhost_manager.dart';
 
 import 'package:aelmamclinic/models/chat_models.dart';
 import 'package:aelmamclinic/utils/text_direction.dart' as bidi;
@@ -50,7 +50,7 @@ class ReplyPreview extends StatelessWidget {
   /// الانتقال للرسالة الأصلية عند النقر على المعاينة (اختياري).
   final VoidCallback? onTapOriginal;
 
-  /// uid الخاص بي (اختياري). إن لم يُمرَّر نأخذ من Supabase.currentUser.
+  /// uid الخاص بي (اختياري). إن لم يُمرَّر نأخذ من Nhost.currentUser.
   final String? meUid;
 
   /// هامش خارجي اختياري.
@@ -68,7 +68,7 @@ class ReplyPreview extends StatelessWidget {
 
     final m = message;
     final isRtl = Directionality.of(context) == TextDirection.rtl;
-    final myUid = meUid ?? Supabase.instance.client.auth.currentUser?.id;
+    final myUid = meUid ?? NhostManager.client.auth.currentUser?.id;
 
     // المرسل
     String senderLabel;

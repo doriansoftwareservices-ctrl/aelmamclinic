@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:nhost_dart/nhost_dart.dart';
 
 import 'package:aelmamclinic/providers/auth_provider.dart';
 
@@ -11,10 +11,10 @@ import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/core/constants.dart';
+import 'package:aelmamclinic/core/nhost_manager.dart';
 
 // 👇 إضافات مهمة
 import 'package:aelmamclinic/screens/admin/admin_dashboard_screen.dart';
-import 'package:aelmamclinic/services/auth_supabase_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -30,7 +30,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _obscure = true;
   String? _error;
 
-  StreamSubscription<AuthState>? _authSub;
+  UnsubscribeDelegate? _authUnsub;
   bool _navigating = false;
 
   // نضمن تشغيل الـ Bootstrap مرة واحدة عند وجود جلسة مسبقة
@@ -46,8 +46,8 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     // 2) استمع لتغيّر حالة المصادقة لتوجيه مضمون بعد signIn.
-    _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((state) {
-      if (state.event == AuthChangeEvent.signedIn) {
+    _authUnsub = NhostManager.client.auth.addAuthStateChangedCallback((state) {
+      if (state == AuthenticationState.signedIn) {
         _checkAndRouteIfSignedIn();
       }
     });
@@ -55,7 +55,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   void dispose() {
-    _authSub?.cancel();
+    _authUnsub?.call();
     _email.dispose();
     _pass.dispose();
     super.dispose();
@@ -66,8 +66,8 @@ class _LoginScreenState extends State<LoginScreen> {
     if (_navigating || !mounted) return;
 
     final authProv = context.read<AuthProvider>();
-    final session = Supabase.instance.client.auth.currentSession;
-    if (session == null) return;
+    final user = NhostManager.client.auth.currentUser;
+    if (user == null) return;
 
     if (!authProv.isSuperAdmin &&
         ((authProv.accountId ?? '').isEmpty || !authProv.isLoggedIn)) {
@@ -86,31 +86,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     if (!authProv.isLoggedIn) {
-      final user = Supabase.instance.client.auth.currentUser;
-      if (user == null) return;
-      final email = (user.email ?? '').toLowerCase();
-      final isEmailSuper = AuthSupabaseService.isSuperAdminEmail(email);
-      var isRoleSuper = false;
-      try {
-        final row = await Supabase.instance.client
-            .from('account_users')
-            .select('role')
-            .eq('user_uid', user.id)
-            .order('created_at', ascending: false)
-            .limit(1)
-            .maybeSingle();
-        final roleValue = row?['role']?.toString().toLowerCase();
-        isRoleSuper = roleValue == 'superadmin';
-      } catch (_) {}
-
-      if (!(isEmailSuper || isRoleSuper)) {
-        return;
-      }
-      _navigating = true;
-      if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const AdminDashboardScreen()),
-      );
       return;
     }
 
@@ -186,11 +161,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
       // نوجّه فورًا (ولا نعتمد فقط على المستمع).
       await _checkAndRouteIfSignedIn();
-    } on AuthException catch (e) {
+    } on ApiException catch (e) {
       if (!mounted) return;
-      setState(() => _error = e.message.isNotEmpty
-          ? 'فشل تسجيل الدخول: ${e.message}'
-          : 'فشل تسجيل الدخول. تحقق من البيانات وحاول مرة أخرى.');
+      setState(() => _error = 'فشل تسجيل الدخول: $e');
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = 'فشل تسجيل الدخول: $e');
@@ -214,8 +187,9 @@ class _LoginScreenState extends State<LoginScreen> {
         return 'انتهت الجلسة أثناء التحقق من الحساب. حاول تسجيل الدخول مجددًا.';
       case AuthSessionStatus.networkError:
         return 'تعذّر التحقق من الحساب بسبب مشكلة في الاتصال. حاول مرة أخرى.';
+      case AuthSessionStatus.backendMisconfigured:
+        return 'الخادم غير مهيأ بالشكل الصحيح. تأكد من تطبيق المايغريشن والـ metadata.';
       case AuthSessionStatus.unknown:
-      default:
         return 'حدث خطأ غير متوقع أثناء التحقق من الحساب. حاول لاحقًا.';
     }
   }

@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'package:aelmamclinic/providers/auth_provider.dart';
-import 'package:aelmamclinic/services/auth_supabase_service.dart';
+import 'package:aelmamclinic/services/nhost_admin_service.dart';
 
 /// نتيجة اختيار حساب مستخدم.
 class UserAccountSelection {
@@ -34,7 +34,7 @@ class UserAccountPickerDialog extends StatefulWidget {
 }
 
 class _UserAccountPickerDialogState extends State<UserAccountPickerDialog> {
-  final AuthSupabaseService _authService = AuthSupabaseService();
+  final NhostAdminService _adminService = NhostAdminService();
   final TextEditingController _searchCtrl = TextEditingController();
 
   final List<UserAccountSelection> _all = <UserAccountSelection>[];
@@ -109,64 +109,19 @@ class _UserAccountPickerDialogState extends State<UserAccountPickerDialog> {
   }
 
   Future<List<UserAccountSelection>> _fetchAccounts(String accountId) async {
-    final List<UserAccountSelection> items = [];
-
-    Future<List<Map<String, dynamic>>> rpc() async {
-      final data = await _authService.client
-          .rpc('list_employees_with_email', params: {'p_account': accountId});
-      if (data is List) {
-        return data.map((e) => Map<String, dynamic>.from(e)).toList();
-      }
-      throw Exception('Unexpected RPC payload');
-    }
-
-    Future<List<Map<String, dynamic>>> edge() async {
-      final resp = await _authService.client.functions.invoke(
-        'admin__list_employees',
-        body: {'account_id': accountId},
-      );
-      final data = resp.data;
-      if (data is List) {
-        return data.map((e) => Map<String, dynamic>.from(e)).toList();
-      }
-      throw Exception('Unexpected edge payload');
-    }
-
-    Future<List<Map<String, dynamic>>> profiles() async {
-      final rows = await _authService.client
-          .from('profiles')
-          .select('id, disabled')
-          .eq('account_id', accountId)
-          .eq('role', 'employee');
-      if (rows is List) {
-        return rows.map((r) => Map<String, dynamic>.from(r)).toList();
-      }
-      throw Exception('Unexpected profiles payload');
-    }
-
-    List<Map<String, dynamic>> rows;
-    try {
-      rows = await rpc();
-    } catch (_) {
-      try {
-        rows = await edge();
-      } catch (_) {
-        rows = await profiles();
-      }
-    }
-
-    final seen = <String>{};
-    for (final row in rows) {
-      final uid = (row['user_uid'] ?? row['uid'] ?? row['id'] ?? '').toString();
-      final email = (row['email'] ?? '—').toString();
-      final disabled = row['disabled'] == true;
-      final trimmed = uid.trim();
-      if (trimmed.isEmpty || seen.contains(trimmed)) continue;
-      seen.add(trimmed);
+    final items = <UserAccountSelection>[];
+    final summaries =
+        await _adminService.listAccountUsersWithEmail(accountId: accountId);
+    for (final s in summaries) {
+      if (s.userUid.isEmpty) continue;
       items.add(
-          UserAccountSelection(uid: trimmed, email: email, disabled: disabled));
+        UserAccountSelection(
+          uid: s.userUid,
+          email: s.email,
+          disabled: s.disabled,
+        ),
+      );
     }
-
     return items;
   }
 

@@ -388,7 +388,7 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
             thinDivider(),
             infoRow('Doctor Name', displayDoctorName),
           ],
-          if ((patient.doctorShare ?? 0) > 0) ...[
+          if (patient.doctorShare > 0) ...[
             thinDivider(),
             infoRow('Doctor Share (Radiology/Lab)',
                 (patient.doctorShare).toStringAsFixed(2)),

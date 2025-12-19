@@ -1,6 +1,6 @@
 // lib/models/chat_participant.dart
 //
-// نموذج مشارك المحادثة المتوافق (بمرونة) مع جدول Supabase:
+// نموذج مشارك المحادثة المتوافق (بمرونة) مع جدول Remote:
 //   public.chat_participants
 //
 // ⚠ لا نملك مخطط الأعمدة التفصيلي لهذا الجدول من مخرجاتك؛
@@ -181,7 +181,7 @@ class ChatParticipant {
         'unreadCount': unreadCount,
       };
 
-  /// خريطة إدراج إلى Supabase (snake_case). تجاهَل الحقول غير الموجودة في الجدول.
+  /// خريطة إدراج إلى Remote (snake_case). تجاهَل الحقول غير الموجودة في الجدول.
   Map<String, dynamic> toRemoteInsertMap() => {
         if (id != null) 'id': id,
         'conversation_id': conversationId,
@@ -197,7 +197,7 @@ class ChatParticipant {
         'blocked': blocked,
       };
 
-  /// خريطة تحديث إلى Supabase (snake_case).
+  /// خريطة تحديث إلى Remote (snake_case).
   Map<String, dynamic> toRemoteUpdateMap() => {
         if (email != null) 'email': email,
         if (displayName != null) 'display_name': displayName,

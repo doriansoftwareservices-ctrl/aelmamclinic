@@ -3,7 +3,7 @@
 /// فئة عنصر (تصنيف مخزّنات).
 /// متوافقة مع:
 /// - SQLite محليًا: الجدول `item_types` بالأعمدة (id, name)
-/// - Supabase: نفس أسماء الأعمدة؛ يتم تحويل camel↔snake عبر طبقة المزامنة عند الحاجة.
+/// - Remote: نفس أسماء الأعمدة؛ يتم تحويل camel↔snake عبر طبقة المزامنة عند الحاجة.
 class ItemType {
   static const String table = 'item_types';
 
@@ -84,7 +84,7 @@ class ItemType {
 
   Map<String, dynamic> toJson() => toCloudMap();
 
-  /// يدعم القراءة المرنة من أي مصدر (SQLite/Supabase) مع camel/snake.
+  /// يدعم القراءة المرنة من أي مصدر (SQLite/Remote) مع camel/snake.
   factory ItemType.fromMap(Map<String, dynamic> map) => ItemType(
         id: _toIntN(map['id']),
         name: _toStr(map['name']),

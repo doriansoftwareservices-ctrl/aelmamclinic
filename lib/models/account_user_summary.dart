@@ -1,5 +1,5 @@
 // lib/models/account_user_summary.dart
-// ملخّص خفيف لحسابات الموظفين على Supabase مع البريد والحالة.
+// ملخّص خفيف لحسابات الموظفين مع البريد والحالة.
 
 class AccountUserSummary {
   final String userUid;

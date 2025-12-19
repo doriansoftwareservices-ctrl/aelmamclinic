@@ -12,12 +12,13 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:graphql_flutter/graphql_flutter.dart';
 
 import 'package:aelmamclinic/core/features.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/providers/auth_provider.dart';
+import 'package:aelmamclinic/services/nhost_graphql_service.dart';
 
 class AuditLogsScreen extends StatefulWidget {
   const AuditLogsScreen({super.key});
@@ -27,7 +28,7 @@ class AuditLogsScreen extends StatefulWidget {
 }
 
 class _AuditLogsScreenState extends State<AuditLogsScreen> {
-  final _client = Supabase.instance.client;
+  final GraphQLClient _gql = NhostGraphqlService.buildClient();
 
   // --- الفلاتر ---
   DateTime? _from;
@@ -84,29 +85,30 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
 
     setState(() => _loading = true);
     try {
-      // لاحظ: dynamic لتفادي تعارض الأنواع بين Transform/Filter builders
-      dynamic q = _client.from('audit_logs').select(
-            'id, account_id, actor_uid, actor_email, table_name, op, row_pk, before_row, after_row, diff, created_at',
-          );
-
-      q = q.eq('account_id', accId);
+      final where = <String, dynamic>{
+        'account_id': {'_eq': accId},
+      };
 
       if (_op != 'all') {
-        q = q.eq('op', _op);
+        where['op'] = {'_eq': _op};
       }
 
+      final createdAt = <String, dynamic>{};
       if (_from != null) {
         final start = DateTime(_from!.year, _from!.month, _from!.day);
-        q = q.gte('created_at', start.toIso8601String());
+        createdAt['_gte'] = start.toIso8601String();
       }
       if (_to != null) {
         final end = DateTime(_to!.year, _to!.month, _to!.day)
             .add(const Duration(days: 1));
-        q = q.lt('created_at', end.toIso8601String());
+        createdAt['_lt'] = end.toIso8601String();
+      }
+      if (createdAt.isNotEmpty) {
+        where['created_at'] = createdAt;
       }
 
       if (_tableCtrl.text.trim().isNotEmpty) {
-        q = q.ilike('table_name', '%${_tableCtrl.text.trim()}%');
+        where['table_name'] = {'_ilike': '%${_tableCtrl.text.trim()}%'};
       }
 
       if (_actorCtrl.text.trim().isNotEmpty) {
@@ -114,17 +116,53 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
         final uuidLike = RegExp(
           r'^[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}$',
         ).hasMatch(s);
-        q = uuidLike ? q.eq('actor_uid', s) : q.ilike('actor_email', '%$s%');
+        if (uuidLike) {
+          where['actor_uid'] = {'_eq': s};
+        } else {
+          where['actor_email'] = {'_ilike': '%$s%'};
+        }
       }
 
-      q = q.order('created_at', ascending: false);
+      const query = r'''
+        query AuditLogs($where: audit_logs_bool_exp!, $limit: Int!, $offset: Int!) {
+          audit_logs(
+            where: $where,
+            order_by: {created_at: desc},
+            limit: $limit,
+            offset: $offset
+          ) {
+            id
+            account_id
+            actor_uid
+            actor_email
+            table_name
+            op
+            row_pk
+            before_row
+            after_row
+            diff
+            created_at
+          }
+        }
+      ''';
 
-      // الترقيم
-      final from = _offset;
-      final to = _offset + _pageSize - 1;
-      final rows = await q.range(from, to);
-
-      final list = (rows as List)
+      final result = await _gql.query(
+        QueryOptions(
+          document: gql(query),
+          variables: {
+            'where': where,
+            'limit': _pageSize,
+            'offset': _offset,
+          },
+          fetchPolicy: FetchPolicy.noCache,
+        ),
+      );
+      if (result.hasException) {
+        throw result.exception!;
+      }
+      final rows = (result.data?['audit_logs'] as List?) ?? const [];
+      final list = rows
+          .whereType<Map>()
           .map((e) => _AuditLogEntry.fromJson(Map<String, dynamic>.from(e)))
           .toList();
 
@@ -134,13 +172,6 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
         _hasMore = list.length == _pageSize;
         _initialLoaded = true;
       });
-    } on PostgrestException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('تعذر تحميل السجلات (${e.code ?? e.message}).')),
-        );
-      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

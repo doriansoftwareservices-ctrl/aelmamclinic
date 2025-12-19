@@ -23,9 +23,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:aelmamclinic/core/neumorphism.dart';
+import 'package:aelmamclinic/core/nhost_manager.dart';
 import 'package:aelmamclinic/local/chat_local_store.dart';
 import 'package:aelmamclinic/models/chat_models.dart';
 import 'package:aelmamclinic/providers/chat_provider.dart';
@@ -87,7 +87,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   int _pendingNewWhileAway = 0;
 
   String get _convId => widget.conversation.id;
-  String get _currentUid => Supabase.instance.client.auth.currentUser?.id ?? '';
+  String get _currentUid =>
+      NhostManager.client.auth.currentUser?.id ?? '';
 
   @override
   void initState() {

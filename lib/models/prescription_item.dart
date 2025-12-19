@@ -2,7 +2,7 @@
 /*───────────────────────────────────────────────────────────────────────────
   نموذج: PrescriptionItem (عناصر الوصفة)
   محليًا (SQLite - camelCase): prescriptionId, drugId, days, timesPerDay
-  سحابيًا (Supabase - snake_case عبر toCloudMap/SyncService):
+  سحابيًا (Remote - snake_case عبر toCloudMap/SyncService):
     account_id, device_id, local_id, prescription_id, drug_id, days,
     times_per_day, updated_at
   fromMap يدعم camel + snake ويحوّل الأنواع بأمان.
@@ -40,7 +40,7 @@ class PrescriptionItem {
   final int timesPerDay; // مرات الاستخدام يوميًا
 
   /*────────── حقول مزامنة اختيارية (لا تُحفَظ محليًا) ──────────*/
-  final String? accountId; // Supabase → accounts.id
+  final String? accountId; // Remote → accounts.id
   final String? deviceId; // معرّف الجهاز
   final int? localId; // مرجع السجل المحلي عند الرفع (إن لم يُمرّر نستخدم id)
   final DateTime? updatedAt;
@@ -98,7 +98,7 @@ class PrescriptionItem {
         'updated_at': updatedAt?.toIso8601String(),
       }..removeWhere((k, v) => v == null);
 
-  /// يدعم مفاتيح camelCase و snake_case (قادمة من Supabase).
+  /// يدعم مفاتيح camelCase و snake_case (قادمة من Remote).
   factory PrescriptionItem.fromMap(Map<String, dynamic> row) =>
       PrescriptionItem(
         id: _asIntN(row['id']),

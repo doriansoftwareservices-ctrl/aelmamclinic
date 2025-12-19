@@ -39,7 +39,7 @@ class ExportService {
         p.doctorSpecialization ?? '',
         p.paidAmount,
         p.remaining,
-        p.towerShare ?? 0,
+        p.towerShare,
         p.registerDate.toIso8601String(),
         p.notes ?? '',
       ]);

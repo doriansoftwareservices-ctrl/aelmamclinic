@@ -16,8 +16,6 @@ class DoctorsServicesHomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
     return Directionality(
       textDirection: ui.TextDirection.rtl,
       child: Scaffold(

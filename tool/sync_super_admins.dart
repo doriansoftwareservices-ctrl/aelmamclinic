@@ -1,41 +1,44 @@
 // tool/sync_super_admins.dart
 //
 // Utility script that syncs the current AppConstants.superAdminEmails list
-// into the Supabase `public.super_admins` table by calling the
-// `admin_sync_super_admin_emails` RPC using the service role key.
+// into the Nhost/Hasura `public.super_admins` table by calling the
+// `admin_sync_super_admin_emails` RPC via GraphQL using the admin secret.
 //
 // Usage:
 //   flutter pub run tool/sync_super_admins.dart
 //
 // Required environment variables:
-//   SUPABASE_URL                – Supabase project URL
-//   SUPABASE_SERVICE_ROLE_KEY   – service role key with insert rights
+//   NHOST_GRAPHQL_URL           – GraphQL endpoint URL
+//   HASURA_GRAPHQL_ADMIN_SECRET – admin secret with insert rights
 //
 // Optional:
-//   SUPABASE_ANON_KEY / --dart-define overrides handled by AppConstants
+//   NHOST_ADMIN_SECRET / --dart-define overrides handled by AppConstants
 
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:aelmamclinic/core/constants.dart';
+import 'package:aelmamclinic/core/nhost_config.dart';
 import 'package:http/http.dart' as http;
 
 Future<void> main(List<String> args) async {
   await AppConstants.loadRuntimeOverrides();
 
-  final supabaseUrl = AppConstants.supabaseUrl.trim();
-  if (supabaseUrl.isEmpty) {
+  final graphqlUrl =
+      (Platform.environment['NHOST_GRAPHQL_URL'] ?? NhostConfig.graphqlUrl)
+          .trim();
+  if (graphqlUrl.isEmpty) {
     stderr.writeln(
-        '[sync_super_admins] Missing Supabase URL. Provide --dart-define SUPABASE_URL or config override.');
+        '[sync_super_admins] Missing Nhost GraphQL URL. Provide NHOST_GRAPHQL_URL or config override.');
     exit(64);
   }
 
-  final serviceKey = Platform.environment['SUPABASE_SERVICE_ROLE_KEY'] ??
-      Platform.environment['SERVICE_ROLE_KEY'] ??
-      '';
-  if (serviceKey.isEmpty) {
+  final adminSecret = Platform.environment['HASURA_GRAPHQL_ADMIN_SECRET'] ??
+      Platform.environment['NHOST_ADMIN_SECRET'] ??
+      NhostConfig.adminSecret;
+  if (adminSecret.trim().isEmpty) {
     stderr.writeln(
-        '[sync_super_admins] Missing SUPABASE_SERVICE_ROLE_KEY / SERVICE_ROLE_KEY environment variable.');
+        '[sync_super_admins] Missing HASURA_GRAPHQL_ADMIN_SECRET / NHOST_ADMIN_SECRET.');
     exit(64);
   }
 
@@ -49,18 +52,23 @@ Future<void> main(List<String> args) async {
     return;
   }
 
-  final rpcUrl = _buildRpcUrl(supabaseUrl, 'admin_sync_super_admin_emails');
-  final body = jsonEncode({'p_emails': emails});
+  final body = jsonEncode({
+    'query': r'''
+      mutation SyncSuperAdmins($emails: [String!]!) {
+        admin_sync_super_admin_emails(args: {p_emails: $emails})
+      }
+    ''',
+    'variables': {'emails': emails},
+  });
 
   stdout.writeln(
-      '[sync_super_admins] Syncing ${emails.length} super-admin email(s) → $rpcUrl');
+      '[sync_super_admins] Syncing ${emails.length} super-admin email(s) → $graphqlUrl');
   final resp = await http.post(
-    rpcUrl,
+    Uri.parse(graphqlUrl),
     headers: {
-      'apikey': serviceKey,
-      'Authorization': 'Bearer $serviceKey',
+      'x-hasura-admin-secret': adminSecret,
+      'Authorization': 'Bearer $adminSecret',
       'Content-Type': 'application/json',
-      'Prefer': 'return=minimal',
     },
     body: body,
   );
@@ -73,11 +81,4 @@ Future<void> main(List<String> args) async {
   stderr.writeln(
       '[sync_super_admins] Sync failed (${resp.statusCode}): ${resp.body}');
   exit(1);
-}
-
-Uri _buildRpcUrl(String baseUrl, String fn) {
-  final trimmed = baseUrl.endsWith('/')
-      ? baseUrl.substring(0, baseUrl.length - 1)
-      : baseUrl;
-  return Uri.parse('$trimmed/rest/v1/rpc/$fn');
 }

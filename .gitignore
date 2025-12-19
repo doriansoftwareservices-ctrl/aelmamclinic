@@ -86,11 +86,12 @@ linux/flutter/ephemeral/
 web/.dart_tool/
 
 # =========================
-# Supabase / Secrets
+# Secrets
 # =========================
 .env
 .env.*
-supabase/.env
+config.json
+config.*.json
 
 # =========================
 # Symbolication / Obfuscation
@@ -114,6 +115,6 @@ linux/flutter/ephemeral/
 *.zip
 *.exe
 *.env*
-**/supabase/.temp/
 
-supabase/.env.production
+
+.secrets

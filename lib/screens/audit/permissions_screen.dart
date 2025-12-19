@@ -14,12 +14,13 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:graphql_flutter/graphql_flutter.dart';
 
 import 'package:aelmamclinic/core/features.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/providers/auth_provider.dart';
+import 'package:aelmamclinic/services/nhost_graphql_service.dart';
 
 class PermissionsScreen extends StatefulWidget {
   const PermissionsScreen({super.key});
@@ -29,7 +30,7 @@ class PermissionsScreen extends StatefulWidget {
 }
 
 class _PermissionsScreenState extends State<PermissionsScreen> {
-  final _client = Supabase.instance.client;
+  final GraphQLClient _gql = NhostGraphqlService.buildClient();
 
   bool _loading = false;
   bool _initialLoaded = false;
@@ -74,66 +75,62 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
     try {
       if (!isOwnerOrSuper) {
         // موظّف: نقرأ الصلاحيات المؤثرة فقط عبر RPC
-        final res = await _client.rpc('my_feature_permissions', params: {
-          'p_account': accId,
-        });
-        if (res is List && res.isNotEmpty) {
-          _myPerms = _FeaturePerm.fromMap(Map<String, dynamic>.from(res.first));
-        } else if (res is Map) {
-          _myPerms = _FeaturePerm.fromMap(Map<String, dynamic>.from(res));
+        final query = '''
+          query MyFeaturePermissions(\$account: uuid!) {
+            my_feature_permissions(args: {p_account: \$account}) {
+              allowed_features
+              can_create
+              can_update
+              can_delete
+            }
+          }
+        ''';
+        final data = await _runQuery(query, {'account': accId});
+        final rows = _rowsFromData(data, 'my_feature_permissions');
+        if (rows.isNotEmpty) {
+          _myPerms = _FeaturePerm.fromMap(rows.first);
         } else {
           _myPerms = _FeaturePerm.defaults();
         }
       } else {
         // --- مالك: نقرأ الموظفين + بريد كل موظف عبر RPC ثم ندمج ---
         // 1) خريطة البريد لكل UID من RPC list_employees_with_email
-        final Map<String, String> emailByUid = {};
-        try {
-          final rpc = await _client
-              .rpc('list_employees_with_email', params: {'p_account': accId});
-          if (rpc is List) {
-            for (final r in rpc) {
-              final m = Map<String, dynamic>.from(r as Map);
-              final uid =
-                  (m['user_uid'] as String?) ?? (m['uid'] as String?) ?? '';
-              final email = (m['email'] as String?)?.trim();
-              if (uid.isNotEmpty && email != null && email.isNotEmpty) {
-                emailByUid[uid] = email;
-              }
+        final listQuery = '''
+          query Employees(\$account: uuid!) {
+            list_employees_with_email(args: {p_account: \$account}) {
+              user_uid
+              email
+              role
+              disabled
             }
           }
-        } catch (_) {
-          // تجاهل أي خطأ في الـ RPC — سنعرض UID عند عدم توفر البريد
-        }
-
-        // 2) جدول account_users للحصول على الدور/الحالة
-        final rows = await _client
-            .from('account_users')
-            .select('user_uid, role, disabled, created_at')
-            .filter('account_id', 'eq', accId)
-            .order('created_at', ascending: true);
-
+        ''';
+        final listData = await _runQuery(listQuery, {'account': accId});
+        final listRows = _rowsFromData(listData, 'list_employees_with_email');
         _employees
           ..clear()
-          ..addAll((rows as List).map((e) {
-            final m = Map<String, dynamic>.from(e as Map);
-            final uid = m['user_uid']?.toString() ?? '';
-            return _Employee.fromAccountUserRow(
-              m,
-              email: emailByUid[uid],
-            );
-          }));
+          ..addAll(
+            listRows.map((row) => _Employee.fromListEmployeesRow(row)),
+          );
 
         // 3) جدول الصلاحيات لكل مستخدم
-        final perms = await _client
-            .from('account_feature_permissions')
-            .select(
-                'user_uid, allowed_features, can_create, can_update, can_delete')
-            .filter('account_id', 'eq', accId);
+        final permsQuery = '''
+          query FeaturePerms(\$account: uuid!) {
+            account_feature_permissions(where: {account_id: {_eq: \$account}}) {
+              user_uid
+              allowed_features
+              can_create
+              can_update
+              can_delete
+            }
+          }
+        ''';
+        final permsData = await _runQuery(permsQuery, {'account': accId});
+        final perms = _rowsFromData(permsData, 'account_feature_permissions');
 
         _byUser.clear();
-        for (final r in (perms as List)) {
-          final p = _FeaturePerm.fromAfpRow(Map<String, dynamic>.from(r));
+        for (final r in perms) {
+          final p = _FeaturePerm.fromAfpRow(r);
           _byUser[p.userUid!] = p;
         }
       }
@@ -141,14 +138,6 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
       setState(() {
         _initialLoaded = true;
       });
-    } on PostgrestException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(
-                  'تعذّر التحميل (${e.code ?? e.message}). تحقق من الصلاحيات.')),
-        );
-      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -190,22 +179,63 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
     try {
       if (perm.isDefaultAll) {
         // حذف السجل لاستعادة الافتراضي
-        await _client
-            .from('account_feature_permissions')
-            .delete()
-            .filter('account_id', 'eq', accId)
-            .filter('user_uid', 'eq', userUid);
+        final mutation = '''
+          mutation DeletePerm(\$account: uuid!, \$uid: uuid!) {
+            delete_account_feature_permissions(
+              where: {account_id: {_eq: \$account}, user_uid: {_eq: \$uid}}
+            ) {
+              affected_rows
+            }
+          }
+        ''';
+        await _runMutation(mutation, {
+          'account': accId,
+          'uid': userUid,
+        });
         _byUser.remove(userUid);
       } else {
-        // upsert
-        await _client.from('account_feature_permissions').upsert({
-          'account_id': accId,
-          'user_uid': userUid,
-          'allowed_features': perm.allowedFeatures,
-          'can_create': perm.canCreate,
-          'can_update': perm.canUpdate,
-          'can_delete': perm.canDelete,
-        }, onConflict: 'account_id,user_uid');
+        final update = '''
+          mutation UpdatePerm(\$account: uuid!, \$uid: uuid!, \$set: account_feature_permissions_set_input!) {
+            update_account_feature_permissions(
+              where: {account_id: {_eq: \$account}, user_uid: {_eq: \$uid}},
+              _set: \$set
+            ) {
+              affected_rows
+            }
+          }
+        ''';
+        final updateRes = await _runMutation(update, {
+          'account': accId,
+          'uid': userUid,
+          'set': {
+            'allowed_features': perm.allowedFeatures,
+            'can_create': perm.canCreate,
+            'can_update': perm.canUpdate,
+            'can_delete': perm.canDelete,
+          },
+        });
+        final affected =
+            (updateRes['update_account_feature_permissions'] as Map?)?[
+                'affected_rows'] as int?;
+        if (affected == null || affected == 0) {
+          final insert = '''
+            mutation InsertPerm(\$object: account_feature_permissions_insert_input!) {
+              insert_account_feature_permissions_one(object: \$object) {
+                id
+              }
+            }
+          ''';
+          await _runMutation(insert, {
+            'object': {
+              'account_id': accId,
+              'user_uid': userUid,
+              'allowed_features': perm.allowedFeatures,
+              'can_create': perm.canCreate,
+              'can_update': perm.canUpdate,
+              'can_delete': perm.canDelete,
+            }
+          });
+        }
         _byUser[userUid] = perm.copyWith(userUid: userUid);
       }
 
@@ -215,14 +245,6 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
         );
       }
       setState(() {});
-    } on PostgrestException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content:
-                  Text('تعذّر الحفظ (${e.code ?? e.message}). تحقق من RLS.')),
-        );
-      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -419,6 +441,56 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
   }
 }
 
+extension on _PermissionsScreenState {
+  Future<Map<String, dynamic>> _runQuery(
+    String doc,
+    Map<String, dynamic> variables,
+  ) async {
+    final result = await _gql.query(
+      QueryOptions(
+        document: gql(doc),
+        variables: variables,
+        fetchPolicy: FetchPolicy.noCache,
+      ),
+    );
+    if (result.hasException) {
+      throw result.exception!;
+    }
+    return result.data ?? <String, dynamic>{};
+  }
+
+  Future<Map<String, dynamic>> _runMutation(
+    String doc,
+    Map<String, dynamic> variables,
+  ) async {
+    final result = await _gql.mutate(
+      MutationOptions(
+        document: gql(doc),
+        variables: variables,
+        fetchPolicy: FetchPolicy.noCache,
+      ),
+    );
+    if (result.hasException) {
+      throw result.exception!;
+    }
+    return result.data ?? <String, dynamic>{};
+  }
+
+  List<Map<String, dynamic>> _rowsFromData(
+    Map<String, dynamic> data,
+    String key,
+  ) {
+    final raw = data[key];
+    if (raw is List) {
+      return raw
+          .whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList();
+    }
+    return const <Map<String, dynamic>>[];
+  }
+}
+
 /*────────────────────────── نماذج البيانات ─────────────────────────*/
 
 class _Employee {
@@ -434,14 +506,11 @@ class _Employee {
     this.email,
   });
 
-  // نبني من صف account_users مع تمرير البريد إن وُجد
-  factory _Employee.fromAccountUserRow(Map<String, dynamic> j,
-          {String? email}) =>
-      _Employee(
+  factory _Employee.fromListEmployeesRow(Map<String, dynamic> j) => _Employee(
         userUid: j['user_uid']?.toString() ?? '',
         role: j['role']?.toString() ?? 'employee',
-        disabled: (j['disabled'] as bool?) ?? false,
-        email: email,
+        disabled: j['disabled'] == true,
+        email: j['email']?.toString(),
       );
 }
 

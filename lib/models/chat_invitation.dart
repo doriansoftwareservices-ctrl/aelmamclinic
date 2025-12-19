@@ -14,7 +14,6 @@ extension ChatGroupInvitationStatusX on ChatGroupInvitationStatus {
       case ChatGroupInvitationStatus.expired:
         return 'expired';
       case ChatGroupInvitationStatus.pending:
-      default:
         return 'pending';
     }
   }
@@ -28,9 +27,9 @@ extension ChatGroupInvitationStatusX on ChatGroupInvitationStatus {
       case 'expired':
         return ChatGroupInvitationStatus.expired;
       case 'pending':
-      default:
         return ChatGroupInvitationStatus.pending;
     }
+    return ChatGroupInvitationStatus.pending;
   }
 }
 
@@ -82,7 +81,6 @@ class ChatGroupInvitation {
       case ChatGroupInvitationStatus.expired:
         return 'انتهت صلاحيتها';
       case ChatGroupInvitationStatus.pending:
-      default:
         return 'قيد الانتظار';
     }
   }

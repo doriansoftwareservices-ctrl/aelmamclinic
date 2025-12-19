@@ -27,10 +27,9 @@ export 'chat_models.dart'
         ChatConversation,
         ChatConversationType,
         ChatConversationTypeX,
-        ConversationListItem,
-        // كيانات إضافية شائعة
-        ChatParticipant,
-        ChatReadState;
+        ConversationListItem;
+
+export 'chat_participant.dart' show ChatParticipant;
 
 // توافق قديم: اسم الحالة القديم كان ChatDeliveryStatus.
 // نخليه alias لـ ChatMessageStatus حتى يشتغل أي كود قديم بدون تعديل.

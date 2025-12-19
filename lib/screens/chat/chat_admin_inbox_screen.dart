@@ -9,13 +9,15 @@ import 'dart:ui' as ui show TextDirection;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:graphql_flutter/graphql_flutter.dart';
 
 import 'package:aelmamclinic/core/neumorphism.dart';
+import 'package:aelmamclinic/core/nhost_manager.dart';
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/models/chat_models.dart';
 import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:aelmamclinic/providers/chat_provider.dart';
+import 'package:aelmamclinic/services/nhost_graphql_service.dart';
 import 'package:aelmamclinic/widgets/chat/conversation_tile.dart';
 import 'chat_room_screen.dart';
 
@@ -27,7 +29,7 @@ class ChatAdminInboxScreen extends StatefulWidget {
 }
 
 class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
-  final _sb = Supabase.instance.client;
+  final GraphQLClient _gql = NhostGraphqlService.buildClient();
 
   final _searchCtrl = TextEditingController();
   bool _loading = true;
@@ -86,8 +88,56 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
     });
   }
 
+  Future<Map<String, dynamic>> _runQuery(
+    String doc,
+    Map<String, dynamic> variables,
+  ) async {
+    final result = await _gql.query(
+      QueryOptions(
+        document: gql(doc),
+        variables: variables,
+        fetchPolicy: FetchPolicy.noCache,
+      ),
+    );
+    if (result.hasException) {
+      throw result.exception!;
+    }
+    return result.data ?? <String, dynamic>{};
+  }
+
+  Future<Map<String, dynamic>> _runMutation(
+    String doc,
+    Map<String, dynamic> variables,
+  ) async {
+    final result = await _gql.mutate(
+      MutationOptions(
+        document: gql(doc),
+        variables: variables,
+        fetchPolicy: FetchPolicy.noCache,
+      ),
+    );
+    if (result.hasException) {
+      throw result.exception!;
+    }
+    return result.data ?? <String, dynamic>{};
+  }
+
+  List<Map<String, dynamic>> _rowsFromData(
+    Map<String, dynamic> data,
+    String key,
+  ) {
+    final raw = data[key];
+    if (raw is List) {
+      return raw
+          .whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList();
+    }
+    return const <Map<String, dynamic>>[];
+  }
+
   Future<void> _fetchInbox() async {
-    final me = _sb.auth.currentUser;
+    final me = NhostManager.client.auth.currentUser;
     if (me == null) return;
 
     final cp = context.read<ChatProvider>();
@@ -105,10 +155,17 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
 
       final convIds = dmConvs.map((e) => e.id).toList();
 
-      final parts = await _sb
-          .from('chat_participants')
-          .select('conversation_id, user_uid, email')
-          .inFilter('conversation_id', convIds);
+      final partsQuery = '''
+        query Participants(\$ids: [uuid!]!) {
+          chat_participants(where: {conversation_id: {_in: \$ids}}) {
+            conversation_id
+            user_uid
+            email
+          }
+        }
+      ''';
+      final partsData = await _runQuery(partsQuery, {'ids': convIds});
+      final parts = _rowsFromData(partsData, 'chat_participants');
 
       final byConvParts = <String, List<_UserRef>>{};
       final otherUids = <String>{};
@@ -141,11 +198,22 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
       }
 
       final ownerRoles = ['owner', 'admin', 'owner_admin'];
-      final auRows = await _sb
-          .from('account_users')
-          .select('user_uid, role, account_id, email, created_at')
-          .inFilter('user_uid', otherUids.toList())
-          .order('created_at', ascending: false);
+      final auQuery = '''
+        query AccountUsers(\$uids: [uuid!]!) {
+          account_users(
+            where: {user_uid: {_in: \$uids}},
+            order_by: {created_at: desc}
+          ) {
+            user_uid
+            role
+            account_id
+            email
+            created_at
+          }
+        }
+      ''';
+      final auData = await _runQuery(auQuery, {'uids': otherUids.toList()});
+      final auRows = _rowsFromData(auData, 'account_users');
 
       final latestByUid = <String, Map<String, dynamic>>{};
       for (final r in (auRows as List).whereType<Map<String, dynamic>>()) {
@@ -154,11 +222,19 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
         latestByUid.putIfAbsent(uid, () => r);
       }
 
-      final readsRows = await _sb
-          .from('chat_reads')
-          .select('conversation_id, last_read_at')
-          .eq('user_uid', meId)
-          .inFilter('conversation_id', convIds);
+      final readsQuery = '''
+        query Reads(\$uid: uuid!, \$ids: [uuid!]!) {
+          chat_reads(
+            where: {user_uid: {_eq: \$uid}, conversation_id: {_in: \$ids}}
+          ) {
+            conversation_id
+            last_read_at
+          }
+        }
+      ''';
+      final readsData =
+          await _runQuery(readsQuery, {'uid': meId, 'ids': convIds});
+      final readsRows = _rowsFromData(readsData, 'chat_reads');
 
       final readAtByConv = <String, DateTime?>{};
       for (final r in (readsRows as List).whereType<Map<String, dynamic>>()) {
@@ -178,12 +254,18 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
       final clinicsById = <String, String>{};
       if (accountIds.isNotEmpty) {
         try {
-          final clinicRows = await _sb
-              .from('clinics')
-              .select('id, name')
-              .inFilter('id', accountIds);
-          for (final r
-              in (clinicRows as List).whereType<Map<String, dynamic>>()) {
+          final clinicsQuery = '''
+            query Clinics(\$ids: [uuid!]!) {
+              clinics(where: {id: {_in: \$ids}}) {
+                id
+                name
+              }
+            }
+          ''';
+          final clinicsData =
+              await _runQuery(clinicsQuery, {'ids': accountIds});
+          final clinicRows = _rowsFromData(clinicsData, 'clinics');
+          for (final r in clinicRows) {
             clinicsById[r['id'].toString()] =
                 (r['name']?.toString() ?? '').trim();
           }
@@ -241,7 +323,7 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
 
   // ✅ بدء DM عبر RPC تتجاوز RLS بأمان
   Future<void> _startOwnerDM() async {
-    final me = _sb.auth.currentUser;
+    final me = NhostManager.client.auth.currentUser;
     if (me == null) return;
 
     final emailCtrl = TextEditingController();
@@ -275,10 +357,13 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
 
     try {
       // تستدعي دالة chat_admin_start_dm(target_email text) وترجع conv_id (uuid)
-      final String? convId = await _sb.rpc<String>(
-        'chat_admin_start_dm',
-        params: {'target_email': targetEmail},
-      );
+      final mutation = '''
+        mutation StartAdminDM(\$email: String!) {
+          chat_admin_start_dm(args: {target_email: \$email})
+        }
+      ''';
+      final data = await _runMutation(mutation, {'email': targetEmail});
+      final convId = data['chat_admin_start_dm']?.toString();
 
       if (convId == null || convId.isEmpty) {
         _snack('تعذّر إنشاء/استرجاع المحادثة.');
@@ -286,20 +371,31 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
       }
 
       // اجلب صف المحادثة لنبني ChatConversation محليًا
-      final row = await _sb
-          .from('chat_conversations')
-          .select(
-            'id, account_id, is_group, title, created_by, created_at, updated_at, last_msg_at, last_msg_snippet',
-          )
-          .eq('id', convId)
-          .maybeSingle();
-
+      final convQuery = '''
+        query Conversation(\$id: uuid!) {
+          chat_conversations_by_pk(id: \$id) {
+            id
+            account_id
+            is_group
+            title
+            created_by
+            created_at
+            updated_at
+            last_msg_at
+            last_msg_snippet
+          }
+        }
+      ''';
+      final convData = await _runQuery(convQuery, {'id': convId});
+      final row = convData['chat_conversations_by_pk'];
       if (row == null) {
         _snack('تم إنشاء المحادثة لكن لم أستطع قراءتها.');
         return;
       }
 
-      final conv = ChatConversation.fromMap(row);
+      final conv = ChatConversation.fromMap(
+        Map<String, dynamic>.from(row as Map),
+      );
 
       if (!mounted) return;
       final cp = context.read<ChatProvider>();

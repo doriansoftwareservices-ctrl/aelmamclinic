@@ -2,7 +2,7 @@
 
 /// نموذج المريض (محلي + سحابي عبر SyncService).
 /// محليًا في SQLite نستخدم camelCase؛
-/// وعند الرفع إلى Supabase يُستخدم snake_case عبر `toCloudMap()`.
+/// وعند الرفع إلى Remote يُستخدم snake_case عبر `toCloudMap()`.
 class Patient {
   static const String table = 'patients';
 
@@ -67,7 +67,7 @@ class Patient {
   final DateTime? doctorReviewedAt; // آخر وقت أكّد فيه الطبيب المقابلة
 
   /*────────────────────── حقول مزامنة اختيارية (سحابة) ─────────────────────*/
-  final String? accountId; // Supabase → accounts.id
+  final String? accountId; // Remote → accounts.id
   final String? deviceId; // معرّف الجهاز
   final int? localId; // مرجع السجل المحلي عند الرفع (إن لم يُمرر نضع id المحلي)
   final DateTime? updatedAt;
@@ -190,7 +190,7 @@ class Patient {
 
   factory Patient.fromJson(Map<String, dynamic> json) => Patient.fromMap(json);
 
-  factory Patient.fromSupabase(Map<String, dynamic> map) =>
+  factory Patient.fromRemote(Map<String, dynamic> map) =>
       Patient.fromMap(map);
 
   /*──────────── إلى Map (لـ SQLite؛ SyncService سيحوّل للسحابة) ────────────*/
@@ -257,7 +257,7 @@ class Patient {
       }..removeWhere((k, v) => v == null);
 
   /*──────────── JSON عام — نُعيد خريطة السحابة افتراضيًا ────────────*/
-  Map<String, dynamic> toSupabase() => toCloudMap();
+  Map<String, dynamic> toRemote() => toCloudMap();
 
   Map<String, dynamic> toJson() => toCloudMap();
 

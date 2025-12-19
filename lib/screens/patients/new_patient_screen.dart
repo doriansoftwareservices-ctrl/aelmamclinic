@@ -21,7 +21,6 @@ import 'package:aelmamclinic/models/patient.dart';
 import 'package:aelmamclinic/models/patient_service.dart';
 import 'package:aelmamclinic/models/doctor.dart';
 import 'package:aelmamclinic/services/db_service.dart';
-import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:aelmamclinic/providers/repository_provider.dart';
 import 'list_patients_screen.dart';
 import 'duplicate_patients_screen.dart';
@@ -405,8 +404,9 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
 
     final List<Doctor> result;
     if (linked != null && linked.id != null) {
-      final linkedDoctor = linked!;
-      result = docs.where((d) => d.id == linkedDoctor.id).toList();
+      final linkedDoctor = linked;
+      final linkedDoctorId = linkedDoctor.id;
+      result = docs.where((d) => d.id == linkedDoctorId).toList();
     } else {
       result = docs;
     }
@@ -415,15 +415,18 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
     _linkedDoctor = linked;
 
     if (linked != null && linked.id != null && mounted) {
-      final linkedDoctor = linked!;
-      final selectedName = 'د/${linkedDoctor.name}';
-      setState(() {
-        if (_selectedDoctorId == null) {
-          _selectedDoctorId = linkedDoctor.id!;
-          _selectedDoctorName = selectedName;
-          _doctorCtrl.text = selectedName;
-        }
-      });
+      final linkedDoctor = linked;
+      final linkedDoctorId = linkedDoctor.id;
+      if (linkedDoctorId != null) {
+        final selectedName = 'د/${linkedDoctor.name}';
+        setState(() {
+          if (_selectedDoctorId == null) {
+            _selectedDoctorId = linkedDoctorId;
+            _selectedDoctorName = selectedName;
+            _doctorCtrl.text = selectedName;
+          }
+        });
+      }
     }
 
     return result;
@@ -920,7 +923,6 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
   /*──────────────────── UI ────────────────────*/
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final isRadLab =
         _selectedServiceType == 'الأشعة' || _selectedServiceType == 'المختبر';
     final isDoctor = _selectedServiceType == 'طبيب';

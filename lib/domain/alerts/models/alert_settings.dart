@@ -1,7 +1,7 @@
 /// Domain-level helpers for the `alert_settings` table.
 ///
 /// This file keeps the authoritative list of column keys and the
-/// transformations required when syncing data with Supabase. The sync
+/// transformations required when syncing data with Remote. The sync
 /// service and any domain mappers should use these helpers to guarantee
 /// that we always talk about the same keys (especially `item_uuid`).
 class AlertSettingsFields {
@@ -31,11 +31,11 @@ class AlertSettingsFields {
   static const String updatedAtCamel = 'updatedAt';
 }
 
-/// Converts alert settings payloads to/from the structure expected by Supabase.
+/// Converts alert settings payloads to/from the structure expected by Remote.
 class AlertSettingsMapper {
   const AlertSettingsMapper._();
 
-  /// Normalises local rows before sending them to Supabase.
+  /// Normalises local rows before sending them to Remote.
   static Map<String, dynamic> toCloudMap(Map<String, dynamic> localRow) {
     final out = <String, dynamic>{}..addAll(localRow);
 
@@ -79,7 +79,7 @@ class AlertSettingsMapper {
     return out;
   }
 
-  /// Normalises Supabase rows before saving them locally.
+  /// Normalises Remote rows before saving them locally.
   static Map<String, dynamic> fromCloudMap(
     Map<String, dynamic> remoteRow,
     Set<String> allowedLocalColumns,

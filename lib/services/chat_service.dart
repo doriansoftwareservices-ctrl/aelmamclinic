@@ -1,6 +1,6 @@
 // lib/services/chat_service.dart
 //
-// ChatService — طبقة خدمة شاملة لميزة الدردشة فوق Supabase.
+// ChatService — طبقة خدمة شاملة لميزة الدردشة فوق Nhost (GraphQL + Storage).
 //
 // هذه النسخة تتضمن:
 // - ✅ منع التكرار عبر upsert(device_id,local_id) + ضمان توليد local_id دائمًا
@@ -19,11 +19,13 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
+
+import 'package:graphql_flutter/graphql_flutter.dart';
 import 'package:path/path.dart' as p;
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:postgrest/postgrest.dart' show PostgrestException;
 
 import 'package:aelmamclinic/core/constants.dart';
+import 'package:aelmamclinic/core/active_account_store.dart';
+import 'package:aelmamclinic/core/nhost_manager.dart';
 import 'package:aelmamclinic/models/chat_invitation.dart';
 import 'package:aelmamclinic/models/chat_models.dart'
     show
@@ -35,6 +37,8 @@ import 'package:aelmamclinic/models/chat_models.dart'
         ChatMessageStatus,
         ConversationListItem;
 import 'package:aelmamclinic/models/chat_reaction.dart';
+import 'package:aelmamclinic/services/nhost_graphql_service.dart';
+import 'package:aelmamclinic/services/nhost_storage_service.dart';
 import 'package:aelmamclinic/utils/device_id.dart';
 import 'package:aelmamclinic/utils/local_seq.dart';
 
@@ -57,15 +61,14 @@ class ChatService {
   ChatService._();
   static final ChatService instance = ChatService._();
 
-  final SupabaseClient _sb = Supabase.instance.client;
+  GraphQLClient get _gql => NhostGraphqlService.client;
+  final NhostStorageService _storage = NhostStorageService();
+  final Map<String, ({String url, DateTime expiresAt})> _signedUrlCache = {};
 
   // --------------------------------------------------------------
   // ثوابت
   // --------------------------------------------------------------
   static const String attachmentsBucket = AppConstants.chatBucketName;
-  final bool _preferSignedUrls = !AppConstants.chatPreferPublicUrls;
-  static const int _signedUrlTTL =
-      AppConstants.storageSignedUrlTTLSeconds; // 1 ساعة افتراضيًا
 
   static const _tblConvs = 'chat_conversations';
   static const _tblParts = 'chat_participants';
@@ -75,13 +78,11 @@ class ChatService {
   static const _tblAtts = 'chat_attachments';
   static const _tblReacts = 'chat_reactions';
 
-  // اسم علاقة FK المرغوبة بين chat_messages و chat_attachments
-  static const _relAttsByMsg = 'chat_attachments_message_id_fkey';
-
   // --------------------------------------------------------------
   // Helpers
   // --------------------------------------------------------------
-  User? get currentUser => _sb.auth.currentUser;
+  String? get currentUserId => NhostManager.client.auth.currentUser?.id;
+  String? get currentUserEmail => NhostManager.client.auth.currentUser?.email;
 
   // uuid v4 محلي لتفادي RETURNING عند إنشاء المحادثة
   String _uuidV4() {
@@ -107,20 +108,162 @@ class ChatService {
     return null;
   }
 
-  Future<void> _uploadToStorage({
-    required String path,
+  String _formatGqlError(OperationException error) {
+    if (error.graphqlErrors.isNotEmpty) {
+      return error.graphqlErrors.map((e) => e.message).join(' | ');
+    }
+    return error.toString();
+  }
+
+  Future<Map<String, dynamic>> _runQuery(
+    String doc,
+    Map<String, dynamic> variables,
+  ) async {
+    final result = await _gql.query(
+      QueryOptions(
+        document: gql(doc),
+        variables: variables,
+        fetchPolicy: FetchPolicy.noCache,
+      ),
+    );
+    if (result.hasException) {
+      throw result.exception!;
+    }
+    return result.data ?? <String, dynamic>{};
+  }
+
+  Future<Map<String, dynamic>> _runMutation(
+    String doc,
+    Map<String, dynamic> variables,
+  ) async {
+    final result = await _gql.mutate(
+      MutationOptions(
+        document: gql(doc),
+        variables: variables,
+        fetchPolicy: FetchPolicy.noCache,
+      ),
+    );
+    if (result.hasException) {
+      throw result.exception!;
+    }
+    return result.data ?? <String, dynamic>{};
+  }
+
+  Stream<QueryResult> _runSubscription(
+    String doc,
+    Map<String, dynamic> variables,
+  ) {
+    return _gql.subscribe(
+      SubscriptionOptions(
+        document: gql(doc),
+        variables: variables,
+        fetchPolicy: FetchPolicy.noCache,
+      ),
+    );
+  }
+
+  List<Map<String, dynamic>> _rowsFromData(
+    Map<String, dynamic> data,
+    String key,
+  ) {
+    final raw = data[key];
+    if (raw is List) {
+      return raw
+          .whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList();
+    }
+    return const <Map<String, dynamic>>[];
+  }
+
+  Map<String, dynamic>? _rowFromData(
+    Map<String, dynamic> data,
+    String key,
+  ) {
+    final row = data[key];
+    if (row is Map) {
+      return Map<String, dynamic>.from(row);
+    }
+    return null;
+  }
+
+  static const String _messageSelectFields = '''
+    id
+    conversation_id
+    sender_uid
+    sender_email
+    kind
+    body
+    text
+    edited
+    deleted
+    created_at
+    edited_at
+    deleted_at
+    reply_to_message_id
+    reply_to_snippet
+    mentions
+    account_id
+    device_id
+    local_id
+    attachments
+    chat_attachments {
+      id
+      message_id
+      bucket
+      path
+      mime_type
+      size_bytes
+      width
+      height
+      created_at
+    }
+    chat_delivery_receipts {
+      user_uid
+      delivered_at
+    }
+  ''';
+
+  Future<ChatMessage> _messageFromRow(Map<String, dynamic> row) async {
+    final copy = Map<String, dynamic>.from(row);
+    final attRows = (copy['chat_attachments'] as List?) ?? const [];
+    final legacyAtts = (copy['attachments'] as List?) ?? const [];
+    final attSource = attRows.isNotEmpty ? attRows : legacyAtts;
+    if (attSource.isNotEmpty) {
+      copy['attachments'] = await _normalizeAttachmentsToHttp(attSource);
+    }
+    if (copy['delivery_receipts'] == null &&
+        copy['chat_delivery_receipts'] != null) {
+      copy['delivery_receipts'] = copy['chat_delivery_receipts'];
+    }
+    return ChatMessage.fromMap(copy, currentUid: currentUserId);
+  }
+
+  Future<List<ChatMessage>> _messagesFromRows(List<Map<String, dynamic>> rows) async {
+    final list = <ChatMessage>[];
+    for (final row in rows) {
+      list.add(await _messageFromRow(row));
+    }
+    return list;
+  }
+
+  Future<String> _uploadToStorage({
+    required String name,
     required File file,
-    required FileOptions options,
+    required String mimeType,
   }) async {
     try {
-      await _sb.storage
-          .from(attachmentsBucket)
-          .upload(path, file, fileOptions: options);
-    } on StorageException catch (e) {
-      final message = (e.statusCode == 403)
-          ? 'لا تملك صلاحية رفع المرفقات لهذه المحادثة.'
-          : (e.message ?? 'فشل رفع المرفقات.');
-      throw ChatAttachmentUploadException(message, cause: e);
+      final res = await _storage.uploadFile(
+        file: file,
+        name: name,
+        bucketId: attachmentsBucket,
+        mimeType: mimeType,
+      );
+      final id = res['id']?.toString();
+      if (id == null || id.isEmpty) {
+        throw ChatAttachmentUploadException('لم يتم استلام معرّف الملف من التخزين.');
+      }
+      return id;
     } catch (e) {
       throw ChatAttachmentUploadException('فشل رفع المرفقات: $e', cause: e);
     }
@@ -138,19 +281,59 @@ class ChatService {
 
   Future<({String? accountId, String? role, String? email, String? deviceId})>
       _myAccountRow() async {
-    final u = _sb.auth.currentUser;
-    if (u == null) {
+    final uid = currentUserId;
+    if (uid == null || uid.isEmpty) {
       return (accountId: null, role: null, email: null, deviceId: null);
     }
     try {
-      final raw = await _sb
-          .from(_tblAccUsers)
-          .select('account_id, role, email, device_id')
-          .eq('user_uid', u.id)
-          .order('created_at', ascending: false)
-          .limit(1)
-          .maybeSingle();
-      final row = _asJsonMap(raw);
+      final preferred = await ActiveAccountStore.readAccountId();
+      if (preferred != null && preferred.isNotEmpty) {
+        final preferredQuery = '''
+        query MyAccountRowPreferred(\$uid: uuid!, \$account: uuid!) {
+          account_users(
+            where: {user_uid: {_eq: \$uid}, account_id: {_eq: \$account}},
+            limit: 1
+          ) {
+            account_id
+            role
+            email
+            device_id
+          }
+        }
+      ''';
+        final preferredData = await _runQuery(
+          preferredQuery,
+          {'uid': uid, 'account': preferred},
+        );
+        final preferredRows = (preferredData[_tblAccUsers] as List?) ?? const [];
+        if (preferredRows.isNotEmpty) {
+          final row = _asJsonMap(preferredRows.first);
+          return (
+            accountId: row?['account_id']?.toString(),
+            role: row?['role']?.toString(),
+            email: (row?['email']?.toString() ?? '').toLowerCase(),
+            deviceId: row?['device_id']?.toString(),
+          );
+        }
+      }
+
+      final query = '''
+        query MyAccountRow(\$uid: uuid!) {
+          account_users(
+            where: {user_uid: {_eq: \$uid}},
+            order_by: {created_at: desc},
+            limit: 1
+          ) {
+            account_id
+            role
+            email
+            device_id
+          }
+        }
+      ''';
+      final data = await _runQuery(query, {'uid': uid});
+      final rows = (data[_tblAccUsers] as List?) ?? const [];
+      final row = rows.isEmpty ? null : _asJsonMap(rows.first);
       return (
         accountId: row?['account_id']?.toString(),
         role: row?['role']?.toString(),
@@ -165,12 +348,16 @@ class ChatService {
   /// account_id الخاص بالمحادثة (مفضل للرسائل ليتوافق مع RLS)
   Future<String?> _conversationAccountId(String conversationId) async {
     try {
-      final raw = await _sb
-          .from(_tblConvs)
-          .select('account_id')
-          .eq('id', conversationId)
-          .maybeSingle();
-      final row = _asJsonMap(raw);
+      final query = '''
+        query ConversationAccount(\$id: uuid!) {
+          $_tblConvs(where: {id: {_eq: \$id}}, limit: 1) {
+            account_id
+          }
+        }
+      ''';
+      final data = await _runQuery(query, {'id': conversationId});
+      final rows = (data[_tblConvs] as List?) ?? const [];
+      final row = rows.isEmpty ? null : _asJsonMap(rows.first);
       final v = row?['account_id']?.toString();
       if (v == null || v.isEmpty || v == 'null') return null;
       return v;
@@ -181,7 +368,7 @@ class ChatService {
 
   /// يضمن لنا تحديد بريد المرسل.
   String? _bestSenderEmail(String? meEmail) {
-    final authEmail = _sb.auth.currentUser?.email;
+    final authEmail = currentUserEmail;
     final e = (meEmail?.trim().isNotEmpty == true ? meEmail : authEmail)
         ?.toLowerCase();
     return (e != null && e.isNotEmpty) ? e : null;
@@ -212,29 +399,66 @@ class ChatService {
     }
   }
 
-  Future<String> _signedOrPublicUrl(String bucket, String path) async {
-    if (_preferSignedUrls) {
-      // 1) جرّب Edge Function (sign-attachment)
-      try {
-        final res = await _sb.functions.invoke(
-          'sign-attachment',
-          body: {'bucket': bucket, 'path': path, 'expiresIn': _signedUrlTTL},
-        );
-        final data = res.data;
-        if (data is Map) {
-          final s = (data['signedUrl'] ?? data['url'])?.toString();
-          if (s != null && s.trim().isNotEmpty) return s;
+  bool _looksLikeUuid(String value) {
+    final v = value.trim();
+    if (v.isEmpty) return false;
+    final re = RegExp(
+      r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+    );
+    return re.hasMatch(v);
+  }
+
+  Future<String?> _resolveFileId(String bucket, String path) async {
+    final trimmed = path.trim();
+    if (_looksLikeUuid(trimmed)) return trimmed;
+    if (bucket.trim().isEmpty) return null;
+    try {
+      final query = '''
+        query StorageFileId(\$bucket: String!, \$name: String!) {
+          files(where: {bucketId: {_eq: \$bucket}, name: {_eq: \$name}}, limit: 1) {
+            id
+          }
         }
-      } catch (_) {}
-      // 2) fallback: createSignedUrl من Storage
-      try {
-        final s =
-            await _sb.storage.from(bucket).createSignedUrl(path, _signedUrlTTL);
-        if (s.trim().isNotEmpty) return s;
-      } catch (_) {}
+      ''';
+      final data = await _runQuery(query, {'bucket': bucket, 'name': trimmed});
+      final rows = (data['files'] as List?) ?? const [];
+      final row = rows.isEmpty ? null : _asJsonMap(rows.first);
+      final id = row?['id']?.toString();
+      return (id == null || id.isEmpty) ? null : id;
+    } catch (_) {
+      return null;
     }
-    // 3) أخيرًا: publicUrl
-    return _sb.storage.from(bucket).getPublicUrl(path);
+  }
+
+  Future<String> _signedOrPublicUrl(String bucket, String path) async {
+    if (AppConstants.chatPreferPublicUrls) {
+      return _storage.publicFileUrl(path);
+    }
+
+    final cacheKey = '$bucket|$path';
+    final cached = _signedUrlCache[cacheKey];
+    if (cached != null && DateTime.now().isBefore(cached.expiresAt)) {
+      return cached.url;
+    }
+
+    final fileId = await _resolveFileId(bucket, path);
+    if (fileId != null && fileId.isNotEmpty) {
+      final signed = await _storage.createSignedUrl(
+        fileId,
+        expiresInSeconds: AppConstants.storageSignedUrlTTLSeconds,
+      );
+      if (signed != null && signed.isNotEmpty) {
+        final ttl = Duration(seconds: AppConstants.storageSignedUrlTTLSeconds);
+        _signedUrlCache[cacheKey] = (
+          url: signed,
+          expiresAt: DateTime.now().add(ttl - const Duration(seconds: 30)),
+        );
+        return signed;
+      }
+      return _storage.publicFileUrl(fileId);
+    }
+
+    return _storage.publicFileUrl(path);
   }
 
   String _safeFileName(String name) {
@@ -290,42 +514,6 @@ class ChatService {
     return result;
   }
 
-  Future<Map<String, dynamic>> _withHttpAttachments(
-    Map<String, dynamic> msgRow,
-  ) async {
-    final att = msgRow['attachments'];
-    if (att is List) {
-      final normalized = await _normalizeAttachmentsToHttp(att);
-      final copy = Map<String, dynamic>.from(msgRow);
-      copy['attachments'] = normalized;
-      return copy;
-    }
-    return msgRow;
-  }
-
-  /// إدراج عام مع سقوط اختياري — **لا تُستخدم للرسائل بعد الآن**.
-  Future<Map<String, dynamic>> _insertWithFallback(
-    String table,
-    Map<String, dynamic> map, {
-    List<String> fallbackKeys = const [
-      'account_id',
-      'mentions',
-      'reply_to_message_id',
-      'reply_to_snippet',
-      'attachments',
-    ],
-  }) async {
-    try {
-      return await _sb.from(table).insert(map).select().single();
-    } catch (_) {
-      final alt = Map<String, dynamic>.from(map);
-      for (final k in fallbackKeys) {
-        alt.remove(k);
-      }
-      return await _sb.from(table).insert(alt).select().single();
-    }
-  }
-
   String _buildSnippet({required ChatMessageKind kind, String? body}) {
     if (kind == ChatMessageKind.text) {
       final s = (body ?? '').trim();
@@ -336,36 +524,103 @@ class ChatService {
     return 'رسالة';
   }
 
+  Future<Map<String, dynamic>?> _findMessageByTriplet({
+    required String conversationId,
+    required String deviceId,
+    required int localId,
+    String? accountId,
+  }) async {
+    final vars = <String, dynamic>{
+      'cid': conversationId,
+      'deviceId': deviceId,
+      'localId': localId,
+    };
+    final accountFilter =
+        accountId == null ? '' : ', account_id: {_eq: \$accountId}';
+    final accountVar =
+        accountId == null ? '' : ', \$accountId: uuid!';
+    if (accountId != null) {
+      vars['accountId'] = accountId;
+    }
+    final query = '''
+      query FindMessageByTriplet(\$cid: uuid!, \$deviceId: String!, \$localId: bigint!$accountVar) {
+        $_tblMsgs(
+          where: {
+            conversation_id: {_eq: \$cid},
+            device_id: {_eq: \$deviceId},
+            local_id: {_eq: \$localId}$accountFilter
+          },
+          limit: 1
+        ) {
+          $_messageSelectFields
+        }
+      }
+    ''';
+    try {
+      final data = await _runQuery(query, vars);
+      final rows = _rowsFromData(data, _tblMsgs);
+      return rows.isEmpty ? null : rows.first;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> _updateConversationLastSummary({
     required String conversationId,
     required DateTime lastAt,
     required String snippet,
   }) async {
     try {
-      await _sb.from(_tblConvs).update({
-        'last_msg_at': lastAt.toUtc().toIso8601String(),
-        'last_msg_snippet': snippet,
-      }).eq('id', conversationId);
+      final mutation = '''
+        mutation UpdateConversation(\$id: uuid!, \$lastAt: timestamptz!, \$snippet: String) {
+          update_${_tblConvs}(
+            where: {id: {_eq: \$id}},
+            _set: {last_msg_at: \$lastAt, last_msg_snippet: \$snippet}
+          ) {
+            affected_rows
+          }
+        }
+      ''';
+      await _runMutation(mutation, {
+        'id': conversationId,
+        'lastAt': lastAt.toUtc().toIso8601String(),
+        'snippet': snippet,
+      });
     } catch (_) {}
   }
 
   Future<void> refreshConversationLastSummary(String conversationId) async {
     try {
-      final raw = await _sb
-          .from(_tblMsgs)
-          .select('kind, body, created_at, deleted')
-          .eq('conversation_id', conversationId)
-          .or('deleted.is.false,deleted.is.null')
-          .order('created_at', ascending: false)
-          .limit(1)
-          .maybeSingle();
-      final last = _asJsonMap(raw);
+      final query = '''
+        query LastMessage(\$cid: uuid!) {
+          $_tblMsgs(
+            where: {conversation_id: {_eq: \$cid}, deleted: {_neq: true}},
+            order_by: {created_at: desc},
+            limit: 1
+          ) {
+            kind
+            body
+            created_at
+            deleted
+          }
+        }
+      ''';
+      final data = await _runQuery(query, {'cid': conversationId});
+      final rows = (data[_tblMsgs] as List?) ?? const [];
+      final last = rows.isEmpty ? null : _asJsonMap(rows.first);
 
       if (last == null) {
-        await _sb
-            .from(_tblConvs)
-            .update({'last_msg_at': null, 'last_msg_snippet': null}).eq(
-                'id', conversationId);
+        final mutation = '''
+          mutation ClearLast(\$id: uuid!) {
+            update_${_tblConvs}(
+              where: {id: {_eq: \$id}},
+              _set: {last_msg_at: null, last_msg_snippet: null}
+            ) {
+              affected_rows
+            }
+          }
+        ''';
+        await _runMutation(mutation, {'id': conversationId});
         return;
       }
 
@@ -389,58 +644,64 @@ class ChatService {
     required String uidA,
     required String uidB,
   }) async {
-    // ملاحظة: حدّد اسم علاقة الـ FK صراحةً لتفادي التباس PostgREST.
-    final rows = await _sb.from(_tblParts).select('''
-    conversation_id,
-    conversation:${_tblConvs}!fk_chat_participants_conversation(
-      id, is_group, account_id, title, created_at, created_by, last_msg_at, last_msg_snippet
-    )
-  ''').inFilter('user_uid', [uidA, uidB]);
-
-    final countByConv = <String, int>{};
-    final mapConv = <String, Map<String, dynamic>>{};
-    for (final r in (rows as List).whereType<Map<String, dynamic>>()) {
-      final cid = (r['conversation_id'] ?? '').toString();
-      if (cid.isEmpty) continue;
-      countByConv[cid] = (countByConv[cid] ?? 0) + 1;
-      final conv = r['conversation'];
-      if (conv is Map<String, dynamic>) {
-        mapConv[cid] = conv;
+    final query = '''
+      query FindDM(\$uidA: uuid!, \$uidB: uuid!) {
+        $_tblConvs(
+          where: {
+            is_group: {_eq: false},
+            _and: [
+              {$_tblParts: {user_uid: {_eq: \$uidA}}},
+              {$_tblParts: {user_uid: {_eq: \$uidB}}}
+            ]
+          },
+          limit: 1
+        ) {
+          id
+          is_group
+          account_id
+          title
+          created_at
+          created_by
+          last_msg_at
+          last_msg_snippet
+        }
       }
-    }
-
-    for (final e in countByConv.entries) {
-      final cid = e.key;
-      final cMap = mapConv[cid] ?? const {};
-      if (e.value >= 2 && (cMap['is_group'] == false)) {
-        return ChatConversation.fromMap(cMap);
-      }
-    }
-    return null;
+    ''';
+    final data = await _runQuery(query, {'uidA': uidA, 'uidB': uidB});
+    final rows = (data[_tblConvs] as List?) ?? const [];
+    if (rows.isEmpty) return null;
+    return ChatConversation.fromMap(Map<String, dynamic>.from(rows.first as Map));
   }
 
   Future<ChatConversation> startDMWithEmail(String email) async {
-    final u = _sb.auth.currentUser;
-    if (u == null) {
+    final uid = currentUserId;
+    if (uid == null) {
       throw 'لا يوجد مستخدم مسجّل الدخول.';
     }
     final me = await _myAccountRow();
     final myRole = (me.role?.toLowerCase() ?? '');
     final myAcc = (me.accountId ?? '').trim();
 
-    final targetRowRaw = await _sb
-        .from(_tblAccUsers)
-        .select('user_uid, email, account_id, role')
-        .ilike('email', email.toLowerCase())
-        .maybeSingle();
-
-    if (targetRowRaw == null) {
+    final query = '''
+      query FindAccountUser(\$email: String!) {
+        $_tblAccUsers(
+          where: {email: {_eq: \$email}},
+          order_by: {created_at: desc},
+          limit: 1
+        ) {
+          user_uid
+          email
+          account_id
+          role
+        }
+      }
+    ''';
+    final data = await _runQuery(query, {'email': email.toLowerCase()});
+    final rows = (data[_tblAccUsers] as List?) ?? const [];
+    if (rows.isEmpty) {
       throw 'لا يوجد مستخدم بالبريد: $email';
     }
-
-    final Map<String, dynamic> targetRow = targetRowRaw is Map<String, dynamic>
-        ? targetRowRaw
-        : Map<String, dynamic>.from(targetRowRaw as Map);
+    final targetRow = Map<String, dynamic>.from(rows.first as Map);
 
     final otherUid = targetRow['user_uid']?.toString() ?? '';
     if (otherUid.isEmpty) {
@@ -453,9 +714,9 @@ class ChatService {
     if (targetRole == 'superadmin' && myRole != 'superadmin') {
       throw 'غير مسموح للموظفين مراسلة السوبر أدمن مباشرة.';
     }
-    if (otherUid == u.id) throw 'لا يمكنك مراسلة نفسك.';
+    if (otherUid == uid) throw 'لا يمكنك مراسلة نفسك.';
 
-    final existing = await findExistingDMByUids(uidA: u.id, uidB: otherUid);
+    final existing = await findExistingDMByUids(uidA: uid, uidB: otherUid);
     if (existing != null) return existing;
 
     String? convAccountId;
@@ -466,42 +727,73 @@ class ChatService {
     final convId = _uuidV4();
     final nowIso = DateTime.now().toUtc().toIso8601String();
 
-    await _sb.from(_tblConvs).insert({
-      'id': convId,
-      'account_id': convAccountId,
-      'is_group': false,
-      'title': null,
-      'created_by': u.id,
-      'created_at': nowIso,
-      'updated_at': nowIso,
+    final createMutation = '''
+      mutation CreateConversation(\$objects: [${_tblConvs}_insert_input!]!) {
+        insert_${_tblConvs}(objects: \$objects) {
+          returning {
+            id
+            is_group
+            title
+            account_id
+            created_by
+            created_at
+            updated_at
+            last_msg_at
+            last_msg_snippet
+          }
+        }
+      }
+    ''';
+    final createData = await _runMutation(createMutation, {
+      'objects': [
+        {
+          'id': convId,
+          'account_id': convAccountId,
+          'is_group': false,
+          'title': null,
+          'created_by': uid,
+          'created_at': nowIso,
+          'updated_at': nowIso,
+        }
+      ],
     });
 
-    // ✅ upsert للمشاركين
-    await _sb.from(_tblParts).upsert([
-      {
-        'conversation_id': convId,
-        'user_uid': u.id,
-        'email': (_bestSenderEmail(me.email) ?? '').toLowerCase(),
-        'joined_at': nowIso,
-      },
-      {
-        'conversation_id': convId,
-        'user_uid': otherUid,
-        'email': otherEmail,
-        'joined_at': nowIso,
-      },
-    ], onConflict: 'conversation_id,user_uid');
+    final partsMutation = '''
+      mutation UpsertParticipants(\$objects: [${_tblParts}_insert_input!]!) {
+        insert_${_tblParts}(
+          objects: \$objects,
+          on_conflict: {
+            constraint: chat_participants_pkey,
+            update_columns: [email, joined_at]
+          }
+        ) {
+          affected_rows
+        }
+      }
+    ''';
+    await _runMutation(partsMutation, {
+      'objects': [
+        {
+          'conversation_id': convId,
+          'user_uid': uid,
+          'email': (_bestSenderEmail(me.email) ?? '').toLowerCase(),
+          'joined_at': nowIso,
+        },
+        {
+          'conversation_id': convId,
+          'user_uid': otherUid,
+          'email': otherEmail,
+          'joined_at': nowIso,
+        },
+      ],
+    });
 
-    final row = await _sb
-        .from(_tblConvs)
-        .select(
-          'id, is_group, title, account_id, created_by, created_at, updated_at, last_msg_at, last_msg_snippet',
-        )
-        .eq('id', convId)
-        .maybeSingle();
-
-    if (row != null) {
-      return ChatConversation.fromMap(row);
+    final convRows =
+        (createData['insert_${_tblConvs}'] as Map?)?['returning'] as List?;
+    if (convRows != null && convRows.isNotEmpty) {
+      return ChatConversation.fromMap(
+        Map<String, dynamic>.from(convRows.first as Map),
+      );
     }
 
     return ChatConversation.fromMap({
@@ -509,7 +801,7 @@ class ChatService {
       'is_group': false,
       'title': null,
       'account_id': convAccountId,
-      'created_by': u.id,
+      'created_by': uid,
       'created_at': nowIso,
       'updated_at': nowIso,
       'last_msg_at': null,
@@ -521,8 +813,8 @@ class ChatService {
     required String title,
     required List<String> memberEmails,
   }) async {
-    final u = _sb.auth.currentUser;
-    if (u == null) throw 'لا يوجد مستخدم مسجّل الدخول.';
+    final uid = currentUserId;
+    if (uid == null) throw 'لا يوجد مستخدم مسجّل الدخول.';
     if (title.trim().isEmpty) throw 'اكتب اسم المجموعة.';
     if (memberEmails.isEmpty) throw 'أضِف عضوًا واحدًا على الأقل.';
 
@@ -532,21 +824,32 @@ class ChatService {
 
     final members = <({String uid, String email, String accountId})>[];
     for (final e in memberEmails) {
-      final row = await _sb
-          .from(_tblAccUsers)
-          .select('user_uid, email, account_id')
-          .ilike('email', e.toLowerCase())
-          .maybeSingle();
-      if (row == null) throw 'لا يوجد مستخدم بالبريد: $e';
-      final uid = row['user_uid'].toString();
-      if (uid == u.id) continue;
+      final query = '''
+        query FindMember(\$email: String!) {
+          $_tblAccUsers(
+            where: {email: {_eq: \$email}},
+            order_by: {created_at: desc},
+            limit: 1
+          ) {
+            user_uid
+            email
+            account_id
+          }
+        }
+      ''';
+      final data = await _runQuery(query, {'email': e.toLowerCase()});
+      final rows = (data[_tblAccUsers] as List?) ?? const [];
+      if (rows.isEmpty) throw 'لا يوجد مستخدم بالبريد: $e';
+      final row = Map<String, dynamic>.from(rows.first as Map);
+      final memberUid = row['user_uid'].toString();
+      if (memberUid == uid) continue;
       final memberAccountId = (row['account_id']?.toString() ?? '').trim();
       if (memberAccountId.isEmpty || memberAccountId != myAcc) {
         throw 'المستخدم $e ليس ضمن نفس حساب العيادة.';
       }
-      if (!members.any((m) => m.uid == uid)) {
+      if (!members.any((m) => m.uid == memberUid)) {
         members.add((
-          uid: uid,
+          uid: memberUid,
           email: (row['email']?.toString() ?? e).toLowerCase(),
           accountId: memberAccountId,
         ));
@@ -556,34 +859,66 @@ class ChatService {
     final convId = _uuidV4();
     final nowIso = DateTime.now().toUtc().toIso8601String();
 
-    await _sb.from(_tblConvs).insert({
-      'id': convId,
-      'account_id': myAcc,
-      'is_group': true,
-      'title': title.trim(),
-      'created_by': u.id,
-      'created_at': nowIso,
-      'updated_at': nowIso,
+    final createMutation = '''
+      mutation CreateGroup(\$objects: [${_tblConvs}_insert_input!]!) {
+        insert_${_tblConvs}(objects: \$objects) {
+          returning {
+            id
+            is_group
+            title
+            account_id
+            created_by
+            created_at
+            updated_at
+            last_msg_at
+            last_msg_snippet
+          }
+        }
+      }
+    ''';
+    await _runMutation(createMutation, {
+      'objects': [
+        {
+          'id': convId,
+          'account_id': myAcc,
+          'is_group': true,
+          'title': title.trim(),
+          'created_by': uid,
+          'created_at': nowIso,
+          'updated_at': nowIso,
+        }
+      ],
     });
 
     final participantRows = <Map<String, dynamic>>[
       {
         'conversation_id': convId,
-        'user_uid': u.id,
+        'user_uid': uid,
         'email': (_bestSenderEmail(me.email) ?? '').toLowerCase(),
         'account_id': myAcc,
         'joined_at': nowIso,
       },
     ];
-    await _sb
-        .from(_tblParts)
-        .upsert(participantRows, onConflict: 'conversation_id,user_uid');
+    final partsMutation = '''
+      mutation UpsertParticipants(\$objects: [${_tblParts}_insert_input!]!) {
+        insert_${_tblParts}(
+          objects: \$objects,
+          on_conflict: {
+            constraint: chat_participants_pkey,
+            update_columns: [email, joined_at]
+          }
+        ) {
+          affected_rows
+        }
+      }
+    ''';
+    await _runMutation(partsMutation, {'objects': participantRows});
     if (members.isNotEmpty) {
       final invites = members
           .map(
             (m) => {
               'conversation_id': convId,
-              'inviter_uid': u.id,
+              'inviter_uid': uid,
               'invitee_uid': m.uid,
               'invitee_email': m.email.toLowerCase(),
               'created_at': nowIso,
@@ -591,7 +926,14 @@ class ChatService {
           )
           .toList();
 
-      await _sb.from('chat_group_invitations').insert(invites);
+      final inviteMutation = '''
+        mutation CreateInvites(\$objects: [chat_group_invitations_insert_input!]!) {
+          insert_chat_group_invitations(objects: \$objects) {
+            affected_rows
+          }
+        }
+      ''';
+      await _runMutation(inviteMutation, {'objects': invites});
     }
 
     return ChatConversation.fromMap({
@@ -599,7 +941,7 @@ class ChatService {
       'account_id': myAcc,
       'is_group': true,
       'title': title.trim(),
-      'created_by': u.id,
+      'created_by': uid,
       'created_at': nowIso,
       'updated_at': nowIso,
       'last_msg_at': null,
@@ -608,105 +950,64 @@ class ChatService {
   }
 
   Future<List<ConversationListItem>> fetchMyConversationsOverview() async {
-    final u = _sb.auth.currentUser;
-    if (u == null) return const <ConversationListItem>[];
-
-    // (1) محادثات أنا مشارك فيها
-    final myPartRows = await _sb
-        .from(_tblParts)
-        .select('conversation_id')
-        .eq('user_uid', u.id);
-
-    final partConvIds = (myPartRows as List)
-        .whereType<Map<String, dynamic>>()
-        .map((e) => e['conversation_id'].toString())
-        .toSet();
-
-    // (2) + محادثات أنا منشئها، حتى لو لم أُدرج كمشارك
-    final createdRows =
-        await _sb.from(_tblConvs).select('id').eq('created_by', u.id);
-    final createdConvIds = (createdRows as List)
-        .whereType<Map<String, dynamic>>()
-        .map((e) => e['id'].toString())
-        .toSet();
-
-    final convIds = {...partConvIds, ...createdConvIds}.toList();
-    if (convIds.isEmpty) return const <ConversationListItem>[];
-
-    final convRows = await _sb
-        .from(_tblConvs)
-        .select(
-          'id, is_group, title, account_id, created_by, created_at, updated_at, last_msg_at, last_msg_snippet',
-        )
-        .inFilter('id', convIds)
-        .order('last_msg_at', ascending: false);
-
-    final conversations = (convRows as List)
-        .whereType<Map<String, dynamic>>()
-        .map(ChatConversation.fromMap)
-        .toList();
-
-    final allPartsRows = await _sb
-        .from(_tblParts)
-        .select('conversation_id, user_uid, email')
-        .inFilter('conversation_id', convIds);
-
-    final byConv = <String, List<_ChatParticipant>>{};
-    for (final r in (allPartsRows as List).whereType<Map<String, dynamic>>()) {
-      final cid = r['conversation_id']?.toString() ?? '';
-      (byConv[cid] ??= []).add(_ChatParticipant.fromMap(r));
-    }
-
-    final readsRows = await _sb
-        .from(_tblReads)
-        .select('conversation_id, last_read_at')
-        .eq('user_uid', u.id)
-        .inFilter('conversation_id', convIds);
-
-    final lastReadAtByConv = <String, DateTime?>{};
-    for (final r in (readsRows as List).whereType<Map<String, dynamic>>()) {
-      final cid = r['conversation_id'].toString();
-      final ts = r['last_read_at'];
-      lastReadAtByConv[cid] =
-          ts == null ? null : DateTime.tryParse(ts.toString())?.toUtc();
-    }
+    if (currentUserId == null) return const <ConversationListItem>[];
+    final query = '''
+      query ConversationsOverview {
+        v_chat_conversations_for_me(order_by: {last_msg_at: desc}) {
+          id
+          account_id
+          is_group
+          title
+          created_by
+          created_at
+          updated_at
+          last_msg_at
+          last_msg_snippet
+          last_message_id
+          last_message_kind
+          last_message_body
+          last_message_created_at
+          last_read_at
+          unread_count
+          last_message_text
+        }
+      }
+    ''';
+    final data = await _runQuery(query, const {});
+    final rows = (data['v_chat_conversations_for_me'] as List?) ?? const [];
+    if (rows.isEmpty) return const <ConversationListItem>[];
 
     final items = <ConversationListItem>[];
-    for (final c in conversations) {
-      final parts = byConv[c.id] ?? const <_ChatParticipant>[];
-      final emails = parts
-          .map((p) => p.email ?? '')
-          .where((e) => e.trim().isNotEmpty)
-          .map((e) => e.toLowerCase())
-          .toSet()
-          .toList();
-
-      String title = (c.isGroup)
-          ? (c.title?.trim().isNotEmpty == true
-              ? c.title!.trim()
-              : emails
-                  .where((e) => e != (u.email ?? '').toLowerCase())
-                  .take(3)
-                  .join('، '))
-          : (emails.firstWhere(
-              (e) => e != (u.email ?? '').toLowerCase(),
-              orElse: () => emails.isNotEmpty ? emails.first : 'محادثة',
-            ));
-
-      final lastMsgAt = c.lastMsgAt;
-      final lastReadAt = lastReadAtByConv[c.id];
-      final hasUnread = (lastMsgAt != null &&
-          (lastReadAt == null || lastMsgAt.isAfter(lastReadAt)));
-
-      final convForList = c.copyWith(unreadCount: hasUnread ? 1 : 0);
-
+    for (final row in rows.whereType<Map>()) {
+      final map = Map<String, dynamic>.from(row);
+      final convo = ChatConversation.fromMap(map);
+      final lastRead = map['last_read_at'] == null
+          ? null
+          : DateTime.tryParse(map['last_read_at'].toString())?.toUtc();
+      final unread = map['unread_count'];
+      final displayTitle = (convo.title ?? '').trim().isNotEmpty
+          ? convo.title!.trim()
+          : (convo.isGroup ? 'مجموعة' : 'محادثة');
       items.add(
         ConversationListItem(
-          conversation: convForList,
-          displayTitle: title.isEmpty ? 'محادثة' : title,
+          conversation: convo,
+          displayTitle: displayTitle,
+          lastReadAt: lastRead,
+          unreadCount: unread is num ? unread.toInt() : 0,
+          lastMessageText: (map['last_message_text'] ??
+                  map['last_msg_snippet'] ??
+                  map['last_message_body'])
+              ?.toString(),
         ),
       );
     }
+
+    items.sort((a, b) {
+      final aT = a.conversation.lastMsgAt ?? a.conversation.updatedAt;
+      final bT = b.conversation.lastMsgAt ?? b.conversation.updatedAt;
+      return (bT ?? DateTime.fromMillisecondsSinceEpoch(0))
+          .compareTo(aT ?? DateTime.fromMillisecondsSinceEpoch(0));
+    });
 
     return items;
   }
@@ -718,55 +1019,25 @@ class ChatService {
     required String conversationId,
     int limit = 40,
   }) async {
-    try {
-      final data = await _sb
-          .from(_tblMsgs)
-          .select('''
-        id, conversation_id, sender_uid, sender_email, kind,
-        body, text, edited, deleted, created_at, edited_at, deleted_at,
-        reply_to_message_id, reply_to_snippet, mentions,
-        attachments:${_tblAtts}!$_relAttsByMsg (
-          id, message_id, bucket, path, mime_type, size_bytes, width, height, created_at
-        ),
-        delivery_receipts:chat_delivery_receipts (
-          user_uid, delivered_at
-        )
-      ''')
-          .eq('conversation_id', conversationId)
-          .or('deleted.is.false,deleted.is.null')
-          .order('created_at', ascending: true)
-          .limit(limit);
-
-      final list = <ChatMessage>[];
-      for (final row in (data as List).whereType<Map<String, dynamic>>()) {
-        final normalized = await _withHttpAttachments(row);
-        list.add(
-          ChatMessage.fromMap(normalized, currentUid: _sb.auth.currentUser?.id),
-        );
+    final query = '''
+      query FetchMessages(\$cid: uuid!, \$limit: Int!) {
+        $_tblMsgs(
+          where: {conversation_id: {_eq: \$cid}, deleted: {_neq: true}},
+          order_by: {created_at: asc},
+          limit: \$limit
+        ) {
+          $_messageSelectFields
+        }
       }
-      unawaited(_markDeliveredFor(list));
-      return list;
-    } catch (_) {
-      final data = await _sb
-          .from(_tblMsgs)
-          .select(
-            'id, conversation_id, sender_uid, sender_email, kind, body, text, edited, deleted, created_at, edited_at, deleted_at, reply_to_message_id, reply_to_snippet, mentions, attachments, delivery_receipts:chat_delivery_receipts(user_uid, delivered_at)',
-          )
-          .eq('conversation_id', conversationId)
-          .or('deleted.is.false,deleted.is.null')
-          .order('created_at', ascending: true)
-          .limit(limit);
-
-      final list = <ChatMessage>[];
-      for (final row in (data as List).whereType<Map<String, dynamic>>()) {
-        final normalized = await _withHttpAttachments(row);
-        list.add(
-          ChatMessage.fromMap(normalized, currentUid: _sb.auth.currentUser?.id),
-        );
-      }
-      unawaited(_markDeliveredFor(list));
-      return list;
-    }
+    ''';
+    final data = await _runQuery(query, {
+      'cid': conversationId,
+      'limit': limit,
+    });
+    final rows = _rowsFromData(data, _tblMsgs);
+    final list = await _messagesFromRows(rows);
+    unawaited(_markDeliveredFor(list));
+    return list;
   }
 
   Future<List<ChatMessage>> fetchOlderMessages({
@@ -774,73 +1045,58 @@ class ChatService {
     required DateTime beforeCreatedAt,
     int limit = 40,
   }) async {
-    try {
-      final data = await _sb
-          .from(_tblMsgs)
-          .select('''
-        id, conversation_id, sender_uid, sender_email, kind,
-        body, text, edited, deleted, created_at, edited_at, deleted_at,
-        reply_to_message_id, reply_to_snippet, mentions,
-        attachments:${_tblAtts}!$_relAttsByMsg (
-          id, message_id, bucket, path, mime_type, size_bytes, width, height, created_at
-        ),
-        delivery_receipts:chat_delivery_receipts (
-          user_uid, delivered_at
-        )
-      ''')
-          .eq('conversation_id', conversationId)
-          .or('deleted.is.false,deleted.is.null')
-          .lt('created_at', beforeCreatedAt.toUtc().toIso8601String())
-          .order('created_at', ascending: true)
-          .limit(limit);
-
-      final list = <ChatMessage>[];
-      for (final row in (data as List).whereType<Map<String, dynamic>>()) {
-        final normalized = await _withHttpAttachments(row);
-        list.add(
-          ChatMessage.fromMap(normalized, currentUid: _sb.auth.currentUser?.id),
-        );
+    final query = '''
+      query FetchOlderMessages(\$cid: uuid!, \$before: timestamptz!, \$limit: Int!) {
+        $_tblMsgs(
+          where: {
+            conversation_id: {_eq: \$cid},
+            deleted: {_neq: true},
+            created_at: {_lt: \$before}
+          },
+          order_by: {created_at: asc},
+          limit: \$limit
+        ) {
+          $_messageSelectFields
+        }
       }
-      unawaited(_markDeliveredFor(list));
-      return list;
-    } catch (_) {
-      final data = await _sb
-          .from(_tblMsgs)
-          .select(
-            'id, conversation_id, sender_uid, sender_email, kind, body, text, edited, deleted, created_at, edited_at, deleted_at, reply_to_message_id, reply_to_snippet, mentions, attachments, delivery_receipts:chat_delivery_receipts(user_uid, delivered_at)',
-          )
-          .eq('conversation_id', conversationId)
-          .or('deleted.is.false,deleted.is.null')
-          .lt('created_at', beforeCreatedAt.toUtc().toIso8601String())
-          .order('created_at', ascending: true)
-          .limit(limit);
-
-      final list = <ChatMessage>[];
-      for (final row in (data as List).whereType<Map<String, dynamic>>()) {
-        final normalized = await _withHttpAttachments(row);
-        list.add(
-          ChatMessage.fromMap(normalized, currentUid: _sb.auth.currentUser?.id),
-        );
-      }
-      unawaited(_markDeliveredFor(list));
-      return list;
-    }
+    ''';
+    final data = await _runQuery(query, {
+      'cid': conversationId,
+      'before': beforeCreatedAt.toUtc().toIso8601String(),
+      'limit': limit,
+    });
+    final rows = _rowsFromData(data, _tblMsgs);
+    final list = await _messagesFromRows(rows);
+    unawaited(_markDeliveredFor(list));
+    return list;
   }
 
   Future<List<ChatGroupInvitation>> fetchMyGroupInvitations({
     bool pendingOnly = true,
   }) async {
-    final u = _sb.auth.currentUser;
-    if (u == null) return const <ChatGroupInvitation>[];
     try {
-      final rows = await _sb
-          .from('v_chat_group_invitations_for_me')
-          .select()
-          .order('created_at', ascending: false);
-      final list = (rows as List)
-          .whereType<Map<String, dynamic>>()
-          .map(ChatGroupInvitation.fromMap)
-          .toList();
+      final query = '''
+        query MyInvitations {
+          v_chat_group_invitations_for_me(order_by: {created_at: desc}) {
+            id
+            conversation_id
+            inviter_uid
+            invitee_uid
+            invitee_email
+            status
+            created_at
+            responded_at
+            response_note
+            title
+            is_group
+            account_id
+            created_by
+          }
+        }
+      ''';
+      final data = await _runQuery(query, const {});
+      final rows = _rowsFromData(data, 'v_chat_group_invitations_for_me');
+      final list = rows.map(ChatGroupInvitation.fromMap).toList();
       if (!pendingOnly) return list;
       return list.where((inv) => inv.isPending).toList();
     } catch (_) {
@@ -851,13 +1107,16 @@ class ChatService {
   Future<void> acceptGroupInvitation(String invitationId) async {
     if (invitationId.isEmpty) return;
     try {
-      final res = await _sb.rpc(
-        'chat_accept_invitation',
-        params: {'p_invitation_id': invitationId},
-      );
+      final mutation = '''
+        mutation AcceptInvitation(\$id: uuid!) {
+          chat_accept_invitation(args: {p_invitation_id: \$id})
+        }
+      ''';
+      final data = await _runMutation(mutation, {'id': invitationId});
+      final res = data['chat_accept_invitation'];
       _ensureInvitationRpcOk(res, 'تعذر قبول الدعوة.');
-    } on PostgrestException catch (e) {
-      throw ChatInvitationException(e.message ?? 'تعذر قبول الدعوة.');
+    } on OperationException catch (e) {
+      throw ChatInvitationException(_formatGqlError(e));
     }
   }
 
@@ -867,26 +1126,38 @@ class ChatService {
   }) async {
     if (invitationId.isEmpty) return;
     try {
-      final res = await _sb.rpc(
-        'chat_decline_invitation',
-        params: {'p_invitation_id': invitationId, 'p_note': note},
-      );
+      final mutation = '''
+        mutation DeclineInvitation(\$id: uuid!, \$note: String) {
+          chat_decline_invitation(args: {p_invitation_id: \$id, p_note: \$note})
+        }
+      ''';
+      final data = await _runMutation(mutation, {
+        'id': invitationId,
+        'note': note,
+      });
+      final res = data['chat_decline_invitation'];
       _ensureInvitationRpcOk(res, 'تعذر رفض الدعوة.');
-    } on PostgrestException catch (e) {
-      throw ChatInvitationException(e.message ?? 'تعذر رفض الدعوة.');
+    } on OperationException catch (e) {
+      throw ChatInvitationException(_formatGqlError(e));
     }
   }
 
   Future<Map<String, String>> fetchAliasMap() async {
-    final u = _sb.auth.currentUser;
-    if (u == null) return const {};
     try {
-      final rows = await _sb
-          .from('chat_aliases')
-          .select('target_uid, alias')
-          .eq('owner_uid', u.id);
+      final uid = currentUserId;
+      if (uid == null) return const {};
+      final query = '''
+        query MyAliases(\$uid: uuid!) {
+          chat_aliases(where: {owner_uid: {_eq: \$uid}}) {
+            target_uid
+            alias
+          }
+        }
+      ''';
+      final data = await _runQuery(query, {'uid': uid});
+      final rows = _rowsFromData(data, 'chat_aliases');
       final map = <String, String>{};
-      for (final row in (rows as List).whereType<Map<String, dynamic>>()) {
+      for (final row in rows) {
         final target = row['target_uid']?.toString();
         final alias = row['alias']?.toString();
         if (target != null && alias != null && alias.isNotEmpty) {
@@ -903,38 +1174,59 @@ class ChatService {
     required String targetUid,
     required String alias,
   }) async {
-    final u = _sb.auth.currentUser;
-    if (u == null || targetUid.isEmpty) return;
+    final uid = currentUserId;
+    if (uid == null || targetUid.isEmpty) return;
     final trimmed = alias.trim();
     if (trimmed.isEmpty) {
       await removeAlias(targetUid);
       return;
     }
     try {
-      await _sb.from('chat_aliases').upsert({
-        'owner_uid': u.id,
-        'target_uid': targetUid,
-        'alias': trimmed,
-      }, onConflict: 'owner_uid,target_uid');
+      final mutation = '''
+        mutation UpsertAlias(\$objects: [chat_aliases_insert_input!]!) {
+          insert_chat_aliases(
+            objects: \$objects,
+            on_conflict: {
+              constraint: chat_aliases_pkey,
+              update_columns: [alias]
+            }
+          ) {
+            affected_rows
+          }
+        }
+      ''';
+      await _runMutation(mutation, {
+        'objects': [
+          {
+            'owner_uid': uid,
+            'target_uid': targetUid,
+            'alias': trimmed,
+          }
+        ],
+      });
     } catch (_) {}
   }
 
   Future<void> removeAlias(String targetUid) async {
-    final u = _sb.auth.currentUser;
-    if (u == null || targetUid.isEmpty) return;
+    final uid = currentUserId;
+    if (uid == null || targetUid.isEmpty) return;
     try {
-      await _sb
-          .from('chat_aliases')
-          .delete()
-          .eq('owner_uid', u.id)
-          .eq('target_uid', targetUid);
+      final mutation = '''
+        mutation DeleteAlias(\$owner: uuid!, \$target: uuid!) {
+          delete_chat_aliases(
+            where: {owner_uid: {_eq: \$owner}, target_uid: {_eq: \$target}}
+          ) {
+            affected_rows
+          }
+        }
+      ''';
+      await _runMutation(mutation, {'owner': uid, 'target': targetUid});
     } catch (_) {}
   }
 
   // ======= اشتراك مضبوط لكل محادثة =======
   final Map<String, StreamController<List<ChatMessage>>> _roomCtrls = {};
-  final Map<String, RealtimeChannel> _roomChannels = {};
-  final Map<String, Map<String, ChatMessage>> _roomCacheById = {};
+  final Map<String, StreamSubscription<QueryResult>> _roomSubs = {};
 
   Stream<List<ChatMessage>> watchMessages(String conversationId) {
     final existing = _roomCtrls[conversationId];
@@ -942,110 +1234,45 @@ class ChatService {
 
     final c = StreamController<List<ChatMessage>>.broadcast();
     _roomCtrls[conversationId] = c;
-    _roomCacheById[conversationId] = <String, ChatMessage>{};
 
     unawaited(() async {
       final seed = await fetchMessages(
         conversationId: conversationId,
         limit: 80,
       );
-      final map = _roomCacheById[conversationId]!;
-      for (final m in seed) {
-        map[m.id] = m;
-      }
-      if (!c.isClosed) c.add(_sortedAsc(map.values.toList()));
+      if (!c.isClosed) c.add(_sortedAsc(seed));
     }());
 
-    final ch = _sb.channel('room:$conversationId').onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: _tblMsgs,
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'conversation_id',
-            value: conversationId,
-          ),
-          callback: (payload) async {
-            final ev = payload.eventType;
-            final newRow =
-                (payload.newRecord as Map<String, dynamic>?) ?? const {};
-            final oldRow =
-                (payload.oldRecord as Map<String, dynamic>?) ?? const {};
-            final map = _roomCacheById[conversationId]!;
-            String? id;
+    final query = '''
+      subscription RoomMessages(\$cid: uuid!) {
+        $_tblMsgs(
+          where: {conversation_id: {_eq: \$cid}, deleted: {_neq: true}},
+          order_by: {created_at: asc}
+        ) {
+          $_messageSelectFields
+        }
+      }
+    ''';
 
-            if (ev == PostgresChangeEvent.insert ||
-                ev == PostgresChangeEvent.update) {
-              id = newRow['id']?.toString();
-              if (id != null && newRow['deleted'] != true) {
-                var row = newRow;
-                try {
-                  row = await _withHttpAttachments(row);
-                } catch (_) {}
-                var msg = ChatMessage.fromMap(
-                  row,
-                  currentUid: _sb.auth.currentUser?.id,
-                );
-
-                if (msg.kind == ChatMessageKind.image &&
-                    msg.attachments.isEmpty) {
-                  try {
-                    final attsRows = await _sb
-                        .from(_tblAtts)
-                        .select(
-                          'id, message_id, bucket, path, mime_type, size_bytes, width, height, created_at',
-                        )
-                        .eq('message_id', msg.id);
-                    final normalized = await _normalizeAttachmentsToHttp(
-                      (attsRows as List)
-                          .whereType<Map<String, dynamic>>()
-                          .toList(),
-                    );
-                    if (normalized.isNotEmpty) {
-                      msg = msg.copyWith(
-                        attachments:
-                            normalized.map(ChatAttachment.fromMap).toList(),
-                      );
-                    }
-                  } catch (_) {}
-                }
-                map[id] = msg;
-                if (ev == PostgresChangeEvent.insert) {
-                  unawaited(_markDeliveredFor([msg]));
-                }
-              }
-              if (ev == PostgresChangeEvent.update &&
-                  newRow['deleted'] == true &&
-                  id != null) {
-                map.remove(id);
-              }
-            } else if (ev == PostgresChangeEvent.delete) {
-              id = oldRow['id']?.toString();
-              if (id != null) map.remove(id);
-            }
-
-            if (!c.isClosed) c.add(_sortedAsc(map.values.toList()));
-          },
-        );
-
-    _roomChannels[conversationId] = ch;
-
-    unawaited(
-      Future.microtask(() {
-        ch.subscribe();
-      }),
+    final sub = _runSubscription(query, {'cid': conversationId}).listen(
+      (result) async {
+        if (result.hasException) return;
+        final data = result.data ?? const <String, dynamic>{};
+        final rows = _rowsFromData(data, _tblMsgs);
+        final list = await _messagesFromRows(rows);
+        if (!c.isClosed) c.add(_sortedAsc(list));
+        unawaited(_markDeliveredFor(list));
+      },
     );
+
+    _roomSubs[conversationId] = sub;
 
     c.onCancel = () async {
       _roomCtrls.remove(conversationId);
-      _roomCacheById.remove(conversationId);
-      final chan = _roomChannels.remove(conversationId);
-      if (chan != null) {
+      final sub = _roomSubs.remove(conversationId);
+      if (sub != null) {
         try {
-          await chan.unsubscribe();
-        } catch (_) {}
-        try {
-          _sb.removeChannel(chan);
+          await sub.cancel();
         } catch (_) {}
       }
     };
@@ -1059,7 +1286,7 @@ class ChatService {
   }
 
   Future<void> _markDeliveredFor(List<ChatMessage> messages) async {
-    final uid = _sb.auth.currentUser?.id;
+    final uid = currentUserId;
     if (uid == null || messages.isEmpty) return;
 
     final ids = messages
@@ -1072,7 +1299,12 @@ class ChatService {
     if (ids.isEmpty) return;
 
     try {
-      await _sb.rpc('chat_mark_delivered', params: {'p_message_ids': ids});
+      final mutation = '''
+        mutation MarkDelivered(\$ids: [uuid!]!) {
+          chat_mark_delivered(args: {p_message_ids: \$ids})
+        }
+      ''';
+      await _runMutation(mutation, {'ids': ids});
     } catch (_) {}
   }
 
@@ -1085,8 +1317,8 @@ class ChatService {
     String? replyToSnippet,
     List<String>? mentionsEmails,
   }) async {
-    final u = _sb.auth.currentUser;
-    if (u == null) throw 'لا يوجد مستخدم مسجّل الدخول.';
+    final uid = currentUserId;
+    if (uid == null) throw 'لا يوجد مستخدم مسجّل الدخول.';
     final me = await _myAccountRow();
     final senderEmail = _bestSenderEmail(me.email);
     if (senderEmail == null || senderEmail.isEmpty) {
@@ -1106,7 +1338,7 @@ class ChatService {
 
     final payload = <String, dynamic>{
       'conversation_id': conversationId,
-      'sender_uid': u.id,
+      'sender_uid': uid,
       'sender_email': senderEmail,
       'kind': ChatMessageKind.text.dbValue,
       'body': body,
@@ -1122,11 +1354,30 @@ class ChatService {
         'mentions': mentionsEmails,
     };
 
-    final inserted = await _sb
-        .from(_tblMsgs)
-        .upsert(payload, onConflict: 'device_id,local_id')
-        .select()
-        .single();
+    final mutation = '''
+      mutation InsertMessage(\$object: ${_tblMsgs}_insert_input!) {
+        insert_${_tblMsgs}_one(object: \$object) {
+          $_messageSelectFields
+        }
+      }
+    ''';
+    Map<String, dynamic>? row;
+    try {
+      final data = await _runMutation(mutation, {'object': payload});
+      row = _rowFromData(data, 'insert_${_tblMsgs}_one');
+    } catch (_) {
+      final existing = await _findMessageByTriplet(
+        conversationId: conversationId,
+        deviceId: deviceId,
+        localId: seq,
+        accountId: convAcc.isNotEmpty ? convAcc : null,
+      );
+      row = existing;
+    }
+
+    if (row == null) {
+      throw 'تعذر حفظ الرسالة.';
+    }
 
     await _updateConversationLastSummary(
       conversationId: conversationId,
@@ -1134,11 +1385,8 @@ class ChatService {
       snippet: _buildSnippet(kind: ChatMessageKind.text, body: body),
     );
 
-    var out = ChatMessage.fromMap(
-      inserted,
-      currentUid: _sb.auth.currentUser?.id,
-    );
-    if (out.senderUid == u.id) {
+    var out = await _messageFromRow(row);
+    if (out.senderUid == uid) {
       out = out.copyWith(status: ChatMessageStatus.sent);
     }
     return out;
@@ -1148,32 +1396,51 @@ class ChatService {
     required String conversationId,
     required String messageId,
     required File file,
+    String? accountId,
   }) async {
     final name = _friendlyFileName(file);
     final mime = _guessMime(name);
-    final path = 'attachments/$conversationId/$messageId/$name';
+    final storageName = 'attachments/$conversationId/$messageId/$name';
 
-    await _uploadToStorage(
-      path: path,
+    final fileId = await _uploadToStorage(
+      name: storageName,
       file: file,
-      options: FileOptions(contentType: mime, upsert: false),
+      mimeType: mime,
     );
 
     final stat = await file.stat();
-    final insertedAtt = await _sb
-        .from(_tblAtts)
-        .insert({
-          'message_id': messageId,
-          'bucket': attachmentsBucket,
-          'path': path,
-          'mime_type': mime,
-          'size_bytes': stat.size,
-          'created_at': DateTime.now().toUtc().toIso8601String(),
-        })
-        .select()
-        .single();
+    final payload = <String, dynamic>{
+      'message_id': messageId,
+      'bucket': attachmentsBucket,
+      'path': fileId,
+      'mime_type': mime,
+      'size_bytes': stat.size,
+      'created_at': DateTime.now().toUtc().toIso8601String(),
+      if (accountId != null && accountId.isNotEmpty) 'account_id': accountId,
+    };
 
-    return insertedAtt;
+    final mutation = '''
+      mutation InsertAttachment(\$object: ${_tblAtts}_insert_input!) {
+        insert_${_tblAtts}_one(object: \$object) {
+          id
+          message_id
+          bucket
+          path
+          mime_type
+          size_bytes
+          width
+          height
+          created_at
+        }
+      }
+    ''';
+    try {
+      final data = await _runMutation(mutation, {'object': payload});
+      final row = _rowFromData(data, 'insert_${_tblAtts}_one');
+      return row ?? payload;
+    } catch (_) {
+      return payload;
+    }
   }
 
   Future<Map<String, dynamic>> _makeInlineAttachmentJson({
@@ -1183,22 +1450,21 @@ class ChatService {
   }) async {
     final name = _friendlyFileName(file);
     final mime = _guessMime(name);
-    final path = 'attachments/$conversationId/$messageId/$name';
-
-    await _uploadToStorage(
-      path: path,
+    final storageName = 'attachments/$conversationId/$messageId/$name';
+    final fileId = await _uploadToStorage(
+      name: storageName,
       file: file,
-      options: FileOptions(contentType: mime, upsert: false),
+      mimeType: mime,
     );
 
-    final url = await _signedOrPublicUrl(attachmentsBucket, path);
+    final url = await _signedOrPublicUrl(attachmentsBucket, fileId);
     final stat = await file.stat();
 
     return {
       'type': 'image',
       'url': url,
       'bucket': attachmentsBucket,
-      'path': path,
+      'path': fileId,
       'mime_type': mime,
       'size_bytes': stat.size,
       'created_at': DateTime.now().toUtc().toIso8601String(),
@@ -1216,8 +1482,8 @@ class ChatService {
     String? replyToSnippet,
     List<String>? mentionsEmails,
   }) async {
-    final u = _sb.auth.currentUser;
-    if (u == null) throw 'لا يوجد مستخدم مسجّل الدخول.';
+    final uid = currentUserId;
+    if (uid == null) throw 'لا يوجد مستخدم مسجّل الدخول.';
     if (files.isEmpty &&
         (optionalText == null || optionalText.trim().isEmpty)) {
       throw 'لا يوجد شيء لإرساله.';
@@ -1286,7 +1552,7 @@ class ChatService {
 
       final payload = <String, dynamic>{
         'conversation_id': conversationId,
-        'sender_uid': u.id,
+        'sender_uid': uid,
         'sender_email': senderEmail,
         'kind': ChatMessageKind.image.dbValue,
         'body': null,
@@ -1302,17 +1568,30 @@ class ChatService {
           'mentions': mentionsEmails,
       };
 
-      final inserted = await _sb
-          .from(_tblMsgs)
-          .upsert(payload, onConflict: 'device_id,local_id')
-          .select()
-          .single();
+      final mutation = '''
+        mutation InsertImageMessage(\$object: ${_tblMsgs}_insert_input!) {
+          insert_${_tblMsgs}_one(object: \$object) {
+            $_messageSelectFields
+          }
+        }
+      ''';
+      Map<String, dynamic>? row;
+      try {
+        final data = await _runMutation(mutation, {'object': payload});
+        row = _rowFromData(data, 'insert_${_tblMsgs}_one');
+      } catch (_) {
+        final existing = await _findMessageByTriplet(
+          conversationId: conversationId,
+          deviceId: deviceId,
+          localId: seq,
+          accountId: convAcc.isNotEmpty ? convAcc : null,
+        );
+        row = existing;
+      }
+      if (row == null) throw 'تعذر إرسال الرسالة.';
 
-      var msg = ChatMessage.fromMap(
-        inserted,
-        currentUid: _sb.auth.currentUser?.id,
-      );
-      if (msg.senderUid == u.id) {
+      var msg = await _messageFromRow(row);
+      if (msg.senderUid == uid) {
         msg = msg.copyWith(status: ChatMessageStatus.sent);
       }
 
@@ -1324,6 +1603,7 @@ class ChatService {
             conversationId: conversationId,
             messageId: msg.id,
             file: f,
+            accountId: convAcc.isNotEmpty ? convAcc : null,
           );
           uploadedRows.add(att);
         }
@@ -1347,9 +1627,22 @@ class ChatService {
             ),
           );
         }
-        await _sb
-            .from(_tblMsgs)
-            .update({'attachments': inline}).eq('id', msg.id);
+        final updateMutation = '''
+          mutation UpdateMessageAttachments(\$id: uuid!, \$attachments: jsonb!) {
+            update_${_tblMsgs}_by_pk(
+              pk_columns: {id: \$id},
+              _set: {attachments: \$attachments}
+            ) {
+              id
+            }
+          }
+        ''';
+        try {
+          await _runMutation(updateMutation, {
+            'id': msg.id,
+            'attachments': inline,
+          });
+        } catch (_) {}
         final normalized = await _normalizeAttachmentsToHttp(inline);
         msg = msg.copyWith(
           attachments: normalized.map(ChatAttachment.fromMap).toList(),
@@ -1372,51 +1665,81 @@ class ChatService {
     required String messageId,
     required String newBody,
   }) async {
-    final u = _sb.auth.currentUser;
-    if (u == null) throw 'لا يوجد مستخدم.';
-    final row = await _sb
-        .from(_tblMsgs)
-        .select('id, conversation_id, sender_uid, kind')
-        .eq('id', messageId)
-        .maybeSingle();
+    final uid = currentUserId;
+    if (uid == null) throw 'لا يوجد مستخدم.';
+    final query = '''
+      query MessageMeta(\$id: uuid!) {
+        ${_tblMsgs}_by_pk(id: \$id) {
+          id
+          conversation_id
+          sender_uid
+          kind
+        }
+      }
+    ''';
+    final data = await _runQuery(query, {'id': messageId});
+    final row = _rowFromData(data, '${_tblMsgs}_by_pk');
     if (row == null) throw 'الرسالة غير موجودة.';
-    if (row['sender_uid']?.toString() != u.id) {
+    if (row['sender_uid']?.toString() != uid) {
       throw 'لا يمكنك تعديل رسالة ليست لك.';
     }
     if ((row['kind']?.toString() ?? '') != ChatMessageKind.text.dbValue) {
       throw 'لا يمكن تعديل هذا النوع من الرسائل.';
     }
 
-    await _sb.from(_tblMsgs).update({
+    final mutation = '''
+      mutation EditMessage(\$id: uuid!, \$body: String!, \$editedAt: timestamptz!) {
+        update_${_tblMsgs}_by_pk(
+          pk_columns: {id: \$id},
+          _set: {body: \$body, text: \$body, edited: true, edited_at: \$editedAt}
+        ) {
+          id
+        }
+      }
+    ''';
+    await _runMutation(mutation, {
+      'id': messageId,
       'body': newBody,
-      'text': newBody,
-      'edited': true,
-      'edited_at': DateTime.now().toUtc().toIso8601String(),
-    }).eq('id', messageId);
+      'editedAt': DateTime.now().toUtc().toIso8601String(),
+    });
 
     await refreshConversationLastSummary(row['conversation_id'].toString());
   }
 
   /// حذف الرسالة (بدون حذف مرفقاتها من التخزين)
   Future<void> deleteMessage(String messageId) async {
-    final u = _sb.auth.currentUser;
-    if (u == null) throw 'لا يوجد مستخدم.';
-    final row = await _sb
-        .from(_tblMsgs)
-        .select('id, conversation_id, sender_uid')
-        .eq('id', messageId)
-        .maybeSingle();
+    final uid = currentUserId;
+    if (uid == null) throw 'لا يوجد مستخدم.';
+    final query = '''
+      query MessageMeta(\$id: uuid!) {
+        ${_tblMsgs}_by_pk(id: \$id) {
+          id
+          conversation_id
+          sender_uid
+        }
+      }
+    ''';
+    final data = await _runQuery(query, {'id': messageId});
+    final row = _rowFromData(data, '${_tblMsgs}_by_pk');
     if (row == null) throw 'الرسالة غير موجودة.';
-    if (row['sender_uid']?.toString() != u.id) {
+    if (row['sender_uid']?.toString() != uid) {
       throw 'لا يمكنك حذف رسالة ليست لك.';
     }
 
-    await _sb.from(_tblMsgs).update({
-      'deleted': true,
-      'deleted_at': DateTime.now().toUtc().toIso8601String(),
-      'body': null,
-      'text': null,
-    }).eq('id', messageId);
+    final mutation = '''
+      mutation DeleteMessage(\$id: uuid!, \$deletedAt: timestamptz!) {
+        update_${_tblMsgs}_by_pk(
+          pk_columns: {id: \$id},
+          _set: {deleted: true, deleted_at: \$deletedAt, body: null, text: null}
+        ) {
+          id
+        }
+      }
+    ''';
+    await _runMutation(mutation, {
+      'id': messageId,
+      'deletedAt': DateTime.now().toUtc().toIso8601String(),
+    });
 
     await refreshConversationLastSummary(row['conversation_id'].toString());
   }
@@ -1424,11 +1747,18 @@ class ChatService {
   /// حذف مرفقات رسالة من Storage + صفوفها من chat_attachments (اختياري)
   Future<void> deleteMessageAttachments(String messageId) async {
     try {
-      final atts = await _sb
-          .from(_tblAtts)
-          .select('id, bucket, path, message_id')
-          .eq('message_id', messageId);
-      final list = (atts as List).whereType<Map<String, dynamic>>().toList();
+      final query = '''
+        query AttachmentsForMessage(\$id: uuid!) {
+          $_tblAtts(where: {message_id: {_eq: \$id}}) {
+            id
+            bucket
+            path
+            message_id
+          }
+        }
+      ''';
+      final data = await _runQuery(query, {'id': messageId});
+      final list = _rowsFromData(data, _tblAtts);
       if (list.isEmpty) return;
 
       final files = list
@@ -1437,7 +1767,9 @@ class ChatService {
           .toList();
       if (files.isNotEmpty) {
         try {
-          await _sb.storage.from(attachmentsBucket).remove(files);
+          for (final id in files) {
+            await _storage.deleteFile(id);
+          }
         } catch (_) {}
       }
 
@@ -1447,7 +1779,14 @@ class ChatService {
           .toList();
       if (ids.isNotEmpty) {
         try {
-          await _sb.from(_tblAtts).delete().inFilter('id', ids);
+          final mutation = '''
+            mutation DeleteAttachments(\$ids: [uuid!]!) {
+              delete_${_tblAtts}(where: {id: {_in: \$ids}}) {
+                affected_rows
+              }
+            }
+          ''';
+          await _runMutation(mutation, {'ids': ids});
         } catch (_) {}
       }
     } catch (_) {
@@ -1468,49 +1807,56 @@ class ChatService {
     if (q.isEmpty) return const <ChatMessage>[];
 
     final esc = _escapeIlike(q);
-
-    // ملاحظة: تجنّب استدعاء .or مرتين لأن الثانية قد تستبدل الأولى.
-    // نستبعد المحذوفين عبر not('deleted','is', true) ثم نستخدم or للبحث.
-    final rows = await _sb
-        .from(_tblMsgs)
-        .select(
-          'id, conversation_id, sender_uid, sender_email, kind, '
-          'body, text, edited, deleted, created_at, edited_at, deleted_at, '
-          'reply_to_message_id, reply_to_snippet, mentions, attachments, '
-          'delivery_receipts:chat_delivery_receipts(user_uid, delivered_at)',
-        )
-        .eq('conversation_id', conversationId)
-        .not('deleted', 'is', true)
-        .or('body.ilike.%$esc%,text.ilike.%$esc%')
-        .order('created_at', ascending: true)
-        .limit(limit);
-
-    final list = <ChatMessage>[];
-    for (final r in (rows as List).whereType<Map<String, dynamic>>()) {
-      final normalized = await _withHttpAttachments(r);
-      list.add(
-        ChatMessage.fromMap(normalized, currentUid: _sb.auth.currentUser?.id),
-      );
-    }
-    return list;
+    final pattern = '%$esc%';
+    final queryDoc = '''
+      query SearchMessages(\$cid: uuid!, \$pattern: String!, \$limit: Int!) {
+        $_tblMsgs(
+          where: {
+            conversation_id: {_eq: \$cid},
+            deleted: {_neq: true},
+            _or: [
+              {body: {_ilike: \$pattern}},
+              {text: {_ilike: \$pattern}}
+            ]
+          },
+          order_by: {created_at: asc},
+          limit: \$limit
+        ) {
+          $_messageSelectFields
+        }
+      }
+    ''';
+    final data = await _runQuery(queryDoc, {
+      'cid': conversationId,
+      'pattern': pattern,
+      'limit': limit,
+    });
+    final rows = _rowsFromData(data, _tblMsgs);
+    return await _messagesFromRows(rows);
   }
 
   // --------------------------------------------------------------
   // Read state
   // --------------------------------------------------------------
   Future<DateTime?> markReadUpToLatest(String conversationId) async {
-    final u = _sb.auth.currentUser;
-    if (u == null) return null;
+    final uid = currentUserId;
+    if (uid == null) return null;
 
-    final lastRow = await _sb
-        .from(_tblMsgs)
-        .select('id, created_at')
-        .eq('conversation_id', conversationId)
-        .or('deleted.is.false,deleted.is.null')
-        .order('created_at', ascending: false)
-        .limit(1)
-        .maybeSingle();
-
+    final query = '''
+      query LatestMessage(\$cid: uuid!) {
+        $_tblMsgs(
+          where: {conversation_id: {_eq: \$cid}, deleted: {_neq: true}},
+          order_by: {created_at: desc},
+          limit: 1
+        ) {
+          id
+          created_at
+        }
+      }
+    ''';
+    final data = await _runQuery(query, {'cid': conversationId});
+    final rows = _rowsFromData(data, _tblMsgs);
+    final lastRow = rows.isEmpty ? null : rows.first;
     if (lastRow == null) return null;
 
     // ✅ استخدم زمن إنشاء آخر رسالة كوقت قراءة
@@ -1518,54 +1864,37 @@ class ChatService {
         DateTime.tryParse(lastRow['created_at'].toString())?.toUtc() ??
             DateTime.now().toUtc();
 
-    await _sb.from(_tblReads).upsert({
-      'conversation_id': conversationId,
-      'user_uid': u.id,
-      'last_read_message_id': lastRow['id'].toString(),
-      'last_read_at': lastCreated.toIso8601String(),
-    }, onConflict: 'conversation_id,user_uid');
+    final mutation = '''
+      mutation UpsertRead(\$object: ${_tblReads}_insert_input!) {
+        insert_${_tblReads}(
+          objects: [\$object],
+          on_conflict: {
+            constraint: chat_reads_pkey,
+            update_columns: [last_read_message_id, last_read_at]
+          }
+        ) {
+          affected_rows
+        }
+      }
+    ''';
+    await _runMutation(mutation, {
+      'object': {
+        'conversation_id': conversationId,
+        'user_uid': uid,
+        'last_read_message_id': lastRow['id'].toString(),
+        'last_read_at': lastCreated.toIso8601String(),
+      },
+    });
 
     return lastCreated;
   }
 
   // --------------------------------------------------------------
-  // Typing (كما هو)
+  // Typing (Nhost)
   // --------------------------------------------------------------
-  RealtimeChannel? _typingBus;
-  bool _typingBusSubscribed = false;
   final Map<String, StreamController<Map<String, dynamic>>> _typingCtlrs = {};
+  final Map<String, StreamSubscription<QueryResult>> _typingSubs = {};
   final Map<String, DateTime> _lastTypingPingByConv = {};
-
-  Future<void> _ensureTypingBus() async {
-    if (_typingBus != null && _typingBusSubscribed) return;
-    _typingBus ??= _sb.channel(
-      'typing-bus',
-      opts: const RealtimeChannelConfig(ack: false),
-    );
-
-    _typingBus!.onBroadcast(
-      event: 'typing',
-      callback: (payload, [_]) {
-        if (payload is! Map) return;
-        final cid = (payload['conversation_id'] ??
-                payload['conversationId'] ??
-                payload['cid'])
-            ?.toString();
-        if (cid == null) return;
-        final c = _typingCtlrs[cid];
-        if (c != null && !c.isClosed) {
-          c.add(Map<String, dynamic>.from(payload));
-        }
-      },
-    );
-
-    try {
-      await _typingBus!.subscribe();
-      _typingBusSubscribed = true;
-    } catch (_) {
-      _typingBusSubscribed = false;
-    }
-  }
 
   Stream<Map<String, dynamic>> typingStream(String conversationId) {
     final key = conversationId;
@@ -1575,21 +1904,58 @@ class ChatService {
     final controller = StreamController<Map<String, dynamic>>.broadcast();
     _typingCtlrs[key] = controller;
 
-    unawaited(_ensureTypingBus());
+    final query = '''
+      subscription TypingActive(\$cid: uuid!) {
+        v_chat_typing_active(where: {conversation_id: {_eq: \$cid}}) {
+          conversation_id
+          user_uid
+          email
+          updated_at
+        }
+      }
+    ''';
+    final sub = _runSubscription(query, {'cid': conversationId}).listen(
+      (result) {
+        if (result.hasException) return;
+        final data = result.data ?? const <String, dynamic>{};
+        final rows = _rowsFromData(data, 'v_chat_typing_active');
+        final active = <String>[];
+        final emails = <String, String>{};
+        for (final row in rows) {
+          final uid = row['user_uid']?.toString();
+          if (uid == null || uid.isEmpty) continue;
+          active.add(uid);
+          final email = row['email']?.toString();
+          if (email != null && email.isNotEmpty) {
+            emails[uid] = email;
+          }
+        }
+        if (!controller.isClosed) {
+          controller.add({
+            'conversation_id': conversationId,
+            'active_uids': active,
+            'emails': emails,
+            'ts': DateTime.now().toUtc().toIso8601String(),
+          });
+        }
+      },
+    );
+    _typingSubs[key] = sub;
 
     controller.onCancel = () {
       _typingCtlrs.remove(key);
+      final sub = _typingSubs.remove(key);
+      if (sub != null) {
+        unawaited(sub.cancel());
+      }
     };
 
     return controller.stream;
   }
 
   Future<void> pingTyping(String conversationId, {required bool typing}) async {
-    final u = _sb.auth.currentUser;
-    if (u == null) return;
-
-    await _ensureTypingBus();
-    if (!_typingBusSubscribed) return;
+    final uid = currentUserId;
+    if (uid == null) return;
 
     final now = DateTime.now();
     final last = _lastTypingPingByConv[conversationId];
@@ -1597,17 +1963,30 @@ class ChatService {
     _lastTypingPingByConv[conversationId] = now;
 
     final me = await _myAccountRow();
-
-    await _typingBus!.sendBroadcastMessage(
-      event: 'typing',
-      payload: {
-        'conversation_id': conversationId,
-        'uid': u.id,
-        'email': (_bestSenderEmail(me.email) ?? '').toLowerCase(),
-        'typing': typing,
-        'ts': now.toUtc().toIso8601String(),
-      },
-    );
+    final mutation = '''
+      mutation UpsertTyping(\$object: chat_typing_insert_input!) {
+        insert_chat_typing(
+          objects: [\$object],
+          on_conflict: {
+            constraint: chat_typing_pkey,
+            update_columns: [typing, updated_at, email]
+          }
+        ) {
+          affected_rows
+        }
+      }
+    ''';
+    try {
+      await _runMutation(mutation, {
+        'object': {
+          'conversation_id': conversationId,
+          'user_uid': uid,
+          'email': (_bestSenderEmail(me.email) ?? '').toLowerCase(),
+          'typing': typing,
+          'updated_at': now.toUtc().toIso8601String(),
+        }
+      });
+    } catch (_) {}
   }
 
   Future<void> disposeTyping() async {
@@ -1618,100 +1997,38 @@ class ChatService {
     }
     _typingCtlrs.clear();
     _lastTypingPingByConv.clear();
-    if (_typingBus != null) {
+    for (final sub in _typingSubs.values) {
       try {
-        await _typingBus!.unsubscribe();
+        await sub.cancel();
       } catch (_) {}
     }
-    _typingBus = null;
-    _typingBusSubscribed = false;
+    _typingSubs.clear();
   }
 
   // --------------------------------------------------------------
-  // Reactions (كما هو)
+  // Reactions (Nhost)
   // --------------------------------------------------------------
-  RealtimeChannel? _reactBus;
-  bool _reactBusSubscribed = false;
   final Map<String, StreamController<List<ChatReaction>>> _reactCtlrs = {};
-  final Map<String, List<ChatReaction>> _reactCache = {};
-
-  Future<void> _ensureReactBus() async {
-    if (_reactBus != null && _reactBusSubscribed) return;
-
-    _reactBus ??= _sb.channel(
-      'react-bus',
-      opts: const RealtimeChannelConfig(ack: false),
-    );
-
-    _reactBus!.onPostgresChanges(
-      event: PostgresChangeEvent.all,
-      schema: 'public',
-      table: _tblReacts,
-      callback: (payload) {
-        final ev = payload.eventType;
-        final Map<String, dynamic> newRow =
-            (payload.newRecord as Map<String, dynamic>?) ??
-                const <String, dynamic>{};
-        final Map<String, dynamic> oldRow =
-            (payload.oldRecord as Map<String, dynamic>?) ??
-                const <String, dynamic>{};
-
-        String? mid;
-        if (ev == PostgresChangeEvent.delete) {
-          mid = oldRow['message_id']?.toString();
-        } else {
-          mid = newRow['message_id']?.toString();
-        }
-        if (mid == null || !_reactCtlrs.containsKey(mid)) return;
-
-        final current = List<ChatReaction>.from(
-          _reactCache[mid] ?? const <ChatReaction>[],
-        );
-
-        if (ev == PostgresChangeEvent.insert) {
-          current.add(ChatReaction.fromMap(newRow));
-        } else if (ev == PostgresChangeEvent.delete) {
-          final uid = oldRow['user_uid']?.toString();
-          final emoji = oldRow['emoji']?.toString();
-          current.removeWhere(
-            (r) => r.userUid == uid && r.emoji == (emoji ?? r.emoji),
-          );
-        } else if (ev == PostgresChangeEvent.update) {
-          final oldUid = oldRow['user_uid']?.toString();
-          final oldEmoji = oldRow['emoji']?.toString();
-          current.removeWhere(
-            (r) => r.userUid == oldUid && r.emoji == (oldEmoji ?? r.emoji),
-          );
-          current.add(ChatReaction.fromMap(newRow));
-        }
-
-        _reactCache[mid] = current;
-        final c = _reactCtlrs[mid];
-        if (c != null && !c.isClosed) {
-          c.add(List<ChatReaction>.from(current));
-        }
-      },
-    );
-
-    try {
-      await _reactBus!.subscribe();
-      _reactBusSubscribed = true;
-    } catch (_) {
-      _reactBusSubscribed = false;
-    }
-  }
+  final Map<String, StreamSubscription<QueryResult>> _reactSubs = {};
 
   Future<List<ChatReaction>> getReactions(String messageId) async {
     try {
-      final rows = await _sb
-          .from(_tblReacts)
-          .select('message_id, user_uid, emoji, created_at')
-          .eq('message_id', messageId)
-          .order('created_at', ascending: true);
-      return (rows as List)
-          .whereType<Map<String, dynamic>>()
-          .map(ChatReaction.fromMap)
-          .toList();
+      final query = '''
+        query MessageReactions(\$id: uuid!) {
+          $_tblReacts(
+            where: {message_id: {_eq: \$id}},
+            order_by: {created_at: asc}
+          ) {
+            message_id
+            user_uid
+            emoji
+            created_at
+          }
+        }
+      ''';
+      final data = await _runQuery(query, {'id': messageId});
+      final rows = _rowsFromData(data, _tblReacts);
+      return rows.map(ChatReaction.fromMap).toList();
     } catch (_) {
       return const <ChatReaction>[];
     }
@@ -1724,16 +2041,36 @@ class ChatService {
     final c = StreamController<List<ChatReaction>>.broadcast();
     _reactCtlrs[messageId] = c;
 
-    unawaited(() async {
-      await _ensureReactBus();
-      final seed = await getReactions(messageId);
-      _reactCache[messageId] = List<ChatReaction>.from(seed);
-      if (!c.isClosed) c.add(seed);
-    }());
+    final query = '''
+      subscription WatchReactions(\$id: uuid!) {
+        $_tblReacts(
+          where: {message_id: {_eq: \$id}},
+          order_by: {created_at: asc}
+        ) {
+          message_id
+          user_uid
+          emoji
+          created_at
+        }
+      }
+    ''';
+    final sub = _runSubscription(query, {'id': messageId}).listen(
+      (result) {
+        if (result.hasException) return;
+        final data = result.data ?? const <String, dynamic>{};
+        final rows = _rowsFromData(data, _tblReacts);
+        final list = rows.map(ChatReaction.fromMap).toList();
+        if (!c.isClosed) c.add(list);
+      },
+    );
+    _reactSubs[messageId] = sub;
 
     c.onCancel = () {
       _reactCtlrs.remove(messageId);
-      _reactCache.remove(messageId);
+      final sub = _reactSubs.remove(messageId);
+      if (sub != null) {
+        unawaited(sub.cancel());
+      }
     };
 
     return c.stream;
@@ -1743,14 +2080,23 @@ class ChatService {
     required String messageId,
     required String emoji,
   }) async {
-    final u = _sb.auth.currentUser;
-    if (u == null) return;
+    final uid = currentUserId;
+    if (uid == null) return;
     try {
-      await _sb.from(_tblReacts).insert({
-        'message_id': messageId,
-        'user_uid': u.id,
-        'emoji': emoji,
-        'created_at': DateTime.now().toUtc().toIso8601String(),
+      final mutation = '''
+        mutation AddReaction(\$object: ${_tblReacts}_insert_input!) {
+          insert_${_tblReacts}_one(object: \$object) {
+            message_id
+          }
+        }
+      ''';
+      await _runMutation(mutation, {
+        'object': {
+          'message_id': messageId,
+          'user_uid': uid,
+          'emoji': emoji,
+          'created_at': DateTime.now().toUtc().toIso8601String(),
+        }
       });
     } catch (_) {}
   }
@@ -1759,15 +2105,27 @@ class ChatService {
     required String messageId,
     required String emoji,
   }) async {
-    final u = _sb.auth.currentUser;
-    if (u == null) return;
+    final uid = currentUserId;
+    if (uid == null) return;
     try {
-      await _sb
-          .from(_tblReacts)
-          .delete()
-          .eq('message_id', messageId)
-          .eq('user_uid', u.id)
-          .eq('emoji', emoji);
+      final mutation = '''
+        mutation DeleteReaction(\$mid: uuid!, \$uid: uuid!, \$emoji: String!) {
+          delete_${_tblReacts}(
+            where: {
+              message_id: {_eq: \$mid},
+              user_uid: {_eq: \$uid},
+              emoji: {_eq: \$emoji}
+            }
+          ) {
+            affected_rows
+          }
+        }
+      ''';
+      await _runMutation(mutation, {
+        'mid': messageId,
+        'uid': uid,
+        'emoji': emoji,
+      });
     } catch (_) {}
   }
 
@@ -1775,17 +2133,30 @@ class ChatService {
     required String messageId,
     required String emoji,
   }) async {
-    final u = _sb.auth.currentUser;
-    if (u == null) return;
+    final uid = currentUserId;
+    if (uid == null) return;
     try {
-      final exists = await _sb
-          .from(_tblReacts)
-          .select('message_id')
-          .eq('message_id', messageId)
-          .eq('user_uid', u.id)
-          .eq('emoji', emoji)
-          .maybeSingle();
-      if (exists != null) {
+      final query = '''
+        query HasReaction(\$mid: uuid!, \$uid: uuid!, \$emoji: String!) {
+          $_tblReacts(
+            where: {
+              message_id: {_eq: \$mid},
+              user_uid: {_eq: \$uid},
+              emoji: {_eq: \$emoji}
+            },
+            limit: 1
+          ) {
+            message_id
+          }
+        }
+      ''';
+      final data = await _runQuery(query, {
+        'mid': messageId,
+        'uid': uid,
+        'emoji': emoji,
+      });
+      final rows = _rowsFromData(data, _tblReacts);
+      if (rows.isNotEmpty) {
         await removeReaction(messageId: messageId, emoji: emoji);
       } else {
         await addReaction(messageId: messageId, emoji: emoji);
@@ -1796,22 +2167,4 @@ class ChatService {
   @Deprecated('Use watchReactions(messageId) consolidated bus instead.')
   Stream<List<ChatReaction>> watchReactionsLegacy(String messageId) =>
       watchReactions(messageId);
-}
-
-class _ChatParticipant {
-  final String conversationId;
-  final String userUid;
-  final String? email;
-
-  const _ChatParticipant({
-    required this.conversationId,
-    required this.userUid,
-    this.email,
-  });
-
-  factory _ChatParticipant.fromMap(Map<String, dynamic> m) => _ChatParticipant(
-        conversationId: m['conversation_id']?.toString() ?? '',
-        userUid: m['user_uid']?.toString() ?? '',
-        email: m['email']?.toString(),
-      );
 }

@@ -18,11 +18,6 @@ class DeviceIdService {
   static const String _prefsKey = 'auth.deviceId';
   static const String _fileName = 'device_id.txt';
 
-  // نمط UUID v4 للتحقق القوي
-  static final RegExp _uuidV4Pattern = RegExp(
-    r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$',
-  );
-
   static String? _cache;
   static Future<String>? _inflight;
 
@@ -47,16 +42,18 @@ class DeviceIdService {
       final sp = await SharedPreferences.getInstance();
       final fromPrefs = sp.getString(_prefsKey);
       if (_isValid(fromPrefs)) {
+        final value = fromPrefs ?? '';
         // اكتب نسخة احتياطية على القرص إن لم تكن موجودة
-        unawaited(_writeToFileIfMissing(fromPrefs!));
-        return fromPrefs!;
+        unawaited(_writeToFileIfMissing(value));
+        return value;
       }
 
       // 2) من ملف احتياطي
       final fromFile = await _readFromFile();
       if (_isValid(fromFile)) {
-        await sp.setString(_prefsKey, fromFile!);
-        return fromFile!;
+        final value = fromFile ?? '';
+        await sp.setString(_prefsKey, value);
+        return value;
       }
 
       // 3) توليد UUID v4
@@ -67,7 +64,7 @@ class DeviceIdService {
     } catch (_) {
       // في حال فشل SharedPreferences لأي سبب، نحاول المسار الاحتياطي ثم نولّد
       final fromFile = await _readFromFile();
-      if (_isValid(fromFile)) return fromFile!;
+      if (_isValid(fromFile)) return fromFile ?? '';
       final generated = _uuidV4();
       unawaited(_writeToFile(generated));
       return generated;

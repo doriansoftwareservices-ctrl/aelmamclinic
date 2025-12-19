@@ -17,9 +17,6 @@ import 'package:sqlite3/open.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:sqflite/sqflite.dart' as sq;
 
-// Supabase
-import 'package:supabase_flutter/supabase_flutter.dart';
-
 // مسارات آمنة للتخزين
 import 'package:path_provider/path_provider.dart' as path_provider;
 import 'package:path/path.dart' as p;
@@ -57,15 +54,18 @@ import 'screens/repository/alerts/view_alerts_screen.dart';
 // للدردشة
 import 'screens/chat/chat_room_screen.dart';
 import 'models/chat_models.dart';
-import 'models/patient.dart';
 import 'screens/patients/view_patient_screen.dart';
 
 /*──────── الثيم/الثوابت ────────*/
 import 'core/theme.dart';
 import 'core/constants.dart';
-import 'core/backend_selector.dart';
 import 'core/nhost_manager.dart';
+import 'core/nhost_config.dart';
 import 'utils/notifications_helper.dart';
+import 'core/backend_lock.dart';
+import 'screens/offline/offline_mode_screen.dart';
+import 'services/nhost_graphql_service.dart';
+import 'package:graphql_flutter/graphql_flutter.dart';
 
 /// هل المنصّة تدعم flutter_local_notifications؟ (Android/iOS/macOS)
 bool get _pushSupported {
@@ -105,29 +105,34 @@ void main() {
   runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
 
-    // تحميل إعدادات Supabase المخصّصة قبل التهيئة أو Nhost overrides.
-    await AppConstants.loadRuntimeOverrides();
-
-    switch (BackendSelector.current) {
-      case BackendTarget.supabase:
-        await Supabase.initialize(
-          url: AppConstants.supabaseUrl,
-          anonKey: AppConstants.supabaseAnonKey,
-        );
-        AppConstants.debugLog(
-          'Initialized Supabase backend',
-          tag: 'BOOT',
-        );
-        break;
-      case BackendTarget.nhost:
-        // مجرد لمس الـ client يضمن تهيئة nhost_dart (gRPC/GraphQL).
-        NhostManager.client;
-        AppConstants.debugLog(
-          'Initialized Nhost backend',
-          tag: 'BOOT',
-        );
-        break;
+    if (BackendLock.isOffline) {
+      BackendLock.enforceOfflineNetwork();
+      dev.log(
+        'Backend access disabled – running in offline placeholder mode',
+        name: 'BOOT',
+      );
+      runApp(const OfflineModeApp());
+      return;
     }
+
+    // تحميل إعدادات Nhost من ملفات الإعدادات المحلية إن وُجدت.
+    await AppConstants.loadRuntimeOverrides();
+    // تفعيل عميل Nhost بشكل مبكر لضمان جاهزية GraphQL/Auth/Storage.
+    NhostManager.client;
+    AppConstants.debugLog(
+      'Nhost config: subdomain=${NhostConfig.subdomain}, '
+      'region=${NhostConfig.region}, '
+      'graphql=${NhostConfig.graphqlUrl}, '
+      'auth=${NhostConfig.authUrl}, '
+      'storage=${NhostConfig.storageUrl}, '
+      'functions=${NhostConfig.functionsUrl}, '
+      'adminSecret=${NhostConfig.adminSecret.isNotEmpty ? 'set' : 'empty'}',
+      tag: 'CONFIG',
+    );
+    AppConstants.debugLog(
+      'Initialized Nhost backend',
+      tag: 'BOOT',
+    );
 
     // إنشاء مجلد ثابت على ويندوز ليتوافق مع DBService
     if (Platform.isWindows) {
@@ -263,7 +268,7 @@ void main() {
 
               if (auth.isLoggedIn) {
                 Future.microtask(() async {
-                  final uid = Supabase.instance.client.auth.currentUser?.id;
+                  final uid = NhostManager.client.auth.currentUser?.id;
                   if (uid == null || uid.isEmpty) return;
 
                   String? accId = auth.accountId;
@@ -556,6 +561,7 @@ class _ChatRoomLoaderState extends State<ChatRoomLoader> {
   bool _loading = true;
   String? _error;
   ChatConversation? _conv;
+  final GraphQLClient _gql = NhostGraphqlService.buildClient();
 
   @override
   void initState() {
@@ -564,8 +570,15 @@ class _ChatRoomLoaderState extends State<ChatRoomLoader> {
   }
 
   Future<void> _load() async {
-    final sb = Supabase.instance.client;
     try {
+      final user = NhostManager.client.auth.currentUser;
+      if (user == null) {
+        setState(() {
+          _error = 'يجب تسجيل الدخول لفتح المحادثة.';
+          _loading = false;
+        });
+        return;
+      }
       if (widget.conversationId.isEmpty) {
         setState(() {
           _error = 'لا يوجد معرّف محادثة في الطلب.';
@@ -574,13 +587,32 @@ class _ChatRoomLoaderState extends State<ChatRoomLoader> {
         return;
       }
 
-      final row = await sb
-          .from('chat_conversations')
-          .select(
-            'id, account_id, is_group, title, created_by, created_at, updated_at, last_msg_at, last_msg_snippet',
-          )
-          .eq('id', widget.conversationId)
-          .maybeSingle();
+      final query = '''
+        query Conversation(\$id: uuid!) {
+          chat_conversations_by_pk(id: \$id) {
+            id
+            account_id
+            is_group
+            title
+            created_by
+            created_at
+            updated_at
+            last_msg_at
+            last_msg_snippet
+          }
+        }
+      ''';
+      final result = await _gql.query(
+        QueryOptions(
+          document: gql(query),
+          variables: {'id': widget.conversationId},
+          fetchPolicy: FetchPolicy.noCache,
+        ),
+      );
+      if (result.hasException) {
+        throw result.exception!;
+      }
+      final row = result.data?['chat_conversations_by_pk'];
 
       if (row == null) {
         setState(() {
@@ -591,7 +623,7 @@ class _ChatRoomLoaderState extends State<ChatRoomLoader> {
       }
 
       setState(() {
-        _conv = ChatConversation.fromMap(row);
+        _conv = ChatConversation.fromMap(Map<String, dynamic>.from(row));
         _loading = false;
       });
     } catch (e) {

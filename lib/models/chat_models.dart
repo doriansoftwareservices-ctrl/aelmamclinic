@@ -239,7 +239,7 @@ class ChatAttachment {
   final int? height;
   final DateTime? createdAt;
 
-  /// حقل اختياري لرابط موقّع يتم توليده من الـ storage_service
+  /// حقل اختياري لرابط موقّع يتم توليده من طبقة التخزين
   final String? signedUrl;
 
   /// روابط/بيانات إضافية (اختياري)
@@ -445,6 +445,8 @@ class ConversationListItem {
   final String
       displayTitle; // DM: بريد الطرف الآخر، Group: عنوان/مركّب من إيميلات
   final int unreadCount;
+  final DateTime? lastReadAt;
+  final String? lastMessageText;
   final String? clinicLabel;
   final bool isMuted;
   final bool? isOnline; // DM فقط غالبًا
@@ -454,6 +456,8 @@ class ConversationListItem {
     required this.displayTitle,
     this.lastMessage,
     this.unreadCount = 0,
+    this.lastReadAt,
+    this.lastMessageText,
     this.clinicLabel,
     this.isMuted = false,
     this.isOnline,
@@ -464,6 +468,8 @@ class ConversationListItem {
     ChatMessage? lastMessage,
     String? displayTitle,
     int? unreadCount,
+    DateTime? lastReadAt,
+    String? lastMessageText,
     String? clinicLabel,
     bool? isMuted,
     bool? isOnline,
@@ -473,6 +479,8 @@ class ConversationListItem {
       lastMessage: lastMessage ?? this.lastMessage,
       displayTitle: displayTitle ?? this.displayTitle,
       unreadCount: unreadCount ?? this.unreadCount,
+      lastReadAt: lastReadAt ?? this.lastReadAt,
+      lastMessageText: lastMessageText ?? this.lastMessageText,
       clinicLabel: clinicLabel ?? this.clinicLabel,
       isMuted: isMuted ?? this.isMuted,
       isOnline: isOnline ?? this.isOnline,
@@ -504,6 +512,8 @@ class ConversationListItem {
       if (lastMessage != null) 'last_message': lastMessage!.toMap(),
       'display_title': displayTitle,
       'unread_count': unreadCount,
+      if (lastReadAt != null) 'last_read_at': _fmtDate(lastReadAt),
+      if (lastMessageText != null) 'last_message_text': lastMessageText,
       if (clinicLabel != null) 'clinic_label': clinicLabel,
       'muted': isMuted,
       if (isOnline != null) 'is_online': isOnline,
@@ -564,12 +574,18 @@ class ConversationListItem {
     final isOnline = (m.containsKey('is_online') || m.containsKey('online'))
         ? _isTruthy(m['is_online'] ?? m['online'])
         : null;
+    final lastReadAt =
+        _parseDate(m['last_read_at'] ?? m['lastReadAt'] ?? convMap['last_read_at']);
+    final lastMessageText =
+        m['last_message_text']?.toString() ?? m['lastMessageText']?.toString();
 
     return ConversationListItem(
       conversation: conv,
       lastMessage: last,
       displayTitle: displayTitle,
       unreadCount: unreadCount,
+      lastReadAt: lastReadAt,
+      lastMessageText: lastMessageText,
       clinicLabel:
           (clinicLabel ?? '').trim().isEmpty ? null : clinicLabel!.trim(),
       isMuted: isMuted,
@@ -580,6 +596,39 @@ class ConversationListItem {
   String toJson() => jsonEncode(toMap());
   factory ConversationListItem.fromJson(String source) =>
       ConversationListItem.fromMap(jsonDecode(source));
+}
+
+/// ─────────── Read State (اختياري) ───────────
+class ChatReadState {
+  final String conversationId;
+  final String userUid;
+  final String? lastReadMessageId;
+  final DateTime? lastReadAt;
+
+  const ChatReadState({
+    required this.conversationId,
+    required this.userUid,
+    this.lastReadMessageId,
+    this.lastReadAt,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'conversation_id': conversationId,
+      'user_uid': userUid,
+      'last_read_message_id': lastReadMessageId,
+      'last_read_at': _fmtDate(lastReadAt),
+    };
+  }
+
+  factory ChatReadState.fromMap(Map<String, dynamic> map) {
+    return ChatReadState(
+      conversationId: map['conversation_id']?.toString() ?? '',
+      userUid: map['user_uid']?.toString() ?? '',
+      lastReadMessageId: map['last_read_message_id']?.toString(),
+      lastReadAt: _parseDate(map['last_read_at']),
+    );
+  }
 }
 
 /// ─────────── Delivery Receipt ───────────

@@ -2,7 +2,7 @@
 /*───────────────────────────────────────────────────────────────────────────
   نموذج: Prescription (الوصفات)
   محليًا (SQLite - camelCase): patientId, doctorId, recordDate, createdAt
-  سحابيًا (Supabase - snake_case عبر toCloudMap/SyncService):
+  سحابيًا (Remote - snake_case عبر toCloudMap/SyncService):
     account_id, device_id, local_id, patient_id, doctor_id,
     record_date, created_at, updated_at
   fromMap يدعم camel + snake مع تحويلات آمنة للأنواع.
@@ -38,7 +38,7 @@ class Prescription {
   final DateTime createdAt; // وقت الإنشاء
 
   /*──────── حقول مزامنة اختيارية (لا تُحفَظ محليًا) ────────*/
-  final String? accountId; // Supabase → accounts.id
+  final String? accountId; // Remote → accounts.id
   final String? deviceId; // معرّف الجهاز
   final int? localId; // مرجع السجل المحلي عند الرفع (إن لم يُمرّر نستخدم id)
   final DateTime? updatedAt; // آخر تعديل في السحابة
@@ -101,7 +101,7 @@ class Prescription {
 
   Map<String, dynamic> toJson() => toMap();
 
-  /// يدعم مفاتيح camelCase و snake_case (قادمة من Supabase أو مصادر قديمة)
+  /// يدعم مفاتيح camelCase و snake_case (قادمة من Remote أو مصادر قديمة)
   factory Prescription.fromMap(Map<String, dynamic> row) => Prescription(
         id: _asIntN(row['id']),
         patientId: _asInt0(row['patientId'] ?? row['patient_id']),

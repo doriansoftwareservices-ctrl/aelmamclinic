@@ -22,7 +22,7 @@ import 'dart:io';
 import 'dart:ui' as ui show TextDirection;
 
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:aelmamclinic/core/nhost_manager.dart';
 
 import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/core/theme.dart';
@@ -769,7 +769,7 @@ class _ReactionsBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final myUid = Supabase.instance.client.auth.currentUser?.id ?? '';
+    final myUid = NhostManager.client.auth.currentUser?.id ?? '';
     final stream =
         externalStream ?? ChatService.instance.watchReactions(messageId);
 

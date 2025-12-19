@@ -2,7 +2,7 @@
 
 /// نموذج "العودات" (ReturnEntry)
 /// محليًا: نخزّن camelCase في SQLite.
-/// سحابيًا (Supabase): نرسل snake_case عبر toCloudMap()
+/// سحابيًا (Remote): نرسل snake_case عبر toCloudMap()
 /// وندعم القراءة من camelCase و/أو snake_case عبر fromMap().
 class ReturnEntry {
   static const String table = 'returns';
@@ -18,7 +18,7 @@ class ReturnEntry {
   final String notes;
 
   /* ─── حقول مزامنة اختيارية (للسحابة) ─── */
-  final String? accountId; // Supabase → accounts.id
+  final String? accountId; // Remote → accounts.id
   final String? deviceId; // معرّف الجهاز
   final int? localId; // بصمة السجل المحلي عند الرفع (id إن لم يُمرّر)
   final DateTime? updatedAt; // آخر تحديث للسحابة

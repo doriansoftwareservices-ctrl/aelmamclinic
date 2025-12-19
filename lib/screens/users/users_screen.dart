@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'package:aelmamclinic/providers/auth_provider.dart';
-import 'package:aelmamclinic/services/auth_supabase_service.dart';
+import 'package:aelmamclinic/services/nhost_admin_service.dart';
 import 'package:aelmamclinic/models/account_user_summary.dart';
 
 /// شاشة إدارة حسابات الموظفين.
@@ -20,7 +20,7 @@ class UsersScreen extends StatefulWidget {
 }
 
 class _UsersScreenState extends State<UsersScreen> {
-  final _authService = AuthSupabaseService();
+  final _adminService = NhostAdminService();
   late Future<List<Map<String, dynamic>>> _employees;
   bool _busy = false;
 
@@ -39,7 +39,7 @@ class _UsersScreenState extends State<UsersScreen> {
 
     try {
       final summaries =
-          await _authService.listAccountUsersWithEmail(accountId: accountId);
+          await _adminService.listAccountUsersWithEmail(accountId: accountId);
       return summaries
           .map((AccountUserSummary s) => {
                 'uid': s.userUid,
@@ -64,7 +64,7 @@ class _UsersScreenState extends State<UsersScreen> {
     setState(() => _busy = true);
     try {
       final accountId = context.read<AuthProvider>().accountId!;
-      await _authService.setEmployeeDisabled(
+      await _adminService.setEmployeeDisabled(
         accountId: accountId,
         userUid: uid,
         disabled: disabled,
@@ -107,7 +107,7 @@ class _UsersScreenState extends State<UsersScreen> {
     setState(() => _busy = true);
     try {
       final accountId = context.read<AuthProvider>().accountId!;
-      await _authService.deleteEmployee(accountId: accountId, userUid: uid);
+      await _adminService.deleteEmployee(accountId: accountId, userUid: uid);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('تم حذف الحساب')),
