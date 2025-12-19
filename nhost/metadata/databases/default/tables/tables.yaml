@@ -65,6 +65,14 @@
 
 - table:
     schema: public
+    name: account_feature_permissions
+
+- table:
+    schema: public
+    name: audit_logs
+
+- table:
+    schema: public
     name: v_chat_conversations_for_me
 
 - table:

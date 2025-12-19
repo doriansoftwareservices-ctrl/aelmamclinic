@@ -18,3 +18,43 @@
 - function:
     schema: public
     name: chat_admin_start_dm
+
+- function:
+    schema: public
+    name: admin_list_clinics
+
+- function:
+    schema: public
+    name: admin_set_clinic_frozen
+
+- function:
+    schema: public
+    name: admin_delete_clinic
+
+- function:
+    schema: public
+    name: admin_create_owner_full
+
+- function:
+    schema: public
+    name: admin_create_employee_full
+
+- function:
+    schema: public
+    name: list_employees_with_email
+
+- function:
+    schema: public
+    name: set_employee_disabled
+
+- function:
+    schema: public
+    name: delete_employee
+
+- function:
+    schema: public
+    name: my_feature_permissions
+
+- function:
+    schema: public
+    name: fn_is_super_admin
