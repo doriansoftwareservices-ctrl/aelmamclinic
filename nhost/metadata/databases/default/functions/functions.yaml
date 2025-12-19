@@ -1,0 +1,20 @@
+
+- function:
+    schema: public
+    name: my_account_id
+
+- function:
+    schema: public
+    name: chat_mark_delivered
+
+- function:
+    schema: public
+    name: chat_accept_invitation
+
+- function:
+    schema: public
+    name: chat_decline_invitation
+
+- function:
+    schema: public
+    name: chat_admin_start_dm

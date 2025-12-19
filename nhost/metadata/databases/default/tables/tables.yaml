@@ -10,3 +10,79 @@
 - "!include storage_buckets.yaml"
 - "!include storage_files.yaml"
 - "!include storage_virus.yaml"
+
+- table:
+    schema: public
+    name: chat_conversations
+
+- table:
+    schema: public
+    name: chat_participants
+
+- table:
+    schema: public
+    name: chat_messages
+
+- table:
+    schema: public
+    name: chat_reads
+
+- table:
+    schema: public
+    name: chat_attachments
+
+- table:
+    schema: public
+    name: chat_reactions
+
+- table:
+    schema: public
+    name: chat_delivery_receipts
+
+- table:
+    schema: public
+    name: chat_group_invitations
+
+- table:
+    schema: public
+    name: chat_aliases
+
+- table:
+    schema: public
+    name: chat_typing
+
+- table:
+    schema: public
+    name: account_users
+
+- table:
+    schema: public
+    name: profiles
+
+- table:
+    schema: public
+    name: clinics
+
+- table:
+    schema: public
+    name: v_chat_conversations_for_me
+
+- table:
+    schema: public
+    name: v_chat_group_invitations_for_me
+
+- table:
+    schema: public
+    name: v_chat_typing_active
+
+- table:
+    schema: public
+    name: v_chat_messages_with_attachments
+
+- table:
+    schema: public
+    name: v_chat_reads_for_me
+
+- table:
+    schema: public
+    name: v_chat_last_message
