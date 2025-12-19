@@ -48,13 +48,13 @@ CREATE POLICY chat_group_inv_select
   ON public.chat_group_invitations
   FOR SELECT
   USING (
-    inviter = public.request_uid_text()
-    OR invitee_user = public.request_uid_text()
+    inviter = public.request_uid_text()::uuid
+    OR invitee_user = public.request_uid_text()::uuid
     OR EXISTS (
       SELECT 1
       FROM public.chat_participants p
       WHERE p.conversation_id = chat_group_invitations.conversation_id
-        AND p.user_uid = public.request_uid_text()
+        AND p.user_uid = public.request_uid_text()::uuid
     )
   );
 
@@ -63,12 +63,12 @@ CREATE POLICY chat_group_inv_insert
   ON public.chat_group_invitations
   FOR INSERT
   WITH CHECK (
-    inviter = public.request_uid_text()
+    inviter = public.request_uid_text()::uuid
     AND EXISTS (
       SELECT 1
       FROM public.chat_participants p
       WHERE p.conversation_id = chat_group_invitations.conversation_id
-        AND p.user_uid = public.request_uid_text()
+        AND p.user_uid = public.request_uid_text()::uuid
     )
   );
 
@@ -76,14 +76,14 @@ CREATE POLICY chat_group_inv_insert
 CREATE POLICY chat_group_inv_update
   ON public.chat_group_invitations
   FOR UPDATE
-  USING (inviter = public.request_uid_text() OR invitee_user = public.request_uid_text())
-  WITH CHECK (inviter = public.request_uid_text() OR invitee_user = public.request_uid_text());
+  USING (inviter = public.request_uid_text()::uuid OR invitee_user = public.request_uid_text()::uuid)
+  WITH CHECK (inviter = public.request_uid_text()::uuid OR invitee_user = public.request_uid_text()::uuid);
 
 -- الحذف: الداعي فقط
 CREATE POLICY chat_group_inv_delete
   ON public.chat_group_invitations
   FOR DELETE
-  USING (inviter = public.request_uid_text());
+  USING (inviter = public.request_uid_text()::uuid);
 
 -- 5) Trigger updated_at
 DROP TRIGGER IF EXISTS chat_group_invitations_set_updated_at ON public.chat_group_invitations;

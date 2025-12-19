@@ -26,7 +26,7 @@ SECURITY DEFINER
 SET search_path = public, auth
 AS $$
 declare
-  v_uid uuid := public.request_uid_text();
+  v_uid uuid := nullif(public.request_uid_text(), '')::uuid;
   v_is_super boolean := coalesce(public.fn_is_super_admin(), false)
     or lower(coalesce(current_setting('request.jwt.claims', true)::json ->> 'role', '')) = 'superadmin'
     or lower(coalesce(current_setting('request.jwt.claims', true)::json ->> 'email', '')) = 'admin@elmam.com';
@@ -133,7 +133,7 @@ BEGIN
         SELECT 1
         FROM public.chat_participants p
         WHERE p.conversation_id = public.chat_conversation_id_from_path(name)
-          AND p.user_uid = public.request_uid_text()
+        AND p.user_uid = public.request_uid_text()::uuid
       )
     );
   $q$;
@@ -151,7 +151,7 @@ BEGIN
         SELECT 1
         FROM public.chat_participants p
         WHERE p.conversation_id = public.chat_conversation_id_from_path(name)
-          AND p.user_uid = public.request_uid_text()
+        AND p.user_uid = public.request_uid_text()::uuid
       )
     );
   $q$;
@@ -207,7 +207,7 @@ SELECT
 FROM public.chat_group_invitations inv
 JOIN public.chat_conversations conv ON conv.id = inv.conversation_id
 WHERE (
-    inv.invitee_uid IS NOT NULL AND inv.invitee_uid = public.request_uid_text()
+    inv.invitee_uid IS NOT NULL AND inv.invitee_uid = public.request_uid_text()::uuid
   ) OR (
     inv.invitee_uid IS NULL
     AND inv.invitee_email IS NOT NULL
@@ -226,7 +226,7 @@ SECURITY DEFINER
 SET search_path = public, auth
 AS $$
 DECLARE
-  v_uid uuid := public.request_uid_text();
+  v_uid uuid := nullif(public.request_uid_text(), '')::uuid;
   v_email text := lower(coalesce(auth.email(), ''));
   v_inv record;
 BEGIN
@@ -291,7 +291,7 @@ SECURITY DEFINER
 SET search_path = public, auth
 AS $$
 DECLARE
-  v_uid uuid := public.request_uid_text();
+  v_uid uuid := nullif(public.request_uid_text(), '')::uuid;
   v_email text := lower(coalesce(auth.email(), ''));
   v_inv record;
 BEGIN

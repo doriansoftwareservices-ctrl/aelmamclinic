@@ -37,7 +37,7 @@ SET search_path = public, auth
 AS $$
 DECLARE
   v_role text := current_setting('request.jwt.claim.role', true);
-  v_uid uuid := public.request_uid_text();
+  v_uid uuid := nullif(public.request_uid_text(), '')::uuid;
   v_email text := lower(coalesce(auth.email(), ''));
   v_lookup_email text;
 BEGIN
@@ -124,7 +124,7 @@ SECURITY DEFINER
 SET search_path = public, auth
 AS $$
 DECLARE
-  v_uid uuid := public.request_uid_text();
+  v_uid uuid := nullif(public.request_uid_text(), '')::uuid;
   v_is_super boolean := coalesce(public.fn_is_super_admin(), false)
     OR lower(coalesce(current_setting('request.jwt.claims', true)::json ->> 'role', '')) = 'superadmin'
     OR public.fn_is_super_admin_email(current_setting('request.jwt.claims', true)::json ->> 'email');

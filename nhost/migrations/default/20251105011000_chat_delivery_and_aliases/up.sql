@@ -68,7 +68,7 @@ BEGIN
             ON m.id = chat_delivery_receipts.message_id
           WHERE p.conversation_id = m.conversation_id
             AND p.user_uid::text = public.request_uid_text()::text
-            AND chat_delivery_receipts.user_uid = public.request_uid_text()
+            AND chat_delivery_receipts.user_uid = public.request_uid_text()::uuid
         )
       );
   END IF;
@@ -113,7 +113,7 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_uid uuid := public.request_uid_text();
+  v_uid uuid := nullif(public.request_uid_text(), '')::uuid;
 BEGIN
   IF v_uid IS NULL THEN
     RAISE EXCEPTION 'not authorized' USING errcode = '42501';

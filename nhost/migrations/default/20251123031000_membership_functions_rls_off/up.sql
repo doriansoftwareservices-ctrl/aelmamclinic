@@ -16,7 +16,7 @@ begin
   select account_id
     into result
     from public.account_users
-   where user_uid = public.request_uid_text()
+   where user_uid = nullif(public.request_uid_text(), '')::uuid
      and coalesce(disabled, false) = false
    order by created_at desc
    limit 1;
@@ -40,7 +40,7 @@ begin
   return query
   select account_id
     from public.account_users
-   where user_uid = public.request_uid_text()
+   where user_uid = nullif(public.request_uid_text(), '')::uuid
      and coalesce(disabled, false) = false
    order by created_at desc;
 end;
@@ -72,7 +72,7 @@ begin
       au.role::text,
       coalesce(au.disabled, false) as disabled
     from public.account_users au
-    where au.user_uid = public.request_uid_text()
+    where au.user_uid = nullif(public.request_uid_text(), '')::uuid
     order by au.created_at desc
     limit 1
   )
@@ -84,7 +84,7 @@ begin
     coalesce(membership.disabled, false) as disabled
   from auth.users u
   left join membership on true
-  where u.id = public.request_uid_text()
+  where u.id = nullif(public.request_uid_text(), '')::uuid
   limit 1;
 end;
 $$;

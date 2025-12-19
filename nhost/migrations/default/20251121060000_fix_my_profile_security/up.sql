@@ -21,7 +21,7 @@ as $$
       au.role::text,
       coalesce(au.disabled, false) as disabled
     from public.account_users au
-    where au.user_uid = public.request_uid_text()
+    where au.user_uid = nullif(public.request_uid_text(), '')::uuid
     order by au.created_at desc
     limit 1
   )
@@ -33,7 +33,7 @@ as $$
     coalesce(membership.disabled, false) as disabled
   from auth.users u
   left join membership on true
-  where u.id = public.request_uid_text()
+  where u.id = nullif(public.request_uid_text(), '')::uuid
   limit 1;
 $$;
 
