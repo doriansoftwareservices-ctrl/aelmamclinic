@@ -21,7 +21,9 @@ SET search_path = public, auth
 AS $$
 DECLARE
   v_uid uuid := nullif(public.request_uid_text(), '')::uuid;
-  v_email text := lower(coalesce(auth.email(), ''));
+  v_email text := lower(
+    coalesce(current_setting('request.jwt.claims', true)::json ->> 'email', '')
+  );
   v_inv record;
   v_is_member boolean := false;
 BEGIN

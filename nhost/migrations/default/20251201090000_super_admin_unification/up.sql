@@ -38,7 +38,9 @@ AS $$
 DECLARE
   v_role text := current_setting('request.jwt.claim.role', true);
   v_uid uuid := nullif(public.request_uid_text(), '')::uuid;
-  v_email text := lower(coalesce(auth.email(), ''));
+  v_email text := lower(
+    coalesce(current_setting('request.jwt.claims', true)::json ->> 'email', '')
+  );
   v_lookup_email text;
 BEGIN
   IF v_role = 'service_role' THEN

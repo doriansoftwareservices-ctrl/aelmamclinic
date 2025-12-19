@@ -211,7 +211,9 @@ WHERE (
   ) OR (
     inv.invitee_uid IS NULL
     AND inv.invitee_email IS NOT NULL
-    AND lower(inv.invitee_email) = lower(coalesce(auth.email(), ''))
+    AND lower(inv.invitee_email) = lower(
+      coalesce(current_setting('request.jwt.claims', true)::json ->> 'email', '')
+    )
   );
 
 --------------------------------------------------------------------------------
@@ -227,7 +229,9 @@ SET search_path = public, auth
 AS $$
 DECLARE
   v_uid uuid := nullif(public.request_uid_text(), '')::uuid;
-  v_email text := lower(coalesce(auth.email(), ''));
+  v_email text := lower(
+    coalesce(current_setting('request.jwt.claims', true)::json ->> 'email', '')
+  );
   v_inv record;
 BEGIN
   IF v_uid IS NULL THEN
@@ -292,7 +296,9 @@ SET search_path = public, auth
 AS $$
 DECLARE
   v_uid uuid := nullif(public.request_uid_text(), '')::uuid;
-  v_email text := lower(coalesce(auth.email(), ''));
+  v_email text := lower(
+    coalesce(current_setting('request.jwt.claims', true)::json ->> 'email', '')
+  );
   v_inv record;
 BEGIN
   IF v_uid IS NULL THEN

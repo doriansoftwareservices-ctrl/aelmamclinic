@@ -8,7 +8,9 @@ as $$
 declare
   v_role text := current_setting('request.jwt.claim.role', true);
   v_uid uuid := public.request_uid_text()::uuid;
-  v_email text := lower(coalesce(auth.email(), ''));
+  v_email text := lower(
+    coalesce(current_setting('request.jwt.claims', true)::json ->> 'email', '')
+  );
   v_lookup_email text;
   v_super_email constant text := 'admin@elmam.com';
 begin
