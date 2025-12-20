@@ -203,14 +203,11 @@ class NhostAuthService {
 
   Future<bool> _resolveSuperAdminFlag({String? fallbackEmail}) async {
     try {
-      final data = await _runQuery(
-        'query { fn_is_super_admin_gql { is_super_admin } }',
-        const {},
-      );
+      final data =
+          await _runQuery('query { fn_is_super_admin_gql { email } }', const {});
       final rows = data['fn_is_super_admin_gql'];
-      if (rows is List && rows.isNotEmpty) {
-        final value = (rows.first as Map?)?['is_super_admin'];
-        if (value is bool) return value;
+      if (rows is List) {
+        return rows.isNotEmpty;
       }
     } catch (_) {}
     return false;
