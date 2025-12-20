@@ -957,7 +957,18 @@
             "function": {
               "name": "fn_is_super_admin_gql",
               "schema": "public"
-            }
+            },
+            "configuration": {
+              "exposed_as": "query"
+            },
+            "permissions": [
+              {
+                "role": "me"
+              },
+              {
+                "role": "user"
+              }
+            ]
           }
         ],
         "configuration": {
