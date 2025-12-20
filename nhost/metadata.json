@@ -1,5 +1,5 @@
 {
-  "resource_version": 229,
+  "resource_version": 236,
   "metadata": {
     "version": 3,
     "sources": [
@@ -673,7 +673,41 @@
             "table": {
               "name": "super_admins",
               "schema": "public"
-            }
+            },
+            "select_permissions": [
+              {
+                "role": "me",
+                "permission": {
+                  "columns": [
+                    "local_id",
+                    "device_id",
+                    "email",
+                    "created_at",
+                    "account_id",
+                    "id",
+                    "user_uid"
+                  ],
+                  "filter": {}
+                },
+                "comment": ""
+              },
+              {
+                "role": "user",
+                "permission": {
+                  "columns": [
+                    "local_id",
+                    "device_id",
+                    "email",
+                    "created_at",
+                    "account_id",
+                    "id",
+                    "user_uid"
+                  ],
+                  "filter": {}
+                },
+                "comment": ""
+              }
+            ]
           },
           {
             "table": {
@@ -916,6 +950,14 @@
                 }
               }
             ]
+          }
+        ],
+        "functions": [
+          {
+            "function": {
+              "name": "fn_is_super_admin_gql",
+              "schema": "public"
+            }
           }
         ],
         "configuration": {
