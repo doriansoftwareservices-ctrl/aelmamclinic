@@ -69,6 +69,10 @@
 
 - table:
     schema: public
+    name: super_admins
+
+- table:
+    schema: public
     name: audit_logs
 
 - table:
