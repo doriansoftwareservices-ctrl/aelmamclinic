@@ -4,6 +4,7 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart' show VoidCallback;
 import 'package:graphql_flutter/graphql_flutter.dart';
 import 'package:sqflite_common/sqlite_api.dart';
 import 'package:uuid/enums.dart';

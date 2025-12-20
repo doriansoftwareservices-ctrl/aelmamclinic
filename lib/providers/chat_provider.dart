@@ -331,7 +331,7 @@ class ChatProvider extends ChangeNotifier {
       final data = await _runQuery(query, {'bucket': bucket, 'name': trimmed});
       final rows = (data['files'] as List?) ?? const [];
       final row = rows.isEmpty ? null : Map<String, dynamic>.from(rows.first);
-      final id = row['id']?.toString();
+      final id = row?['id']?.toString();
       return (id == null || id.isEmpty) ? null : id;
     } catch (_) {
       return null;

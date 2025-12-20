@@ -58,7 +58,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     // حارس وصول: إن لم يكن المستخدم سوبر أدمن، لا يسمح بالبقاء هنا
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final auth = context.read<AuthProvider>();
-      final isSuper = _adminService.isSuperAdmin || auth.isSuperAdmin;
+      final isSuper = auth.isSuperAdmin;
       if (!isSuper) {
         if (!mounted) return;
         Navigator.of(context).pushReplacementNamed('/');

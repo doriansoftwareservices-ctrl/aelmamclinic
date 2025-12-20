@@ -100,8 +100,7 @@ class FeatureAccess {
       if (v is bool) return v;
       final role = dyn.role;
       if (role is String) {
-        final r = role.toLowerCase();
-        return r.contains('super') || r.contains('admin');
+        return role.toLowerCase() == 'superadmin';
       }
     } catch (_) {}
     return false;
