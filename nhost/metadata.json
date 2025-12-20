@@ -1,5 +1,5 @@
 {
-  "resource_version": 67,
+  "resource_version": 229,
   "metadata": {
     "version": 3,
     "sources": [
@@ -578,6 +578,138 @@
                 }
               }
             ]
+          },
+          {
+            "table": {
+              "name": "account_feature_permissions",
+              "schema": "public"
+            }
+          },
+          {
+            "table": {
+              "name": "account_users",
+              "schema": "public"
+            }
+          },
+          {
+            "table": {
+              "name": "audit_logs",
+              "schema": "public"
+            }
+          },
+          {
+            "table": {
+              "name": "chat_aliases",
+              "schema": "public"
+            }
+          },
+          {
+            "table": {
+              "name": "chat_attachments",
+              "schema": "public"
+            }
+          },
+          {
+            "table": {
+              "name": "chat_conversations",
+              "schema": "public"
+            }
+          },
+          {
+            "table": {
+              "name": "chat_delivery_receipts",
+              "schema": "public"
+            }
+          },
+          {
+            "table": {
+              "name": "chat_group_invitations",
+              "schema": "public"
+            }
+          },
+          {
+            "table": {
+              "name": "chat_messages",
+              "schema": "public"
+            }
+          },
+          {
+            "table": {
+              "name": "chat_participants",
+              "schema": "public"
+            }
+          },
+          {
+            "table": {
+              "name": "chat_reactions",
+              "schema": "public"
+            }
+          },
+          {
+            "table": {
+              "name": "chat_reads",
+              "schema": "public"
+            }
+          },
+          {
+            "table": {
+              "name": "chat_typing",
+              "schema": "public"
+            }
+          },
+          {
+            "table": {
+              "name": "clinics",
+              "schema": "public"
+            }
+          },
+          {
+            "table": {
+              "name": "profiles",
+              "schema": "public"
+            }
+          },
+          {
+            "table": {
+              "name": "super_admins",
+              "schema": "public"
+            }
+          },
+          {
+            "table": {
+              "name": "v_chat_conversations_for_me",
+              "schema": "public"
+            }
+          },
+          {
+            "table": {
+              "name": "v_chat_group_invitations_for_me",
+              "schema": "public"
+            }
+          },
+          {
+            "table": {
+              "name": "v_chat_last_message",
+              "schema": "public"
+            }
+          },
+          {
+            "table": {
+              "name": "v_chat_messages_with_attachments",
+              "schema": "public"
+            }
+          },
+          {
+            "table": {
+              "name": "v_chat_reads_for_me",
+              "schema": "public"
+            }
+          },
+          {
+            "table": {
+              "name": "v_chat_typing_active",
+              "schema": "public"
+            }
           },
           {
             "table": {
