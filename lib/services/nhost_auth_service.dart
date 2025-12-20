@@ -5,7 +5,6 @@ import 'package:graphql_flutter/graphql_flutter.dart';
 import 'package:nhost_dart/nhost_dart.dart';
 import 'package:nhost_sdk/nhost_sdk.dart' show AuthResponse, User;
 
-import '../core/constants.dart';
 import '../core/active_account_store.dart';
 import '../core/nhost_manager.dart';
 import '../models/account_policy.dart';
@@ -202,19 +201,19 @@ class NhostAuthService {
     return ex.graphqlErrors.map((e) => e.message).join(' | ');
   }
 
-  bool _isSuperAdminEmail(String? email) {
-    final normalized = (email ?? '').trim().toLowerCase();
-    if (normalized.isEmpty) return false;
-    return AppConstants.superAdminEmails.contains(normalized);
-  }
-
   Future<bool> _resolveSuperAdminFlag({String? fallbackEmail}) async {
     try {
-      final data = await _runQuery('query { fn_is_super_admin }', const {});
-      final value = data['fn_is_super_admin'];
-      if (value is bool) return value;
+      final data = await _runQuery(
+        'query { fn_is_super_admin_gql { is_super_admin } }',
+        const {},
+      );
+      final rows = data['fn_is_super_admin_gql'];
+      if (rows is List && rows.isNotEmpty) {
+        final value = (rows.first as Map?)?['is_super_admin'];
+        if (value is bool) return value;
+      }
     } catch (_) {}
-    return _isSuperAdminEmail(fallbackEmail);
+    return false;
   }
 
   /// يجلب معلومات المستخدم الحالي (accountId/role/disabled/isSuperAdmin).
@@ -237,7 +236,7 @@ class NhostAuthService {
         accountId = row['account_id']?.toString();
         role = row['role']?.toString();
         disabled = row['disabled'] == true;
-        if (accountId != null && accountId!.isNotEmpty) {
+        if (accountId != null && accountId.isNotEmpty) {
           await ActiveAccountStore.writeAccountId(accountId);
         }
       }

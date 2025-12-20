@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:graphql_flutter/graphql_flutter.dart';
 
-import 'package:aelmamclinic/core/constants.dart';
 import 'package:aelmamclinic/core/nhost_config.dart';
 import 'package:aelmamclinic/core/nhost_manager.dart';
 import 'package:aelmamclinic/models/account_user_summary.dart';
@@ -20,29 +19,24 @@ class NhostAdminService {
   final NhostApiClient _api;
   GraphQLClient get _gql => _gqlOverride ?? NhostGraphqlService.client;
 
-  static const String _defaultSuperAdminEmail = 'admin@elmam.com';
-
-  static List<String> get _configuredSuperAdmins {
-    final emails = AppConstants.superAdminEmails;
-    if (emails.isEmpty) {
-      return const [_defaultSuperAdminEmail];
-    }
-    return emails.map((e) => e.toLowerCase()).toSet().toList();
-  }
-
   bool get isSuperAdmin {
     final user = NhostManager.client.auth.currentUser;
     final email = user?.email;
     if (email == null || email.isEmpty) return false;
-    if (_configuredSuperAdmins.contains(email.toLowerCase())) return true;
     final role = user?.defaultRole.toLowerCase();
     if (role == 'superadmin') return true;
     final roles = user?.roles.map((r) => r.toLowerCase()).toList() ?? const [];
     return roles.contains('superadmin');
   }
 
-  void _ensureSuperAdminOrThrow() {
-    if (!isSuperAdmin) {
+  Future<void> _ensureSuperAdminOrThrow() async {
+    const query = 'query { fn_is_super_admin_gql { is_super_admin } }';
+    final data = await _runQuery(query, const {});
+    final rows = data['fn_is_super_admin_gql'];
+    final isSuper = rows is List &&
+        rows.isNotEmpty &&
+        (rows.first as Map?)?['is_super_admin'] == true;
+    if (!isSuper) {
       throw StateError('هذه العملية مخصّصة للسوبر أدمن فقط.');
     }
   }
@@ -50,7 +44,7 @@ class NhostAdminService {
   Future<void> signOut() => NhostManager.client.auth.signOut();
 
   Future<List<Clinic>> fetchClinics() async {
-    _ensureSuperAdminOrThrow();
+    await _ensureSuperAdminOrThrow();
     const query = '''
       query AdminClinics {
         admin_list_clinics {
@@ -74,7 +68,7 @@ class NhostAdminService {
     required String ownerEmail,
     required String ownerPassword,
   }) async {
-    _ensureSuperAdminOrThrow();
+    await _ensureSuperAdminOrThrow();
     final payload = {
       'clinic_name': clinicName.trim(),
       'owner_email': ownerEmail.trim(),
@@ -89,7 +83,7 @@ class NhostAdminService {
     required String email,
     required String password,
   }) async {
-    _ensureSuperAdminOrThrow();
+    await _ensureSuperAdminOrThrow();
     final payload = {
       'account_id': clinicId,
       'email': email.trim(),
@@ -100,7 +94,7 @@ class NhostAdminService {
   }
 
   Future<void> freezeClinic(String accountId, bool frozen) async {
-    _ensureSuperAdminOrThrow();
+    await _ensureSuperAdminOrThrow();
     const mutation = '''
       mutation FreezeClinic(\$id: uuid!, \$frozen: Boolean!) {
         admin_set_clinic_frozen(args: {p_account_id: \$id, p_frozen: \$frozen})
@@ -114,7 +108,7 @@ class NhostAdminService {
   }
 
   Future<void> deleteClinic(String accountId) async {
-    _ensureSuperAdminOrThrow();
+    await _ensureSuperAdminOrThrow();
     const mutation = '''
       mutation DeleteClinic(\$id: uuid!) {
         admin_delete_clinic(args: {p_account_id: \$id})

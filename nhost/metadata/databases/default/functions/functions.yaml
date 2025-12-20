@@ -63,3 +63,12 @@
   permissions:
     - role: me
     - role: user
+
+- function:
+    schema: public
+    name: fn_is_super_admin_gql
+  configuration:
+    exposed_as: query
+  permissions:
+    - role: me
+    - role: user
