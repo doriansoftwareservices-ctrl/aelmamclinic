@@ -1,0 +1,1 @@
+-- No-op rollback (previous versions are in earlier migrations).
