@@ -50,6 +50,7 @@ import 'package:aelmamclinic/screens/chat/chat_home_screen.dart';
 
 /*── لتسجيل الخروج ─*/
 import 'package:aelmamclinic/screens/auth/login_screen.dart';
+import 'package:aelmamclinic/screens/admin/admin_dashboard_screen.dart';
 
 /// غيّر هذا الثابت حسب المطلوب:
 /// true  → إخفاء العناصر غير المسموح بها.
@@ -97,6 +98,19 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final auth = context.read<AuthProvider>();
+      if (auth.isSuperAdmin) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const AdminDashboardScreen()),
+        );
+      }
+    });
+    final auth = context.read<AuthProvider>();
+    if (auth.isSuperAdmin) {
+      return;
+    }
     // ابدأ بحساب العدّاد فورًا ثم حدّثه دوريًا
     _refreshUnreadChatsCount();
     _unreadPollTimer = Timer.periodic(const Duration(seconds: 10), (_) {

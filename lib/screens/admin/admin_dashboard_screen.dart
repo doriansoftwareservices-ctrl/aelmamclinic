@@ -9,7 +9,6 @@ import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:provider/provider.dart';
 
 /*──────── شاشات للتنقّل ────────*/
-import 'package:aelmamclinic/screens/statistics/statistics_overview_screen.dart';
 import 'package:aelmamclinic/screens/auth/login_screen.dart';
 import 'package:aelmamclinic/screens/chat/chat_admin_inbox_screen.dart'; // ⬅️ شاشة دردشة السوبر أدمن
 
@@ -291,13 +290,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     }
   }
 
-  /// الانتقال السريع إلى شاشة الإحصاءات
-  void _skipToStatistics() {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const StatisticsOverviewScreen()),
-    );
-  }
-
   /// فتح شاشة دردشة السوبر أدمن
   void _openSuperAdminChat() {
     Navigator.of(context).push(
@@ -350,11 +342,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                 onPressed: _openSuperAdminChat,
                 icon: const Icon(Icons.chat_bubble_outline),
                 label: const Text('الدردشة'),
-              ),
-              TextButton.icon(
-                onPressed: _skipToStatistics,
-                icon: const Icon(Icons.skip_next),
-                label: const Text('تخطي'),
               ),
               const SizedBox(width: 4),
               TextButton.icon(
