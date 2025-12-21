@@ -30,7 +30,7 @@ class NhostAdminService {
   }
 
   Future<void> _ensureSuperAdminOrThrow() async {
-    const query = 'query { fn_is_super_admin_gql { email } }';
+    const query = 'query { fn_is_super_admin_gql { user_uid email } }';
     final data = await _runQuery(query, const {});
     final rows = data['fn_is_super_admin_gql'];
     final isSuper = rows is List && rows.isNotEmpty;

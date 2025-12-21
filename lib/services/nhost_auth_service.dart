@@ -224,15 +224,27 @@ class NhostAuthService {
   }
 
   Future<bool> _resolveSuperAdminFlag({String? fallbackEmail}) async {
+    const query = 'query { fn_is_super_admin_gql { user_uid email } }';
     try {
-      final data =
-          await _runQuery('query { fn_is_super_admin_gql { email } }', const {});
+      final data = await _runQuery(query, const {});
       final rows = data['fn_is_super_admin_gql'];
       if (rows is List) {
         return rows.isNotEmpty;
       }
-    } catch (_) {}
-    return false;
+      dev.log(
+        'fn_is_super_admin_gql returned unexpected shape: ${rows.runtimeType}',
+        name: 'AUTH',
+      );
+      return false;
+    } catch (e, st) {
+      dev.log(
+        'fn_is_super_admin_gql query failed: $e',
+        name: 'AUTH',
+        error: e,
+        stackTrace: st,
+      );
+      return false;
+    }
   }
 
   /// يجلب معلومات المستخدم الحالي (accountId/role/disabled/isSuperAdmin).
