@@ -1,5 +1,16 @@
 -- Ensure RPCs used by GraphQL return tabular results so Hasura can expose them.
 
+DROP FUNCTION IF EXISTS public.my_account_id();
+DROP FUNCTION IF EXISTS public.admin_set_clinic_frozen(uuid, boolean);
+DROP FUNCTION IF EXISTS public.admin_delete_clinic(uuid);
+DROP FUNCTION IF EXISTS public.admin_create_owner_full(text, text, text);
+DROP FUNCTION IF EXISTS public.admin_create_employee_full(uuid, text, text);
+DROP FUNCTION IF EXISTS public.set_employee_disabled(uuid, uuid, boolean);
+DROP FUNCTION IF EXISTS public.delete_employee(uuid, uuid);
+DROP FUNCTION IF EXISTS public.chat_accept_invitation(uuid);
+DROP FUNCTION IF EXISTS public.chat_decline_invitation(uuid, text);
+DROP FUNCTION IF EXISTS public.chat_mark_delivered(uuid[]);
+
 CREATE OR REPLACE FUNCTION public.my_account_id()
 RETURNS TABLE (account_id uuid)
 LANGUAGE sql
