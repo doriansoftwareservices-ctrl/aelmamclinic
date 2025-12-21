@@ -270,10 +270,16 @@ class ChatService {
   }
 
   void _ensureInvitationRpcOk(dynamic response, String fallback) {
-    if (response is Map && response['ok'] == true) {
+    Map? row;
+    if (response is List && response.isNotEmpty && response.first is Map) {
+      row = response.first as Map;
+    } else if (response is Map) {
+      row = response;
+    }
+    if (row != null && row['ok'] == true) {
       return;
     }
-    final error = response is Map ? response['error']?.toString() : null;
+    final error = row?['error']?.toString();
     throw ChatInvitationException(
       error == null || error.isEmpty ? fallback : error,
     );
@@ -1109,7 +1115,10 @@ class ChatService {
     try {
       final mutation = '''
         mutation AcceptInvitation(\$id: uuid!) {
-          chat_accept_invitation(args: {p_invitation_id: \$id})
+          chat_accept_invitation(args: {p_invitation_id: \$id}) {
+            ok
+            error
+          }
         }
       ''';
       final data = await _runMutation(mutation, {'id': invitationId});
@@ -1128,7 +1137,10 @@ class ChatService {
     try {
       final mutation = '''
         mutation DeclineInvitation(\$id: uuid!, \$note: String) {
-          chat_decline_invitation(args: {p_invitation_id: \$id, p_note: \$note})
+          chat_decline_invitation(args: {p_invitation_id: \$id, p_note: \$note}) {
+            ok
+            error
+          }
         }
       ''';
       final data = await _runMutation(mutation, {
@@ -1301,7 +1313,10 @@ class ChatService {
     try {
       final mutation = '''
         mutation MarkDelivered(\$ids: [uuid!]!) {
-          chat_mark_delivered(args: {p_message_ids: \$ids})
+          chat_mark_delivered(args: {p_message_ids: \$ids}) {
+            ok
+            error
+          }
         }
       ''';
       await _runMutation(mutation, {'ids': ids});

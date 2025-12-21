@@ -27,6 +27,7 @@ import 'package:aelmamclinic/services/attachment_cache.dart';
 import 'package:aelmamclinic/services/nhost_graphql_service.dart';
 import 'package:aelmamclinic/services/nhost_storage_service.dart';
 import 'package:aelmamclinic/utils/logger.dart';
+import 'package:aelmamclinic/utils/app_error_reporter.dart';
 
 class ChatProvider extends ChangeNotifier {
   ChatProvider();
@@ -120,6 +121,11 @@ class ChatProvider extends ChangeNotifier {
     if (!_disposed) notifyListeners();
   }
 
+  void _setError(String message) {
+    lastError = message;
+    AppErrorReporter.report(message);
+  }
+
   void _scheduleConversationsRefresh() {
     _listDebounce?.cancel();
     _listDebounce = Timer(const Duration(milliseconds: 250), () async {
@@ -137,7 +143,7 @@ class ChatProvider extends ChangeNotifier {
     bool isSuperAdmin = false,
   }) async {
     if (currentUid.isEmpty) {
-      lastError = 'لا يوجد مستخدم مسجّل الدخول.';
+      _setError('لا يوجد مستخدم مسجّل الدخول.');
       busy = false;
       _safeNotify();
       return;
@@ -151,7 +157,7 @@ class ChatProvider extends ChangeNotifier {
           (accId == null || accId.trim().isEmpty) ? null : accId.trim();
 
       if (accountFilter == null && !isSuperAdmin) {
-        lastError = 'لا يمكن تحميل المحادثات لأن الحساب الحالي غير محدد.';
+        _setError('لا يمكن تحميل المحادثات لأن الحساب الحالي غير محدد.');
         return;
       }
 
@@ -169,7 +175,7 @@ class ChatProvider extends ChangeNotifier {
         debugPrint(
           'ChatProvider.bootstrap: فشل بدء Realtime: $error\n$stackTrace',
         );
-        lastError = 'تعذّرت تهيئة المحادثات، حاول مرة أخرى لاحقًا.';
+        _setError('تعذّرت تهيئة المحادثات، حاول مرة أخرى لاحقًا.');
         return;
       }
 
@@ -205,6 +211,9 @@ class ChatProvider extends ChangeNotifier {
       debugPrint('ChatProvider.bootstrap: حدث خطأ غير متوقّع: $e');
       debugPrint('$stackTrace');
       lastError ??= 'حدث خطأ غير متوقع أثناء تجهيز المحادثات.';
+      if (lastError != null) {
+        AppErrorReporter.report(lastError!);
+      }
     } finally {
       busy = false;
       _safeNotify();
@@ -239,11 +248,15 @@ class ChatProvider extends ChangeNotifier {
     try {
       final query = '''
         query MyAccountId {
-          my_account_id
+          my_account_id {
+            account_id
+          }
         }
       ''';
       final data = await _runQuery(query, const {});
-      final acc = (data['my_account_id'] ?? '').toString();
+      final rows = (data['my_account_id'] as List?) ?? const [];
+      final row = rows.isNotEmpty ? rows.first as Map? : null;
+      final acc = row?['account_id']?.toString() ?? '';
       if (acc.isNotEmpty && acc != 'null') return acc;
     } catch (e, st) {
       _rpcWarn('my_account_id RPC failed', e, st);
@@ -620,7 +633,7 @@ class ChatProvider extends ChangeNotifier {
       await refreshConversations();
     } on ChatInvitationException catch (e) {
       _rpcWarn('chat_accept_invitation failed', e);
-      lastError = e.message;
+      _setError(e.message);
       _safeNotify();
       rethrow;
     }
@@ -636,7 +649,7 @@ class ChatProvider extends ChangeNotifier {
       await refreshInvitations();
     } on ChatInvitationException catch (e) {
       _rpcWarn('chat_decline_invitation failed', e);
-      lastError = e.message;
+      _setError(e.message);
       _safeNotify();
       rethrow;
     }
@@ -814,7 +827,7 @@ class ChatProvider extends ChangeNotifier {
       },
       onError: (e) {
         if (_disposed) return;
-        lastError = 'Realtime error: $e';
+        _setError('Realtime error: $e');
         _safeNotify();
       },
     );
@@ -972,7 +985,7 @@ class ChatProvider extends ChangeNotifier {
 
         await _applyReadsToOutgoing(conversationId);
       } else {
-        lastError = 'تعذّر تحميل الرسائل: $e';
+        _setError('تعذّر تحميل الرسائل: $e');
         _safeNotify();
       }
     }
@@ -1051,7 +1064,7 @@ class ChatProvider extends ChangeNotifier {
         messageId: optimistic.id,
         status: CM.ChatMessageStatus.failed,
       );
-      lastError = 'تعذّر إرسال الرسالة: $e';
+      _setError('تعذّر إرسال الرسالة: $e');
       _safeNotify();
     }
   }
@@ -1119,11 +1132,11 @@ class ChatProvider extends ChangeNotifier {
       _scheduleConversationsRefresh();
       await _applyReadsToOutgoing(conversationId);
     } on ChatAttachmentUploadException catch (e) {
-      lastError = e.message;
+      _setError(e.message);
       _safeNotify();
       rethrow;
     } catch (e) {
-      lastError = 'تعذّر إرسال الصور: $e';
+      _setError('تعذّر إرسال الصور: $e');
       _safeNotify();
       rethrow;
     }
@@ -1170,7 +1183,7 @@ class ChatProvider extends ChangeNotifier {
           }
         }
         if (cur != null && !canEditMessageNow(cur)) {
-          lastError = 'انتهت صلاحية تعديل هذه الرسالة.';
+          _setError('انتهت صلاحية تعديل هذه الرسالة.');
           _safeNotify();
           return;
         }
@@ -1196,7 +1209,7 @@ class ChatProvider extends ChangeNotifier {
       }
       _scheduleConversationsRefresh();
     } catch (e) {
-      lastError = 'تعذّر تعديل الرسالة: $e';
+      _setError('تعذّر تعديل الرسالة: $e');
       _safeNotify();
     }
   }
@@ -1216,7 +1229,7 @@ class ChatProvider extends ChangeNotifier {
           }
         }
         if (cur != null && !canDeleteMessageNow(cur)) {
-          lastError = 'انتهت صلاحية حذف هذه الرسالة.';
+          _setError('انتهت صلاحية حذف هذه الرسالة.');
           _safeNotify();
           return;
         }
@@ -1242,7 +1255,7 @@ class ChatProvider extends ChangeNotifier {
       }
       _scheduleConversationsRefresh();
     } catch (e) {
-      lastError = 'تعذّر حذف الرسالة: $e';
+      _setError('تعذّر حذف الرسالة: $e');
       _safeNotify();
     }
   }
@@ -1645,7 +1658,7 @@ class ChatProvider extends ChangeNotifier {
           );
         }
       } catch (e) {
-        lastError = 'تعذّر تحويل الرسالة: $e';
+        _setError('تعذّر تحويل الرسالة: $e');
         _safeNotify();
       }
     }

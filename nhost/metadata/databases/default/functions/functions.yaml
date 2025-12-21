@@ -7,6 +7,7 @@
   permissions:
     - role: me
     - role: user
+    - role: superadmin
 - function:
     schema: public
     name: fn_is_super_admin
@@ -16,6 +17,7 @@
   permissions:
     - role: me
     - role: user
+    - role: superadmin
 - function:
     schema: public
     name: admin_list_clinics
@@ -25,6 +27,7 @@
   permissions:
     - role: me
     - role: user
+    - role: superadmin
 - function:
     schema: public
     name: admin_set_clinic_frozen
@@ -34,6 +37,7 @@
   permissions:
     - role: me
     - role: user
+    - role: superadmin
 - function:
     schema: public
     name: admin_delete_clinic
@@ -43,6 +47,7 @@
   permissions:
     - role: me
     - role: user
+    - role: superadmin
 - function:
     schema: public
     name: admin_create_owner_full
@@ -52,6 +57,7 @@
   permissions:
     - role: me
     - role: user
+    - role: superadmin
 - function:
     schema: public
     name: admin_create_employee_full
@@ -61,6 +67,7 @@
   permissions:
     - role: me
     - role: user
+    - role: superadmin
 - function:
     schema: public
     name: list_employees_with_email
@@ -70,6 +77,7 @@
   permissions:
     - role: me
     - role: user
+    - role: superadmin
 - function:
     schema: public
     name: set_employee_disabled
@@ -79,6 +87,7 @@
   permissions:
     - role: me
     - role: user
+    - role: superadmin
 - function:
     schema: public
     name: delete_employee
@@ -88,6 +97,7 @@
   permissions:
     - role: me
     - role: user
+    - role: superadmin
 - function:
     schema: public
     name: my_feature_permissions
@@ -97,6 +107,7 @@
   permissions:
     - role: me
     - role: user
+    - role: superadmin
 - function:
     schema: public
     name: my_account_id
@@ -106,6 +117,7 @@
   permissions:
     - role: me
     - role: user
+    - role: superadmin
 - function:
     schema: public
     name: my_profile
@@ -115,6 +127,7 @@
   permissions:
     - role: me
     - role: user
+    - role: superadmin
 - function:
     schema: public
     name: chat_accept_invitation
@@ -124,6 +137,7 @@
   permissions:
     - role: me
     - role: user
+    - role: superadmin
 - function:
     schema: public
     name: chat_decline_invitation
@@ -133,6 +147,7 @@
   permissions:
     - role: me
     - role: user
+    - role: superadmin
 - function:
     schema: public
     name: chat_mark_delivered
@@ -142,3 +157,4 @@
   permissions:
     - role: me
     - role: user
+    - role: superadmin

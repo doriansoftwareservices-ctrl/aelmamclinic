@@ -97,6 +97,19 @@
         filter:
           user_uid:
             _eq: "X-Hasura-User-Id"
+    - role: superadmin
+      permission:
+        columns:
+          - local_id
+          - device_id
+          - email
+          - created_at
+          - account_id
+          - id
+          - user_uid
+        filter:
+          user_uid:
+            _eq: "X-Hasura-User-Id"
 
 - table:
     schema: public

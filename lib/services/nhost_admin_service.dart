@@ -95,7 +95,12 @@ class NhostAdminService {
     await _ensureSuperAdminOrThrow();
     const mutation = '''
       mutation FreezeClinic(\$id: uuid!, \$frozen: Boolean!) {
-        admin_set_clinic_frozen(args: {p_account_id: \$id, p_frozen: \$frozen})
+        admin_set_clinic_frozen(args: {p_account_id: \$id, p_frozen: \$frozen}) {
+          ok
+          error
+          account_id
+          frozen
+        }
       }
     ''';
     final data = await _runMutation(mutation, {
@@ -109,7 +114,11 @@ class NhostAdminService {
     await _ensureSuperAdminOrThrow();
     const mutation = '''
       mutation DeleteClinic(\$id: uuid!) {
-        admin_delete_clinic(args: {p_account_id: \$id})
+        admin_delete_clinic(args: {p_account_id: \$id}) {
+          ok
+          error
+          account_id
+        }
       }
     ''';
     final data = await _runMutation(mutation, {'id': accountId});
@@ -151,7 +160,13 @@ class NhostAdminService {
   }) async {
     const mutation = '''
       mutation SetEmployeeDisabled(\$accountId: uuid!, \$uid: uuid!, \$disabled: Boolean!) {
-        set_employee_disabled(args: {p_account: \$accountId, p_user_uid: \$uid, p_disabled: \$disabled})
+        set_employee_disabled(args: {p_account: \$accountId, p_user_uid: \$uid, p_disabled: \$disabled}) {
+          ok
+          error
+          account_id
+          user_uid
+          disabled
+        }
       }
     ''';
     final data = await _runMutation(mutation, {
@@ -168,7 +183,12 @@ class NhostAdminService {
   }) async {
     const mutation = '''
       mutation DeleteEmployee(\$accountId: uuid!, \$uid: uuid!) {
-        delete_employee(args: {p_account: \$accountId, p_user_uid: \$uid})
+        delete_employee(args: {p_account: \$accountId, p_user_uid: \$uid}) {
+          ok
+          error
+          account_id
+          user_uid
+        }
       }
     ''';
     final data = await _runMutation(mutation, {
@@ -247,11 +267,16 @@ class NhostAdminService {
   }
 
   void _ensureOkJson(dynamic payload, String fallback) {
-    if (payload is Map && payload['ok'] == true) {
+    Map? row;
+    if (payload is List && payload.isNotEmpty && payload.first is Map) {
+      row = payload.first as Map;
+    } else if (payload is Map) {
+      row = payload;
+    }
+    if (row != null && row['ok'] == true) {
       return;
     }
-    final msg = (payload is Map ? payload['error']?.toString() : null) ??
-        fallback;
+    final msg = row?['error']?.toString() ?? fallback;
     throw Exception(msg);
   }
 }

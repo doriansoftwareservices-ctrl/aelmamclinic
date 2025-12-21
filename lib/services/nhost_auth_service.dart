@@ -269,8 +269,12 @@ class NhostAuthService {
     }
 
     try {
-      final data = await _runQuery('query { my_account_id }', const {});
-      final acc = data['my_account_id']?.toString();
+      final data =
+          await _runQuery('query { my_account_id { account_id } }', const {});
+      final rows = _rowsFromData(data, 'my_account_id');
+      final acc = rows.isNotEmpty
+          ? rows.first['account_id']?.toString()
+          : null;
       if (acc != null && acc.isNotEmpty && acc != 'null') {
         await ActiveAccountStore.writeAccountId(acc);
         return acc;

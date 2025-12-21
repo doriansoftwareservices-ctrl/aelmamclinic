@@ -89,7 +89,13 @@ async function callAdminCreateEmployee(accountId, email, password) {
     mutation CreateEmployee($account: uuid!, $email: String!, $password: String!) {
       admin_create_employee_full(
         args: {p_account: $account, p_email: $email, p_password: $password}
-      )
+      ) {
+        ok
+        error
+        account_id
+        user_uid
+        role
+      }
     }
   `;
   const res = await fetch(gqlUrl, {
@@ -111,7 +117,14 @@ async function callAdminCreateEmployee(accountId, email, password) {
   if (json.errors?.length) {
     throw new Error(json.errors.map((e) => e.message).join(' | '));
   }
-  return json.data?.admin_create_employee_full ?? { ok: false, error: 'No data' };
+  const rows = json.data?.admin_create_employee_full;
+  if (Array.isArray(rows) && rows.length > 0) {
+    return rows[0];
+  }
+  if (rows && typeof rows === 'object') {
+    return rows;
+  }
+  return { ok: false, error: 'No data' };
 }
 
 async function ensureSuperAdmin(authHeader) {

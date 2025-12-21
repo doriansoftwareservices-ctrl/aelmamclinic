@@ -89,7 +89,14 @@ async function callAdminCreateOwner(clinicName, ownerEmail, ownerPassword) {
     mutation CreateOwner($clinic: String!, $email: String!, $password: String!) {
       admin_create_owner_full(
         args: {p_clinic_name: $clinic, p_owner_email: $email, p_owner_password: $password}
-      )
+      ) {
+        ok
+        error
+        account_id
+        owner_uid
+        user_uid
+        role
+      }
     }
   `;
   const res = await fetch(gqlUrl, {
@@ -111,7 +118,14 @@ async function callAdminCreateOwner(clinicName, ownerEmail, ownerPassword) {
   if (json.errors?.length) {
     throw new Error(json.errors.map((e) => e.message).join(' | '));
   }
-  return json.data?.admin_create_owner_full ?? { ok: false, error: 'No data' };
+  const rows = json.data?.admin_create_owner_full;
+  if (Array.isArray(rows) && rows.length > 0) {
+    return rows[0];
+  }
+  if (rows && typeof rows === 'object') {
+    return rows;
+  }
+  return { ok: false, error: 'No data' };
 }
 
 async function ensureSuperAdmin(authHeader) {
