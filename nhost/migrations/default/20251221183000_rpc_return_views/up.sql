@@ -1,5 +1,10 @@
 -- Return types backed by views so Hasura can expose RPCs in the schema.
 
+DROP FUNCTION IF EXISTS public.my_profile();
+DROP FUNCTION IF EXISTS public.my_feature_permissions(uuid);
+DROP FUNCTION IF EXISTS public.admin_list_clinics();
+DROP FUNCTION IF EXISTS public.list_employees_with_email(uuid);
+
 CREATE OR REPLACE VIEW public.v_my_account_id AS
 SELECT NULL::uuid AS account_id
 WHERE false;
