@@ -132,49 +132,30 @@ async function ensureSuperAdmin(authHeader) {
   if (!gqlUrl) {
     throw new Error('Missing NHOST_GRAPHQL_URL');
   }
-  const checks = [
-    {
-      name: 'fn_is_super_admin',
-      query: 'query { fn_is_super_admin }',
-      isSuper: (data) => data?.fn_is_super_admin === true,
+  const query = 'query { fn_is_super_admin_gql { is_super_admin } }';
+  const res = await fetch(gqlUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: authHeader,
     },
-    {
-      name: 'fn_is_super_admin_gql',
-      query: 'query { fn_is_super_admin_gql { user_uid } }',
-      isSuper: (data) =>
-        Array.isArray(data?.fn_is_super_admin_gql) &&
-        data.fn_is_super_admin_gql.length > 0,
-    },
-  ];
-
-  for (const check of checks) {
-    const res = await fetch(gqlUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: authHeader,
-      },
-      body: JSON.stringify({ query: check.query }),
-    });
-    if (!res.ok) {
-      continue;
-    }
-    const json = await res.json();
-    if (json.errors?.length) {
-      const msg = json.errors.map((e) => e.message).join(' | ');
-      if (msg.toLowerCase().includes('not found in type')) {
-        continue;
-      }
-      throw new Error(msg);
-    }
-    if (check.isSuper(json.data)) {
-      return;
-    }
+    body: JSON.stringify({ query }),
+  });
+  if (!res.ok) {
+    throw new Error(`Auth check failed: ${res.status}`);
   }
-
-  const err = new Error('forbidden');
-  err.statusCode = 403;
-  throw err;
+  const json = await res.json();
+  if (json.errors?.length) {
+    throw new Error(json.errors.map((e) => e.message).join(' | '));
+  }
+  const rows = json.data?.fn_is_super_admin_gql;
+  const isSuper =
+    Array.isArray(rows) && rows.length > 0 && rows[0]?.is_super_admin === true;
+  if (!isSuper) {
+    const err = new Error('forbidden');
+    err.statusCode = 403;
+    throw err;
+  }
 }
 
 module.exports = async function handler(req, res) {

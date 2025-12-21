@@ -30,17 +30,11 @@ class NhostAdminService {
   }
 
   Future<void> _ensureSuperAdminOrThrow() async {
-    bool isSuper = false;
-    try {
-      const query = 'query { fn_is_super_admin }';
-      final data = await _runQuery(query, const {});
-      isSuper = data['fn_is_super_admin'] == true;
-    } on BackendSchemaException {
-      const fallback = 'query { fn_is_super_admin_gql { user_uid } }';
-      final data = await _runQuery(fallback, const {});
-      final rows = data['fn_is_super_admin_gql'];
-      isSuper = rows is List && rows.isNotEmpty;
-    }
+    const query = 'query { fn_is_super_admin_gql { is_super_admin } }';
+    final data = await _runQuery(query, const {});
+    final rows = data['fn_is_super_admin_gql'];
+    final isSuper =
+        rows is List && rows.isNotEmpty && rows.first['is_super_admin'] == true;
     if (!isSuper) {
       throw StateError('هذه العملية مخصّصة للسوبر أدمن فقط.');
     }

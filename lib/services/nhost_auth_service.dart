@@ -224,30 +224,24 @@ class NhostAuthService {
   }
 
   Future<bool> _resolveSuperAdminFlag({String? fallbackEmail}) async {
-    const query = 'query { fn_is_super_admin }';
+    const query = 'query { fn_is_super_admin_gql { is_super_admin } }';
     try {
       final data = await _runQuery(query, const {});
-      final isSuper = data['fn_is_super_admin'];
-      if (isSuper is bool) {
-        return isSuper;
+      final rows = data['fn_is_super_admin_gql'];
+      if (rows is List && rows.isNotEmpty) {
+        final flag = rows.first['is_super_admin'];
+        if (flag is bool) {
+          return flag;
+        }
       }
       dev.log(
-        'fn_is_super_admin returned unexpected shape: ${isSuper.runtimeType}',
+        'fn_is_super_admin_gql returned unexpected shape: ${rows.runtimeType}',
         name: 'AUTH',
       );
       return false;
-    } on BackendSchemaException {
-      try {
-        const fallback = 'query { fn_is_super_admin_gql { user_uid } }';
-        final data = await _runQuery(fallback, const {});
-        final rows = data['fn_is_super_admin_gql'];
-        return rows is List && rows.isNotEmpty;
-      } catch (_) {
-        return false;
-      }
     } catch (e, st) {
       dev.log(
-        'fn_is_super_admin query failed: $e',
+        'fn_is_super_admin_gql query failed: $e',
         name: 'AUTH',
         error: e,
         stackTrace: st,

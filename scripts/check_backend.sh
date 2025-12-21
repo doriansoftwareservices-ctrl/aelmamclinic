@@ -298,9 +298,9 @@ PY
 echo "TOKEN_LEN=${#TOKEN}"
 echo
 
-echo "==[5] fn_is_super_admin_gql with JWT =="
+echo "==[5] fn_is_super_admin_gql (boolean) with JWT =="
 cat > "$TMP_DIR/super_gql.json" <<'JSON'
-{"query":"query { fn_is_super_admin_gql { email user_uid } }"}
+{"query":"query { fn_is_super_admin_gql { is_super_admin } }"}
 JSON
 curl -sS \
   -H "Content-Type: application/json" \
@@ -308,19 +308,6 @@ curl -sS \
   -H "x-hasura-role: me" \
   --data-binary @"$TMP_DIR/super_gql.json" \
   "$GRAPHQL_URL"
-echo
-echo
-
-echo "==[6] fn_is_super_admin (boolean) with JWT =="
-cat > "$TMP_DIR/super_bool.json" <<'JSON'
-{"query":"query { fn_is_super_admin }"}
-JSON
-curl -sS \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "x-hasura-role: me" \
-  --data-binary @"$TMP_DIR/super_bool.json" \
-  "$GRAPHQL_URL" || true
 echo
 echo
 
