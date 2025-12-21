@@ -275,8 +275,8 @@ echo
 echo
 
 echo "==[4] JWT test (Super Admin) =="
-read -rp "Email: " EMAIL
-read -rsp "Password: " PASS; echo
+EMAIL="${CHECKBACKEND_EMAIL:-admin@elmam.com}"
+PASS="${CHECKBACKEND_PASSWORD:-aelmam@6069}"
 
 SESSION_FILE="/tmp/session.json"
 rm -f "$SESSION_FILE"
