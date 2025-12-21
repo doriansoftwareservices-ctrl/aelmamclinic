@@ -7,3 +7,138 @@
   permissions:
     - role: me
     - role: user
+- function:
+    schema: public
+    name: fn_is_super_admin
+  configuration:
+    exposed_as: query
+    custom_name: fn_is_super_admin
+  permissions:
+    - role: me
+    - role: user
+- function:
+    schema: public
+    name: admin_list_clinics
+  configuration:
+    exposed_as: query
+    custom_name: admin_list_clinics
+  permissions:
+    - role: me
+    - role: user
+- function:
+    schema: public
+    name: admin_set_clinic_frozen
+  configuration:
+    exposed_as: mutation
+    custom_name: admin_set_clinic_frozen
+  permissions:
+    - role: me
+    - role: user
+- function:
+    schema: public
+    name: admin_delete_clinic
+  configuration:
+    exposed_as: mutation
+    custom_name: admin_delete_clinic
+  permissions:
+    - role: me
+    - role: user
+- function:
+    schema: public
+    name: admin_create_owner_full
+  configuration:
+    exposed_as: mutation
+    custom_name: admin_create_owner_full
+  permissions:
+    - role: me
+    - role: user
+- function:
+    schema: public
+    name: admin_create_employee_full
+  configuration:
+    exposed_as: mutation
+    custom_name: admin_create_employee_full
+  permissions:
+    - role: me
+    - role: user
+- function:
+    schema: public
+    name: list_employees_with_email
+  configuration:
+    exposed_as: query
+    custom_name: list_employees_with_email
+  permissions:
+    - role: me
+    - role: user
+- function:
+    schema: public
+    name: set_employee_disabled
+  configuration:
+    exposed_as: mutation
+    custom_name: set_employee_disabled
+  permissions:
+    - role: me
+    - role: user
+- function:
+    schema: public
+    name: delete_employee
+  configuration:
+    exposed_as: mutation
+    custom_name: delete_employee
+  permissions:
+    - role: me
+    - role: user
+- function:
+    schema: public
+    name: my_feature_permissions
+  configuration:
+    exposed_as: query
+    custom_name: my_feature_permissions
+  permissions:
+    - role: me
+    - role: user
+- function:
+    schema: public
+    name: my_account_id
+  configuration:
+    exposed_as: query
+    custom_name: my_account_id
+  permissions:
+    - role: me
+    - role: user
+- function:
+    schema: public
+    name: my_profile
+  configuration:
+    exposed_as: query
+    custom_name: my_profile
+  permissions:
+    - role: me
+    - role: user
+- function:
+    schema: public
+    name: chat_accept_invitation
+  configuration:
+    exposed_as: mutation
+    custom_name: chat_accept_invitation
+  permissions:
+    - role: me
+    - role: user
+- function:
+    schema: public
+    name: chat_decline_invitation
+  configuration:
+    exposed_as: mutation
+    custom_name: chat_decline_invitation
+  permissions:
+    - role: me
+    - role: user
+- function:
+    schema: public
+    name: chat_mark_delivered
+  configuration:
+    exposed_as: mutation
+    custom_name: chat_mark_delivered
+  permissions:
+    - role: me
+    - role: user
