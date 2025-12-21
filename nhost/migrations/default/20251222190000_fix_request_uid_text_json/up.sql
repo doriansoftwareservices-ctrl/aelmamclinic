@@ -1,7 +1,7 @@
 -- Make request_uid_text robust to non-JSON settings.
 
 CREATE OR REPLACE FUNCTION public.request_uid_text()
-RETURNS uuid
+RETURNS text
 LANGUAGE plpgsql
 STABLE
 AS $$
@@ -36,6 +36,6 @@ BEGIN
     claims ->> 'sub'
   );
 
-  RETURN NULLIF(uid_text, '')::uuid;
+  RETURN NULLIF(uid_text, '');
 END;
 $$;
