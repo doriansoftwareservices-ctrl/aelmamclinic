@@ -10,16 +10,6 @@
     - role: superadmin
 - function:
     schema: public
-    name: fn_is_super_admin
-  configuration:
-    exposed_as: query
-    custom_name: fn_is_super_admin
-  permissions:
-    - role: me
-    - role: user
-    - role: superadmin
-- function:
-    schema: public
     name: admin_list_clinics
   configuration:
     exposed_as: query
