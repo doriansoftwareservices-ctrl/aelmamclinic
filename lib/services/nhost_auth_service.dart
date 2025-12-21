@@ -142,6 +142,28 @@ class NhostAuthService {
     return const <Map<String, dynamic>>[];
   }
 
+  Future<Map<String, dynamic>?> _fetchMyProfileRow() async {
+    try {
+      final data = await _runQuery(
+        '''
+        query MyProfile {
+          my_profile {
+            id
+            email
+            account_id
+            role
+          }
+        }
+        ''',
+        const {},
+      );
+      final rows = _rowsFromData(data, 'my_profile');
+      return rows.isEmpty ? null : rows.first;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<Map<String, dynamic>?> _fetchAccountUserRow({
     required String uid,
     String? accountId,
@@ -223,6 +245,22 @@ class NhostAuthService {
     bool disabled = false;
 
     try {
+      final profile = await _fetchMyProfileRow();
+      if (profile != null) {
+        final profileAccount = profile['account_id']?.toString();
+        if (profileAccount != null &&
+            profileAccount.isNotEmpty &&
+            profileAccount != 'null') {
+          accountId = profileAccount;
+        }
+        role = profile['role']?.toString();
+        if (accountId != null && accountId.isNotEmpty) {
+          await ActiveAccountStore.writeAccountId(accountId);
+        }
+      }
+    } catch (_) {}
+
+    try {
       final preferred = await ActiveAccountStore.readAccountId();
       final row = await _fetchAccountUserRow(
             uid: user.id,
@@ -230,9 +268,9 @@ class NhostAuthService {
           ) ??
           await _fetchAccountUserRow(uid: user.id);
       if (row != null) {
-        accountId = row['account_id']?.toString();
-        role = row['role']?.toString();
-        disabled = row['disabled'] == true;
+        accountId ??= row['account_id']?.toString();
+        role ??= row['role']?.toString();
+        disabled = disabled || row['disabled'] == true;
         if (accountId != null && accountId.isNotEmpty) {
           await ActiveAccountStore.writeAccountId(accountId);
         }
@@ -254,6 +292,15 @@ class NhostAuthService {
   Future<String?> resolveAccountId() async {
     final user = _client.auth.currentUser;
     if (user == null) return null;
+
+    try {
+      final profile = await _fetchMyProfileRow();
+      final acc = profile?['account_id']?.toString();
+      if (acc != null && acc.isNotEmpty && acc != 'null') {
+        await ActiveAccountStore.writeAccountId(acc);
+        return acc;
+      }
+    } catch (_) {}
 
     final preferred = await ActiveAccountStore.readAccountId();
     if (preferred != null && preferred.isNotEmpty) {
@@ -320,6 +367,19 @@ class NhostAuthService {
     bool disabled = false;
 
     try {
+      final profile = await _fetchMyProfileRow();
+      if (profile != null) {
+        final profileAccount = profile['account_id']?.toString();
+        if (profileAccount != null &&
+            profileAccount.isNotEmpty &&
+            profileAccount != 'null') {
+          accountId = profileAccount;
+        }
+        role = (profile['role'] as String?) ?? role;
+      }
+    } catch (_) {}
+
+    try {
       final preferred = await ActiveAccountStore.readAccountId();
       final row = await _fetchAccountUserRow(
             uid: user.id,
@@ -327,9 +387,9 @@ class NhostAuthService {
           ) ??
           await _fetchAccountUserRow(uid: user.id);
       if (row != null) {
-        accountId = row['account_id']?.toString();
+        accountId ??= row['account_id']?.toString();
         role = (row['role'] as String?) ?? role;
-        disabled = row['disabled'] == true;
+        disabled = disabled || row['disabled'] == true;
       }
     } catch (_) {}
 
