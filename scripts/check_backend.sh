@@ -85,6 +85,33 @@ PY
   fi
 }
 
+run_gql_role() {
+  local payload="$1"
+  local out="${2:-$TMP_DIR/resp.json}"
+  local role="$3"
+  curl -sS -D "$TMP_DIR/resp.headers" \
+    -H "Content-Type: application/json" \
+    -H "x-hasura-admin-secret: $ADMIN_SECRET" \
+    -H "x-hasura-role: $role" \
+    --data-binary @"$payload" \
+    "$GRAPHQL_ADMIN_URL" > "$out"
+  if [[ ! -s "$out" ]]; then
+    echo "ERROR: empty response from GraphQL admin endpoint: $GRAPHQL_ADMIN_URL" >&2
+    sed -n '1,5p' "$TMP_DIR/resp.headers" >&2
+    exit 1
+  fi
+  python3 - <<'PY' "$out" >/dev/null 2>&1
+import json,sys
+json.load(open(sys.argv[1],"r",encoding="utf-8"))
+PY
+  if [[ "$?" -ne 0 ]]; then
+    echo "ERROR: non-JSON response from GraphQL admin endpoint: $GRAPHQL_ADMIN_URL" >&2
+    sed -n '1,5p' "$TMP_DIR/resp.headers" >&2
+    head -n 5 "$out" >&2
+    exit 1
+  fi
+}
+
 print_errors_if_any() {
   local file="$1"
   python3 - <<'PY' "$file"
@@ -147,11 +174,12 @@ PY
   fi
 }
 
-echo "==[2] Admin schema check (critical functions) =="
+SCHEMA_ROLE="superadmin"
+echo "==[2] Admin schema check (critical functions) for role: $SCHEMA_ROLE =="
 cat > "$TMP_DIR/query_fields.json" <<'JSON'
 {"query":"query { __schema { queryType { fields { name } } } }"}
 JSON
-run_gql "$TMP_DIR/query_fields.json" "$TMP_DIR/query_fields.resp"
+run_gql_role "$TMP_DIR/query_fields.json" "$TMP_DIR/query_fields.resp" "$SCHEMA_ROLE"
 print_errors_if_any "$TMP_DIR/query_fields.resp" || {
   echo "ERROR: query schema response (raw):"
   cat "$TMP_DIR/query_fields.resp"
@@ -177,7 +205,7 @@ echo
 cat > "$TMP_DIR/mutation_fields.json" <<'JSON'
 {"query":"query { __schema { mutationType { fields { name } } } }"}
 JSON
-run_gql "$TMP_DIR/mutation_fields.json" "$TMP_DIR/mutation_fields.resp"
+run_gql_role "$TMP_DIR/mutation_fields.json" "$TMP_DIR/mutation_fields.resp" "$SCHEMA_ROLE"
 print_errors_if_any "$TMP_DIR/mutation_fields.resp" || {
   echo "ERROR: mutation schema response (raw):"
   cat "$TMP_DIR/mutation_fields.resp"
