@@ -214,7 +214,11 @@ print_errors_if_any "$TMP_DIR/mutation_fields.resp" || {
 python3 - <<'PY' "$TMP_DIR/mutation_fields.resp"
 import json,sys
 data=json.load(open(sys.argv[1],"r",encoding="utf-8"))
-names=[f["name"] for f in data["data"]["__schema"]["mutationType"]["fields"]]
+mutation_type = data["data"]["__schema"].get("mutationType")
+if not mutation_type:
+    print("Missing mutations: (none, mutationType is null)")
+    raise SystemExit(0)
+names=[f["name"] for f in mutation_type["fields"]]
 need=[
   "admin_create_owner_full",
   "admin_create_employee_full",

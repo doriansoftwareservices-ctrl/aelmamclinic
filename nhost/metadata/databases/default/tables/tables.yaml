@@ -113,6 +113,201 @@
 
 - table:
     schema: public
+    name: v_my_account_id
+  select_permissions:
+    - role: me
+      permission:
+        columns:
+          - account_id
+        filter: {}
+    - role: user
+      permission:
+        columns:
+          - account_id
+        filter: {}
+    - role: superadmin
+      permission:
+        columns:
+          - account_id
+        filter: {}
+
+- table:
+    schema: public
+    name: v_my_profile
+  select_permissions:
+    - role: me
+      permission:
+        columns:
+          - id
+          - email
+          - role
+          - account_id
+          - display_name
+          - account_ids
+        filter: {}
+    - role: user
+      permission:
+        columns:
+          - id
+          - email
+          - role
+          - account_id
+          - display_name
+          - account_ids
+        filter: {}
+    - role: superadmin
+      permission:
+        columns:
+          - id
+          - email
+          - role
+          - account_id
+          - display_name
+          - account_ids
+        filter: {}
+
+- table:
+    schema: public
+    name: v_my_feature_permissions
+  select_permissions:
+    - role: me
+      permission:
+        columns:
+          - account_id
+          - allowed_features
+          - can_create
+          - can_update
+          - can_delete
+        filter: {}
+    - role: user
+      permission:
+        columns:
+          - account_id
+          - allowed_features
+          - can_create
+          - can_update
+          - can_delete
+        filter: {}
+    - role: superadmin
+      permission:
+        columns:
+          - account_id
+          - allowed_features
+          - can_create
+          - can_update
+          - can_delete
+        filter: {}
+
+- table:
+    schema: public
+    name: v_admin_list_clinics
+  select_permissions:
+    - role: me
+      permission:
+        columns:
+          - id
+          - name
+          - frozen
+          - created_at
+        filter: {}
+    - role: user
+      permission:
+        columns:
+          - id
+          - name
+          - frozen
+          - created_at
+        filter: {}
+    - role: superadmin
+      permission:
+        columns:
+          - id
+          - name
+          - frozen
+          - created_at
+        filter: {}
+
+- table:
+    schema: public
+    name: v_list_employees_with_email
+  select_permissions:
+    - role: me
+      permission:
+        columns:
+          - user_uid
+          - email
+          - role
+          - disabled
+          - created_at
+          - employee_id
+          - doctor_id
+        filter: {}
+    - role: user
+      permission:
+        columns:
+          - user_uid
+          - email
+          - role
+          - disabled
+          - created_at
+          - employee_id
+          - doctor_id
+        filter: {}
+    - role: superadmin
+      permission:
+        columns:
+          - user_uid
+          - email
+          - role
+          - disabled
+          - created_at
+          - employee_id
+          - doctor_id
+        filter: {}
+
+- table:
+    schema: public
+    name: v_rpc_result
+  select_permissions:
+    - role: me
+      permission:
+        columns:
+          - ok
+          - error
+          - account_id
+          - user_uid
+          - owner_uid
+          - role
+          - frozen
+          - disabled
+        filter: {}
+    - role: user
+      permission:
+        columns:
+          - ok
+          - error
+          - account_id
+          - user_uid
+          - owner_uid
+          - role
+          - frozen
+          - disabled
+        filter: {}
+    - role: superadmin
+      permission:
+        columns:
+          - ok
+          - error
+          - account_id
+          - user_uid
+          - owner_uid
+          - role
+          - frozen
+          - disabled
+        filter: {}
+
+- table:
+    schema: public
     name: audit_logs
 
 - table:
