@@ -320,7 +320,7 @@ curl -sS \
   -H "Authorization: Bearer $TOKEN" \
   -H "x-hasura-role: me" \
   --data-binary @"$TMP_DIR/super_bool.json" \
-  "$GRAPHQL_URL"
+  "$GRAPHQL_URL" || true
 echo
 echo
 

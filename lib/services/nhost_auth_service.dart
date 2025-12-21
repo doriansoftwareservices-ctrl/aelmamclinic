@@ -236,6 +236,15 @@ class NhostAuthService {
         name: 'AUTH',
       );
       return false;
+    } on BackendSchemaException {
+      try {
+        const fallback = 'query { fn_is_super_admin_gql { user_uid } }';
+        final data = await _runQuery(fallback, const {});
+        final rows = data['fn_is_super_admin_gql'];
+        return rows is List && rows.isNotEmpty;
+      } catch (_) {
+        return false;
+      }
     } catch (e, st) {
       dev.log(
         'fn_is_super_admin query failed: $e',
