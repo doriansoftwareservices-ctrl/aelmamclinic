@@ -311,4 +311,17 @@ curl -sS \
 echo
 echo
 
+echo "==[6] fn_is_super_admin (boolean) with JWT =="
+cat > "$TMP_DIR/super_bool.json" <<'JSON'
+{"query":"query { fn_is_super_admin }"}
+JSON
+curl -sS \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "x-hasura-role: me" \
+  --data-binary @"$TMP_DIR/super_bool.json" \
+  "$GRAPHQL_URL"
+echo
+echo
+
 echo "==[DONE] Report ready =="

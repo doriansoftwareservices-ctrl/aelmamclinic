@@ -30,10 +30,9 @@ class NhostAdminService {
   }
 
   Future<void> _ensureSuperAdminOrThrow() async {
-    const query = 'query { fn_is_super_admin_gql { user_uid email } }';
+    const query = 'query { fn_is_super_admin }';
     final data = await _runQuery(query, const {});
-    final rows = data['fn_is_super_admin_gql'];
-    final isSuper = rows is List && rows.isNotEmpty;
+    final isSuper = data['fn_is_super_admin'] == true;
     if (!isSuper) {
       throw StateError('هذه العملية مخصّصة للسوبر أدمن فقط.');
     }
