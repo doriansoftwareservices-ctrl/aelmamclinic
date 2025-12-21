@@ -298,6 +298,36 @@ PY
 echo "TOKEN_LEN=${#TOKEN}"
 echo
 
+echo "==[4.1] JWT payload (decoded) =="
+python3 - <<'PY'
+import base64, json
+import sys
+
+token = open("/tmp/session.json","r",encoding="utf-8")
+import json as _j
+data=_j.load(token)
+jwt=data["session"]["accessToken"]
+
+def b64url_decode(seg):
+    seg += "=" * (-len(seg) % 4)
+    return base64.urlsafe_b64decode(seg.encode("utf-8"))
+
+parts = jwt.split(".")
+if len(parts) < 2:
+    print("Invalid JWT")
+    sys.exit(0)
+
+payload = b64url_decode(parts[1])
+try:
+    payload_json = json.loads(payload.decode("utf-8"))
+except Exception:
+    print(payload.decode("utf-8", errors="replace"))
+    sys.exit(0)
+
+print(json.dumps(payload_json, ensure_ascii=False, indent=2))
+PY
+echo
+
 echo "==[5] fn_is_super_admin_gql (boolean) with JWT =="
 cat > "$TMP_DIR/super_gql.json" <<'JSON'
 {"query":"query { fn_is_super_admin_gql { is_super_admin } }"}
