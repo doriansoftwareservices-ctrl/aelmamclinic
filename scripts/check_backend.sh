@@ -275,7 +275,7 @@ echo
 echo
 
 echo "==[4] JWT test (Super Admin) =="
-EMAIL="${CHECKBACKEND_EMAIL:-admin@elmam.com}"
+EMAIL="${CHECKBACKEND_EMAIL:-admin.c.s@elmam.com}"
 PASS="${CHECKBACKEND_PASSWORD:-aelmam@6069}"
 
 SESSION_FILE="/tmp/session.json"
@@ -337,6 +337,19 @@ curl -sS \
   -H "Authorization: Bearer $TOKEN" \
   -H "x-hasura-role: me" \
   --data-binary @"$TMP_DIR/super_gql.json" \
+  "$GRAPHQL_URL"
+echo
+echo
+
+echo "==[6] debug_auth_context with JWT =="
+cat > "$TMP_DIR/debug_auth.json" <<'JSON'
+{"query":"query { debug_auth_context { hasura_user jwt_claims jwt_claim_sub jwt_claim_role request_uid } }"}
+JSON
+curl -sS \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "x-hasura-role: me" \
+  --data-binary @"$TMP_DIR/debug_auth.json" \
   "$GRAPHQL_URL"
 echo
 echo

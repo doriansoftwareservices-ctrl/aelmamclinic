@@ -10,6 +10,16 @@
     - role: superadmin
 - function:
     schema: public
+    name: debug_auth_context
+  configuration:
+    exposed_as: query
+    custom_name: debug_auth_context
+  permissions:
+    - role: me
+    - role: user
+    - role: superadmin
+- function:
+    schema: public
     name: admin_list_clinics
   configuration:
     exposed_as: query
