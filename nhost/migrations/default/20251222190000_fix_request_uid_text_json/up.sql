@@ -1,7 +1,5 @@
 -- Make request_uid_text robust to non-JSON settings.
 
-DROP FUNCTION IF EXISTS public.request_uid_text();
-
 CREATE OR REPLACE FUNCTION public.request_uid_text()
 RETURNS uuid
 LANGUAGE plpgsql
