@@ -21,7 +21,10 @@ class AppConstants {
   static String get nhostWebhookSecret => NhostConfig.webhookSecret;
   static String get nhostJwtSecret => NhostConfig.jwtSecret;
 
-  static List<String> _superAdminEmails = const ['admin@elmam.com'];
+  static List<String> _superAdminEmails = const [
+    'admin@elmam.com',
+    'admin.c.s@elmam.com',
+  ];
   static bool _overridesLoaded = false;
 
   static List<String> get superAdminEmails => _superAdminEmails;
