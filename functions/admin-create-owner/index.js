@@ -119,7 +119,7 @@ async function ensureSuperAdmin(authHeader) {
   if (!gqlUrl) {
     throw new Error('Missing NHOST_GRAPHQL_URL');
   }
-  const query = 'query { fn_is_super_admin }';
+  const query = 'query { fn_is_super_admin_gql { user_uid } }';
   const res = await fetch(gqlUrl, {
     method: 'POST',
     headers: {
@@ -135,7 +135,8 @@ async function ensureSuperAdmin(authHeader) {
   if (json.errors?.length) {
     throw new Error(json.errors.map((e) => e.message).join(' | '));
   }
-  if (json.data?.fn_is_super_admin !== true) {
+  const rows = json.data?.fn_is_super_admin_gql;
+  if (!Array.isArray(rows) || rows.length == 0) {
     const err = new Error('forbidden');
     err.statusCode = 403;
     throw err;
