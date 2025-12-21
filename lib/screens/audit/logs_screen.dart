@@ -339,7 +339,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
     final scheme = Theme.of(context).colorScheme;
     final auth = context.watch<AuthProvider>();
     final canView = auth.isSuperAdmin ||
-        (auth.role ?? '') == 'owner' ||
+        auth.isOwnerOrAdmin ||
         auth.featureAllowed(FeatureKeys.auditLogs);
 
     return Directionality(

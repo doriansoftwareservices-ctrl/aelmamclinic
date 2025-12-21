@@ -211,6 +211,9 @@ class AuthProvider extends ChangeNotifier {
   String? get accountId => currentUser?['accountId'] as String?;
   bool get isDisabled => (currentUser?['disabled'] as bool?) ?? false;
   bool get isSuperAdmin => currentUser?['isSuperAdmin'] == true;
+  bool get isOwner => (role ?? '').toLowerCase() == 'owner';
+  bool get isAdmin => (role ?? '').toLowerCase() == 'admin';
+  bool get isOwnerOrAdmin => isOwner || isAdmin;
 
   AuthProvider({
     NhostAuthService? authService,

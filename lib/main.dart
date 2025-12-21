@@ -66,6 +66,7 @@ import 'core/backend_lock.dart';
 import 'screens/offline/offline_mode_screen.dart';
 import 'services/nhost_graphql_service.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import 'utils/app_error_reporter.dart';
 
 /// هل المنصّة تدعم flutter_local_notifications؟ (Android/iOS/macOS)
 bool get _pushSupported {
@@ -153,6 +154,7 @@ void main() {
     // التقاط أخطاء Flutter
     FlutterError.onError = (details) async {
       debugPrint("FlutterError: ${details.exception}");
+      AppErrorReporter.report('حدث خطأ غير متوقع. تم تسجيله.');
       await _logCrash(details.exceptionAsString(), details.stack.toString());
       FlutterError.presentError(details);
     };
@@ -308,6 +310,7 @@ void main() {
     );
   }, (error, stack) async {
     debugPrint("Zoned error: $error\n$stack");
+    AppErrorReporter.report('حدث خطأ غير متوقع. تم تسجيله.');
     await _logCrash(error.toString(), stack.toString());
   });
 }
@@ -382,6 +385,7 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: AppConstants.appName,
       navigatorKey: _navKey,
+      scaffoldMessengerKey: AppErrorReporter.messengerKey,
       locale: const Locale('ar'),
       supportedLocales: const [Locale('ar'), Locale('en')],
       localizationsDelegates: const [

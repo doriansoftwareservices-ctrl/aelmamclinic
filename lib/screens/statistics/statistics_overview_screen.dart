@@ -295,10 +295,10 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
 
     final canView = auth.isSuperAdmin ||
         auth.featureAllowed(FeatureKeys.returns) ||
-        (auth.role ?? '') == 'owner';
+        auth.isOwnerOrAdmin;
     final canCreate = auth.isSuperAdmin ||
         ((auth.featureAllowed(FeatureKeys.returns) ||
-                (auth.role ?? '') == 'owner') &&
+                auth.isOwnerOrAdmin) &&
             auth.canCreate);
 
     if (!canView) {
@@ -375,7 +375,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
     final scheme = Theme.of(ctx).colorScheme;
 
     final allowed = auth.isSuperAdmin ||
-        (auth.role ?? '') == 'owner' ||
+        auth.isOwnerOrAdmin ||
         auth.featureAllowed(FeatureKeys.prescriptions);
     if (!allowed) {
       _showNotAllowedSnack();
@@ -531,11 +531,11 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
   }) {
     // السوبر أدمن والمالِك يرون الكل دومًا
     bool allowed = auth.isSuperAdmin ||
-        (auth.role ?? '') == 'owner' ||
+        auth.isOwnerOrAdmin ||
         auth.featureAllowed(featureKey);
 
     // تطبيق CRUD إذا طُلب (لمالك/سوبر نتجاوز، للموظف نطبّق)
-    if (allowed && !auth.isSuperAdmin && (auth.role ?? '') != 'owner') {
+    if (allowed && !auth.isSuperAdmin && !auth.isOwnerOrAdmin) {
       if (requireCreate) allowed = allowed && auth.canCreate;
       if (requireUpdate) allowed = allowed && auth.canUpdate;
       if (requireDelete) allowed = allowed && auth.canDelete;
@@ -836,13 +836,13 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
 
   bool _canSeeDashboard(AuthProvider auth) {
     return auth.isSuperAdmin ||
-        (auth.role ?? '') == 'owner' ||
+        auth.isOwnerOrAdmin ||
         auth.featureAllowed(FeatureKeys.dashboard);
   }
 
   bool _canUseChat(AuthProvider auth) {
     return auth.isSuperAdmin ||
-        (auth.role ?? '') == 'owner' ||
+        auth.isOwnerOrAdmin ||
         auth.featureAllowed(FeatureKeys.chat);
   }
 

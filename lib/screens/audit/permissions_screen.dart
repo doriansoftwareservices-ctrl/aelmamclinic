@@ -59,8 +59,8 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
 
     final auth = context.read<AuthProvider>();
     final accId = auth.accountId ?? '';
-    final isOwner = (auth.role ?? '') == 'owner';
-    final isOwnerOrSuper = isOwner || auth.isSuperAdmin;
+    final isOwnerOrAdmin = auth.isOwnerOrAdmin;
+    final isOwnerOrSuper = isOwnerOrAdmin || auth.isSuperAdmin;
     final canView =
         isOwnerOrSuper || auth.featureAllowed(FeatureKeys.auditPermissions);
 
@@ -148,7 +148,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
     }
   }
 
-  // فتح محرّر صلاحيات موظف (لـ owner فقط)
+  // فتح محرّر صلاحيات موظف (لـ owner/admin فقط)
   void _openEditor(_Employee emp) async {
     final current =
         _byUser[emp.userUid] ?? _FeaturePerm.defaults(userUid: emp.userUid);
@@ -258,8 +258,8 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
-    final isOwner = (auth.role ?? '') == 'owner';
-    final isOwnerOrSuper = isOwner || auth.isSuperAdmin;
+    final isOwnerOrAdmin = auth.isOwnerOrAdmin;
+    final isOwnerOrSuper = isOwnerOrAdmin || auth.isSuperAdmin;
     final canView =
         isOwnerOrSuper || auth.featureAllowed(FeatureKeys.auditPermissions);
 
