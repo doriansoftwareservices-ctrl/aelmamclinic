@@ -2,11 +2,11 @@
 //
 // مزوّد حالة المصادقة + صلاحيات الميزات + Bootstrap للمزامنة.
 // النقاط الأساسية:
-// - توحيد مصدر الحقيقة مع NhostAuthService (تفويض bootstrap/guards للمزامنة).
+// - توحيد مصدر الحقيقة مع AuthSupabaseService (تفويض bootstrap/guards للمزامنة).
 // - تخزين محلي خفيف (SharedPreferences) لآخر هوية + صلاحيات الميزات.
 // - تحديث role/isSuperAdmin بصيغة موحّدة (superadmin بحروف صغيرة).
 // - إزالة إدارة SyncService المباشرة من المزوّد (لا مؤقّت 60 ثانية)،
-//   والاعتماد على bootstrapSyncForCurrentUser من NhostAuthService الذي يشمل:
+//   والاعتماد على bootstrapSyncForCurrentUser من AuthSupabaseService الذي يشمل:
 //   parity v3 + ربط push debounced + Realtime + حراسة الحساب/الموظف.
 
 import 'dart:async';
@@ -15,18 +15,12 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:meta/meta.dart';
 import 'package:flutter/widgets.dart';
-import 'package:fluttertoast/fluttertoast.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:graphql_flutter/graphql_flutter.dart';
-import 'package:nhost_dart/nhost_dart.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:postgrest/postgrest.dart';
 
 import 'package:aelmamclinic/core/features.dart'; // FeatureKeys.chat
-import 'package:aelmamclinic/core/constants.dart';
-import 'package:aelmamclinic/core/active_account_store.dart';
-import 'package:aelmamclinic/models/account_policy.dart';
-import 'package:aelmamclinic/models/backend_errors.dart';
-import 'package:aelmamclinic/models/feature_permissions.dart';
-import 'package:aelmamclinic/services/nhost_auth_service.dart';
+import 'package:aelmamclinic/services/auth_supabase_service.dart';
 import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/services/device_id_service.dart';
 import 'package:aelmamclinic/services/notification_service.dart';
@@ -35,6 +29,7 @@ import 'package:aelmamclinic/utils/logger.dart';
 /// مفاتيح التخزين المحلي
 const _kUid = 'auth.uid';
 const _kEmail = 'auth.email';
+const _kAccountId = 'auth.accountId';
 const _kRole = 'auth.role';
 const _kDisabled = 'auth.disabled';
 const _kDeviceId = 'auth.deviceId';
@@ -102,7 +97,6 @@ enum AuthAccountGuardResult {
   disabled,
   accountFrozen,
   noAccount,
-  backendMisconfigured,
   signedOut,
   transientFailure,
   unknown,
@@ -114,7 +108,6 @@ enum AuthSessionStatus {
   disabled,
   accountFrozen,
   noAccount,
-  backendMisconfigured,
   signedOut,
   networkError,
   unknown,
@@ -133,23 +126,19 @@ class AuthSessionResult {
   const AuthSessionResult.accountFrozen()
       : this._(AuthSessionStatus.accountFrozen);
   const AuthSessionResult.noAccount() : this._(AuthSessionStatus.noAccount);
-  const AuthSessionResult.backendMisconfigured()
-      : this._(AuthSessionStatus.backendMisconfigured);
   const AuthSessionResult.signedOut() : this._(AuthSessionStatus.signedOut);
   const AuthSessionResult.networkError({Object? error, StackTrace? stackTrace})
-      : this._(
-          AuthSessionStatus.networkError,
-          error: error,
-          stackTrace: stackTrace,
-        );
+      : this._(AuthSessionStatus.networkError,
+            error: error, stackTrace: stackTrace);
   const AuthSessionResult.unknown({Object? error, StackTrace? stackTrace})
-      : this._(AuthSessionStatus.unknown, error: error, stackTrace: stackTrace);
+      : this._(AuthSessionStatus.unknown,
+            error: error, stackTrace: stackTrace);
 
   bool get isSuccess => status == AuthSessionStatus.success;
 }
 
 class AuthProvider extends ChangeNotifier {
-  final NhostAuthService _auth;
+  final AuthSupabaseService _auth;
 
   /// { uid, email, accountId, role, isSuperAdmin, disabled? }
   Map<String, dynamic>? currentUser;
@@ -164,8 +153,6 @@ class AuthProvider extends ChangeNotifier {
   bool _canDelete = true;
   bool _permissionsLoaded = false;
   String? _permissionsError;
-  bool _permissionsWarningShown = false;
-  bool _superAdminSyncWarningShown = false;
 
   Set<String> get allowedFeatures => _allowedFeatures;
   bool get canCreate => isSuperAdmin || (_permissionsLoaded && _canCreate);
@@ -173,13 +160,6 @@ class AuthProvider extends ChangeNotifier {
   bool get canDelete => isSuperAdmin || (_permissionsLoaded && _canDelete);
   bool get permissionsLoaded => _permissionsLoaded;
   String? get permissionsError => _permissionsError;
-
-  FeaturePermissions _snapshotPermissions() => FeaturePermissions(
-        allowedFeatures: Set<String>.from(_allowedFeatures),
-        canCreate: _canCreate,
-        canUpdate: _canUpdate,
-        canDelete: _canDelete,
-      );
 
   /// اعتبارًا لمخطط الـ SQL: إذا كانت القائمة فارغة فهذا يعني "لا قيود" (الكل مسموح).
   bool featureAllowed(String featureKey) {
@@ -193,11 +173,7 @@ class AuthProvider extends ChangeNotifier {
   bool get chatEnabled => isSuperAdmin || featureAllowed(FeatureKeys.chat);
 
   // === إدارة تدفّق المصادقة ===
-  StreamSubscription<AuthenticationState>? _authSub;
-  Timer? _authStateDebounce;
-  AuthenticationState? _pendingAuthState;
-  bool _authStateInFlight = false;
-  AuthenticationState? _lastHandledAuthState;
+  StreamSubscription<AuthState>? _authSub;
   StreamSubscription<String>? _patientAlertSub;
   Timer? _patientAlertDebounce;
   Set<int> _pendingPatientAlerts = <int>{};
@@ -211,102 +187,72 @@ class AuthProvider extends ChangeNotifier {
   String? get accountId => currentUser?['accountId'] as String?;
   bool get isDisabled => (currentUser?['disabled'] as bool?) ?? false;
   bool get isSuperAdmin => currentUser?['isSuperAdmin'] == true;
-  bool get isOwner => (role ?? '').toLowerCase() == 'owner';
-  bool get isAdmin => (role ?? '').toLowerCase() == 'admin';
-  bool get isOwnerOrAdmin => isOwner || isAdmin;
 
-  AuthProvider({
-    NhostAuthService? authService,
-    bool listenAuthChanges = true,
-  }) : _auth = authService ?? NhostAuthService() {
+  AuthProvider({AuthSupabaseService? authService, bool listenAuthChanges = true})
+      : _auth = authService ?? AuthSupabaseService() {
     if (listenAuthChanges) {
-      // الاستماع لتغيّرات المصادقة مع دمج سريع لتقليل التكرار.
-      _authSub = _auth.authStateChanges.listen((state) {
-        _pendingAuthState = state;
-        _authStateDebounce?.cancel();
-        _authStateDebounce = Timer(const Duration(milliseconds: 250), () {
-          final effective = _pendingAuthState;
-          if (effective == null) return;
-          unawaited(_handleAuthStateChange(effective));
-        });
-      });
-    }
-  }
+      // الاستماع لتغيّرات المصادقة
+      _authSub = _auth.client.auth.onAuthStateChange.listen((authState) async {
+      final event = authState.event;
 
-  Future<void> _handleAuthStateChange(AuthenticationState state) async {
-    if (_authStateInFlight) {
-      _pendingAuthState = state;
-      return;
-    }
-    if (state == _lastHandledAuthState &&
-        state != AuthenticationState.signedIn) {
-      return;
-    }
-    _authStateInFlight = true;
-    _lastHandledAuthState = state;
-    if (state == AuthenticationState.signedOut) {
-      // هذه الإشارة تأتي بعد signOut — نظّف الحالة المحلية فقط.
-      currentUser = null;
-      _resetPermissionsInMemory();
-      await _stopDoctorPatientAlerts();
-      await _clearStorage();
-      notifyListeners();
-      _authStateInFlight = false;
-      return;
-    }
-
-    // لأي حدث آخر: نحدّث من الشبكة عند الدخول أو عند حلول موعد الفحص
-    final due = await _isNetCheckDue();
-    if (state == AuthenticationState.signedIn || due) {
-      await _networkRefreshAndMark();
-    } else {
-      await _loadFromStorage();
-      // إن كان accountId مفقودًا من التخزين، حاول حسمه سريعًا من الشبكة
-      if ((currentUser?['accountId'] ?? '').toString().isEmpty) {
-        try {
-          final acc = await _auth.resolveAccountId();
-          if (acc != null && acc.isNotEmpty) {
-            currentUser ??= {};
-            currentUser!['accountId'] = acc;
-            await _persistUser();
-          }
-        } catch (_) {}
+      if (event == AuthChangeEvent.signedOut) {
+        // هذه الإشارة تأتي بعد signOut — نظّف الحالة المحلية فقط.
+        currentUser = null;
+        _resetPermissionsInMemory();
+        await _stopDoctorPatientAlerts();
+        await _clearStorage();
+        notifyListeners();
+        return;
       }
-    }
 
-    // تحقّق من الحساب الفعّال (غير مجمّد/غير معطّل)
-    await _ensureActiveAccountOrSignOut();
-    if (isDisabled) {
-      await _auth.signOut();
-      return;
-    }
+      // لأي حدث آخر: نحدّث من الشبكة عند الدخول أو عند حلول موعد الفحص
+      final due = await _isNetCheckDue();
+      if (event == AuthChangeEvent.signedIn || due) {
+        await _networkRefreshAndMark();
+      } else {
+        await _loadFromStorage();
+        // إن كان accountId مفقودًا من التخزين، حاول حسمه سريعًا من الشبكة
+        if ((currentUser?['accountId'] ?? '').toString().isEmpty) {
+          try {
+            final acc = await _auth.resolveAccountId();
+            if (acc != null && acc.isNotEmpty) {
+              currentUser ??= {};
+              currentUser!['accountId'] = acc;
+              await _persistUser();
+            }
+          } catch (_) {}
+        }
+      }
 
-    // تأكيد deviceId
-    await _ensureDeviceId();
+      // تحقّق من الحساب الفعّال (غير مجمّد/غير معطّل)
+      await _ensureActiveAccountOrSignOut();
+      if (isDisabled) {
+        await _auth.signOut();
+        return;
+      }
 
-    // جلب صلاحيات الميزات + CRUD للحساب الحالي (إن وُجد)
-    if (accountId != null && accountId!.isNotEmpty && !isSuperAdmin) {
-      await _refreshFeaturePermissions();
-    }
+      // تأكيد deviceId
+      await _ensureDeviceId();
 
-    // Bootstrap للمزامنة/Realtime عبر الخدمة (idempotent نسبيًا)
-    if (isLoggedIn) {
-      unawaited(bootstrapSync());
-    }
+      // جلب صلاحيات الميزات + CRUD للحساب الحالي (إن وُجد)
+      if (accountId != null && accountId!.isNotEmpty && !isSuperAdmin) {
+        await _refreshFeaturePermissions();
+      }
 
-    notifyListeners();
-    _authStateInFlight = false;
-    final pending = _pendingAuthState;
-    if (pending != null && pending != state) {
-      _pendingAuthState = null;
-      await _handleAuthStateChange(pending);
+      // Bootstrap للمزامنة/Realtime عبر الخدمة (idempotent نسبيًا)
+      if (isLoggedIn) {
+        unawaited(bootstrapSync());
+      }
+
+      notifyListeners();
+    });
     }
   }
 
-  /// نادِها في main() بعد تهيئة Nhost
+  /// نادِها في main() بعد Supabase.initialize()
   Future<void> init() async {
-    final signedIn = _auth.client.auth.currentUser != null;
-    if (signedIn) {
+    final ses = _auth.client.auth.currentSession;
+    if (ses != null) {
       final due = await _isNetCheckDue();
       if (due) {
         await _networkRefreshAndMark();
@@ -326,10 +272,6 @@ class AuthProvider extends ChangeNotifier {
       }
     } else {
       await _loadFromStorage();
-      await _ensureDeviceId();
-      await _loadPermissionsFromStorage();
-      notifyListeners();
-      return;
     }
 
     // تأكيد الحساب الفعّال
@@ -362,7 +304,7 @@ class AuthProvider extends ChangeNotifier {
   /*──────── Actions ────────*/
 
   Future<void> signIn(String email, String password) async {
-    await _auth.signInWithEmailPassword(email: email, password: password);
+    await _auth.signIn(email, password);
     // سيستكمل الـ listener ما يلزم (refresh/permissions/bootstrap).
   }
 
@@ -403,13 +345,12 @@ class AuthProvider extends ChangeNotifier {
           return const AuthSessionResult.disabled();
         case AuthAccountGuardResult.noAccount:
           return const AuthSessionResult.noAccount();
-        case AuthAccountGuardResult.backendMisconfigured:
-          return const AuthSessionResult.backendMisconfigured();
         case AuthAccountGuardResult.signedOut:
           return const AuthSessionResult.signedOut();
         case AuthAccountGuardResult.transientFailure:
           return const AuthSessionResult.networkError();
         case AuthAccountGuardResult.unknown:
+        default:
           return const AuthSessionResult.unknown();
       }
     } catch (e, st) {
@@ -433,14 +374,12 @@ class AuthProvider extends ChangeNotifier {
     await _refreshFeaturePermissions();
 
     // إعادة Bootstrap للمزامنة على الحساب الجديد
-    unawaited(
-      _auth.bootstrapSyncForCurrentUser(
-        pull: true,
-        realtime: true,
-        enableLogs: true,
-        wipeLocalFirst: false, // قمنا بالتصفير مسبقًا
-      ),
-    );
+    unawaited(_auth.bootstrapSyncForCurrentUser(
+      pull: true,
+      realtime: true,
+      enableLogs: true,
+      wipeLocalFirst: false, // قمنا بالتصفير مسبقًا
+    ));
 
     notifyListeners();
   }
@@ -449,8 +388,7 @@ class AuthProvider extends ChangeNotifier {
   Future<void> refreshPermissions() => _refreshFeaturePermissions();
 
   /// أدوات مساعدة اختيارية: تغيير كلمة مرور/إعادة تعيين/تحديث جلسة
-  Future<void> changePassword(String newPassword) =>
-      _auth.changePassword(newPassword);
+  Future<void> changePassword(String newPassword) => _auth.changePassword(newPassword);
   Future<void> requestPasswordReset(String email, {String? redirectTo}) =>
       _auth.requestPasswordReset(email, redirectTo: redirectTo);
   Future<void> refreshSession() => _auth.refreshSession();
@@ -480,156 +418,108 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<bool> _networkRefreshAndMark() async {
-    if (_refreshInFlight) {
-      return false;
-    }
-    final now = DateTime.now();
-    if (_lastRefreshAt != null &&
-        now.difference(_lastRefreshAt!) < const Duration(seconds: 1)) {
-      return false;
-    }
-    _refreshInFlight = true;
-    _lastRefreshAt = now;
+    final startCtx = <String, Object?>{
+      'uid': currentUser?['uid'],
+      'hasAccount': ((currentUser?['accountId'] ?? '').toString().isNotEmpty),
+    };
+    _authDiag('_networkRefreshAndMark:start', context: startCtx);
+    bool success = false;
     try {
-      final startCtx = <String, Object?>{
-        'uid': currentUser?['uid'],
-        'hasAccount': ((currentUser?['accountId'] ?? '').toString().isNotEmpty),
-      };
-      _authDiag('_networkRefreshAndMark:start', context: startCtx);
-      bool success = false;
-      try {
-        _authDiag('_networkRefreshAndMark:refreshUser');
-        await _refreshUser(); // يجلب من RPCs/fallbacks
-        _authDiag(
-          '_networkRefreshAndMark:afterRefresh',
-          context: {
-            'uid': currentUser?['uid'],
-            'accountId': currentUser?['accountId'],
-            'role': currentUser?['role'],
-          },
-        );
-        if ((currentUser?['accountId'] ?? '').toString().isEmpty) {
-          try {
-            final acc = await _auth.resolveAccountId();
-            if (acc != null && acc.isNotEmpty) {
-              currentUser ??= {};
-              currentUser!['accountId'] = acc;
-              _authDiag(
-                '_networkRefreshAndMark:resolvedAccountId',
-                context: {'source': 'resolveAccountId', 'accountId': acc},
-              );
-            }
-          } catch (_) {}
-        }
-
-        final roleValue =
-            (currentUser?['role'] ?? '').toString().toLowerCase().trim();
-        final isSuper =
-            roleValue == 'superadmin' || currentUser?['isSuperAdmin'] == true;
-
-        if (!isSuper &&
-            (((currentUser?['accountId'] ?? '').toString().isEmpty) ||
-                ((currentUser?['role'] ?? '').toString().isEmpty))) {
-          try {
-            final aa = await _auth.resolveActiveAccountOrThrow();
-            currentUser ??= {};
-            currentUser!['accountId'] = aa.id;
-            currentUser!['role'] = aa.role.toLowerCase();
-            currentUser!['disabled'] = false;
-            _authDiag(
-              '_networkRefreshAndMark:resolvedViaActiveAccount',
-              context: {'accountId': aa.id, 'role': aa.role},
-            );
-          } catch (e, st) {
-            if (e is AccountPolicyException || e is ApiException) {
-              rethrow;
-            }
-            _authDiagWarn(
-              '_networkRefreshAndMark:activeAccountFallbackFailed',
-              context: {
-                'uid': currentUser?['uid'],
-                'error': e.runtimeType.toString(),
-              },
-              stackTrace: st,
-            );
-          }
-        }
-
-        final hasAccount =
-            ((currentUser?['accountId'] ?? '').toString().isNotEmpty);
-        success = hasAccount || isSuper;
-      } catch (e, st) {
-        dev.log('_networkRefreshAndMark failed', error: e, stackTrace: st);
-        _authDiagError(
-          '_networkRefreshAndMark:error',
-          context: {
-            'uid': currentUser?['uid'],
-            'accountId': currentUser?['accountId'],
-          },
-          error: e,
-          stackTrace: st,
-        );
-      }
-
-      await _persistUser();
+      _authDiag('_networkRefreshAndMark:refreshUser');
+      await _refreshUser(); // يجلب من RPCs/fallbacks
       _authDiag(
-        '_networkRefreshAndMark:persisted',
+        '_networkRefreshAndMark:afterRefresh',
         context: {
           'uid': currentUser?['uid'],
           'accountId': currentUser?['accountId'],
-          'success': success,
+          'role': currentUser?['role'],
         },
       );
-
-      if (success) {
-        final sp = await SharedPreferences.getInstance();
-        await sp.setString(_kLastNetCheckAt, DateTime.now().toIso8601String());
-        _authDiag(
-          '_networkRefreshAndMark:success',
-          context: {
-            'accountId': currentUser?['accountId'],
-            'role': currentUser?['role'],
-          },
-        );
-      } else {
-        final roleValue =
-            (currentUser?['role'] ?? '').toString().toLowerCase().trim();
-        if (roleValue == 'superadmin' || currentUser?['isSuperAdmin'] == true) {
-          _authDiag(
-            '_networkRefreshAndMark:superAdminNoAccountBypass',
-            context: {'uid': currentUser?['uid']},
-          );
-          return true;
-        }
-        _authDiagWarn(
-          '_networkRefreshAndMark:missingAccountId',
-          context: {'uid': currentUser?['uid']},
-        );
+      if ((currentUser?['accountId'] ?? '').toString().isEmpty) {
+        try {
+          final acc = await _auth.resolveAccountId();
+          if (acc != null && acc.isNotEmpty) {
+            currentUser ??= {};
+            currentUser!['accountId'] = acc;
+            _authDiag(
+              '_networkRefreshAndMark:resolvedAccountId',
+              context: {'source': 'resolveAccountId', 'accountId': acc},
+            );
+          }
+        } catch (_) {}
       }
-      return success;
-    } finally {
-      _refreshInFlight = false;
+
+      if (((currentUser?['accountId'] ?? '').toString().isEmpty) ||
+          ((currentUser?['role'] ?? '').toString().isEmpty)) {
+        try {
+          final aa = await _auth.resolveActiveAccountOrThrow();
+          currentUser ??= {};
+          currentUser!['accountId'] = aa.id;
+          currentUser!['role'] = aa.role.toLowerCase();
+          currentUser!['disabled'] = false;
+          _authDiag(
+            '_networkRefreshAndMark:resolvedViaActiveAccount',
+            context: {
+              'accountId': aa.id,
+              'role': aa.role,
+            },
+          );
+        } catch (e, st) {
+          if (e is AccountPolicyException || e is AuthException) {
+            rethrow;
+          }
+          _authDiagWarn(
+            '_networkRefreshAndMark:activeAccountFallbackFailed',
+            context: {
+              'uid': currentUser?['uid'],
+              'error': e.runtimeType.toString(),
+            },
+            stackTrace: st,
+          );
+        }
+      }
+
+      success = ((currentUser?['accountId'] ?? '').toString().isNotEmpty);
+    } catch (e, st) {
+      dev.log('_networkRefreshAndMark failed', error: e, stackTrace: st);
+      _authDiagError(
+        '_networkRefreshAndMark:error',
+        context: {
+          'uid': currentUser?['uid'],
+          'accountId': currentUser?['accountId'],
+        },
+        error: e,
+        stackTrace: st,
+      );
     }
+
+    await _persistUser();
+    _authDiag('_networkRefreshAndMark:persisted', context: {
+      'uid': currentUser?['uid'],
+      'accountId': currentUser?['accountId'],
+      'success': success,
+    });
+
+    if (success) {
+      final sp = await SharedPreferences.getInstance();
+      await sp.setString(_kLastNetCheckAt, DateTime.now().toIso8601String());
+      _authDiag('_networkRefreshAndMark:success', context: {
+        'accountId': currentUser?['accountId'],
+        'role': currentUser?['role'],
+      });
+    } else {
+      _authDiagWarn('_networkRefreshAndMark:missingAccountId', context: {
+        'uid': currentUser?['uid'],
+      });
+    }
+    return success;
   }
 
   bool _isTransientNetworkError(Object error) {
     return error is SocketException ||
         error is TimeoutException ||
-        error is OperationException ||
-        error is ApiException;
-  }
-
-  bool _isBackendConfigError(Object error) {
-    if (error is BackendSchemaException) {
-      return true;
-    }
-    if (error is StateError) {
-      final msg = error.message.toLowerCase();
-      return msg.contains('backend schema') ||
-          msg.contains('metadata') ||
-          msg.contains('schema');
-    }
-    return false;
+        error is PostgrestException ||
+        error is AuthException;
   }
 
   Future<bool> _isNetCheckDue() async {
@@ -643,7 +533,8 @@ class AuthProvider extends ChangeNotifier {
 
   /// يجلب بيانات المستخدم من السيرفر مع حسم accountId مؤكد عبر عدة fallbacks
   Future<void> _refreshUser() async {
-    final u = _auth.client.auth.currentUser;
+    final client = _auth.client;
+    final u = client.auth.currentUser;
     if (u == null) {
       currentUser = null;
       _resetPermissionsInMemory();
@@ -652,72 +543,55 @@ class AuthProvider extends ChangeNotifier {
 
     Map<String, dynamic>? info;
     try {
-      info = await _auth
-          .fetchCurrentUser(); // { uid,email,accountId,role,isSuperAdmin }
-    } catch (e, st) {
+      info = await _auth.fetchCurrentUser(); // { uid,email,accountId,role,isSuperAdmin }
+    } catch (_) {
       info = null;
-      _authDiagWarn(
-        '_refreshUser:fetchCurrentUser_failed',
-        context: {'error': e.toString()},
-        stackTrace: st,
-      );
     }
 
     // accountId مبدئيًا من info
     String? accId = info?['accountId'] as String?;
 
-    // Fallback لحسم accountId
+    // Fallbacks لحسم accountId
+    if (accId == null || accId.isEmpty) {
+      try {
+        final mp = await client.rpc('my_profile');
+        if (mp is Map && (mp['account_id']?.toString().isNotEmpty ?? false)) {
+          accId = mp['account_id'].toString();
+        } else if (mp is List && mp.isNotEmpty) {
+          final m0 = Map<String, dynamic>.from(mp.first as Map);
+          final a = (m0['account_id'] ?? '').toString();
+          if (a.isNotEmpty && a != 'null') accId = a;
+        }
+      } catch (_) {}
+    }
+    if (accId == null || accId.isEmpty) {
+      try {
+        final res = await client.rpc('my_account_id');
+        final a = (res ?? '').toString();
+        if (a.isNotEmpty && a != 'null') accId = a;
+      } catch (_) {}
+    }
     if (accId == null || accId.isEmpty) {
       try {
         accId = await _auth.resolveAccountId();
-      } catch (e, st) {
-        _authDiagWarn(
-          '_refreshUser:resolveAccountId_failed',
-          context: {'error': e.toString()},
-          stackTrace: st,
-        );
-      }
+      } catch (_) {}
     }
 
     // الدور والبريد — توحيد role = 'superadmin' إن كان سوبر
-    final emailLower = (u.email ?? info?['email'] ?? '').toLowerCase();
     final infoRole = (info?['role'] as String?)?.toLowerCase();
-    final bool infoIsSuper = info?['isSuperAdmin'] == true;
+    final infoIsSuper = info?['isSuperAdmin'] == true;
     final role = infoIsSuper ? 'superadmin' : (infoRole ?? 'employee');
-    final isSuper = infoIsSuper || role == 'superadmin';
-
-    if (!infoIsSuper && _isSuperAdminEmail(emailLower)) {
-      if (!_superAdminSyncWarningShown) {
-        _superAdminSyncWarningShown = true;
-        final message =
-            'تنبيه: هذا البريد مُعرّف كسوبر أدمن محليًا لكن لم تتم مزامنته على الخادم بعد. الرجاء تشغيل مزامنة super_admins.';
-        if (Platform.isAndroid || Platform.isIOS) {
-          Fluttertoast.showToast(
-            msg: message,
-            toastLength: Toast.LENGTH_LONG,
-            gravity: ToastGravity.BOTTOM,
-          );
-        } else {
-          dev.log(message, name: 'AUTH');
-        }
-      }
-    }
+    final isSuper = infoIsSuper;
 
     currentUser = {
       'uid': u.id,
       'email': u.email ?? info?['email'],
       'accountId': accId, // ← المهم
       'role': role,
-      'disabled': info?['disabled'] == true,
+      'disabled': false, // إن وُجد لديك إشارة تعطيل؛ حدّثها هنا.
       'isSuperAdmin': isSuper,
       if (deviceId != null) _kDeviceId: deviceId,
     };
-  }
-
-  bool _isSuperAdminEmail(String? email) {
-    final normalized = (email ?? '').trim().toLowerCase();
-    if (normalized.isEmpty) return false;
-    return AppConstants.superAdminEmails.contains(normalized);
   }
 
   /// يتأكد أن الحساب الفعّال قابل للكتابة (غير مجمّد/غير معطّل) وإلا يخرج.
@@ -727,43 +601,34 @@ class AuthProvider extends ChangeNotifier {
       return AuthAccountGuardResult.signedOut;
     }
     if (isSuperAdmin) {
-      _authDiag(
-        '_ensureActiveAccountOrSignOut:superAdminBypass',
-        context: {'uid': uid},
-      );
+      _authDiag('_ensureActiveAccountOrSignOut:superAdminBypass', context: {
+        'uid': uid,
+      });
       return AuthAccountGuardResult.ok; // السوبر أدمن خارج نطاق الحسابات
     }
-    _authDiag(
-      '_ensureActiveAccountOrSignOut:start',
-      context: {'uid': uid, 'accountId': accountId},
-    );
+    _authDiag('_ensureActiveAccountOrSignOut:start', context: {
+      'uid': uid,
+      'accountId': accountId,
+    });
     const maxAttempts = 3;
     for (var attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        _authDiag(
-          '_ensureActiveAccountOrSignOut:attempt',
-          context: {'attempt': attempt, 'max': maxAttempts},
-        );
+        _authDiag('_ensureActiveAccountOrSignOut:attempt', context: {
+          'attempt': attempt,
+          'max': maxAttempts,
+        });
         final aa = await _auth.resolveActiveAccountOrThrow();
         currentUser ??= {};
         currentUser!['accountId'] = aa.id;
         currentUser!['role'] = aa.role.toLowerCase();
         currentUser!['disabled'] = false;
         await _persistUser();
-        _authDiag(
-          '_ensureActiveAccountOrSignOut:ok',
-          context: {'accountId': aa.id, 'role': aa.role},
-        );
+        _authDiag('_ensureActiveAccountOrSignOut:ok', context: {
+          'accountId': aa.id,
+          'role': aa.role,
+        });
         return AuthAccountGuardResult.ok;
       } catch (e, st) {
-        if (_isBackendConfigError(e)) {
-          _authDiagWarn(
-            '_ensureActiveAccountOrSignOut:backendMisconfigured',
-            context: {'error': e.toString()},
-            stackTrace: st,
-          );
-          return AuthAccountGuardResult.backendMisconfigured;
-        }
         if (_isTransientNetworkError(e)) {
           final delay = Duration(milliseconds: 300 * (1 << (attempt - 1)));
           dev.log(
@@ -779,13 +644,12 @@ class AuthProvider extends ChangeNotifier {
             stackTrace: st,
           );
           if (attempt >= maxAttempts) {
-            dev.log(
-              'Keeping session after transient failure to validate account.',
-            );
-            _authDiagWarn(
-              '_ensureActiveAccountOrSignOut:transientGivingUp',
-              context: {'attempt': attempt, 'error': e.runtimeType.toString()},
-            );
+            dev.log('Keeping session after transient failure to validate account.');
+            _authDiagWarn('_ensureActiveAccountOrSignOut:transientGivingUp',
+                context: {
+                  'attempt': attempt,
+                  'error': e.runtimeType.toString(),
+                });
             return AuthAccountGuardResult.transientFailure;
           }
           await Future.delayed(delay);
@@ -811,7 +675,10 @@ class AuthProvider extends ChangeNotifier {
         await _persistUser();
         _authDiagError(
           '_ensureActiveAccountOrSignOut:failure',
-          context: {'result': result.name, 'attempt': attempt},
+          context: {
+            'result': result.name,
+            'attempt': attempt,
+          },
           error: e,
           stackTrace: st,
         );
@@ -819,10 +686,9 @@ class AuthProvider extends ChangeNotifier {
         return result;
       }
     }
-    _authDiagWarn(
-      '_ensureActiveAccountOrSignOut:unknownOutcome',
-      context: {'uid': uid},
-    );
+    _authDiagWarn('_ensureActiveAccountOrSignOut:unknownOutcome', context: {
+      'uid': uid,
+    });
     return AuthAccountGuardResult.unknown;
   }
 
@@ -831,39 +697,21 @@ class AuthProvider extends ChangeNotifier {
     final accId = accountId;
     if (accId == null || accId.isEmpty) return;
     try {
-      final perms = await _auth.fetchMyFeaturePermissions(
-        accountId: accId,
-        fallback: _snapshotPermissions(),
-      );
+      final perms = await _auth.fetchMyFeaturePermissions(accountId: accId);
       _allowedFeatures = perms.allowedFeatures;
       _canCreate = perms.canCreate;
       _canUpdate = perms.canUpdate;
       _canDelete = perms.canDelete;
       _permissionsLoaded = true;
       _permissionsError = null;
-      _permissionsWarningShown = false;
       await _persistPermissions();
     } catch (e, st) {
       dev.log('refreshFeaturePermissions failed', error: e, stackTrace: st);
-      _authDiagWarn(
-        '_refreshFeaturePermissions:error',
-        context: {'error': e.toString()},
-        stackTrace: st,
-      );
-      if (e is FeaturePermissionsFetchException && e.fallback != null) {
-        _allowedFeatures = e.fallback!.allowedFeatures;
-        _canCreate = e.fallback!.canCreate;
-        _canUpdate = e.fallback!.canUpdate;
-        _canDelete = e.fallback!.canDelete;
-      } else {
-        _allowedFeatures = <String>{};
-        _canCreate = false;
-        _canUpdate = false;
-        _canDelete = false;
-      }
       _permissionsLoaded = false;
       _permissionsError = '${e}';
-      _showPermissionsFallbackWarning();
+      _canCreate = false;
+      _canUpdate = false;
+      _canDelete = false;
     }
     notifyListeners();
   }
@@ -875,20 +723,9 @@ class AuthProvider extends ChangeNotifier {
     _canDelete = true;
     _permissionsLoaded = false;
     _permissionsError = null;
-    _permissionsWarningShown = false;
   }
 
-  void _showPermissionsFallbackWarning() {
-    if (_permissionsWarningShown) return;
-    _permissionsWarningShown = true;
-    Fluttertoast.showToast(
-      msg:
-          'تعذّر تحديث صلاحيات الميزات، سيتم استخدام آخر إعدادات محفوظة إلى حين عودة الاتصال.',
-      toastLength: Toast.LENGTH_LONG,
-    );
-  }
-
-  Future<void> _persistPermissions() async {
+Future<void> _persistPermissions() async {
     final sp = await SharedPreferences.getInstance();
     await sp.setString(_kAllowedFeatures, _allowedFeatures.join(','));
     await sp.setBool(_kCanCreate, _canCreate);
@@ -900,11 +737,8 @@ class AuthProvider extends ChangeNotifier {
     final sp = await SharedPreferences.getInstance();
     final csv = sp.getString(_kAllowedFeatures);
     if (csv != null) {
-      final list = csv
-          .split(',')
-          .map((e) => e.trim())
-          .where((e) => e.isNotEmpty)
-          .toList();
+      final list =
+      csv.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
       _allowedFeatures = Set<String>.from(list);
     }
     _canCreate = sp.getBool(_kCanCreate) ?? true;
@@ -927,11 +761,8 @@ class AuthProvider extends ChangeNotifier {
     final sp = await SharedPreferences.getInstance();
     await sp.setString(_kUid, currentUser!['uid'] ?? '');
     await sp.setString(_kEmail, currentUser!['email'] ?? '');
-    await ActiveAccountStore.writeAccountId(currentUser!['accountId'] ?? '');
-    await sp.setString(
-      _kRole,
-      (currentUser!['role'] ?? '').toString().toLowerCase(),
-    );
+    await sp.setString(_kAccountId, currentUser!['accountId'] ?? '');
+    await sp.setString(_kRole, (currentUser!['role'] ?? '').toString().toLowerCase());
     await sp.setBool(_kDisabled, currentUser!['disabled'] ?? false);
     if (deviceId != null) {
       await sp.setString(_kDeviceId, deviceId!);
@@ -941,8 +772,7 @@ class AuthProvider extends ChangeNotifier {
   Future<void> _loadFromStorage() async {
     final sp = await SharedPreferences.getInstance();
     final uid = sp.getString(_kUid);
-    final email = sp.getString(_kEmail);
-    final accountId = await ActiveAccountStore.readAccountId();
+    final accountId = sp.getString(_kAccountId);
     final role = sp.getString(_kRole);
     final disabled = sp.getBool(_kDisabled);
     final savedDev = sp.getString(_kDeviceId);
@@ -950,7 +780,7 @@ class AuthProvider extends ChangeNotifier {
     if (uid != null && uid.isNotEmpty) {
       currentUser = {
         'uid': uid,
-        'email': email,
+        'email': sp.getString(_kEmail),
         'accountId': accountId,
         'role': (role ?? '').toLowerCase(),
         'disabled': disabled ?? false,
@@ -972,7 +802,7 @@ class AuthProvider extends ChangeNotifier {
     final sp = await SharedPreferences.getInstance();
     await sp.remove(_kUid);
     await sp.remove(_kEmail);
-    await ActiveAccountStore.clearAccountId();
+    await sp.remove(_kAccountId);
     await sp.remove(_kRole);
     await sp.remove(_kDisabled);
     // لا نحذف _kDeviceId لأنه مُعرّف جهاز ثابت على مستوى الجهاز.
@@ -1034,8 +864,7 @@ class AuthProvider extends ChangeNotifier {
       final newIds = currentIds.difference(_pendingPatientAlerts);
       for (final id in newIds) {
         final label = current[id]?.trim();
-        final patientName =
-            (label == null || label.isEmpty) ? 'مريض جديد' : label;
+        final patientName = (label == null || label.isEmpty) ? 'مريض جديد' : label;
         try {
           await NotificationService().showPatientAssignmentNotification(
             patientId: id,
@@ -1059,8 +888,6 @@ class AuthProvider extends ChangeNotifier {
   }
 
   bool _bootstrapBusy = false;
-  bool _refreshInFlight = false;
-  DateTime? _lastRefreshAt;
   Future<void> bootstrapSync({
     bool pull = true,
     bool realtime = true,
@@ -1093,16 +920,25 @@ class AuthProvider extends ChangeNotifier {
 
   /// مزامنة فورية بسيطة (تعيد bootstrap لضمان pull حديث).
   Future<void> syncNow() async {
-    await bootstrapSync(pull: true, realtime: true, enableLogs: true);
+    await bootstrapSync(
+      pull: true,
+      realtime: true,
+      enableLogs: true,
+    );
   }
 
   @override
   void dispose() {
     _authSub?.cancel();
-    _authStateDebounce?.cancel();
     _patientAlertSub?.cancel();
     _patientAlertDebounce?.cancel();
-    unawaited(_auth.dispose());
     super.dispose();
   }
 }
+
+
+
+
+
+
+

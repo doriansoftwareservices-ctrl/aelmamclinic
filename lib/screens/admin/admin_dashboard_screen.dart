@@ -2,13 +2,13 @@
 import 'package:flutter/material.dart';
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
-import 'package:aelmamclinic/services/nhost_admin_service.dart';
+import 'package:aelmamclinic/services/auth_supabase_service.dart';
 import 'package:aelmamclinic/models/clinic.dart';
-import 'package:aelmamclinic/models/provisioning_result.dart';
-import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:provider/provider.dart';
+import 'package:aelmamclinic/providers/auth_provider.dart';
 
 /*──────── شاشات للتنقّل ────────*/
+import 'package:aelmamclinic/screens/statistics/statistics_overview_screen.dart';
 import 'package:aelmamclinic/screens/auth/login_screen.dart';
 import 'package:aelmamclinic/screens/chat/chat_admin_inbox_screen.dart'; // ⬅️ شاشة دردشة السوبر أدمن
 
@@ -27,7 +27,7 @@ class AdminDashboardScreen extends StatefulWidget {
 class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     with SingleTickerProviderStateMixin {
   // ---------- Services & Controllers ----------
-  final NhostAdminService _adminService = NhostAdminService();
+  final AuthSupabaseService _authService = AuthSupabaseService();
 
   // عيادات
   List<Clinic> _clinics = [];
@@ -55,11 +55,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     super.initState();
 
     // حارس وصول: إن لم يكن المستخدم سوبر أدمن، لا يسمح بالبقاء هنا
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       final auth = context.read<AuthProvider>();
-      final isSuper = auth.isSuperAdmin;
-      if (!isSuper) {
-        if (!mounted) return;
+      if (!auth.isSuperAdmin) {
+        await auth.refreshAndValidateCurrentUser();
+      }
+      if (!mounted) return;
+      if (!auth.isSuperAdmin) {
         Navigator.of(context).pushReplacementNamed('/');
         return;
       }
@@ -128,7 +130,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   Future<void> _fetchClinics() async {
     try {
       setState(() => _loadingClinics = true);
-    final data = await _adminService.fetchClinics();
+      final data = await _authService.fetchClinics();
       if (!mounted) return;
       setState(() {
         _clinics = data;
@@ -172,7 +174,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     FocusScope.of(context).unfocus();
     setState(() => _busy = true);
     try {
-      final result = await _adminService.createClinicAccount(
+      final result = await _authService.createClinicAccount(
         clinicName: name,
         ownerEmail: email,
         ownerPassword: pass,
@@ -220,7 +222,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     FocusScope.of(context).unfocus();
     setState(() => _busy = true);
     try {
-      final result = await _adminService.createEmployeeAccount(
+      final result = await _authService.createEmployeeAccount(
         clinicId: _selectedClinic!.id,
         email: email,
         password: pass,
@@ -242,7 +244,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      await _adminService.freezeClinic(clinic.id, !clinic.isFrozen);
+      await _authService.freezeClinic(clinic.id, !clinic.isFrozen);
       _snack(clinic.isFrozen ? 'تم تفعيل العيادة' : 'تم تجميد العيادة');
       await _fetchClinics();
     } catch (e) {
@@ -280,7 +282,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
 
     setState(() => _busy = true);
     try {
-      await _adminService.deleteClinic(clinic.id);
+      await _authService.deleteClinic(clinic.id);
       _snack('🗑️ تم حذف العيادة');
       await _fetchClinics();
     } catch (e) {
@@ -288,6 +290,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// الانتقال السريع إلى شاشة الإحصاءات
+  void _skipToStatistics() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const StatisticsOverviewScreen()),
+    );
   }
 
   /// فتح شاشة دردشة السوبر أدمن
@@ -300,12 +309,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   /// تسجيل الخروج وإرجاع المستخدم إلى شاشة تسجيل الدخول
   Future<void> _logout() async {
     try {
-      await _adminService.signOut();
+      await _authService.signOut();
     } catch (_) {/* تجاهل */}
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const LoginScreen()),
-      (route) => false,
+          (route) => false,
     );
   }
 
@@ -343,6 +352,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                 icon: const Icon(Icons.chat_bubble_outline),
                 label: const Text('الدردشة'),
               ),
+              TextButton.icon(
+                onPressed: _skipToStatistics,
+                icon: const Icon(Icons.skip_next),
+                label: const Text('تخطي'),
+              ),
               const SizedBox(width: 4),
               TextButton.icon(
                 onPressed: _logout,
@@ -365,9 +379,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                   tabs: const [
                     Tab(icon: Icon(Icons.add_business), text: 'عيادة جديدة'),
                     Tab(icon: Icon(Icons.person_add_alt_1), text: 'موظف جديد'),
-                    Tab(
-                        icon: Icon(Icons.manage_accounts),
-                        text: 'إدارة العيادات'),
+                    Tab(icon: Icon(Icons.manage_accounts), text: 'إدارة العيادات'),
                   ],
                 ),
               ),
@@ -498,13 +510,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                   border: Border.all(color: scheme.outlineVariant),
                 ),
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
                 child: DropdownButtonFormField<Clinic>(
                   value: _selectedClinic,
                   decoration: const InputDecoration(border: InputBorder.none),
                   items: _clinics
                       .map((c) =>
-                          DropdownMenuItem(value: c, child: Text(c.name)))
+                      DropdownMenuItem(value: c, child: Text(c.name)))
                       .toList(),
                   onChanged: (c) => setState(() => _selectedClinic = c),
                   icon: const Icon(Icons.expand_more_rounded),
@@ -557,7 +569,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             Center(
               child: NeuCard(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
                 child: const Text('لا توجد عيادات مسجّلة.',
                     textAlign: TextAlign.center),
               ),
@@ -623,11 +635,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                   itemBuilder: (_) => [
                     PopupMenuItem<String>(
                       value: 'freeze',
-                      child: Text(clinic.isFrozen ? 'إلغاء التجميد' : 'تجميد'),
+                      child: Text(
+                          clinic.isFrozen ? 'إلغاء التجميد' : 'تجميد'),
                     ),
                     const PopupMenuItem<String>(
                       value: 'delete',
-                      child: Text('حذف', style: TextStyle(color: Colors.red)),
+                      child:
+                      Text('حذف', style: TextStyle(color: Colors.red)),
                     ),
                   ],
                 ),
