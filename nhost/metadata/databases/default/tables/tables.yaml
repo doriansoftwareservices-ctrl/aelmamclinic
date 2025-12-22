@@ -332,6 +332,38 @@
 
 - table:
     schema: public
+    name: v_auth_context
+  select_permissions:
+    - role: me
+      permission:
+        columns:
+          - hasura_user
+          - jwt_claims
+          - jwt_claim_sub
+          - jwt_claim_role
+          - request_uid
+        filter: {}
+    - role: user
+      permission:
+        columns:
+          - hasura_user
+          - jwt_claims
+          - jwt_claim_sub
+          - jwt_claim_role
+          - request_uid
+        filter: {}
+    - role: superadmin
+      permission:
+        columns:
+          - hasura_user
+          - jwt_claims
+          - jwt_claim_sub
+          - jwt_claim_role
+          - request_uid
+        filter: {}
+
+- table:
+    schema: public
     name: v_chat_conversations_for_me
 
 - table:

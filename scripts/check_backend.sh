@@ -341,9 +341,9 @@ curl -sS \
 echo
 echo
 
-echo "==[6] debug_auth_context with JWT =="
+echo "==[6] v_auth_context with JWT =="
 cat > "$TMP_DIR/debug_auth.json" <<'JSON'
-{"query":"query { debug_auth_context { hasura_user jwt_claims jwt_claim_sub jwt_claim_role request_uid } }"}
+{"query":"query { v_auth_context { hasura_user jwt_claims jwt_claim_sub jwt_claim_role request_uid } }"}
 JSON
 curl -sS \
   -H "Content-Type: application/json" \
