@@ -2,6 +2,22 @@
 -- سياسات RLS + دوال مساعدة لازمة (idempotent) بدون استخدام NEW. داخل السياسات
 -- ومراعاة فروقات النوع uuid/text عبر التحويل إلى ::text
 
+-- تأكد من وجود جدول super_admins قبل إنشاء الدوال التي تعتمد عليه
+DO $$
+BEGIN
+  IF to_regclass('public.super_admins') IS NULL THEN
+    CREATE TABLE IF NOT EXISTS public.super_admins (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      created_at timestamptz NOT NULL DEFAULT now(),
+      account_id uuid,
+      device_id text,
+      local_id bigint,
+      email text UNIQUE,
+      user_uid uuid UNIQUE
+    );
+  END IF;
+END$$;
+
 -- ───────────────────────── Helper functions (idempotent) ─────────────────────────
 
 -- هل المستخدم الحالي سوبر أدمن؟
