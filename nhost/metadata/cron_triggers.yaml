@@ -1,5 +1,5 @@
 - name: expire_account_subscriptions_daily
-  webhook_from_env: NHOST_GRAPHQL_URL
+  webhook: https://mergrgclboxflnucehgb.graphql.ap-southeast-1.nhost.run/v1
   schedule: "0 3 * * *"
   include_in_metadata: true
   payload:
