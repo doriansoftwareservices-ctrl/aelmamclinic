@@ -1,6 +1,14 @@
 -- 20250914_chat_triggers_last_msg.sql
 -- تحديث last_msg_at / last_msg_snippet تلقائياً بناءً على chat_messages.
 
+DO $$
+BEGIN
+  IF to_regclass('public.chat_messages') IS NULL THEN
+    RAISE NOTICE 'skip chat triggers: chat_messages not present';
+    RETURN;
+  END IF;
+END$$;
+
 SET search_path TO public;
 -- ╭──────────────────────────────────────────────────────────────────────────────╮
 -- │ 1) Helper: بناء مقتطف الرسالة داخل SQL                                      │
