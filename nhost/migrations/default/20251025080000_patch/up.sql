@@ -332,7 +332,11 @@ BEGIN
   BEGIN
     FOR r IN SELECT tablename FROM pg_tables WHERE schemaname='public' LOOP
       BEGIN
+        IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
         EXECUTE format('ALTER PUBLICATION supabase_realtime ADD TABLE public.%I', r.tablename);
+      ELSE
+        RAISE NOTICE 'skip publication supabase_realtime: not present on Nhost';
+      END IF;
       EXCEPTION
         WHEN duplicate_object THEN
           -- الجدول مضاف مسبقًا إلى الـ publication، نتجاهل الخطأ.
