@@ -18,6 +18,18 @@ BEGIN
   END IF;
 END$$;
 
+-- تأكد من وجود request_uid_text قبل استخدامه داخل الدوال والسياسات
+DO $$
+BEGIN
+  IF to_regproc('public.request_uid_text') IS NULL THEN
+    CREATE FUNCTION public.request_uid_text()
+    RETURNS text
+    LANGUAGE sql
+    STABLE
+    AS $$ SELECT null; $$;
+  END IF;
+END$$;
+
 -- ───────────────────────── Helper functions (idempotent) ─────────────────────────
 
 -- هل المستخدم الحالي سوبر أدمن؟
