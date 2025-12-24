@@ -7,7 +7,7 @@ webhookSecret = '{{ secrets.NHOST_WEBHOOK_SECRET }}'
 
 [[hasura.jwtSecrets]]
 type = 'HS256'
-key = '{{ secrets.HASURA_GRAPHQL_JWT_SECRET }}'
+key = 'e61223840eca4975ba15e2a1bb7c2d56a3db30ae7b8848fc842751cd1a980a61'
 
 [hasura.settings]
 corsDomain = ['*']
@@ -81,7 +81,7 @@ enabled = false
 
 [auth.method.emailPassword]
 hibpEnabled = false
-emailVerificationRequired = false
+emailVerificationRequired = true
 passwordMinLength = 9
 
 [auth.method.smsPasswordless]
