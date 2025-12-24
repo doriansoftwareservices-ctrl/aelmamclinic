@@ -128,6 +128,11 @@ BEFORE UPDATE ON public.complaints
 FOR EACH ROW
 EXECUTE FUNCTION public.tg_touch_updated_at();
 
+-- Ensure complaints columns exist even if table pre-existed (CREATE TABLE IF NOT EXISTS won't add missing columns)
+ALTER TABLE IF EXISTS public.complaints
+  ADD COLUMN IF NOT EXISTS user_uid uuid,
+  ADD COLUMN IF NOT EXISTS account_id uuid;
+
 -- 8) RLS
 ALTER TABLE public.payment_methods ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.subscription_requests ENABLE ROW LEVEL SECURITY;
