@@ -107,21 +107,35 @@ BEGIN
 END;
 $$;
 -- ───────────────────────── Enable RLS (idempotent) ─────────────────────────
-ALTER TABLE public.chat_conversations ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.chat_participants  ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.chat_messages      ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.chat_reads         ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.chat_attachments   ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+  IF to_regclass('public.chat_conversations') IS NOT NULL THEN
+    ALTER TABLE public.chat_conversations ENABLE ROW LEVEL SECURITY;
+  END IF;
+  IF to_regclass('public.chat_participants') IS NOT NULL THEN
+    ALTER TABLE public.chat_participants ENABLE ROW LEVEL SECURITY;
+  END IF;
+  IF to_regclass('public.chat_messages') IS NOT NULL THEN
+    ALTER TABLE public.chat_messages ENABLE ROW LEVEL SECURITY;
+  END IF;
+  IF to_regclass('public.chat_reads') IS NOT NULL THEN
+    ALTER TABLE public.chat_reads ENABLE ROW LEVEL SECURITY;
+  END IF;
+  IF to_regclass('public.chat_attachments') IS NOT NULL THEN
+    ALTER TABLE public.chat_attachments ENABLE ROW LEVEL SECURITY;
+  END IF;
+END$$;
 -- ───────────────────────── chat_conversations ─────────────────────────
 
 -- SELECT: المشارك في المحادثة أو السوبر أدمن
 DO $$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname='public' AND tablename='chat_conversations'
-      AND policyname='conv_select_participant_or_super'
-  ) THEN
+  IF to_regclass('public.chat_conversations') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_policies
+       WHERE schemaname='public' AND tablename='chat_conversations'
+         AND policyname='conv_select_participant_or_super'
+     ) THEN
     CREATE POLICY conv_select_participant_or_super
     ON public.chat_conversations
     FOR SELECT
@@ -139,11 +153,12 @@ END$$;
 -- INSERT: المنشئ هو المستخدم الحالي + حارس account_id
 DO $$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname='public' AND tablename='chat_conversations'
-      AND policyname='conv_insert_creator_with_account_guard'
-  ) THEN
+  IF to_regclass('public.chat_conversations') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_policies
+       WHERE schemaname='public' AND tablename='chat_conversations'
+         AND policyname='conv_insert_creator_with_account_guard'
+     ) THEN
     CREATE POLICY conv_insert_creator_with_account_guard
     ON public.chat_conversations
     FOR INSERT
@@ -167,11 +182,12 @@ END$$;
 -- UPDATE: صاحب الإنشاء أو السوبر + ثبات حارس الحساب
 DO $$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname='public' AND tablename='chat_conversations'
-      AND policyname='conv_update_creator_or_super'
-  ) THEN
+  IF to_regclass('public.chat_conversations') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_policies
+       WHERE schemaname='public' AND tablename='chat_conversations'
+         AND policyname='conv_update_creator_or_super'
+     ) THEN
     CREATE POLICY conv_update_creator_or_super
     ON public.chat_conversations
     FOR UPDATE
@@ -197,11 +213,12 @@ END$$;
 -- SELECT: أي مستخدم مشارك في نفس المحادثة أو سوبر
 DO $$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname='public' AND tablename='chat_participants'
-      AND policyname='parts_select_if_conversation_member_or_super'
-  ) THEN
+  IF to_regclass('public.chat_participants') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_policies
+       WHERE schemaname='public' AND tablename='chat_participants'
+         AND policyname='parts_select_if_conversation_member_or_super'
+     ) THEN
     CREATE POLICY parts_select_if_conversation_member_or_super
     ON public.chat_participants
     FOR SELECT
@@ -219,11 +236,12 @@ END$$;
 -- INSERT: منشئ المحادثة أو السوبر فقط يضيف مشاركين
 DO $$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname='public' AND tablename='chat_participants'
-      AND policyname='parts_insert_by_conv_creator_or_super'
-  ) THEN
+  IF to_regclass('public.chat_participants') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_policies
+       WHERE schemaname='public' AND tablename='chat_participants'
+         AND policyname='parts_insert_by_conv_creator_or_super'
+     ) THEN
     CREATE POLICY parts_insert_by_conv_creator_or_super
     ON public.chat_participants
     FOR INSERT
@@ -241,11 +259,12 @@ END$$;
 -- UPDATE/DELETE: منشئ المحادثة أو السوبر
 DO $$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname='public' AND tablename='chat_participants'
-      AND policyname='parts_update_by_conv_creator_or_super'
-  ) THEN
+  IF to_regclass('public.chat_participants') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_policies
+       WHERE schemaname='public' AND tablename='chat_participants'
+         AND policyname='parts_update_by_conv_creator_or_super'
+     ) THEN
     CREATE POLICY parts_update_by_conv_creator_or_super
     ON public.chat_participants
     FOR UPDATE
@@ -270,11 +289,12 @@ BEGIN
 END$$;
 DO $$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname='public' AND tablename='chat_participants'
-      AND policyname='parts_delete_by_conv_creator_or_super'
-  ) THEN
+  IF to_regclass('public.chat_participants') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_policies
+       WHERE schemaname='public' AND tablename='chat_participants'
+         AND policyname='parts_delete_by_conv_creator_or_super'
+     ) THEN
     CREATE POLICY parts_delete_by_conv_creator_or_super
     ON public.chat_participants
     FOR DELETE
@@ -294,11 +314,12 @@ END$$;
 -- SELECT: المشارك أو السوبر
 DO $$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname='public' AND tablename='chat_messages'
-      AND policyname='msgs_select_if_participant_or_super'
-  ) THEN
+  IF to_regclass('public.chat_messages') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_policies
+       WHERE schemaname='public' AND tablename='chat_messages'
+         AND policyname='msgs_select_if_participant_or_super'
+     ) THEN
     CREATE POLICY msgs_select_if_participant_or_super
     ON public.chat_messages
     FOR SELECT
@@ -316,11 +337,12 @@ END$$;
 -- INSERT: المرسل هو المستخدم الحالي + عضو بالمحادثة
 DO $$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname='public' AND tablename='chat_messages'
-      AND policyname='msgs_insert_sender_is_self_and_member'
-  ) THEN
+  IF to_regclass('public.chat_messages') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_policies
+       WHERE schemaname='public' AND tablename='chat_messages'
+         AND policyname='msgs_insert_sender_is_self_and_member'
+     ) THEN
     CREATE POLICY msgs_insert_sender_is_self_and_member
     ON public.chat_messages
     FOR INSERT
@@ -338,11 +360,12 @@ END$$;
 -- UPDATE/DELETE: صاحب الرسالة أو السوبر
 DO $$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname='public' AND tablename='chat_messages'
-      AND policyname='msgs_update_owner_or_super'
-  ) THEN
+  IF to_regclass('public.chat_messages') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_policies
+       WHERE schemaname='public' AND tablename='chat_messages'
+         AND policyname='msgs_update_owner_or_super'
+     ) THEN
     CREATE POLICY msgs_update_owner_or_super
     ON public.chat_messages
     FOR UPDATE
@@ -353,11 +376,12 @@ BEGIN
 END$$;
 DO $$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname='public' AND tablename='chat_messages'
-      AND policyname='msgs_delete_owner_or_super'
-  ) THEN
+  IF to_regclass('public.chat_messages') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_policies
+       WHERE schemaname='public' AND tablename='chat_messages'
+         AND policyname='msgs_delete_owner_or_super'
+     ) THEN
     CREATE POLICY msgs_delete_owner_or_super
     ON public.chat_messages
     FOR DELETE
@@ -370,11 +394,12 @@ END$$;
 -- SELECT: صفوف قراءتي فقط وفي محادثات أنا عضو فيها (أو سوبر)
 DO $$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname='public' AND tablename='chat_reads'
-      AND policyname='reads_select_self_or_super_if_member'
-  ) THEN
+  IF to_regclass('public.chat_reads') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_policies
+       WHERE schemaname='public' AND tablename='chat_reads'
+         AND policyname='reads_select_self_or_super_if_member'
+     ) THEN
     CREATE POLICY reads_select_self_or_super_if_member
     ON public.chat_reads
     FOR SELECT
@@ -395,11 +420,12 @@ END$$;
 -- INSERT: أكتب فقط لقراءتي وفي محادثة أنا عضو فيها
 DO $$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname='public' AND tablename='chat_reads'
-      AND policyname='reads_insert_self_if_member'
-  ) THEN
+  IF to_regclass('public.chat_reads') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_policies
+       WHERE schemaname='public' AND tablename='chat_reads'
+         AND policyname='reads_insert_self_if_member'
+     ) THEN
     CREATE POLICY reads_insert_self_if_member
     ON public.chat_reads
     FOR INSERT
@@ -417,11 +443,12 @@ END$$;
 -- UPDATE: أحدّث فقط صفّي وفي محادثة أنا عضو فيها (أو سوبر)
 DO $$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname='public' AND tablename='chat_reads'
-      AND policyname='reads_update_self_or_super_if_member'
-  ) THEN
+  IF to_regclass('public.chat_reads') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_policies
+       WHERE schemaname='public' AND tablename='chat_reads'
+         AND policyname='reads_update_self_or_super_if_member'
+     ) THEN
     CREATE POLICY reads_update_self_or_super_if_member
     ON public.chat_reads
     FOR UPDATE
@@ -455,11 +482,12 @@ END$$;
 -- SELECT: المشارك أو السوبر
 DO $$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname='public' AND tablename='chat_attachments'
-      AND policyname='atts_select_if_participant_or_super'
-  ) THEN
+  IF to_regclass('public.chat_attachments') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_policies
+       WHERE schemaname='public' AND tablename='chat_attachments'
+         AND policyname='atts_select_if_participant_or_super'
+     ) THEN
     CREATE POLICY atts_select_if_participant_or_super
     ON public.chat_attachments
     FOR SELECT
@@ -480,11 +508,12 @@ END$$;
 -- INSERT: مشارك في المحادثة المرتبطة بالرسالة (أو سوبر)
 DO $$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname='public' AND tablename='chat_attachments'
-      AND policyname='atts_insert_if_participant_or_super'
-  ) THEN
+  IF to_regclass('public.chat_attachments') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_policies
+       WHERE schemaname='public' AND tablename='chat_attachments'
+         AND policyname='atts_insert_if_participant_or_super'
+     ) THEN
     CREATE POLICY atts_insert_if_participant_or_super
     ON public.chat_attachments
     FOR INSERT
@@ -505,11 +534,12 @@ END$$;
 -- DELETE: صاحب الرسالة أو السوبر
 DO $$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname='public' AND tablename='chat_attachments'
-      AND policyname='atts_delete_owner_message_or_super'
-  ) THEN
+  IF to_regclass('public.chat_attachments') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_policies
+       WHERE schemaname='public' AND tablename='chat_attachments'
+         AND policyname='atts_delete_owner_message_or_super'
+     ) THEN
     CREATE POLICY atts_delete_owner_message_or_super
     ON public.chat_attachments
     FOR DELETE
