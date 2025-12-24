@@ -2,6 +2,11 @@
 
 BEGIN;
 
+DROP FUNCTION IF EXISTS public.admin_payment_stats();
+DROP FUNCTION IF EXISTS public.admin_payment_stats_by_plan();
+DROP FUNCTION IF EXISTS public.admin_payment_stats_by_day();
+DROP FUNCTION IF EXISTS public.admin_payment_stats_by_month();
+
 CREATE OR REPLACE FUNCTION public.admin_payment_stats()
 RETURNS TABLE (
   payment_method_id uuid,
