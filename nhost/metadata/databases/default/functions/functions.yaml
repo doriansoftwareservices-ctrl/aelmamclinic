@@ -190,6 +190,16 @@
     - role: superadmin
 - function:
     schema: public
+    name: self_create_account
+  configuration:
+    exposed_as: mutation
+    custom_name: self_create_account
+  permissions:
+    - role: me
+    - role: user
+    - role: superadmin
+- function:
+    schema: public
     name: admin_approve_subscription_request
   configuration:
     exposed_as: mutation

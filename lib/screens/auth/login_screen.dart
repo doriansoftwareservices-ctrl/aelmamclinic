@@ -190,6 +190,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       await auth.signUp(email, pass);
+      await auth.signIn(email, pass);
       await auth.selfCreateAccount(clinicName.trim());
       final result = await auth.refreshAndValidateCurrentUser();
       if (!mounted) return;
