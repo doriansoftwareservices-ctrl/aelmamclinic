@@ -25,24 +25,24 @@ USING (
     FROM public.chat_messages m
     JOIN public.chat_participants p
       ON p.conversation_id = m.conversation_id
-     AND p.user_uid = public.request_uid_text()::uuid
+     AND p.user_uid = nullif(public.request_uid_text(), '')::uuid
     WHERE m.id = chat_reactions.message_id
   )
 );
--- 4) سياسة INSERT — يجب أن يكون المُدخل مشاركًا، وباسمه فقط (user_uid = public.request_uid_text()::uuid)
+-- 4) سياسة INSERT — يجب أن يكون المُدخل مشاركًا، وباسمه فقط (user_uid = nullif(public.request_uid_text(), '')::uuid)
 DROP POLICY IF EXISTS "reactions insert by participant self" ON public.chat_reactions;
 CREATE POLICY "reactions insert by participant self"
 ON public.chat_reactions
 FOR INSERT
 TO PUBLIC
 WITH CHECK (
-  user_uid = public.request_uid_text()::uuid
+  user_uid = nullif(public.request_uid_text(), '')::uuid
   AND EXISTS (
     SELECT 1
     FROM public.chat_messages m
     JOIN public.chat_participants p
       ON p.conversation_id = m.conversation_id
-     AND p.user_uid = public.request_uid_text()::uuid
+     AND p.user_uid = nullif(public.request_uid_text(), '')::uuid
     WHERE m.id = chat_reactions.message_id
   )
 );
@@ -53,13 +53,13 @@ ON public.chat_reactions
 FOR DELETE
 TO PUBLIC
 USING (
-  user_uid = public.request_uid_text()::uuid
+  user_uid = nullif(public.request_uid_text(), '')::uuid
   AND EXISTS (
     SELECT 1
     FROM public.chat_messages m
     JOIN public.chat_participants p
       ON p.conversation_id = m.conversation_id
-     AND p.user_uid = public.request_uid_text()::uuid
+     AND p.user_uid = nullif(public.request_uid_text(), '')::uuid
     WHERE m.id = chat_reactions.message_id
   )
 );

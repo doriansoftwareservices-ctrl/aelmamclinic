@@ -12,9 +12,6 @@ Future<
       String? nhostAuthUrl,
       String? nhostStorageUrl,
       String? nhostFunctionsUrl,
-      String? nhostAdminSecret,
-      String? nhostWebhookSecret,
-      String? nhostJwtSecret,
       String? source
     })?> loadNhostRuntimeOverrides({
   required String windowsDataDir,
@@ -151,9 +148,6 @@ Future<
       final nhostAuthUrl = readKey('nhostAuthUrl');
       final nhostStorageUrl = readKey('nhostStorageUrl');
       final nhostFunctionsUrl = readKey('nhostFunctionsUrl');
-      final nhostAdminSecret = readKey('nhostAdminSecret');
-      final nhostWebhookSecret = readKey('nhostWebhookSecret');
-      final nhostJwtSecret = readKey('nhostJwtSecret');
       final admins = readEmailList();
 
       final noNhostOverrides = (nhostSubdomain == null ||
@@ -162,10 +156,7 @@ Future<
           (nhostGraphqlUrl == null || nhostGraphqlUrl.isEmpty) &&
           (nhostAuthUrl == null || nhostAuthUrl.isEmpty) &&
           (nhostStorageUrl == null || nhostStorageUrl.isEmpty) &&
-          (nhostFunctionsUrl == null || nhostFunctionsUrl.isEmpty) &&
-          (nhostAdminSecret == null || nhostAdminSecret.isEmpty) &&
-          (nhostWebhookSecret == null || nhostWebhookSecret.isEmpty) &&
-          (nhostJwtSecret == null || nhostJwtSecret.isEmpty);
+          (nhostFunctionsUrl == null || nhostFunctionsUrl.isEmpty);
 
       if (noNhostOverrides && (admins == null || admins.isEmpty)) {
         continue;
@@ -179,9 +170,6 @@ Future<
         nhostAuthUrl: nhostAuthUrl,
         nhostStorageUrl: nhostStorageUrl,
         nhostFunctionsUrl: nhostFunctionsUrl,
-        nhostAdminSecret: nhostAdminSecret,
-        nhostWebhookSecret: nhostWebhookSecret,
-        nhostJwtSecret: nhostJwtSecret,
         source: file.path,
       );
     } catch (_) {

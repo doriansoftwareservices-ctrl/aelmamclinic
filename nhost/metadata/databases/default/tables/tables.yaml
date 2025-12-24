@@ -14,58 +14,2466 @@
 - table:
     schema: public
     name: chat_conversations
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
 
 - table:
     schema: public
     name: chat_participants
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
 
 - table:
     schema: public
     name: chat_messages
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
 
 - table:
     schema: public
     name: chat_reads
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
 
 - table:
     schema: public
     name: chat_attachments
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
 
 - table:
     schema: public
     name: chat_reactions
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
 
 - table:
     schema: public
     name: chat_delivery_receipts
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
 
 - table:
     schema: public
     name: chat_group_invitations
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
 
 - table:
     schema: public
     name: chat_aliases
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
 
 - table:
     schema: public
     name: chat_typing
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
 
 - table:
     schema: public
     name: account_users
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
 
 - table:
     schema: public
     name: profiles
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
 
 - table:
     schema: public
     name: clinics
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
 
 - table:
     schema: public
     name: account_feature_permissions
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
+
+- table:
+    schema: public
+    name: accounts
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
+
+- table:
+    schema: public
+    name: patients
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
+
+- table:
+    schema: public
+    name: returns
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
+
+- table:
+    schema: public
+    name: consumptions
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
+
+- table:
+    schema: public
+    name: drugs
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
+
+- table:
+    schema: public
+    name: prescriptions
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
+
+- table:
+    schema: public
+    name: prescription_items
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
+
+- table:
+    schema: public
+    name: complaints
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
+
+- table:
+    schema: public
+    name: appointments
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
+
+- table:
+    schema: public
+    name: doctors
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
+
+- table:
+    schema: public
+    name: consumption_types
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
+
+- table:
+    schema: public
+    name: medical_services
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
+
+- table:
+    schema: public
+    name: service_doctor_share
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
+
+- table:
+    schema: public
+    name: employees
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
+
+- table:
+    schema: public
+    name: employees_loans
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
+
+- table:
+    schema: public
+    name: employees_salaries
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
+
+- table:
+    schema: public
+    name: employees_discounts
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
+
+- table:
+    schema: public
+    name: item_types
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
+
+- table:
+    schema: public
+    name: items
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
+
+- table:
+    schema: public
+    name: purchases
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
+
+- table:
+    schema: public
+    name: alert_settings
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
+
+- table:
+    schema: public
+    name: financial_logs
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
+
+- table:
+    schema: public
+    name: patient_services
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
+
+- table:
+    schema: public
+    name: audit_logs
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
+
+- table:
+    schema: public
+    name: account_subscriptions
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
+
+- table:
+    schema: public
+    name: payment_methods
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
+
+- table:
+    schema: public
+    name: subscription_payments
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
+
+- table:
+    schema: public
+    name: subscription_plans
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
+
+- table:
+    schema: public
+    name: subscription_requests
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
+
+- table:
+    schema: public
+    name: plan_features
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check: {}
+        columns: "*"
+    - role: user
+      permission:
+        check: {}
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter: {}
+    - role: user
+      permission:
+        filter: {}
+    - role: superadmin
+      permission:
+        filter: {}
 
 - table:
     schema: public
@@ -325,10 +2733,6 @@
           - frozen
           - disabled
         filter: {}
-
-- table:
-    schema: public
-    name: audit_logs
 
 - table:
     schema: public

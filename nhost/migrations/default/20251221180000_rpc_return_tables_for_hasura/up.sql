@@ -20,7 +20,7 @@ SET search_path = public
 AS $$
   SELECT account_id
   FROM public.account_users
-  WHERE user_uid = public.request_uid_text()::uuid
+  WHERE user_uid = nullif(public.request_uid_text(), '')::uuid
     AND coalesce(disabled, false) = false
   ORDER BY created_at DESC
   LIMIT 1;

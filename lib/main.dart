@@ -126,8 +126,7 @@ void main() {
       'graphql=${NhostConfig.graphqlUrl}, '
       'auth=${NhostConfig.authUrl}, '
       'storage=${NhostConfig.storageUrl}, '
-      'functions=${NhostConfig.functionsUrl}, '
-      'adminSecret=${NhostConfig.adminSecret.isNotEmpty ? 'set' : 'empty'}',
+      'functions=${NhostConfig.functionsUrl}',
       tag: 'CONFIG',
     );
     AppConstants.debugLog(

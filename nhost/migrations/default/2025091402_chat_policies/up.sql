@@ -13,12 +13,12 @@ AS $$
   SELECT EXISTS (
            SELECT 1
            FROM public.super_admins s
-           WHERE s.user_uid::text = public.request_uid_text()::uuid::text
+           WHERE s.user_uid::text = nullif(public.request_uid_text(), '')::uuid::text
          )
       OR EXISTS (
            SELECT 1
            FROM public.account_users au
-           WHERE au.user_uid::text = public.request_uid_text()::uuid::text
+           WHERE au.user_uid::text = nullif(public.request_uid_text(), '')::uuid::text
              AND lower(au.role) = 'superadmin'
          );
 $$;
@@ -34,7 +34,7 @@ BEGIN
   SELECT au.account_id::text
     INTO acc
   FROM public.account_users au
-  WHERE au.user_uid::text = public.request_uid_text()::uuid::text
+  WHERE au.user_uid::text = nullif(public.request_uid_text(), '')::uuid::text
   ORDER BY au.created_at DESC NULLS LAST
   LIMIT 1;
 
@@ -66,7 +66,7 @@ BEGIN
       OR EXISTS (
         SELECT 1 FROM public.chat_participants p
         WHERE p.conversation_id = chat_conversations.id
-          AND p.user_uid::text = public.request_uid_text()::uuid::text
+          AND p.user_uid::text = nullif(public.request_uid_text(), '')::uuid::text
       )
     );
   END IF;
@@ -84,7 +84,7 @@ BEGIN
     FOR INSERT
     TO PUBLIC
     WITH CHECK (
-      created_by::text = public.request_uid_text()::uuid::text
+      created_by::text = nullif(public.request_uid_text(), '')::uuid::text
       AND (
         fn_is_super_admin() = true
         OR account_id IS NULL
@@ -92,7 +92,7 @@ BEGIN
           SELECT 1
           FROM public.account_users au
           WHERE au.account_id = chat_conversations.account_id
-            AND au.user_uid::text = public.request_uid_text()::uuid::text
+            AND au.user_uid::text = nullif(public.request_uid_text(), '')::uuid::text
             AND coalesce(au.disabled, false) = false
         )
       )
@@ -112,7 +112,7 @@ BEGIN
     FOR UPDATE
     TO PUBLIC
     USING (
-      fn_is_super_admin() = true OR created_by::text = public.request_uid_text()::uuid::text
+      fn_is_super_admin() = true OR created_by::text = nullif(public.request_uid_text(), '')::uuid::text
     )
     WITH CHECK (
       fn_is_super_admin() = true
@@ -121,7 +121,7 @@ BEGIN
         SELECT 1
         FROM public.account_users au
         WHERE au.account_id = chat_conversations.account_id
-          AND au.user_uid::text = public.request_uid_text()::uuid::text
+          AND au.user_uid::text = nullif(public.request_uid_text(), '')::uuid::text
           AND coalesce(au.disabled, false) = false
       )
     );
@@ -146,7 +146,7 @@ BEGIN
       OR EXISTS (
         SELECT 1 FROM public.chat_participants p2
         WHERE p2.conversation_id = chat_participants.conversation_id
-          AND p2.user_uid::text = public.request_uid_text()::uuid::text
+          AND p2.user_uid::text = nullif(public.request_uid_text(), '')::uuid::text
       )
     );
   END IF;
@@ -168,7 +168,7 @@ BEGIN
       OR EXISTS (
         SELECT 1 FROM public.chat_conversations c
         WHERE c.id = chat_participants.conversation_id
-          AND c.created_by::text = public.request_uid_text()::uuid::text
+          AND c.created_by::text = nullif(public.request_uid_text(), '')::uuid::text
       )
     );
   END IF;
@@ -190,7 +190,7 @@ BEGIN
       OR EXISTS (
         SELECT 1 FROM public.chat_conversations c
         WHERE c.id = chat_participants.conversation_id
-          AND c.created_by::text = public.request_uid_text()::uuid::text
+          AND c.created_by::text = nullif(public.request_uid_text(), '')::uuid::text
       )
     )
     WITH CHECK (
@@ -198,7 +198,7 @@ BEGIN
       OR EXISTS (
         SELECT 1 FROM public.chat_conversations c
         WHERE c.id = chat_participants.conversation_id
-          AND c.created_by::text = public.request_uid_text()::uuid::text
+          AND c.created_by::text = nullif(public.request_uid_text(), '')::uuid::text
       )
     );
   END IF;
@@ -219,7 +219,7 @@ BEGIN
       OR EXISTS (
         SELECT 1 FROM public.chat_conversations c
         WHERE c.id = chat_participants.conversation_id
-          AND c.created_by::text = public.request_uid_text()::uuid::text
+          AND c.created_by::text = nullif(public.request_uid_text(), '')::uuid::text
       )
     );
   END IF;
@@ -243,7 +243,7 @@ BEGIN
       OR EXISTS (
         SELECT 1 FROM public.chat_participants p
         WHERE p.conversation_id = chat_messages.conversation_id
-          AND p.user_uid::text = public.request_uid_text()::uuid::text
+          AND p.user_uid::text = nullif(public.request_uid_text(), '')::uuid::text
       )
     );
   END IF;
@@ -261,11 +261,11 @@ BEGIN
     FOR INSERT
     TO PUBLIC
     WITH CHECK (
-      sender_uid::text = public.request_uid_text()::uuid::text
+      sender_uid::text = nullif(public.request_uid_text(), '')::uuid::text
       AND EXISTS (
         SELECT 1 FROM public.chat_participants p
         WHERE p.conversation_id = chat_messages.conversation_id
-          AND p.user_uid::text = public.request_uid_text()::uuid::text
+          AND p.user_uid::text = nullif(public.request_uid_text(), '')::uuid::text
       )
     );
   END IF;
@@ -282,8 +282,8 @@ BEGIN
     ON public.chat_messages
     FOR UPDATE
     TO PUBLIC
-    USING (fn_is_super_admin() = true OR sender_uid::text = public.request_uid_text()::uuid::text)
-    WITH CHECK (fn_is_super_admin() = true OR sender_uid::text = public.request_uid_text()::uuid::text);
+    USING (fn_is_super_admin() = true OR sender_uid::text = nullif(public.request_uid_text(), '')::uuid::text)
+    WITH CHECK (fn_is_super_admin() = true OR sender_uid::text = nullif(public.request_uid_text(), '')::uuid::text);
   END IF;
 END$$;
 DO $$
@@ -297,7 +297,7 @@ BEGIN
     ON public.chat_messages
     FOR DELETE
     TO PUBLIC
-    USING (fn_is_super_admin() = true OR sender_uid::text = public.request_uid_text()::uuid::text);
+    USING (fn_is_super_admin() = true OR sender_uid::text = nullif(public.request_uid_text(), '')::uuid::text);
   END IF;
 END$$;
 -- ───────────────────────── chat_reads ─────────────────────────
@@ -317,11 +317,11 @@ BEGIN
     USING (
       fn_is_super_admin() = true
       OR (
-        user_uid::text = public.request_uid_text()::uuid::text
+        user_uid::text = nullif(public.request_uid_text(), '')::uuid::text
         AND EXISTS (
           SELECT 1 FROM public.chat_participants p
           WHERE p.conversation_id = chat_reads.conversation_id
-            AND p.user_uid::text = public.request_uid_text()::uuid::text
+            AND p.user_uid::text = nullif(public.request_uid_text(), '')::uuid::text
         )
       )
     );
@@ -340,11 +340,11 @@ BEGIN
     FOR INSERT
     TO PUBLIC
     WITH CHECK (
-      user_uid::text = public.request_uid_text()::uuid::text
+      user_uid::text = nullif(public.request_uid_text(), '')::uuid::text
       AND EXISTS (
         SELECT 1 FROM public.chat_participants p
         WHERE p.conversation_id = chat_reads.conversation_id
-          AND p.user_uid::text = public.request_uid_text()::uuid::text
+          AND p.user_uid::text = nullif(public.request_uid_text(), '')::uuid::text
       )
     );
   END IF;
@@ -364,22 +364,22 @@ BEGIN
     USING (
       fn_is_super_admin() = true
       OR (
-        user_uid::text = public.request_uid_text()::uuid::text
+        user_uid::text = nullif(public.request_uid_text(), '')::uuid::text
         AND EXISTS (
           SELECT 1 FROM public.chat_participants p
           WHERE p.conversation_id = chat_reads.conversation_id
-            AND p.user_uid::text = public.request_uid_text()::uuid::text
+            AND p.user_uid::text = nullif(public.request_uid_text(), '')::uuid::text
         )
       )
     )
     WITH CHECK (
       fn_is_super_admin() = true
       OR (
-        user_uid::text = public.request_uid_text()::uuid::text
+        user_uid::text = nullif(public.request_uid_text(), '')::uuid::text
         AND EXISTS (
           SELECT 1 FROM public.chat_participants p
           WHERE p.conversation_id = chat_reads.conversation_id
-            AND p.user_uid::text = public.request_uid_text()::uuid::text
+            AND p.user_uid::text = nullif(public.request_uid_text(), '')::uuid::text
         )
       )
     );
@@ -407,7 +407,7 @@ BEGIN
         JOIN public.chat_participants p
           ON p.conversation_id = m.conversation_id
         WHERE m.id = chat_attachments.message_id
-          AND p.user_uid::text = public.request_uid_text()::uuid::text
+          AND p.user_uid::text = nullif(public.request_uid_text(), '')::uuid::text
       )
     );
   END IF;
@@ -432,7 +432,7 @@ BEGIN
         JOIN public.chat_participants p
           ON p.conversation_id = m.conversation_id
         WHERE m.id = chat_attachments.message_id
-          AND p.user_uid::text = public.request_uid_text()::uuid::text
+          AND p.user_uid::text = nullif(public.request_uid_text(), '')::uuid::text
       )
     );
   END IF;
@@ -455,7 +455,7 @@ BEGIN
         SELECT 1
         FROM public.chat_messages m
         WHERE m.id = chat_attachments.message_id
-          AND m.sender_uid::text = public.request_uid_text()::uuid::text
+          AND m.sender_uid::text = nullif(public.request_uid_text(), '')::uuid::text
       )
     );
   END IF;

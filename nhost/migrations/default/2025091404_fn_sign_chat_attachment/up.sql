@@ -57,7 +57,7 @@ BEGIN
     SELECT 1
     FROM public.chat_participants p
     WHERE p.conversation_id = v_conversation
-      AND p.user_uid = public.request_uid_text()::uuid
+      AND p.user_uid = nullif(public.request_uid_text(), '')::uuid
   ) INTO v_has_access;
 
   IF NOT v_has_access THEN

@@ -40,12 +40,12 @@ BEGIN
       FOR SELECT TO PUBLIC
       USING (
         fn_is_super_admin() = true
-        OR id::text = public.request_uid_text()::uuid::text
+        OR id::text = nullif(public.request_uid_text(), '')::uuid::text
         OR (
           account_id IS NOT NULL AND EXISTS (
             SELECT 1 FROM public.account_users au
             WHERE au.account_id = profiles.account_id
-              AND au.user_uid::text = public.request_uid_text()::uuid::text
+              AND au.user_uid::text = nullif(public.request_uid_text(), '')::uuid::text
               AND coalesce(au.disabled, false) = false
           )
         )
@@ -67,7 +67,7 @@ BEGIN
           account_id IS NOT NULL AND EXISTS (
             SELECT 1 FROM public.account_users au
             WHERE au.account_id = profiles.account_id
-              AND au.user_uid::text = public.request_uid_text()::uuid::text
+              AND au.user_uid::text = nullif(public.request_uid_text(), '')::uuid::text
               AND coalesce(au.disabled, false) = false
               AND lower(coalesce(au.role, '')) IN ('owner','admin','superadmin')
           )
@@ -86,12 +86,12 @@ BEGIN
       FOR UPDATE TO PUBLIC
       USING (
         fn_is_super_admin() = true
-        OR id::text = public.request_uid_text()::uuid::text
+        OR id::text = nullif(public.request_uid_text(), '')::uuid::text
         OR (
           account_id IS NOT NULL AND EXISTS (
             SELECT 1 FROM public.account_users au
             WHERE au.account_id = profiles.account_id
-              AND au.user_uid::text = public.request_uid_text()::uuid::text
+              AND au.user_uid::text = nullif(public.request_uid_text(), '')::uuid::text
               AND coalesce(au.disabled, false) = false
               AND lower(coalesce(au.role, '')) IN ('owner','admin','superadmin')
           )
@@ -99,12 +99,12 @@ BEGIN
       )
       WITH CHECK (
         fn_is_super_admin() = true
-        OR id::text = public.request_uid_text()::uuid::text
+        OR id::text = nullif(public.request_uid_text(), '')::uuid::text
         OR (
           account_id IS NOT NULL AND EXISTS (
             SELECT 1 FROM public.account_users au
             WHERE au.account_id = profiles.account_id
-              AND au.user_uid::text = public.request_uid_text()::uuid::text
+              AND au.user_uid::text = nullif(public.request_uid_text(), '')::uuid::text
               AND coalesce(au.disabled, false) = false
               AND lower(coalesce(au.role, '')) IN ('owner','admin','superadmin')
           )
@@ -127,7 +127,7 @@ BEGIN
           account_id IS NOT NULL AND EXISTS (
             SELECT 1 FROM public.account_users au
             WHERE au.account_id = profiles.account_id
-              AND au.user_uid::text = public.request_uid_text()::uuid::text
+              AND au.user_uid::text = nullif(public.request_uid_text(), '')::uuid::text
               AND coalesce(au.disabled, false) = false
               AND lower(coalesce(au.role, '')) IN ('owner','admin','superadmin')
           )

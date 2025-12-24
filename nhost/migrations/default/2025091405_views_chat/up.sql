@@ -74,7 +74,7 @@ SELECT
   r.last_read_message_id,
   r.last_read_at
 FROM public.chat_reads r
-WHERE r.user_uid = public.request_uid_text()::uuid;
+WHERE r.user_uid = nullif(public.request_uid_text(), '')::uuid;
 COMMENT ON VIEW public.v_chat_reads_for_me
 IS 'Per-conversation last read state for the current authenticated user (via public.request_uid_text()).';
 -- ───────────────────────── View: v_chat_conversations_for_me ─────────────────────────
@@ -83,7 +83,7 @@ CREATE OR REPLACE VIEW public.v_chat_conversations_for_me AS
 WITH mine AS (
   SELECT p.conversation_id
   FROM public.chat_participants p
-  WHERE p.user_uid = public.request_uid_text()::uuid
+  WHERE p.user_uid = nullif(public.request_uid_text(), '')::uuid
 ),
 unread AS (
   SELECT

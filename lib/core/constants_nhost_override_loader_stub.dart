@@ -7,9 +7,6 @@ Future<
       String? nhostAuthUrl,
       String? nhostStorageUrl,
       String? nhostFunctionsUrl,
-      String? nhostAdminSecret,
-      String? nhostWebhookSecret,
-      String? nhostJwtSecret,
       String? source
     })?> loadNhostRuntimeOverrides({
   required String windowsDataDir,

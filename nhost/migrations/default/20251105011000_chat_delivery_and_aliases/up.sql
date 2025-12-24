@@ -68,7 +68,7 @@ BEGIN
             ON m.id = chat_delivery_receipts.message_id
           WHERE p.conversation_id = m.conversation_id
             AND p.user_uid::text = public.request_uid_text()::text
-            AND chat_delivery_receipts.user_uid = public.request_uid_text()::uuid
+            AND chat_delivery_receipts.user_uid = nullif(public.request_uid_text(), '')::uuid
         )
       );
   END IF;

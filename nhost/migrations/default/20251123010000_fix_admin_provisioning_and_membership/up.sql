@@ -20,7 +20,6 @@ DECLARE
   normalized_role text := coalesce(nullif(trim(p_role), ''), 'employee');
   normalized_password text := nullif(coalesce(trim(p_password), ''), '');
   target_uid uuid;
-  escalated boolean := false;
 BEGIN
   IF normalized_email = '' THEN
     RAISE EXCEPTION 'email is required';
@@ -34,54 +33,9 @@ BEGIN
    LIMIT 1;
 
   IF target_uid IS NULL THEN
-    IF normalized_password IS NULL THEN
-      RAISE EXCEPTION 'password is required to create user %', normalized_email
-        USING ERRCODE = '22023';
-    END IF;
-
-    BEGIN
-      EXECUTE 'set local role supabase_auth_admin';
-      escalated := true;
-
-      SELECT id
-        INTO target_uid
-        FROM auth.create_user(
-          jsonb_build_object(
-            'email', normalized_email,
-            'password', normalized_password,
-            'email_confirm', true,
-            'app_metadata', jsonb_build_object(
-              'role', normalized_role,
-              'provider', 'email',
-              'providers', jsonb_build_array('email')
-            ),
-            'user_metadata', jsonb_build_object(
-              'role', normalized_role,
-              'email_verified', true
-            )
-          )
-        );
-    EXCEPTION
-      WHEN OTHERS THEN
-        IF escalated THEN
-          BEGIN
-            EXECUTE 'reset role';
-          EXCEPTION
-            WHEN OTHERS THEN NULL;
-          END;
-          escalated := false;
-        END IF;
-        RAISE;
-    END;
-
-    IF escalated THEN
-      BEGIN
-        EXECUTE 'reset role';
-      EXCEPTION
-        WHEN OTHERS THEN NULL;
-      END;
-      escalated := false;
-    END IF;
+    RAISE EXCEPTION 'auth user not found for %; create it via edge function first',
+      normalized_email
+      USING ERRCODE = '22023';
   END IF;
 
   UPDATE auth.users

@@ -79,7 +79,7 @@ SET search_path = public
 AS $$
   SELECT account_id
   FROM public.account_users
-  WHERE user_uid = public.request_uid_text()::uuid
+  WHERE user_uid = nullif(public.request_uid_text(), '')::uuid
     AND coalesce(disabled, false) = false
   ORDER BY created_at DESC
   LIMIT 1;
@@ -117,7 +117,7 @@ AS $$
       ) as membership_role
     from auth.users u
     left join public.profiles p on p.id = u.id
-    where u.id = public.request_uid_text()::uuid
+    where u.id = nullif(public.request_uid_text(), '')::uuid
   )
   select
     me.id,
@@ -143,7 +143,7 @@ SECURITY DEFINER
 SET search_path = public, auth
 AS $$
 declare
-  v_uid uuid := public.request_uid_text()::uuid;
+  v_uid uuid := nullif(public.request_uid_text(), '')::uuid;
   v_is_super boolean := coalesce(fn_is_super_admin(), false);
   v_allowed text[];
   v_can_create boolean;

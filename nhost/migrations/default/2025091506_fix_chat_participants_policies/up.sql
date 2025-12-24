@@ -20,7 +20,7 @@ CREATE POLICY part_select_self_or_super
 ON public.chat_participants
 FOR SELECT
 TO PUBLIC
-USING ( user_uid = public.request_uid_text()::uuid OR fn_is_super_admin() );
+USING ( user_uid = nullif(public.request_uid_text(), '')::uuid OR fn_is_super_admin() );
 -- ✅ INSERT: اسمح لمنشئ المحادثة بإضافة المشاركين (أو السوبر أدمن)
 CREATE POLICY part_insert_by_creator_or_super
 ON public.chat_participants
@@ -32,7 +32,7 @@ WITH CHECK (
       SELECT 1
       FROM public.chat_conversations c
       WHERE c.id = chat_participants.conversation_id
-        AND c.created_by = public.request_uid_text()::uuid
+        AND c.created_by = nullif(public.request_uid_text(), '')::uuid
   )
 );
 -- (اختياري) UPDATE: عدّل صفك فقط (أو السوبر أدمن)
@@ -40,8 +40,8 @@ CREATE POLICY part_update_self_or_super
 ON public.chat_participants
 FOR UPDATE
 TO PUBLIC
-USING ( user_uid = public.request_uid_text()::uuid OR fn_is_super_admin() )
-WITH CHECK ( user_uid = public.request_uid_text()::uuid OR fn_is_super_admin() );
+USING ( user_uid = nullif(public.request_uid_text(), '')::uuid OR fn_is_super_admin() )
+WITH CHECK ( user_uid = nullif(public.request_uid_text(), '')::uuid OR fn_is_super_admin() );
 -- (اختياري) DELETE: اسمح لمنشئ المحادثة بحذف المشاركين (أو السوبر أدمن)
 CREATE POLICY part_delete_by_creator_or_super
 ON public.chat_participants
@@ -53,6 +53,6 @@ USING (
       SELECT 1
       FROM public.chat_conversations c
       WHERE c.id = chat_participants.conversation_id
-        AND c.created_by = public.request_uid_text()::uuid
+        AND c.created_by = nullif(public.request_uid_text(), '')::uuid
   )
 );

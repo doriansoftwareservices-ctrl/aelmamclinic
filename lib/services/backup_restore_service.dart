@@ -165,6 +165,7 @@ class BackupRestoreService {
     final exportsDir = Directory(p.join(dbDir.path, 'exports'));
     final logsDir = Directory(p.join(dbDir.path, 'logs'));
     final debugDir = Directory(p.join(dbDir.path, 'debug-info'));
+    final configFile = File(p.join(dbDir.path, 'config.json'));
 
     final List<Directory> extraDirs = [
       attachmentsDir,
@@ -172,6 +173,10 @@ class BackupRestoreService {
       logsDir,
       debugDir,
     ];
+    final List<File> extraFiles = [];
+    if (await configFile.exists()) {
+      extraFiles.add(configFile);
+    }
 
     if (includeSharedPrefs && !Platform.isWindows) {
       final appDocs = await getApplicationDocumentsDirectory();
@@ -193,6 +198,10 @@ class BackupRestoreService {
     // – الأدلة الإضافية
     for (final dir in extraDirs) {
       if (await dir.exists()) encoder.addDirectory(dir, includeDirName: true);
+    }
+    // – ملفات إضافية (مثل config.json)
+    for (final file in extraFiles) {
+      encoder.addFile(file, p.basename(file.path));
     }
     // – المرفقات الخارجية (مجلد افتراضى داخل الـ ZIP)
     for (final file in externalFiles) {
@@ -270,8 +279,15 @@ class BackupRestoreService {
             relative = name; // احتفظ بالمسار داخل الـ ZIP تحت نفس المجلد
           }
         });
+        if (name == 'config.json') {
+          baseDir = dbDir;
+          relative = name;
+        }
 
-        final outPath = p.join(baseDir.path, relative);
+        final outPath = _safeExtractPath(baseDir.path, relative);
+        if (outPath == null) {
+          continue;
+        }
         final outFile = File(outPath);
         await outFile.create(recursive: true);
         await outFile.writeAsBytes(file.content as List<int>);
@@ -284,7 +300,11 @@ class BackupRestoreService {
 
       for (final file in archive) {
         if (!file.isFile) continue;
-        final out = File(p.join(tempBackupDir.path, file.name));
+        final safePath = _safeExtractPath(tempBackupDir.path, file.name);
+        if (safePath == null) {
+          continue;
+        }
+        final out = File(safePath);
         await out.create(recursive: true);
         await out.writeAsBytes(file.content as List<int>);
       }
@@ -402,5 +422,15 @@ class BackupRestoreService {
         print('Auto-backup failed: $e');
       }
     });
+  }
+
+  static String? _safeExtractPath(String baseDir, String entryName) {
+    final normalized = p.normalize(entryName);
+    if (p.isAbsolute(normalized)) return null;
+    final outPath = p.normalize(p.join(baseDir, normalized));
+    if (p.equals(outPath, baseDir) || p.isWithin(baseDir, outPath)) {
+      return outPath;
+    }
+    return null;
   }
 }

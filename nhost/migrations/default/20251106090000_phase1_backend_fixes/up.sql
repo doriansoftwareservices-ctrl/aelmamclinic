@@ -131,7 +131,7 @@ BEGIN
         SELECT 1
         FROM public.chat_participants p
         WHERE p.conversation_id = public.chat_conversation_id_from_path(name)
-        AND p.user_uid = public.request_uid_text()::uuid
+        AND p.user_uid = nullif(public.request_uid_text(), '')::uuid
       )
     );
   $q$;
@@ -149,7 +149,7 @@ BEGIN
         SELECT 1
         FROM public.chat_participants p
         WHERE p.conversation_id = public.chat_conversation_id_from_path(name)
-        AND p.user_uid = public.request_uid_text()::uuid
+        AND p.user_uid = nullif(public.request_uid_text(), '')::uuid
       )
     );
   $q$;
@@ -205,7 +205,7 @@ SELECT
 FROM public.chat_group_invitations inv
 JOIN public.chat_conversations conv ON conv.id = inv.conversation_id
 WHERE (
-    inv.invitee_uid IS NOT NULL AND inv.invitee_uid = public.request_uid_text()::uuid
+    inv.invitee_uid IS NOT NULL AND inv.invitee_uid = nullif(public.request_uid_text(), '')::uuid
   ) OR (
     inv.invitee_uid IS NULL
     AND inv.invitee_email IS NOT NULL

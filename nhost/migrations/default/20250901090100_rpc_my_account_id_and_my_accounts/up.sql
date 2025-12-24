@@ -10,7 +10,7 @@ set search_path = public
 as $$
   select account_id
   from public.account_users
-  where user_uid = public.request_uid_text()::uuid
+  where user_uid = nullif(public.request_uid_text(), '')::uuid
     and coalesce(disabled, false) = false
   order by created_at desc
   limit 1;
@@ -25,7 +25,7 @@ set search_path = public
 as $$
   select account_id
   from public.account_users
-  where user_uid = public.request_uid_text()::uuid
+  where user_uid = nullif(public.request_uid_text(), '')::uuid
     and coalesce(disabled, false) = false
   order by created_at desc;
 $$;
@@ -67,7 +67,7 @@ as $$
       ) as membership_role
     from auth.users u
     left join public.profiles p on p.id = u.id
-    where u.id = public.request_uid_text()::uuid
+    where u.id = nullif(public.request_uid_text(), '')::uuid
   )
   select
     me.id,
@@ -93,7 +93,7 @@ security definer
 set search_path = public, auth
 as $$
 declare
-  v_uid uuid := public.request_uid_text()::uuid;
+  v_uid uuid := nullif(public.request_uid_text(), '')::uuid;
   v_is_super boolean := coalesce(fn_is_super_admin(), false);
   v_allowed text[];
   v_can_create boolean;
@@ -302,7 +302,7 @@ begin
       select 1
       from public.account_users au
       where au.account_id = p_account_id
-        and au.user_uid = public.request_uid_text()::uuid
+        and au.user_uid = nullif(public.request_uid_text(), '')::uuid
         and coalesce(au.disabled, false) = false
         and lower(coalesce(au.role, '')) in ('owner', 'admin', 'superadmin')
     ) then
@@ -339,7 +339,7 @@ begin
       select 1
       from public.account_users au
       where au.account_id = p_account_id
-        and au.user_uid = public.request_uid_text()::uuid
+        and au.user_uid = nullif(public.request_uid_text(), '')::uuid
         and coalesce(au.disabled, false) = false
         and lower(coalesce(au.role, '')) in ('owner', 'admin', 'superadmin')
     ) then

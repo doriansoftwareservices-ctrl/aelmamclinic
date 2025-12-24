@@ -8,7 +8,7 @@ SET search_path = public
 AS $$
   select account_id
   from public.account_users
-  where user_uid = public.request_uid_text()::uuid
+  where user_uid = nullif(public.request_uid_text(), '')::uuid
     and coalesce(disabled, false) = false
   order by created_at desc
   limit 1;

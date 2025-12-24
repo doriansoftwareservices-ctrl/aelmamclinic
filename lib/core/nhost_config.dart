@@ -45,24 +45,6 @@ class NhostConfig {
   );
   static String? _overrideFunctionsUrl;
 
-  static final String _defaultAdminSecret = const String.fromEnvironment(
-    'NHOST_ADMIN_SECRET',
-    defaultValue: '',
-  );
-  static String? _overrideAdminSecret;
-
-  static final String _defaultWebhookSecret = const String.fromEnvironment(
-    'NHOST_WEBHOOK_SECRET',
-    defaultValue: '',
-  );
-  static String? _overrideWebhookSecret;
-
-  static final String _defaultJwtSecret = const String.fromEnvironment(
-    'NHOST_JWT_SECRET',
-    defaultValue: '',
-  );
-  static String? _overrideJwtSecret;
-
   /// Nhost project subdomain (e.g. `mergrgclboxflnucehgb`).
   static String get subdomain => _overrideSubdomain ?? _defaultSubdomain;
 
@@ -94,14 +76,6 @@ class NhostConfig {
   static String get functionsUrl =>
       _overrideFunctionsUrl ?? _defaultFunctionsUrl;
 
-  /// Optional secrets used for privileged calls.
-  static String get adminSecret => _overrideAdminSecret ?? _defaultAdminSecret;
-
-  static String get webhookSecret =>
-      _overrideWebhookSecret ?? _defaultWebhookSecret;
-
-  static String get jwtSecret => _overrideJwtSecret ?? _defaultJwtSecret;
-
   static void applyOverrides({
     String? subdomain,
     String? region,
@@ -109,9 +83,6 @@ class NhostConfig {
     String? authUrl,
     String? storageUrl,
     String? functionsUrl,
-    String? adminSecret,
-    String? webhookSecret,
-    String? jwtSecret,
   }) {
     String? normalize(String? value) {
       final trimmed = value?.trim();
@@ -127,9 +98,5 @@ class NhostConfig {
     _overrideAuthUrl = normalize(authUrl) ?? _overrideAuthUrl;
     _overrideStorageUrl = normalize(storageUrl) ?? _overrideStorageUrl;
     _overrideFunctionsUrl = normalize(functionsUrl) ?? _overrideFunctionsUrl;
-    _overrideAdminSecret = normalize(adminSecret) ?? _overrideAdminSecret;
-    _overrideWebhookSecret =
-        normalize(webhookSecret) ?? _overrideWebhookSecret;
-    _overrideJwtSecret = normalize(jwtSecret) ?? _overrideJwtSecret;
   }
 }

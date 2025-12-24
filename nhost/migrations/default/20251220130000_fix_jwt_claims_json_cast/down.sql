@@ -1,1 +1,2 @@
--- No-op rollback (previous versions are in earlier migrations).
+-- Placeholder: empty migration file kept for history.
+SELECT 1;

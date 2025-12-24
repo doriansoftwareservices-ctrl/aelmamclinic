@@ -28,7 +28,7 @@
 
    يمكن تمرير override إضافي عبر `--dart-define NHOST_GRAPHQL_URL=...` أو عبر
    ملف `config.json` في مجلد البيانات الخاص بالمنصة (مثل
-   `C:\aelmam_clinic\config.json`). مثال مبسط:
+   `C:\aelmam_clinic\config.json`). مثال مبسط (بدون أسرار):
 
    ```json
    {
@@ -36,7 +36,9 @@
      "nhostRegion": "ap-southeast-1",
      "nhostGraphqlUrl": "https://mergrgclboxflnucehgb.graphql.ap-southeast-1.nhost.run/v1",
      "nhostAuthUrl": "https://mergrgclboxflnucehgb.auth.ap-southeast-1.nhost.run/v1",
-     "nhostStorageUrl": "https://mergrgclboxflnucehgb.storage.ap-southeast-1.nhost.run/v1"
+     "nhostStorageUrl": "https://mergrgclboxflnucehgb.storage.ap-southeast-1.nhost.run/v1",
+     "nhostFunctionsUrl": "https://mergrgclboxflnucehgb.functions.ap-southeast-1.nhost.run/v1",
+     "superAdminEmails": ["admin@elmam.com"]
    }
    ```
 
@@ -44,6 +46,7 @@
    آلية البحث عن الملف في نفس المسارات (`C:\aelmam_clinic`, `D:\aelmam_clinic`,
    `%APPDATA%\aelmam_clinic`, إلخ) ويمكن تمرير مسار مخصّص عبر المتغيرات
    `AELMAM_NHOST_CONFIG` أو `AELMAM_CONFIG` / `AELMAM_CLINIC_CONFIG` (للتوافق مع الإصدارات السابقة).
+   **مهم:** لا تضع أي أسرار (Admin/JWT/Webhook) داخل هذا الملف لأنه يُقرأ من العميل.
 
 3. **تهيئة Firebase (اختياري)**
    استورد إعدادات `firebase_options.dart` المطابقة لبيئتك.

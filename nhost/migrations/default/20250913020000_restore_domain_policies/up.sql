@@ -12,7 +12,7 @@ AS $$
     SELECT 1
     FROM public.account_users au
     WHERE au.account_id = p_account
-      AND au.user_uid::text = public.request_uid_text()::uuid::text
+      AND au.user_uid::text = nullif(public.request_uid_text(), '')::uuid::text
       AND coalesce(au.disabled, false) = false
   );
 $$;

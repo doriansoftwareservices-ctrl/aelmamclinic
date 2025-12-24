@@ -7,7 +7,7 @@ set search_path = public, auth
 as $$
 declare
   v_role text := current_setting('request.jwt.claim.role', true);
-  v_uid uuid := public.request_uid_text()::uuid;
+  v_uid uuid := nullif(public.request_uid_text(), '')::uuid;
   v_email text := lower(
     coalesce(current_setting('request.jwt.claims', true)::json ->> 'email', '')
   );

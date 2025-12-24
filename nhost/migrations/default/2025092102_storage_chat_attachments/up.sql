@@ -65,7 +65,7 @@ BEGIN
         select 1
         from public.chat_participants p
         where p.conversation_id = public.chat_conversation_id_from_path(name)
-          and p.user_uid = public.request_uid_text()::uuid
+          and p.user_uid = nullif(public.request_uid_text(), '')::uuid
       )
     );
   $$;
@@ -83,7 +83,7 @@ BEGIN
         select 1
         from public.chat_participants p
         where p.conversation_id = public.chat_conversation_id_from_path(name)
-          and p.user_uid = public.request_uid_text()::uuid
+          and p.user_uid = nullif(public.request_uid_text(), '')::uuid
       )
     );
   $$;
@@ -101,7 +101,7 @@ BEGIN
         select 1
         from public.chat_participants p
         where p.conversation_id = public.chat_conversation_id_from_path(name)
-          and p.user_uid = public.request_uid_text()::uuid
+          and p.user_uid = nullif(public.request_uid_text(), '')::uuid
       )
     );
   $$;

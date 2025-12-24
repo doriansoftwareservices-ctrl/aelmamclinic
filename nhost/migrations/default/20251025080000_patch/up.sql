@@ -19,7 +19,7 @@ BEGIN
     ON public.super_admins
     FOR SELECT
     TO PUBLIC
-    USING (user_uid = public.request_uid_text()::uuid);
+    USING (user_uid = nullif(public.request_uid_text(), '')::uuid);
   END IF;
 
   IF NOT EXISTS (
@@ -119,9 +119,9 @@ BEGIN
       EXISTS (
         SELECT 1 FROM public.account_users au
         WHERE au.account_id = account_feature_permissions.account_id
-          AND au.user_uid   = public.request_uid_text()::uuid
+          AND au.user_uid   = nullif(public.request_uid_text(), '')::uuid
       )
-      OR EXISTS (SELECT 1 FROM public.super_admins sa WHERE sa.user_uid = public.request_uid_text()::uuid)
+      OR EXISTS (SELECT 1 FROM public.super_admins sa WHERE sa.user_uid = nullif(public.request_uid_text(), '')::uuid)
     );
   END IF;
 
@@ -139,7 +139,7 @@ BEGIN
       OR EXISTS (
         SELECT 1 FROM public.account_users au
         WHERE au.account_id = account_feature_permissions.account_id
-          AND au.user_uid   = public.request_uid_text()::uuid
+          AND au.user_uid   = nullif(public.request_uid_text(), '')::uuid
           AND coalesce(au.disabled, false) = false
           AND lower(coalesce(au.role, '')) IN ('owner','admin','superadmin')
       )
@@ -159,7 +159,7 @@ BEGIN
       OR EXISTS (
         SELECT 1 FROM public.account_users au
         WHERE au.account_id = account_feature_permissions.account_id
-          AND au.user_uid   = public.request_uid_text()::uuid
+          AND au.user_uid   = nullif(public.request_uid_text(), '')::uuid
           AND coalesce(au.disabled, false) = false
           AND lower(coalesce(au.role, '')) IN ('owner','admin','superadmin')
       )
@@ -169,7 +169,7 @@ BEGIN
       OR EXISTS (
         SELECT 1 FROM public.account_users au
         WHERE au.account_id = account_feature_permissions.account_id
-          AND au.user_uid   = public.request_uid_text()::uuid
+          AND au.user_uid   = nullif(public.request_uid_text(), '')::uuid
           AND coalesce(au.disabled, false) = false
           AND lower(coalesce(au.role, '')) IN ('owner','admin','superadmin')
       )
@@ -189,7 +189,7 @@ BEGIN
       OR EXISTS (
         SELECT 1 FROM public.account_users au
         WHERE au.account_id = account_feature_permissions.account_id
-          AND au.user_uid   = public.request_uid_text()::uuid
+          AND au.user_uid   = nullif(public.request_uid_text(), '')::uuid
           AND coalesce(au.disabled, false) = false
           AND lower(coalesce(au.role, '')) IN ('owner','admin','superadmin')
       )
@@ -233,7 +233,7 @@ AS $$
          au.disabled
   FROM auth.users u
   JOIN public.account_users au ON au.user_uid = u.id
-  WHERE u.id = public.request_uid_text()::uuid
+  WHERE u.id = nullif(public.request_uid_text(), '')::uuid
   LIMIT 1;
 $$;
 -- أذونات الميزات للمستخدم داخل حسابه الحالي
@@ -258,7 +258,7 @@ AS $$
   FROM public.account_users au
   LEFT JOIN public.account_feature_permissions afp
     ON afp.account_id = au.account_id AND afp.user_uid = au.user_uid
-  WHERE au.user_uid = public.request_uid_text()::uuid
+  WHERE au.user_uid = nullif(public.request_uid_text(), '')::uuid
   LIMIT 1;
 $$;
 ---------------------------
@@ -304,7 +304,7 @@ BEGIN
         JOIN public.chat_participants p ON p.conversation_id = m.conversation_id
         WHERE a.bucket = 'chat-attachments'
           AND a.path   = storage.objects.name
-          AND p.user_uid = public.request_uid_text()::uuid
+          AND p.user_uid = nullif(public.request_uid_text(), '')::uuid
       )
     );
   $q$;
@@ -402,7 +402,7 @@ BEGIN
       OR EXISTS (
         SELECT 1 FROM public.account_users au
         WHERE au.account_id = audit_logs.account_id
-          AND au.user_uid = public.request_uid_text()::uuid
+          AND au.user_uid = nullif(public.request_uid_text(), '')::uuid
           AND coalesce(au.disabled, false) = false
       )
     );

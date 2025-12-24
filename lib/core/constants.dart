@@ -17,9 +17,6 @@ class AppConstants {
   static String get nhostAuthUrl => NhostConfig.authUrl;
   static String get nhostStorageUrl => NhostConfig.storageUrl;
   static String get nhostFunctionsUrl => NhostConfig.functionsUrl;
-  static String get nhostAdminSecret => NhostConfig.adminSecret;
-  static String get nhostWebhookSecret => NhostConfig.webhookSecret;
-  static String get nhostJwtSecret => NhostConfig.jwtSecret;
 
   static List<String> _superAdminEmails = const [];
   static bool _overridesLoaded = false;
@@ -31,7 +28,6 @@ class AppConstants {
   ///
   /// The JSON file supports the keys `nhostSubdomain`, `nhostRegion`,
   /// `nhostGraphqlUrl`, `nhostAuthUrl`, `nhostStorageUrl`, `nhostFunctionsUrl`,
-  /// `nhostAdminSecret`, `nhostWebhookSecret`, `nhostJwtSecret`,
   /// and `superAdminEmails`.
   static Future<void> loadRuntimeOverrides() async {
     if (_overridesLoaded) {
@@ -72,9 +68,6 @@ class AppConstants {
       String? nhostAuthUrl,
       String? nhostStorageUrl,
       String? nhostFunctionsUrl,
-      String? nhostAdminSecret,
-      String? nhostWebhookSecret,
-      String? nhostJwtSecret,
       String? source,
     }) overrides = result;
 
@@ -86,10 +79,6 @@ class AppConstants {
     final nhostAuthUrl = overrides.nhostAuthUrl;
     final nhostStorageUrl = overrides.nhostStorageUrl;
     final nhostFunctionsUrl = overrides.nhostFunctionsUrl;
-    final nhostAdminSecret = overrides.nhostAdminSecret;
-    final nhostWebhookSecret = overrides.nhostWebhookSecret;
-    final nhostJwtSecret = overrides.nhostJwtSecret;
-
     if (admins != null && admins.isNotEmpty) {
       _superAdminEmails = admins
           .map((e) => e.trim().toLowerCase())
@@ -104,9 +93,6 @@ class AppConstants {
       authUrl: nhostAuthUrl,
       storageUrl: nhostStorageUrl,
       functionsUrl: nhostFunctionsUrl,
-      adminSecret: nhostAdminSecret,
-      webhookSecret: nhostWebhookSecret,
-      jwtSecret: nhostJwtSecret,
     );
 
     if (source != null && source.isNotEmpty) {
