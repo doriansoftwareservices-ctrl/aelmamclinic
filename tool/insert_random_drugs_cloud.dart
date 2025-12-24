@@ -21,16 +21,16 @@ Future<void> main(List<String> args) async {
       Platform.environment['HASURA_GRAPHQL_URL'] ??
       NhostConfig.graphqlUrl;
   final adminSecret = Platform.environment['HASURA_GRAPHQL_ADMIN_SECRET'] ??
-      Platform.environment['NHOST_ADMIN_SECRET'] ??
-      NhostConfig.adminSecret;
+      Platform.environment['NHOST_ADMIN_SECRET'];
   if (url.trim().isEmpty) {
     stderr.writeln('Missing env var: NHOST_GRAPHQL_URL');
     exit(2);
   }
-  if (adminSecret.trim().isEmpty) {
+  if (adminSecret == null || adminSecret.trim().isEmpty) {
     stderr.writeln('Missing env var: HASURA_GRAPHQL_ADMIN_SECRET');
     exit(2);
   }
+  final adminSecretValue = adminSecret.trim();
 
   // هوية المزامنة
   final accountId = _reqEnv('ACCOUNT_ID');
@@ -69,7 +69,8 @@ Future<void> main(List<String> args) async {
   }
 
   stdout.writeln(
-      '→ Upserting $count drugs to Nhost as account=$accountId device=$deviceId ...');
+    '→ Upserting $count drugs to Nhost as account=$accountId device=$deviceId ...',
+  );
 
   try {
     final constraint = Platform.environment['DRUGS_CONSTRAINT'] ??
@@ -102,7 +103,7 @@ Future<void> main(List<String> args) async {
       Uri.parse(url),
       headers: {
         'Content-Type': 'application/json',
-        'x-hasura-admin-secret': adminSecret,
+        'x-hasura-admin-secret': adminSecretValue,
       },
       body: jsonEncode(payload),
     );
@@ -114,7 +115,8 @@ Future<void> main(List<String> args) async {
     final result = (data['data']?['insert_drugs'] as Map?) ?? const {};
     final returning = (result['returning'] as List?) ?? const [];
     stdout.writeln(
-        '✅ Upsert finished. Server echoed ${returning.length} rows.');
+      '✅ Upsert finished. Server echoed ${returning.length} rows.',
+    );
     for (final r in returning.take(5).whereType<Map>()) {
       stdout.writeln(' • ${r['name']} (local_id=${r['local_id']})');
     }

@@ -71,6 +71,7 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
       showDragHandle: true,
       builder: (_) => _PaymentMethodPicker(methods: methods),
     );
+    if (!mounted) return;
     if (selected == null) return;
     final ok = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
@@ -210,8 +211,8 @@ class _PlanCard extends StatelessWidget {
             if (canUpgrade)
               Align(
                 alignment: Alignment.centerLeft,
-                child: NeuButton(
-                  text: 'طلب ترقية',
+                child: NeuButton.primary(
+                  label: 'طلب ترقية',
                   onPressed: onUpgrade,
                 ),
               ),

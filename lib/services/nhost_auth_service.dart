@@ -5,16 +5,16 @@ import 'package:graphql_flutter/graphql_flutter.dart';
 import 'package:nhost_dart/nhost_dart.dart';
 import 'package:nhost_sdk/nhost_sdk.dart' show AuthResponse, User;
 
-import '../core/active_account_store.dart';
-import '../core/nhost_manager.dart';
-import '../models/account_policy.dart';
-import '../models/backend_errors.dart';
-import '../models/feature_permissions.dart';
-import 'db_parity_v3.dart';
-import 'db_service.dart';
-import 'device_id_service.dart';
-import 'nhost_graphql_service.dart';
-import 'sync_service.dart';
+import 'package:aelmamclinic/core/active_account_store.dart';
+import 'package:aelmamclinic/core/nhost_manager.dart';
+import 'package:aelmamclinic/models/account_policy.dart';
+import 'package:aelmamclinic/models/backend_errors.dart';
+import 'package:aelmamclinic/models/feature_permissions.dart';
+import 'package:aelmamclinic/services/db_parity_v3.dart';
+import 'package:aelmamclinic/services/db_service.dart';
+import 'package:aelmamclinic/services/device_id_service.dart';
+import 'package:aelmamclinic/services/nhost_graphql_service.dart';
+import 'package:aelmamclinic/services/sync_service.dart';
 
 /// مصادقة Nhost مع ربط المزامنة المحلية وحراسة الحساب.
 /// توفر عمليات الدخول والخروج ومراقبة حالة الجلسة باستخدام `nhost_dart`.
@@ -348,7 +348,7 @@ class NhostAuthService {
     final isSuper = await _resolveSuperAdminFlag(fallbackEmail: user.email);
     String? planCode;
     try {
-      planCode = await fetchMyPlanCode();
+      planCode = await fetchMyPlanCode() ?? 'free';
     } catch (_) {}
 
     return {
@@ -477,7 +477,7 @@ class NhostAuthService {
     }
 
     try {
-      planCode = await fetchMyPlanCode();
+      planCode = await fetchMyPlanCode() ?? 'free';
     } catch (_) {}
     if (role.toLowerCase() != 'owner' && planCode == 'free') {
       throw AccountUserDisabledException(accountId);
@@ -562,7 +562,8 @@ class NhostAuthService {
           (lastAcc != null && lastAcc.isNotEmpty && lastAcc != acc.id);
       if (accountChangedBetweenLaunches) {
         dev.log(
-            'Detected account change since last launch → clearing local tables.');
+          'Detected account change since last launch → clearing local tables.',
+        );
         await DBService.instance.clearAllLocalTables();
       }
     } catch (e) {
@@ -583,8 +584,11 @@ class NhostAuthService {
     try {
       await DBParityV3().run(db, accountId: acc.id, verbose: enableLogs);
     } catch (e, st) {
-      dev.log('DBParityV3.run failed (continue anyway)',
-          error: e, stackTrace: st);
+      dev.log(
+        'DBParityV3.run failed (continue anyway)',
+        error: e,
+        stackTrace: st,
+      );
     }
 
     _sync = SyncService(
@@ -623,7 +627,8 @@ class NhostAuthService {
   }) async {
     try {
       await db.execute(
-          'CREATE TABLE IF NOT EXISTS sync_identity(account_id TEXT, device_id TEXT)');
+        'CREATE TABLE IF NOT EXISTS sync_identity(account_id TEXT, device_id TEXT)',
+      );
       await db.rawInsert(
         'INSERT INTO sync_identity(account_id, device_id) '
         'SELECT ?, ? WHERE NOT EXISTS(SELECT 1 FROM sync_identity)',

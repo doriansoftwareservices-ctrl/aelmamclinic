@@ -95,8 +95,9 @@ class _PaymentRequestScreenState extends State<PaymentRequestScreen> {
       if (!mounted) return;
       setState(() => _error = 'تعذّر إرسال الطلب: $e');
     } finally {
-      if (!mounted) return;
-      setState(() => _submitting = false);
+      if (mounted) {
+        setState(() => _submitting = false);
+      }
     }
   }
 
@@ -197,8 +198,8 @@ class _PaymentRequestScreenState extends State<PaymentRequestScreen> {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    NeuButton(
-                      text: 'إرفاق',
+                    NeuButton.flat(
+                      label: 'إرفاق',
                       onPressed: _pickProof,
                     ),
                   ],
@@ -212,8 +213,8 @@ class _PaymentRequestScreenState extends State<PaymentRequestScreen> {
                 ),
               ],
               const SizedBox(height: 16),
-              NeuButton(
-                text: _submitting ? 'جارٍ الإرسال...' : 'إرسال الطلب',
+              NeuButton.primary(
+                label: _submitting ? 'جارٍ الإرسال...' : 'إرسال الطلب',
                 onPressed: _submitting ? null : _submit,
               ),
             ],

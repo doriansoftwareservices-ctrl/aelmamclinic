@@ -161,8 +161,9 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       setState(() => _error = 'فشل تسجيل الدخول: $e');
     } finally {
-      if (!mounted) return;
-      setState(() => _loading = false);
+      if (mounted) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -208,8 +209,9 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       setState(() => _error = 'تعذّر إنشاء الحساب: $e');
     } finally {
-      if (!mounted) return;
-      setState(() => _loading = false);
+      if (mounted) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -295,8 +297,10 @@ class _LoginScreenState extends State<LoginScreen> {
                 children: [
                   // بطاقة العنوان
                   NeuCard(
-                    padding:
-                    const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 16,
+                    ),
                     child: Row(
                       children: [
                         Container(
@@ -305,8 +309,11 @@ class _LoginScreenState extends State<LoginScreen> {
                             borderRadius: BorderRadius.circular(14),
                           ),
                           padding: const EdgeInsets.all(10),
-                          child: const Icon(Icons.lock_rounded,
-                              color: kPrimaryColor, size: 26),
+                          child: const Icon(
+                            Icons.lock_rounded,
+                            color: kPrimaryColor,
+                            size: 26,
+                          ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
@@ -384,24 +391,24 @@ class _LoginScreenState extends State<LoginScreen> {
                     alignment: Alignment.centerRight,
                     child: _loading
                         ? const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 6),
-                      child: SizedBox(
-                        height: 44,
-                        width: 44,
-                        child: CircularProgressIndicator(strokeWidth: 3),
-                      ),
-                    )
+                            padding: EdgeInsets.symmetric(vertical: 6),
+                            child: SizedBox(
+                              height: 44,
+                              width: 44,
+                              child: CircularProgressIndicator(strokeWidth: 3),
+                            ),
+                          )
                         : NeuButton.primary(
-                      label: 'دخول',
-                      icon: Icons.login_rounded,
-                      onPressed: () => _submit(auth),
-                    ),
+                            label: 'دخول',
+                            icon: Icons.login_rounded,
+                            onPressed: () => _submit(auth),
+                          ),
                   ),
                   const SizedBox(height: 8),
                   Align(
                     alignment: Alignment.centerRight,
-                    child: NeuButton(
-                      text: 'إنشاء حساب جديد',
+                    child: NeuButton.flat(
+                      label: 'إنشاء حساب جديد',
                       onPressed: _loading ? null : () => _signUp(auth),
                     ),
                   ),

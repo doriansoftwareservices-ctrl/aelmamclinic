@@ -12,7 +12,7 @@
 //   HASURA_GRAPHQL_ADMIN_SECRET – admin secret with insert rights
 //
 // Optional:
-//   NHOST_ADMIN_SECRET / --dart-define overrides handled by AppConstants
+//   none
 
 import 'dart:convert';
 import 'dart:io';
@@ -34,13 +34,14 @@ Future<void> main(List<String> args) async {
   }
 
   final adminSecret = Platform.environment['HASURA_GRAPHQL_ADMIN_SECRET'] ??
-      Platform.environment['NHOST_ADMIN_SECRET'] ??
-      NhostConfig.adminSecret;
-  if (adminSecret.trim().isEmpty) {
+      Platform.environment['NHOST_ADMIN_SECRET'];
+  if (adminSecret == null || adminSecret.trim().isEmpty) {
     stderr.writeln(
-        '[sync_super_admins] Missing HASURA_GRAPHQL_ADMIN_SECRET / NHOST_ADMIN_SECRET.');
+      '[sync_super_admins] Missing HASURA_GRAPHQL_ADMIN_SECRET / NHOST_ADMIN_SECRET.',
+    );
     exit(64);
   }
+  final adminSecretValue = adminSecret.trim();
 
   final emails = AppConstants.superAdminEmails
       .map((e) => e.trim().toLowerCase())
@@ -48,7 +49,8 @@ Future<void> main(List<String> args) async {
       .toList();
   if (emails.isEmpty) {
     stdout.writeln(
-        '[sync_super_admins] No super-admin emails configured. Nothing to sync.');
+      '[sync_super_admins] No super-admin emails configured. Nothing to sync.',
+    );
     return;
   }
 
@@ -62,12 +64,13 @@ Future<void> main(List<String> args) async {
   });
 
   stdout.writeln(
-      '[sync_super_admins] Syncing ${emails.length} super-admin email(s) → $graphqlUrl');
+    '[sync_super_admins] Syncing ${emails.length} super-admin email(s) → $graphqlUrl',
+  );
   final resp = await http.post(
     Uri.parse(graphqlUrl),
     headers: {
-      'x-hasura-admin-secret': adminSecret,
-      'Authorization': 'Bearer $adminSecret',
+      'x-hasura-admin-secret': adminSecretValue,
+      'Authorization': 'Bearer $adminSecretValue',
       'Content-Type': 'application/json',
     },
     body: body,
@@ -79,6 +82,7 @@ Future<void> main(List<String> args) async {
   }
 
   stderr.writeln(
-      '[sync_super_admins] Sync failed (${resp.statusCode}): ${resp.body}');
+    '[sync_super_admins] Sync failed (${resp.statusCode}): ${resp.body}',
+  );
   exit(1);
 }

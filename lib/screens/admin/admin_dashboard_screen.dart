@@ -352,8 +352,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       return;
     }
     if ((_selectedClinic?.planCode ?? 'free').toLowerCase() == 'free') {
-      setState(() => _createStaffPlanError =
-          'لا يمكن إضافة موظفين لخطة FREE. قم بترقية الخطة أولاً.');
+      setState(
+        () => _createStaffPlanError =
+            'لا يمكن إضافة موظفين لخطة FREE. قم بترقية الخطة أولاً.',
+      );
       return;
     }
     final email = _staffEmailCtrl.text.trim();
@@ -455,13 +457,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     );
   }
 
-  /// فتح شاشة دردشة السوبر أدمن
-  void _openSuperAdminChat() {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const ChatAdminInboxScreen()),
-    );
-  }
-
   /// تسجيل الخروج وإرجاع المستخدم إلى شاشة تسجيل الدخول
   Future<void> _logout() async {
     try {
@@ -470,7 +465,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const LoginScreen()),
-          (route) => false,
+      (route) => false,
     );
   }
 
@@ -673,7 +668,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
           padding: const EdgeInsets.all(12),
           child: ListTile(
             title: Text(
-                'خطة: ${req.planCode} • ${req.amount.toStringAsFixed(0)}\$'),
+              'خطة: ${req.planCode} • ${req.amount.toStringAsFixed(0)}\$',
+            ),
             subtitle: Text(
               [
                 'الحساب: ${req.accountId}',
@@ -692,13 +688,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                         onPressed: () => _openProof(req),
                       ),
                       const SizedBox(width: 6),
-                      NeuButton(
-                        text: 'اعتماد',
+                      NeuButton.primary(
+                        label: 'اعتماد',
                         onPressed: () async {
                           final note =
                               await _askDecisionNote('ملاحظة الاعتماد');
-                          await _billingService.approveRequest(req.id,
-                              note: note);
+                          await _billingService.approveRequest(
+                            req.id,
+                            note: note,
+                          );
                           await _fetchSubscriptionRequests();
                           await _fetchPaymentStats();
                         },
@@ -708,10 +706,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                         tooltip: 'رفض',
                         icon: const Icon(Icons.cancel_outlined),
                         onPressed: () async {
-                          final note =
-                              await _askDecisionNote('سبب الرفض');
-                          await _billingService.rejectRequest(req.id,
-                              note: note);
+                          final note = await _askDecisionNote('سبب الرفض');
+                          await _billingService.rejectRequest(
+                            req.id,
+                            note: note,
+                          );
                           await _fetchSubscriptionRequests();
                         },
                       ),
@@ -733,8 +732,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       children: [
         Align(
           alignment: Alignment.centerRight,
-          child: NeuButton(
-            text: 'إضافة وسيلة دفع',
+          child: NeuButton.primary(
+            label: 'إضافة وسيلة دفع',
             onPressed: _openPaymentMethodDialog,
           ),
         ),
@@ -745,7 +744,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
               : ListView(
                   children: _paymentMethods.map((m) {
                     return NeuCard(
-                      margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+                      margin: const EdgeInsets.symmetric(
+                        vertical: 6,
+                        horizontal: 4,
+                      ),
                       padding: const EdgeInsets.all(12),
                       child: ListTile(
                         leading: m.logoUrl == null || m.logoUrl!.isEmpty
@@ -993,8 +995,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             borderRadius: BorderRadius.circular(12),
             children: modeLabels
                 .map((label) => Padding(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
                       child: Text(label),
                     ))
                 .toList(),
@@ -1068,8 +1072,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('اختر العيادة',
-                      style: TextStyle(fontWeight: FontWeight.w700)),
+                  const Text(
+                    'اختر العيادة',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
                   IconButton(
                     tooltip: 'تحديث القائمة',
                     onPressed: _fetchClinics,
@@ -1096,14 +1102,20 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                   ],
                   border: Border.all(color: scheme.outlineVariant),
                 ),
-                padding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 2,
+                ),
                 child: DropdownButtonFormField<Clinic>(
-                  value: _selectedClinic,
+                  initialValue: _selectedClinic,
                   decoration: const InputDecoration(border: InputBorder.none),
                   items: _clinics
-                      .map((c) =>
-                      DropdownMenuItem(value: c, child: Text(c.name)))
+                      .map(
+                        (c) => DropdownMenuItem(
+                          value: c,
+                          child: Text(c.name),
+                        ),
+                      )
                       .toList(),
                   onChanged: (c) => setState(() {
                     _selectedClinic = c;
@@ -1174,10 +1186,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             const SizedBox(height: 24),
             Center(
               child: NeuCard(
-                padding:
-                const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-                child: const Text('لا توجد عيادات مسجّلة.',
-                    textAlign: TextAlign.center),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 14,
+                ),
+                child: const Text(
+                  'لا توجد عيادات مسجّلة.',
+                  textAlign: TextAlign.center,
+                ),
               ),
             ),
           ],
@@ -1251,12 +1267,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                     PopupMenuItem<String>(
                       value: 'freeze',
                       child: Text(
-                          clinic.isFrozen ? 'إلغاء التجميد' : 'تجميد'),
+                        clinic.isFrozen ? 'إلغاء التجميد' : 'تجميد',
+                      ),
                     ),
                     const PopupMenuItem<String>(
                       value: 'delete',
-                      child:
-                      Text('حذف', style: TextStyle(color: Colors.red)),
+                      child: Text(
+                        'حذف',
+                        style: TextStyle(color: Colors.red),
+                      ),
                     ),
                   ],
                 ),
