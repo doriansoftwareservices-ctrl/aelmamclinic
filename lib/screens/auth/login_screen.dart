@@ -1,11 +1,11 @@
 // lib/screens/auth/login_screen.dart
-import 'dart:async';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:nhost_dart/nhost_dart.dart';
 
 import 'package:aelmamclinic/providers/auth_provider.dart';
+import 'package:aelmamclinic/core/nhost_manager.dart';
 
 // تصميم TBIAN
 import 'package:aelmamclinic/core/theme.dart';
@@ -29,7 +29,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _obscure = true;
   String? _error;
 
-  StreamSubscription<AuthState>? _authSub;
+  UnsubscribeDelegate? _authUnsub;
   bool _navigating = false;
 
   // نضمن تشغيل الـ Bootstrap مرة واحدة عند وجود جلسة مسبقة
@@ -45,8 +45,8 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     // 2) استمع لتغيّر حالة المصادقة لتوجيه مضمون بعد signIn.
-    _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((state) {
-      if (state.event == AuthChangeEvent.signedIn) {
+    _authUnsub = NhostManager.client.auth.addAuthStateChangedCallback((state) {
+      if (state == AuthenticationState.signedIn) {
         _checkAndRouteIfSignedIn();
       }
     });
@@ -54,7 +54,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   void dispose() {
-    _authSub?.cancel();
+    _authUnsub?.call();
     _email.dispose();
     _pass.dispose();
     super.dispose();
@@ -65,8 +65,8 @@ class _LoginScreenState extends State<LoginScreen> {
     if (_navigating || !mounted) return;
 
     final authProv = context.read<AuthProvider>();
-    final session = Supabase.instance.client.auth.currentSession;
-    if (session == null) return;
+    final user = NhostManager.client.auth.currentUser;
+    if (user == null) return;
 
     if (!authProv.isLoggedIn ||
         (!authProv.isSuperAdmin &&
@@ -157,11 +157,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
       // نوجّه فورًا (ولا نعتمد فقط على المستمع).
       await _checkAndRouteIfSignedIn();
-    } on AuthException catch (e) {
-      if (!mounted) return;
-      setState(() => _error = e.message.isNotEmpty
-          ? 'فشل تسجيل الدخول: ${e.message}'
-          : 'فشل تسجيل الدخول. تحقق من البيانات وحاول مرة أخرى.');
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = 'فشل تسجيل الدخول: $e');
@@ -169,6 +164,83 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       setState(() => _loading = false);
     }
+  }
+
+  Future<void> _signUp(AuthProvider auth) async {
+    if (_loading) return;
+    FocusScope.of(context).unfocus();
+
+    final email = _email.text.trim();
+    final pass = _pass.text.trim();
+    if (email.isEmpty || pass.isEmpty) {
+      setState(() => _error = 'أدخل البريد وكلمة المرور أولًا.');
+      return;
+    }
+
+    final clinicName = await _askClinicName();
+    if (clinicName == null || clinicName.trim().isEmpty) {
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      await auth.signUp(email, pass);
+      await auth.selfCreateAccount(clinicName.trim());
+      final result = await auth.refreshAndValidateCurrentUser();
+      if (!mounted) return;
+      if (!result.isSuccess) {
+        setState(() => _error = _messageForStatus(result.status));
+        return;
+      }
+      await auth.bootstrapSync(
+        pull: true,
+        realtime: true,
+        enableLogs: kDebugMode,
+        debounce: const Duration(seconds: 1),
+      );
+      _bootstrappedOnce = true;
+      await _checkAndRouteIfSignedIn();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = 'تعذّر إنشاء الحساب: $e');
+    } finally {
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
+  }
+
+  Future<String?> _askClinicName() async {
+    final controller = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('اسم العيادة'),
+          content: TextField(
+            controller: controller,
+            decoration: const InputDecoration(
+              hintText: 'أدخل اسم العيادة',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('إلغاء'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(controller.text),
+              child: const Text('متابعة'),
+            ),
+          ],
+        );
+      },
+    );
+    controller.dispose();
+    return result;
   }
 
   String? _messageForStatus(AuthSessionStatus status) {
@@ -186,7 +258,6 @@ class _LoginScreenState extends State<LoginScreen> {
       case AuthSessionStatus.networkError:
         return 'تعذّر التحقق من الحساب بسبب مشكلة في الاتصال. حاول مرة أخرى.';
       case AuthSessionStatus.unknown:
-      default:
         return 'حدث خطأ غير متوقع أثناء التحقق من الحساب. حاول لاحقًا.';
     }
   }
@@ -324,6 +395,14 @@ class _LoginScreenState extends State<LoginScreen> {
                       label: 'دخول',
                       icon: Icons.login_rounded,
                       onPressed: () => _submit(auth),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: NeuButton(
+                      text: 'إنشاء حساب جديد',
+                      onPressed: _loading ? null : () => _signUp(auth),
                     ),
                   ),
                 ],

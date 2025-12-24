@@ -6,6 +6,9 @@
 /// - name (text)
 /// - frozen (bool)
 /// - created_at (timestamptz)
+/// - plan_code (text)
+/// - plan_status (text)
+/// - plan_end_at (timestamptz)
 class Clinic {
   /// اسم جدول Remote
   static const String table = 'accounts';
@@ -14,12 +17,18 @@ class Clinic {
   final String name;
   final bool isFrozen;
   final DateTime createdAt;
+  final String? planCode;
+  final String? planStatus;
+  final DateTime? planEndAt;
 
   Clinic({
     required this.id,
     required this.name,
     required this.isFrozen,
     required this.createdAt,
+    this.planCode,
+    this.planStatus,
+    this.planEndAt,
   });
 
   // ─── Helpers ───
@@ -76,6 +85,16 @@ class Clinic {
         name: _toStr(json['name']),
         isFrozen: _toBool(json['frozen'] ?? json['is_frozen'], false),
         createdAt: _toDate(json['created_at'] ?? json['createdAt']),
+        planCode: _toStr(json['plan_code'] ?? json['planCode'], '').isEmpty
+            ? null
+            : _toStr(json['plan_code'] ?? json['planCode']),
+        planStatus:
+            _toStr(json['plan_status'] ?? json['planStatus'], '').isEmpty
+                ? null
+                : _toStr(json['plan_status'] ?? json['planStatus']),
+        planEndAt: json['plan_end_at'] == null && json['planEndAt'] == null
+            ? null
+            : _toDate(json['plan_end_at'] ?? json['planEndAt']),
       );
 
   factory Clinic.fromMap(Map<String, dynamic> map) => Clinic.fromJson(map);
@@ -85,6 +104,9 @@ class Clinic {
         'name': name,
         'frozen': isFrozen,
         'created_at': createdAt.toIso8601String(),
+        'plan_code': planCode,
+        'plan_status': planStatus,
+        'plan_end_at': planEndAt?.toIso8601String(),
       };
 
   Map<String, dynamic> toMap() => toJson();
@@ -94,12 +116,18 @@ class Clinic {
     String? name,
     bool? isFrozen,
     DateTime? createdAt,
+    String? planCode,
+    String? planStatus,
+    DateTime? planEndAt,
   }) {
     return Clinic(
       id: id ?? this.id,
       name: name ?? this.name,
       isFrozen: isFrozen ?? this.isFrozen,
       createdAt: createdAt ?? this.createdAt,
+      planCode: planCode ?? this.planCode,
+      planStatus: planStatus ?? this.planStatus,
+      planEndAt: planEndAt ?? this.planEndAt,
     );
   }
 
@@ -108,7 +136,7 @@ class Clinic {
 
   @override
   String toString() =>
-      'Clinic(id: $id, name: $name, frozen: $isFrozen, createdAt: $createdAt)';
+      'Clinic(id: $id, name: $name, frozen: $isFrozen, createdAt: $createdAt, planCode: $planCode, planStatus: $planStatus, planEndAt: $planEndAt)';
 
   @override
   bool operator ==(Object other) =>
@@ -118,8 +146,12 @@ class Clinic {
           id == other.id &&
           name == other.name &&
           isFrozen == other.isFrozen &&
-          createdAt == other.createdAt;
+          createdAt == other.createdAt &&
+          planCode == other.planCode &&
+          planStatus == other.planStatus &&
+          planEndAt == other.planEndAt;
 
   @override
-  int get hashCode => Object.hash(id, name, isFrozen, createdAt);
+  int get hashCode =>
+      Object.hash(id, name, isFrozen, createdAt, planCode, planStatus, planEndAt);
 }

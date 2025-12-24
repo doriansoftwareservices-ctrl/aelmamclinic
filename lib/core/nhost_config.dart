@@ -7,7 +7,7 @@ class NhostConfig {
 
   static final String _defaultSubdomain = const String.fromEnvironment(
     'NHOST_SUBDOMAIN',
-    defaultValue: 'plbwpsqxtizkxnqgxgfm',
+    defaultValue: 'mergrgclboxflnucehgb',
   );
   static String? _overrideSubdomain;
 
@@ -20,28 +20,28 @@ class NhostConfig {
   static final String _defaultGraphqlUrl = const String.fromEnvironment(
     'NHOST_GRAPHQL_URL',
     defaultValue:
-        'https://plbwpsqxtizkxnqgxgfm.graphql.ap-southeast-1.nhost.run/v1',
+        'https://mergrgclboxflnucehgb.graphql.ap-southeast-1.nhost.run/v1',
   );
   static String? _overrideGraphqlUrl;
 
   static final String _defaultAuthUrl = const String.fromEnvironment(
     'NHOST_AUTH_URL',
     defaultValue:
-        'https://plbwpsqxtizkxnqgxgfm.auth.ap-southeast-1.nhost.run/v1',
+        'https://mergrgclboxflnucehgb.auth.ap-southeast-1.nhost.run/v1',
   );
   static String? _overrideAuthUrl;
 
   static final String _defaultStorageUrl = const String.fromEnvironment(
     'NHOST_STORAGE_URL',
     defaultValue:
-        'https://plbwpsqxtizkxnqgxgfm.storage.ap-southeast-1.nhost.run/v1',
+        'https://mergrgclboxflnucehgb.storage.ap-southeast-1.nhost.run/v1',
   );
   static String? _overrideStorageUrl;
 
   static final String _defaultFunctionsUrl = const String.fromEnvironment(
     'NHOST_FUNCTIONS_URL',
     defaultValue:
-        'https://plbwpsqxtizkxnqgxgfm.functions.ap-southeast-1.nhost.run/v1',
+        'https://mergrgclboxflnucehgb.functions.ap-southeast-1.nhost.run/v1',
   );
   static String? _overrideFunctionsUrl;
 
@@ -63,7 +63,7 @@ class NhostConfig {
   );
   static String? _overrideJwtSecret;
 
-  /// Nhost project subdomain (e.g. `plbwpsqxtizkxnqgxgfm`).
+  /// Nhost project subdomain (e.g. `mergrgclboxflnucehgb`).
   static String get subdomain => _overrideSubdomain ?? _defaultSubdomain;
 
   /// Nhost region (e.g. `ap-southeast-1`).

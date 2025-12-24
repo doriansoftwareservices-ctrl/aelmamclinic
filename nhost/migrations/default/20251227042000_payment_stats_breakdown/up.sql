@@ -1,0 +1,71 @@
+-- Admin payment statistics breakdowns by plan and time
+
+BEGIN;
+
+CREATE OR REPLACE FUNCTION public.admin_payment_stats_by_plan()
+RETURNS TABLE (
+  plan_code text,
+  total_amount numeric,
+  payments_count bigint
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT
+    sp.plan_code,
+    COALESCE(SUM(sp.amount), 0) AS total_amount,
+    COUNT(*) AS payments_count
+  FROM public.subscription_payments sp
+  GROUP BY sp.plan_code
+  ORDER BY total_amount DESC NULLS LAST;
+$$;
+REVOKE ALL ON FUNCTION public.admin_payment_stats_by_plan() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.admin_payment_stats_by_plan() TO public;
+
+CREATE OR REPLACE FUNCTION public.admin_payment_stats_by_day()
+RETURNS TABLE (
+  day date,
+  total_amount numeric,
+  payments_count bigint
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT
+    date_trunc('day', sp.received_at)::date AS day,
+    COALESCE(SUM(sp.amount), 0) AS total_amount,
+    COUNT(*) AS payments_count
+  FROM public.subscription_payments sp
+  GROUP BY day
+  ORDER BY day DESC;
+$$;
+REVOKE ALL ON FUNCTION public.admin_payment_stats_by_day() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.admin_payment_stats_by_day() TO public;
+
+CREATE OR REPLACE FUNCTION public.admin_payment_stats_by_month()
+RETURNS TABLE (
+  month date,
+  total_amount numeric,
+  payments_count bigint
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT
+    date_trunc('month', sp.received_at)::date AS month,
+    COALESCE(SUM(sp.amount), 0) AS total_amount,
+    COUNT(*) AS payments_count
+  FROM public.subscription_payments sp
+  GROUP BY month
+  ORDER BY month DESC;
+$$;
+REVOKE ALL ON FUNCTION public.admin_payment_stats_by_month() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.admin_payment_stats_by_month() TO public;
+
+COMMIT;

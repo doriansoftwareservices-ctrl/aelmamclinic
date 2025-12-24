@@ -14,9 +14,8 @@ returns table(
 declare
   claims jsonb := coalesce(current_setting('request.jwt.claims', true)::jsonb, '{}'::jsonb);
   caller_uid uuid := nullif(claims->>'sub','')::uuid;
-  caller_email text := lower(coalesce(claims->>'email',''));
-  super_admin_email text := 'admin@elmam.com';
   can_manage boolean;
+  is_super boolean := public.fn_is_super_admin();
 begin
   -- تحقق الصلاحيات: (owner/admin) على الحساب أو سوبر أدمن بالبريد
   select exists (
@@ -28,7 +27,7 @@ begin
       and coalesce(disabled,false) = false
   ) into can_manage;
 
-  if not (can_manage or caller_email = lower(super_admin_email)) then
+  if not (can_manage or is_super) then
     raise exception 'forbidden' using errcode = '42501';
   end if;
 

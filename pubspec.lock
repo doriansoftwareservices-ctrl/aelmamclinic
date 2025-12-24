@@ -788,7 +788,7 @@ packages:
     source: hosted
     version: "0.11.1"
   meta:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: meta
       sha256: e3641ec5d63ebf0d9b41bd43201a66e3fc79a65db5f61fc181f04cd27aab950c
@@ -852,7 +852,7 @@ packages:
     source: hosted
     version: "4.0.10"
   nhost_sdk:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: nhost_sdk
       sha256: "4e5d8184f6f67bd850f8cf212fe78339a64153cee5a38c4be0c0bea4d6ede205"

@@ -437,10 +437,9 @@ SET search_path = public, auth
 AS $$
 DECLARE
   claims jsonb := coalesce(current_setting('request.jwt.claims', true)::jsonb, '{}'::jsonb);
-  caller_email text := lower(coalesce(claims->>'email', ''));
-  super_admin_email text := 'admin@elmam.com';
+  is_super boolean := public.fn_is_super_admin();
 BEGIN
-  IF NOT (fn_is_super_admin() = true OR caller_email = lower(super_admin_email)) THEN
+  IF NOT is_super THEN
     RAISE EXCEPTION 'forbidden' USING errcode = '42501';
   END IF;
 
@@ -463,15 +462,14 @@ SET search_path = public, auth
 AS $$
 DECLARE
   claims jsonb := coalesce(current_setting('request.jwt.claims', true)::jsonb, '{}'::jsonb);
-  caller_email text := lower(coalesce(claims->>'email', ''));
-  super_admin_email text := 'admin@elmam.com';
+  is_super boolean := public.fn_is_super_admin();
   updated_id uuid;
 BEGIN
   IF p_account_id IS NULL THEN
     RETURN jsonb_build_object('ok', false, 'error', 'account_id is required');
   END IF;
 
-  IF NOT (fn_is_super_admin() = true OR caller_email = lower(super_admin_email)) THEN
+  IF NOT is_super THEN
     RAISE EXCEPTION 'forbidden' USING errcode = '42501';
   END IF;
 
@@ -499,15 +497,14 @@ SET search_path = public, auth
 AS $$
 DECLARE
   claims jsonb := coalesce(current_setting('request.jwt.claims', true)::jsonb, '{}'::jsonb);
-  caller_email text := lower(coalesce(claims->>'email', ''));
-  super_admin_email text := 'admin@elmam.com';
+  is_super boolean := public.fn_is_super_admin();
   deleted_id uuid;
 BEGIN
   IF p_account_id IS NULL THEN
     RETURN jsonb_build_object('ok', false, 'error', 'account_id is required');
   END IF;
 
-  IF NOT (fn_is_super_admin() = true OR caller_email = lower(super_admin_email)) THEN
+  IF NOT is_super THEN
     RAISE EXCEPTION 'forbidden' USING errcode = '42501';
   END IF;
 
@@ -536,8 +533,7 @@ SET search_path = public, auth
 AS $$
 DECLARE
   claims jsonb := coalesce(current_setting('request.jwt.claims', true)::jsonb, '{}'::jsonb);
-  caller_email text := lower(coalesce(claims->>'email', ''));
-  super_admin_email text := 'admin@elmam.com';
+  is_super boolean := public.fn_is_super_admin();
   owner_uid uuid;
   account_id uuid;
 BEGIN
@@ -545,7 +541,7 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'error', 'clinic_name and owner_email are required');
   END IF;
 
-  IF NOT (fn_is_super_admin() = true OR caller_email = lower(super_admin_email)) THEN
+  IF NOT is_super THEN
     RAISE EXCEPTION 'forbidden' USING errcode = '42501';
   END IF;
 
@@ -589,9 +585,8 @@ AS $$
 DECLARE
   claims jsonb := coalesce(current_setting('request.jwt.claims', true)::jsonb, '{}'::jsonb);
   caller_uid uuid := nullif(claims->>'sub', '')::uuid;
-  caller_email text := lower(coalesce(claims->>'email', ''));
-  super_admin_email text := 'admin@elmam.com';
   can_manage boolean;
+  is_super boolean := public.fn_is_super_admin();
   employee_uid uuid;
 BEGIN
   IF p_account IS NULL OR coalesce(trim(p_email), '') = '' THEN
@@ -607,7 +602,7 @@ BEGIN
       AND coalesce(au.disabled, false) = false
   ) INTO can_manage;
 
-  IF NOT (fn_is_super_admin() = true OR can_manage OR caller_email = lower(super_admin_email)) THEN
+  IF NOT (is_super OR can_manage) THEN
     RAISE EXCEPTION 'forbidden' USING errcode = '42501';
   END IF;
 
@@ -646,7 +641,7 @@ DECLARE
   claims jsonb := coalesce(current_setting('request.jwt.claims', true)::jsonb, '{}'::jsonb);
   caller_uid uuid := nullif(claims->>'sub', '')::uuid;
   caller_email text := lower(coalesce(claims->>'email', ''));
-  super_admin_email text := 'admin@elmam.com';
+  is_super boolean := public.fn_is_super_admin();
   normalized_email text := lower(coalesce(target_email, ''));
   target_uid uuid;
   target_account uuid;
@@ -662,7 +657,7 @@ BEGIN
     RAISE EXCEPTION 'target_email is required';
   END IF;
 
-  IF NOT (fn_is_super_admin() = true OR caller_email = lower(super_admin_email)) THEN
+  IF NOT is_super THEN
     RAISE EXCEPTION 'forbidden' USING errcode = '42501';
   END IF;
 

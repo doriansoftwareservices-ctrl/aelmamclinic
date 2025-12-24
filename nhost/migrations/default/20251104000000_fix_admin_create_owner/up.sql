@@ -11,9 +11,6 @@ security definer
 set search_path = public, auth
 as $$
 declare
-  claims jsonb := coalesce(current_setting('request.jwt.claims', true)::jsonb, '{}'::jsonb);
-  caller_email text := lower(coalesce(claims->>'email', ''));
-  super_admin_email text := 'admin@elmam.com';
   owner_uid uuid;
   v_account_id uuid;
 begin
@@ -21,7 +18,7 @@ begin
     return jsonb_build_object('ok', false, 'error', 'clinic_name and owner_email are required');
   end if;
 
-  if not (fn_is_super_admin() = true or caller_email = lower(super_admin_email)) then
+  if fn_is_super_admin() is distinct from true then
     raise exception 'forbidden' using errcode = '42501';
   end if;
 

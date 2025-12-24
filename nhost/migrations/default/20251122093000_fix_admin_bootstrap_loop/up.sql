@@ -13,9 +13,6 @@ security definer
 set search_path = public, auth
 as $$
 declare
-  claims jsonb := coalesce(current_setting('request.jwt.claims', true)::jsonb, '{}'::jsonb);
-  caller_email text := lower(coalesce(claims->>'email', ''));
-  super_admin_email text := 'admin@elmam.com';
   normalized_email text := lower(coalesce(trim(owner_email), ''));
   normalized_role text := coalesce(nullif(trim(owner_role), ''), 'owner');
   owner_uid uuid;
@@ -29,7 +26,7 @@ begin
     raise exception 'owner_email is required';
   end if;
 
-  if not (fn_is_super_admin() = true or caller_email = super_admin_email) then
+  if fn_is_super_admin() is distinct from true then
     raise exception 'forbidden' using errcode = '42501';
   end if;
 

@@ -51,6 +51,9 @@ class NhostAdminService {
           name
           frozen
           created_at
+          plan_code
+          plan_status
+          plan_end_at
         }
       }
     ''';

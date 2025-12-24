@@ -47,6 +47,7 @@ import 'package:aelmamclinic/screens/audit/permissions_screen.dart';
 
 /*── شاشة الدردشة ─*/
 import 'package:aelmamclinic/screens/chat/chat_home_screen.dart';
+import 'package:aelmamclinic/screens/subscription/my_plan_screen.dart';
 
 /*── لتسجيل الخروج ─*/
 import 'package:aelmamclinic/screens/auth/login_screen.dart';
@@ -55,7 +56,7 @@ import 'package:aelmamclinic/screens/admin/admin_dashboard_screen.dart';
 /// غيّر هذا الثابت حسب المطلوب:
 /// true  → إخفاء العناصر غير المسموح بها.
 /// false → إظهارها لكن تعطيل التفاعل مع تنبيه المستخدم.
-const bool kHideDeniedTabs = true;
+const bool kHideDeniedTabs = false;
 
 /// مفاتيح الميزات (تبويبات/أقسام) التي يعتمدها المالك في جدول account_feature_permissions.allowed_features
 class FeatureKeys {
@@ -266,12 +267,28 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
   }
 
   void _showNotAllowedSnack() {
+    final auth = context.read<AuthProvider>();
+    final isFree = auth.planCode == 'free' && !auth.isSuperAdmin;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('ليس لديك صلاحية للوصول إلى هذه الميزة'),
+      SnackBar(
+        content: Text(isFree
+            ? 'هذه الميزة متاحة في باقات PRO فقط'
+            : 'ليس لديك صلاحية للوصول إلى هذه الميزة'),
         behavior: SnackBarBehavior.floating,
         duration: Duration(seconds: 2),
       ),
+    );
+  }
+
+  void _handleDeniedAccess() {
+    final auth = context.read<AuthProvider>();
+    final isFree = auth.planCode == 'free' && !auth.isSuperAdmin;
+    final isOwner = auth.role?.toLowerCase() == 'owner';
+    _showNotAllowedSnack();
+    if (!isFree || !isOwner) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const MyPlanScreen()),
     );
   }
 
@@ -293,16 +310,17 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final scheme = Theme.of(ctx).colorScheme;
 
+    final isPaidOwner =
+        auth.role?.toLowerCase() == 'owner' && auth.planCode != 'free';
     final canView = auth.isSuperAdmin ||
         auth.featureAllowed(FeatureKeys.returns) ||
-        auth.isOwnerOrAdmin;
+        isPaidOwner;
     final canCreate = auth.isSuperAdmin ||
-        ((auth.featureAllowed(FeatureKeys.returns) ||
-                auth.isOwnerOrAdmin) &&
+        ((auth.featureAllowed(FeatureKeys.returns) || isPaidOwner) &&
             auth.canCreate);
 
     if (!canView) {
-      _showNotAllowedSnack();
+      _handleDeniedAccess();
       return;
     }
 
@@ -338,7 +356,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
                         }
                       : () {
                           Navigator.pop(ctx);
-                          _showNotAllowedSnack();
+                          _handleDeniedAccess();
                         },
                 ),
               ),
@@ -374,11 +392,13 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final scheme = Theme.of(ctx).colorScheme;
 
+    final isPaidOwner =
+        auth.role?.toLowerCase() == 'owner' && auth.planCode != 'free';
     final allowed = auth.isSuperAdmin ||
-        auth.isOwnerOrAdmin ||
+        isPaidOwner ||
         auth.featureAllowed(FeatureKeys.prescriptions);
     if (!allowed) {
-      _showNotAllowedSnack();
+      _handleDeniedAccess();
       return;
     }
 
@@ -456,6 +476,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
     required String title,
     required VoidCallback onTap,
     bool enabled = true,
+    bool showProBadge = false,
   }) {
     final scheme = Theme.of(context).colorScheme;
     final isRtl = Directionality.of(context) == ui.TextDirection.rtl;
@@ -480,14 +501,64 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
           minLeadingWidth: 6,
           contentPadding: EdgeInsets.zero,
           leading: Icon(icon, color: iconColor),
-          title: Text(title, style: titleStyle),
+          title: Row(
+            children: [
+              Expanded(child: Text(title, style: titleStyle)),
+              if (showProBadge)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: scheme.tertiary.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    'PRO',
+                    style: TextStyle(
+                      color: scheme.tertiary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+            ],
+          ),
           trailing: Icon(
             isRtl ? Icons.chevron_left_rounded : Icons.chevron_right_rounded,
             color: iconColor,
           ),
-          onTap: enabled ? onTap : _showNotAllowedSnack,
+          onTap: enabled ? onTap : () {
+            Navigator.pop(context);
+            _handleDeniedAccess();
+          },
         ),
       ),
+    );
+  }
+
+  Widget _proLabel(String label, bool showPro, ColorScheme scheme) {
+    if (!showPro) return Text(label);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(label),
+        const SizedBox(width: 6),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: scheme.tertiary.withValues(alpha: 0.18),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(
+            'PRO',
+            style: TextStyle(
+              color: scheme.tertiary,
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -514,11 +585,15 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
       return const SizedBox.shrink(); // إخفاء التبويب
     }
 
+    final showProBadge =
+        !allowed && !auth.isSuperAdmin && auth.planCode == 'free';
+
     return _drawerItem(
       icon: icon,
       title: title,
       enabled: allowed,
       onTap: onTap,
+      showProBadge: showProBadge,
     );
   }
 
@@ -529,13 +604,13 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
     bool requireUpdate = false,
     bool requireDelete = false,
   }) {
-    // السوبر أدمن والمالِك يرون الكل دومًا
-    bool allowed = auth.isSuperAdmin ||
-        auth.isOwnerOrAdmin ||
-        auth.featureAllowed(featureKey);
+    final isOwner = auth.role?.toLowerCase() == 'owner';
+    final isPaidOwner = isOwner && auth.planCode != 'free';
+    // السوبر أدمن أو مالك بخطة مدفوعة يرون الكل، والباقي عبر permissions
+    bool allowed = auth.isSuperAdmin || isPaidOwner || auth.featureAllowed(featureKey);
 
     // تطبيق CRUD إذا طُلب (لمالك/سوبر نتجاوز، للموظف نطبّق)
-    if (allowed && !auth.isSuperAdmin && !auth.isOwnerOrAdmin) {
+    if (allowed && !auth.isSuperAdmin && !isPaidOwner) {
       if (requireCreate) allowed = allowed && auth.canCreate;
       if (requireUpdate) allowed = allowed && auth.canUpdate;
       if (requireDelete) allowed = allowed && auth.canDelete;
@@ -582,6 +657,18 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
                       icon: Icons.insights_rounded,
                       title: 'لوحة الإحصاءات',
                       onTap: () => Navigator.pop(context),
+                    ),
+
+                    _drawerItem(
+                      icon: Icons.workspace_premium_rounded,
+                      title: 'خطتي',
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const MyPlanScreen()),
+                        );
+                      },
                     ),
 
                     // المرضى
@@ -835,15 +922,11 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
   }
 
   bool _canSeeDashboard(AuthProvider auth) {
-    return auth.isSuperAdmin ||
-        auth.isOwnerOrAdmin ||
-        auth.featureAllowed(FeatureKeys.dashboard);
+    return _isFeatureAllowed(auth, FeatureKeys.dashboard);
   }
 
   bool _canUseChat(AuthProvider auth) {
-    return auth.isSuperAdmin ||
-        auth.isOwnerOrAdmin ||
-        auth.featureAllowed(FeatureKeys.chat);
+    return _isFeatureAllowed(auth, FeatureKeys.chat);
   }
 
   @override
@@ -973,7 +1056,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
             body: SafeArea(
               child: canViewDashboard
                   ? _buildStatsBody(context, stats, dateFmt)
-                  : _buildWelcomeBody(context, canChat),
+                  : _buildWelcomeBody(context, auth, canChat),
             ),
           );
         },
@@ -1194,8 +1277,18 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
   }
 
   /*──────── واجهة ترحيب عصرية عند منع الإحصاءات ────────*/
-  Widget _buildWelcomeBody(BuildContext context, bool canChat) {
+  Widget _buildWelcomeBody(
+      BuildContext context, AuthProvider auth, bool canChat) {
     final scheme = Theme.of(context).colorScheme;
+    final canPatients = _isFeatureAllowed(auth, FeatureKeys.patientsList);
+    final canRepository = _isFeatureAllowed(auth, FeatureKeys.repository);
+    final canChatLocal = canChat;
+    final showProPatients =
+        !canPatients && auth.planCode == 'free' && !auth.isSuperAdmin;
+    final showProRepo =
+        !canRepository && auth.planCode == 'free' && !auth.isSuperAdmin;
+    final showProChat =
+        !canChatLocal && auth.planCode == 'free' && !auth.isSuperAdmin;
 
     return FutureBuilder<bool>(
       future: _firstOpenFuture,
@@ -1283,39 +1376,59 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
                             ),
                             OutlinedButton.icon(
                               icon: const Icon(Icons.people_alt_rounded),
-                              label: const Text('قائمة المرضى'),
-                              onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                      builder: (_) => ListPatientsScreen()),
-                                );
-                              },
+                              label: _proLabel(
+                                'قائمة المرضى',
+                                showProPatients,
+                                scheme,
+                              ),
+                              onPressed: canPatients
+                                  ? () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                            builder: (_) =>
+                                                ListPatientsScreen()),
+                                      );
+                                    }
+                                  : _handleDeniedAccess,
                             ),
                             OutlinedButton.icon(
                               icon: const Icon(Icons.inventory_2_rounded),
-                              label: const Text('قسم المستودع'),
-                              onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                      builder: (_) =>
-                                          const RepositoryMenuScreen()),
-                                );
-                              },
+                              label: _proLabel(
+                                'قسم المستودع',
+                                showProRepo,
+                                scheme,
+                              ),
+                              onPressed: canRepository
+                                  ? () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                            builder: (_) =>
+                                                const RepositoryMenuScreen()),
+                                      );
+                                    }
+                                  : _handleDeniedAccess,
                             ),
-                            if (canChat)
+                            if (canChat || showProChat)
                               OutlinedButton.icon(
                                 icon: const Icon(
                                     Icons.chat_bubble_outline_rounded),
-                                label: const Text('الدردشة'),
-                                onPressed: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                        builder: (_) => const ChatHomeScreen()),
-                                  );
-                                },
+                                label: _proLabel(
+                                  'الدردشة',
+                                  showProChat,
+                                  scheme,
+                                ),
+                                onPressed: canChatLocal
+                                    ? () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                              builder: (_) =>
+                                                  const ChatHomeScreen()),
+                                        );
+                                      }
+                                    : _handleDeniedAccess,
                               ),
                           ],
                         ),

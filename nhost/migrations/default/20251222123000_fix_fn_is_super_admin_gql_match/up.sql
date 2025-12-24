@@ -12,7 +12,6 @@ DECLARE
   data jsonb := '{}'::jsonb;
   user_id text;
   claim_email text;
-  fallback_email text := 'admin@elmam.com';
 BEGIN
   IF raw_claims IS NOT NULL AND raw_claims <> '' THEN
     BEGIN
@@ -40,7 +39,6 @@ BEGIN
   WHERE (
       sa.user_uid = NULLIF(user_id, '')::uuid
       OR lower(sa.email) = lower(NULLIF(claim_email, ''))
-      OR lower(NULLIF(claim_email, '')) = lower(fallback_email)
     )
   LIMIT 1;
 END;

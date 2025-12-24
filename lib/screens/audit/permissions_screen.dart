@@ -59,8 +59,9 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
 
     final auth = context.read<AuthProvider>();
     final accId = auth.accountId ?? '';
-    final isOwnerOrAdmin = auth.isOwnerOrAdmin;
-    final isOwnerOrSuper = isOwnerOrAdmin || auth.isSuperAdmin;
+    final isPaidOwner =
+        auth.role?.toLowerCase() == 'owner' && auth.planCode != 'free';
+    final isOwnerOrSuper = isPaidOwner || auth.isSuperAdmin;
     final canView =
         isOwnerOrSuper || auth.featureAllowed(FeatureKeys.auditPermissions);
 
@@ -258,8 +259,9 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
-    final isOwnerOrAdmin = auth.isOwnerOrAdmin;
-    final isOwnerOrSuper = isOwnerOrAdmin || auth.isSuperAdmin;
+    final isPaidOwner =
+        auth.role?.toLowerCase() == 'owner' && auth.planCode != 'free';
+    final isOwnerOrSuper = isPaidOwner || auth.isSuperAdmin;
     final canView =
         isOwnerOrSuper || auth.featureAllowed(FeatureKeys.auditPermissions);
 

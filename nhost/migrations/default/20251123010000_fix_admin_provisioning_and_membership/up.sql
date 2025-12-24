@@ -174,7 +174,6 @@ SET search_path = public, auth
 AS $$
 DECLARE
   claims jsonb := coalesce(current_setting('request.jwt.claims', true)::jsonb, '{}'::jsonb);
-  caller_email text := lower(coalesce(claims->>'email', ''));
   normalized_clinic text := coalesce(nullif(trim(p_clinic_name), ''), '');
   normalized_email text := lower(coalesce(trim(p_owner_email), ''));
   normalized_role text := 'owner';
@@ -186,7 +185,7 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'error', 'clinic_name and owner_email are required');
   END IF;
 
-  IF NOT (fn_is_super_admin() = true OR caller_email = 'admin@elmam.com') THEN
+  IF fn_is_super_admin() IS DISTINCT FROM true THEN
     RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
   END IF;
 
@@ -257,8 +256,6 @@ SET search_path = public, auth
 AS $$
 DECLARE
   claims jsonb := coalesce(current_setting('request.jwt.claims', true)::jsonb, '{}'::jsonb);
-  caller_email text := lower(coalesce(claims->>'email', ''));
-  super_admin_email text := 'admin@elmam.com';
   normalized_clinic text := coalesce(nullif(trim(clinic_name), ''), '');
   normalized_email text := lower(coalesce(trim(owner_email), ''));
   normalized_role text := coalesce(nullif(trim(owner_role), ''), 'owner');
@@ -273,7 +270,7 @@ BEGIN
     RAISE EXCEPTION 'owner_email is required';
   END IF;
 
-  IF NOT (fn_is_super_admin() = true OR caller_email = super_admin_email) THEN
+  IF fn_is_super_admin() IS DISTINCT FROM true THEN
     RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
   END IF;
 
@@ -354,14 +351,13 @@ SET search_path = public, auth
 AS $$
 DECLARE
   claims jsonb := coalesce(current_setting('request.jwt.claims', true)::jsonb, '{}'::jsonb);
-  caller_email text := lower(coalesce(claims->>'email', ''));
   normalized_email text := lower(coalesce(trim(p_email), ''));
   normalized_role text := 'employee';
   normalized_password text := nullif(coalesce(trim(p_password), ''), '');
   emp_uid uuid;
   account_exists boolean;
 BEGIN
-  IF NOT (fn_is_super_admin() = true OR caller_email = 'admin@elmam.com') THEN
+  IF fn_is_super_admin() IS DISTINCT FROM true THEN
     RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
   END IF;
 

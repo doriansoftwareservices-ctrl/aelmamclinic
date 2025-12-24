@@ -158,3 +158,121 @@
     - role: me
     - role: user
     - role: superadmin
+- function:
+    schema: public
+    name: my_account_plan
+  configuration:
+    exposed_as: query
+    custom_name: my_account_plan
+  permissions:
+    - role: me
+    - role: user
+    - role: superadmin
+- function:
+    schema: public
+    name: list_payment_methods
+  configuration:
+    exposed_as: query
+    custom_name: list_payment_methods
+  permissions:
+    - role: me
+    - role: user
+    - role: superadmin
+- function:
+    schema: public
+    name: create_subscription_request
+  configuration:
+    exposed_as: mutation
+    custom_name: create_subscription_request
+  permissions:
+    - role: me
+    - role: user
+    - role: superadmin
+- function:
+    schema: public
+    name: admin_approve_subscription_request
+  configuration:
+    exposed_as: mutation
+    custom_name: admin_approve_subscription_request
+  permissions:
+    - role: me
+    - role: user
+    - role: superadmin
+- function:
+    schema: public
+    name: admin_reject_subscription_request
+  configuration:
+    exposed_as: mutation
+    custom_name: admin_reject_subscription_request
+  permissions:
+    - role: me
+    - role: user
+    - role: superadmin
+- function:
+    schema: public
+    name: admin_set_account_plan
+  configuration:
+    exposed_as: mutation
+    custom_name: admin_set_account_plan
+  permissions:
+    - role: me
+    - role: user
+    - role: superadmin
+- function:
+    schema: public
+    name: admin_payment_stats
+  configuration:
+    exposed_as: query
+    custom_name: admin_payment_stats
+  permissions:
+    - role: me
+    - role: user
+    - role: superadmin
+- function:
+    schema: public
+    name: admin_payment_stats_by_plan
+  configuration:
+    exposed_as: query
+    custom_name: admin_payment_stats_by_plan
+  permissions:
+    - role: me
+    - role: user
+    - role: superadmin
+- function:
+    schema: public
+    name: admin_payment_stats_by_day
+  configuration:
+    exposed_as: query
+    custom_name: admin_payment_stats_by_day
+  permissions:
+    - role: me
+    - role: user
+    - role: superadmin
+- function:
+    schema: public
+    name: admin_payment_stats_by_month
+  configuration:
+    exposed_as: query
+    custom_name: admin_payment_stats_by_month
+  permissions:
+    - role: me
+    - role: user
+    - role: superadmin
+- function:
+    schema: public
+    name: expire_account_subscriptions
+  configuration:
+    exposed_as: mutation
+    custom_name: expire_account_subscriptions
+  permissions:
+    - role: me
+    - role: user
+    - role: superadmin
+- function:
+    schema: public
+    name: account_is_paid
+  configuration:
+    exposed_as: query
+    custom_name: account_is_paid
+  permissions:
+    - role: superadmin

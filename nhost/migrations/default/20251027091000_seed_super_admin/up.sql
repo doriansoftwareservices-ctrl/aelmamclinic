@@ -1,6 +1,4 @@
 -- 20251027091000_seed_super_admin.sql
--- Seed default super admin email.
+-- No-op: super admins must be managed via public.super_admins.
 
-INSERT INTO public.super_admins(email)
-VALUES ('admin@elmam.com')
-ON CONFLICT (email) DO NOTHING;
+SELECT 1;

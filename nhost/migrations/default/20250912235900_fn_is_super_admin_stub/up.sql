@@ -12,7 +12,6 @@ declare
     coalesce(current_setting('request.jwt.claims', true)::json ->> 'email', '')
   );
   v_lookup_email text;
-  v_super_email constant text := 'admin@elmam.com';
 begin
   -- allow service_role and other elevated JWTs outright
   if v_role = 'service_role' then
@@ -39,9 +38,6 @@ begin
     ) then
       return true;
     end if;
-    if v_email = v_super_email then
-      return true;
-    end if;
   end if;
 
   -- fallback: fetch email from auth.users when JWT omitted it
@@ -58,9 +54,6 @@ begin
           from public.super_admins sa
          where lower(sa.email) = v_lookup_email
       ) then
-        return true;
-      end if;
-      if v_lookup_email = v_super_email then
         return true;
       end if;
     end if;

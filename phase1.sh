@@ -8,7 +8,7 @@ set -a
 source .secrets
 set +a
 
-export HASURA_ENDPOINT='https://plbwpsqxtizkxnqgxgfm.hasura.ap-southeast-1.nhost.run'
+export HASURA_ENDPOINT='https://mergrgclboxflnucehgb.hasura.ap-southeast-1.nhost.run'
 export NHOST_ADMIN_SECRET="${HASURA_GRAPHQL_ADMIN_SECRET:?HASURA_GRAPHQL_ADMIN_SECRET missing in .secrets}"
 export HASURA_GRAPHQL_ENDPOINT="$HASURA_ENDPOINT/v1/graphql"
 

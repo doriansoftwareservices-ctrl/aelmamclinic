@@ -1,1 +1,14 @@
-[]
+- name: expire_account_subscriptions_daily
+  webhook_from_env: NHOST_GRAPHQL_URL
+  schedule: "0 3 * * *"
+  include_in_metadata: true
+  payload:
+    query: |
+      mutation ExpireSubs {
+        expire_account_subscriptions(args: {p_dry_run: false})
+      }
+  headers:
+    - name: Content-Type
+      value: application/json
+    - name: x-hasura-admin-secret
+      value_from_env: NHOST_ADMIN_SECRET

@@ -21,7 +21,7 @@ import 'sync_service.dart';
 class NhostAuthService {
   NhostAuthService({NhostClient? client, GraphQLClient? gql})
       : _client = client ?? NhostManager.client,
-        _gql = gql ?? NhostGraphqlService.buildClient() {
+        _gqlOverride = gql {
     _authUnsub = _client.auth.addAuthStateChangedCallback((state) {
       NhostGraphqlService.refreshClient(client: _client);
       _authStateController.add(state);
@@ -32,7 +32,7 @@ class NhostAuthService {
   }
 
   final NhostClient _client;
-  final GraphQLClient _gql;
+  final GraphQLClient? _gqlOverride;
   final StreamController<AuthenticationState> _authStateController =
       StreamController.broadcast();
   UnsubscribeDelegate? _authUnsub;
@@ -107,6 +107,8 @@ class NhostAuthService {
 
   // ───────────────────────── GraphQL helpers ─────────────────────────
 
+  GraphQLClient get _gql => _gqlOverride ?? NhostGraphqlService.client;
+
   Future<Map<String, dynamic>> _runQuery(
     String doc,
     Map<String, dynamic> variables,
@@ -126,6 +128,37 @@ class NhostAuthService {
       throw ex;
     }
     return result.data ?? <String, dynamic>{};
+  }
+
+  Future<Map<String, dynamic>> _runMutation(
+    String doc,
+    Map<String, dynamic> variables,
+  ) async {
+    final result = await _gql.mutate(
+      MutationOptions(
+        document: gql(doc),
+        variables: variables,
+        fetchPolicy: FetchPolicy.noCache,
+      ),
+    );
+    if (result.hasException) {
+      final ex = result.exception!;
+      if (_isSchemaError(ex)) {
+        throw BackendSchemaException(_formatOperationException(ex));
+      }
+      throw ex;
+    }
+    return result.data ?? <String, dynamic>{};
+  }
+
+  Future<String> selfCreateAccount({required String clinicName}) async {
+    const mutation = r'''
+      mutation SelfCreateAccount($name: String!) {
+        self_create_account(args: {p_clinic_name: $name})
+      }
+    ''';
+    final data = await _runMutation(mutation, {'name': clinicName.trim()});
+    return data['self_create_account']?.toString() ?? '';
   }
 
   List<Map<String, dynamic>> _rowsFromData(
@@ -206,6 +239,26 @@ class NhostAuthService {
     );
     final rows = _rowsFromData(data, 'account_users');
     return rows.isEmpty ? null : rows.first;
+  }
+
+  Future<String?> fetchMyPlanCode() async {
+    try {
+      final data = await _runQuery(
+        '''
+        query MyAccountPlan {
+          my_account_plan {
+            plan_code
+          }
+        }
+        ''',
+        const {},
+      );
+      final rows = _rowsFromData(data, 'my_account_plan');
+      if (rows.isEmpty) return null;
+      return rows.first['plan_code']?.toString();
+    } catch (_) {
+      return null;
+    }
   }
 
   bool _isSchemaError(OperationException ex) {
@@ -293,6 +346,10 @@ class NhostAuthService {
     } catch (_) {}
 
     final isSuper = await _resolveSuperAdminFlag(fallbackEmail: user.email);
+    String? planCode;
+    try {
+      planCode = await fetchMyPlanCode();
+    } catch (_) {}
 
     return {
       'uid': user.id,
@@ -301,6 +358,7 @@ class NhostAuthService {
       'role': role,
       'disabled': disabled,
       'isSuperAdmin': isSuper,
+      'planCode': planCode,
     };
   }
 
@@ -380,6 +438,7 @@ class NhostAuthService {
     String? accountId;
     String role = 'employee';
     bool disabled = false;
+    String planCode = 'free';
 
     try {
       final profile = await _fetchMyProfileRow();
@@ -414,6 +473,13 @@ class NhostAuthService {
     }
 
     if (disabled) {
+      throw AccountUserDisabledException(accountId);
+    }
+
+    try {
+      planCode = await fetchMyPlanCode();
+    } catch (_) {}
+    if (role.toLowerCase() != 'owner' && planCode == 'free') {
       throw AccountUserDisabledException(accountId);
     }
 

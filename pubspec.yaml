@@ -20,6 +20,7 @@ dependencies:
   flutter_localizations:
     sdk: flutter
 
+  meta: any
   cupertino_icons: any
   url_launcher: any
   google_sign_in: 6.1.6
@@ -69,6 +70,7 @@ dependencies:
 
   # الشبكات والمزامنة
   nhost_dart: any
+  nhost_sdk: any
   graphql_flutter: any
   uuid: ^4.4.0
   http: any

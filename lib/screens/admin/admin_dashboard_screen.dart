@@ -2,15 +2,26 @@
 import 'package:flutter/material.dart';
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
-import 'package:aelmamclinic/services/auth_supabase_service.dart';
 import 'package:aelmamclinic/models/clinic.dart';
+import 'package:aelmamclinic/models/complaint.dart';
+import 'package:aelmamclinic/models/payment_method.dart';
+import 'package:aelmamclinic/models/payment_plan_stat.dart';
+import 'package:aelmamclinic/models/payment_stat.dart';
+import 'package:aelmamclinic/models/payment_time_stat.dart';
+import 'package:aelmamclinic/models/provisioning_result.dart';
+import 'package:aelmamclinic/models/subscription_request.dart';
+import 'package:aelmamclinic/services/admin_billing_service.dart';
+import 'package:aelmamclinic/services/nhost_storage_service.dart';
+import 'package:aelmamclinic/services/nhost_admin_service.dart';
 import 'package:provider/provider.dart';
 import 'package:aelmamclinic/providers/auth_provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /*──────── شاشات للتنقّل ────────*/
 import 'package:aelmamclinic/screens/statistics/statistics_overview_screen.dart';
 import 'package:aelmamclinic/screens/auth/login_screen.dart';
 import 'package:aelmamclinic/screens/chat/chat_admin_inbox_screen.dart'; // ⬅️ شاشة دردشة السوبر أدمن
+import 'package:intl/intl.dart';
 
 /// شاشة لوحة التحكّم للمشرف العام (super-admin) بتصميم TBIAN.
 /// - تعتمد على Theme.of(context).colorScheme و kPrimaryColor.
@@ -27,7 +38,9 @@ class AdminDashboardScreen extends StatefulWidget {
 class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     with SingleTickerProviderStateMixin {
   // ---------- Services & Controllers ----------
-  final AuthSupabaseService _authService = AuthSupabaseService();
+  final NhostAdminService _authService = NhostAdminService();
+  final AdminBillingService _billingService = AdminBillingService();
+  final NhostStorageService _storageService = NhostStorageService();
 
   // عيادات
   List<Clinic> _clinics = [];
@@ -35,6 +48,25 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
 
   // تبويبات
   late final TabController _tabController;
+  int _sectionIndex = 0;
+
+  // اشتراكات ودفع وشكاوى
+  List<SubscriptionRequest> _subscriptionRequests = [];
+  bool _loadingRequests = false;
+
+  List<PaymentMethod> _paymentMethods = [];
+  bool _loadingPaymentMethods = false;
+
+  List<Complaint> _complaints = [];
+  bool _loadingComplaints = false;
+
+  List<PaymentStat> _paymentStats = [];
+  bool _loadingStats = false;
+  List<PaymentPlanStat> _paymentPlanStats = [];
+  List<PaymentTimeStat> _paymentMonthlyStats = [];
+  List<PaymentTimeStat> _paymentDailyStats = [];
+
+  int _statsMode = 0; // 0=methods, 1=plans, 2=monthly, 3=daily
 
   // -------- إنشاء حساب عيادة رئيسية --------
   final TextEditingController _clinicNameCtrl = TextEditingController();
@@ -45,6 +77,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   Clinic? _selectedClinic;
   final TextEditingController _staffEmailCtrl = TextEditingController();
   final TextEditingController _staffPassCtrl = TextEditingController();
+  String? _createStaffPlanError;
 
   // حالة انشغال عامة لمنع النقرات المكررة
   bool _busy = false;
@@ -85,6 +118,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     _ownerPassCtrl.dispose();
     _staffEmailCtrl.dispose();
     _staffPassCtrl.dispose();
+    _storageService.dispose();
     super.dispose();
   }
 
@@ -97,6 +131,50 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   void _snack(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  Future<String?> _askDecisionNote(String title) async {
+    final ctrl = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: ctrl,
+          decoration: const InputDecoration(
+            hintText: 'ملاحظة (اختياري)',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(null),
+            child: const Text('تخطي'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(ctrl.text.trim()),
+            child: const Text('متابعة'),
+          ),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    return result;
+  }
+
+  Future<void> _openProof(SubscriptionRequest req) async {
+    final proofId = req.proofUrl ?? '';
+    if (proofId.isEmpty) {
+      _snack('لا يوجد إثبات دفع لهذا الطلب.');
+      return;
+    }
+    final signed = await _storageService.createSignedUrl(proofId);
+    final url = signed ?? _storageService.publicFileUrl(proofId);
+    final uri = Uri.tryParse(url);
+    if (uri == null) {
+      _snack('رابط الإثبات غير صالح.');
+      return;
+    }
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   void _showProvisioningOutcome({
@@ -148,6 +226,76 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       if (!mounted) return;
       setState(() => _loadingClinics = false);
       _snack('تعذّر تحميل العيادات: $e');
+    }
+  }
+
+  Future<void> _fetchSubscriptionRequests() async {
+    try {
+      setState(() => _loadingRequests = true);
+      final rows = await _billingService.fetchSubscriptionRequests();
+      if (!mounted) return;
+      setState(() {
+        _subscriptionRequests = rows;
+        _loadingRequests = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loadingRequests = false);
+      _snack('تعذّر تحميل طلبات الاشتراك: $e');
+    }
+  }
+
+  Future<void> _fetchPaymentMethods() async {
+    try {
+      setState(() => _loadingPaymentMethods = true);
+      final rows = await _billingService.fetchPaymentMethods();
+      if (!mounted) return;
+      setState(() {
+        _paymentMethods = rows;
+        _loadingPaymentMethods = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loadingPaymentMethods = false);
+      _snack('تعذّر تحميل وسائل الدفع: $e');
+    }
+  }
+
+  Future<void> _fetchComplaints() async {
+    try {
+      setState(() => _loadingComplaints = true);
+      final rows = await _billingService.fetchComplaints();
+      if (!mounted) return;
+      setState(() {
+        _complaints = rows;
+        _loadingComplaints = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loadingComplaints = false);
+      _snack('تعذّر تحميل الشكاوى: $e');
+    }
+  }
+
+  Future<void> _fetchPaymentStats() async {
+    try {
+      setState(() => _loadingStats = true);
+      final rows = await _billingService.fetchPaymentStats();
+      final byPlan = await _billingService.fetchPaymentStatsByPlan();
+      final byMonth = await _billingService.fetchPaymentStatsByMonth();
+      final byDay = await _billingService.fetchPaymentStatsByDay();
+      if (!mounted) return;
+      setState(() {
+        _paymentStats = rows;
+        _paymentPlanStats = byPlan;
+        _paymentMonthlyStats = byMonth;
+        _paymentDailyStats = byDay;
+        _loadingStats = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loadingStats = false);
+      _snack('تعذّر تحميل الإحصاءات: $e');
     }
   }
 
@@ -203,6 +351,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       _snack('اختر عيادة أولًا');
       return;
     }
+    if ((_selectedClinic?.planCode ?? 'free').toLowerCase() == 'free') {
+      setState(() => _createStaffPlanError =
+          'لا يمكن إضافة موظفين لخطة FREE. قم بترقية الخطة أولاً.');
+      return;
+    }
     final email = _staffEmailCtrl.text.trim();
     final pass = _staffPassCtrl.text;
 
@@ -233,6 +386,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       );
       _staffEmailCtrl.clear();
       _staffPassCtrl.clear();
+      if (mounted) {
+        setState(() => _createStaffPlanError = null);
+      }
     } catch (e) {
       _snack('خطأ في الإنشاء: $e');
     } finally {
@@ -344,13 +500,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             actions: [
               IconButton(
                 tooltip: 'تحديث',
-                onPressed: _loadingClinics ? null : _fetchClinics,
+                onPressed: _refreshCurrentSection,
                 icon: const Icon(Icons.refresh),
-              ),
-              TextButton.icon(
-                onPressed: _openSuperAdminChat,
-                icon: const Icon(Icons.chat_bubble_outline),
-                label: const Text('الدردشة'),
               ),
               TextButton.icon(
                 onPressed: _skipToStatistics,
@@ -365,25 +516,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
               ),
               const SizedBox(width: 8),
             ],
-            bottom: PreferredSize(
-              preferredSize: const Size.fromHeight(52),
-              child: Container(
-                alignment: Alignment.center,
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: TabBar(
-                  controller: _tabController,
-                  labelColor: scheme.onSurface,
-                  unselectedLabelColor: scheme.onSurface.withValues(alpha: .6),
-                  indicatorColor: kPrimaryColor,
-                  indicatorWeight: 3,
-                  tabs: const [
-                    Tab(icon: Icon(Icons.add_business), text: 'عيادة جديدة'),
-                    Tab(icon: Icon(Icons.person_add_alt_1), text: 'موظف جديد'),
-                    Tab(icon: Icon(Icons.manage_accounts), text: 'إدارة العيادات'),
-                  ],
-                ),
-              ),
-            ),
           ),
           body: SafeArea(
             child: Padding(
@@ -392,12 +524,44 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                 absorbing: _busy, // تعطيل كل الواجهات أثناء العمليات الحرجة
                 child: Opacity(
                   opacity: _busy ? 0.7 : 1,
-                  child: TabBarView(
-                    controller: _tabController,
+                  child: Row(
                     children: [
-                      _buildCreateClinicTab(),
-                      _buildCreateEmployeeTab(),
-                      _buildManageClinicsTab(),
+                      NavigationRail(
+                        selectedIndex: _sectionIndex,
+                        onDestinationSelected: (index) async {
+                          setState(() => _sectionIndex = index);
+                          await _refreshCurrentSection();
+                        },
+                        labelType: NavigationRailLabelType.all,
+                        destinations: const [
+                          NavigationRailDestination(
+                            icon: Icon(Icons.local_hospital_outlined),
+                            label: Text('العيادات'),
+                          ),
+                          NavigationRailDestination(
+                            icon: Icon(Icons.chat_bubble_outline),
+                            label: Text('الدردشات'),
+                          ),
+                          NavigationRailDestination(
+                            icon: Icon(Icons.workspace_premium_rounded),
+                            label: Text('الاشتراكات'),
+                          ),
+                          NavigationRailDestination(
+                            icon: Icon(Icons.account_balance_rounded),
+                            label: Text('طرق الدفع'),
+                          ),
+                          NavigationRailDestination(
+                            icon: Icon(Icons.report_problem_rounded),
+                            label: Text('الشكاوى'),
+                          ),
+                          NavigationRailDestination(
+                            icon: Icon(Icons.analytics_rounded),
+                            label: Text('الإحصاءات'),
+                          ),
+                        ],
+                      ),
+                      const VerticalDivider(width: 18),
+                      Expanded(child: _buildSectionBody(scheme)),
                     ],
                   ),
                 ),
@@ -417,6 +581,427 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
               child: const LinearProgressIndicator(minHeight: 3),
             ),
           ),
+      ],
+    );
+  }
+
+  Future<void> _refreshCurrentSection() async {
+    switch (_sectionIndex) {
+      case 0:
+        await _fetchClinics();
+        break;
+      case 1:
+        // chat screen handles its own loading
+        break;
+      case 2:
+        await _fetchSubscriptionRequests();
+        break;
+      case 3:
+        await _fetchPaymentMethods();
+        break;
+      case 4:
+        await _fetchComplaints();
+        break;
+      case 5:
+        await _fetchPaymentStats();
+        break;
+    }
+  }
+
+  Widget _buildSectionBody(ColorScheme scheme) {
+    switch (_sectionIndex) {
+      case 0:
+        return _buildClinicsSection(scheme);
+      case 1:
+        return const ChatAdminInboxScreen();
+      case 2:
+        return _buildSubscriptionRequestsSection();
+      case 3:
+        return _buildPaymentMethodsSection(scheme);
+      case 4:
+        return _buildComplaintsSection(scheme);
+      case 5:
+        return _buildPaymentStatsSection(scheme);
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
+  Widget _buildClinicsSection(ColorScheme scheme) {
+    return Column(
+      children: [
+        TabBar(
+          controller: _tabController,
+          labelColor: scheme.onSurface,
+          unselectedLabelColor: scheme.onSurface.withValues(alpha: .6),
+          indicatorColor: kPrimaryColor,
+          indicatorWeight: 3,
+          tabs: const [
+            Tab(icon: Icon(Icons.add_business), text: 'عيادة جديدة'),
+            Tab(icon: Icon(Icons.person_add_alt_1), text: 'موظف جديد'),
+            Tab(icon: Icon(Icons.manage_accounts), text: 'إدارة العيادات'),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Expanded(
+          child: TabBarView(
+            controller: _tabController,
+            children: [
+              _buildCreateClinicTab(),
+              _buildCreateEmployeeTab(),
+              _buildManageClinicsTab(),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSubscriptionRequestsSection() {
+    if (_loadingRequests) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_subscriptionRequests.isEmpty) {
+      return const Center(child: Text('لا توجد طلبات اشتراك حاليًا'));
+    }
+    return ListView(
+      children: _subscriptionRequests.map((req) {
+        final ref = (req.referenceText ?? '').trim();
+        final sender = (req.senderName ?? '').trim();
+        return NeuCard(
+          margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+          padding: const EdgeInsets.all(12),
+          child: ListTile(
+            title: Text(
+                'خطة: ${req.planCode} • ${req.amount.toStringAsFixed(0)}\$'),
+            subtitle: Text(
+              [
+                'الحساب: ${req.accountId}',
+                'الحالة: ${req.status}',
+                if (ref.isNotEmpty) 'المرجع: $ref',
+                if (sender.isNotEmpty) 'الاسم المحوّل: $sender',
+              ].join('\n'),
+            ),
+            trailing: req.status == 'pending'
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        tooltip: 'عرض الإثبات',
+                        icon: const Icon(Icons.receipt_long_rounded),
+                        onPressed: () => _openProof(req),
+                      ),
+                      const SizedBox(width: 6),
+                      NeuButton(
+                        text: 'اعتماد',
+                        onPressed: () async {
+                          final note =
+                              await _askDecisionNote('ملاحظة الاعتماد');
+                          await _billingService.approveRequest(req.id,
+                              note: note);
+                          await _fetchSubscriptionRequests();
+                          await _fetchPaymentStats();
+                        },
+                      ),
+                      const SizedBox(width: 6),
+                      IconButton(
+                        tooltip: 'رفض',
+                        icon: const Icon(Icons.cancel_outlined),
+                        onPressed: () async {
+                          final note =
+                              await _askDecisionNote('سبب الرفض');
+                          await _billingService.rejectRequest(req.id,
+                              note: note);
+                          await _fetchSubscriptionRequests();
+                        },
+                      ),
+                    ],
+                  )
+                : IconButton(
+                    tooltip: 'عرض الإثبات',
+                    icon: const Icon(Icons.receipt_long_rounded),
+                    onPressed: () => _openProof(req),
+                  ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildPaymentMethodsSection(ColorScheme scheme) {
+    return Column(
+      children: [
+        Align(
+          alignment: Alignment.centerRight,
+          child: NeuButton(
+            text: 'إضافة وسيلة دفع',
+            onPressed: _openPaymentMethodDialog,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Expanded(
+          child: _loadingPaymentMethods
+              ? const Center(child: CircularProgressIndicator())
+              : ListView(
+                  children: _paymentMethods.map((m) {
+                    return NeuCard(
+                      margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+                      padding: const EdgeInsets.all(12),
+                      child: ListTile(
+                        leading: m.logoUrl == null || m.logoUrl!.isEmpty
+                            ? const Icon(Icons.account_balance_rounded)
+                            : Image.network(
+                                m.logoUrl!,
+                                width: 40,
+                                height: 40,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) =>
+                                    const Icon(Icons.account_balance_rounded),
+                              ),
+                        title: Text(m.name),
+                        subtitle: Text('الحساب: ${m.bankAccount}'),
+                        trailing: PopupMenuButton<String>(
+                          onSelected: (v) async {
+                            if (v == 'delete') {
+                              await _billingService.deletePaymentMethod(m.id);
+                              await _fetchPaymentMethods();
+                            } else if (v == 'edit') {
+                              await _openPaymentMethodDialog(method: m);
+                              await _fetchPaymentMethods();
+                            }
+                          },
+                          itemBuilder: (_) => const [
+                            PopupMenuItem(value: 'edit', child: Text('تعديل')),
+                            PopupMenuItem(value: 'delete', child: Text('حذف')),
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _openPaymentMethodDialog({PaymentMethod? method}) async {
+    final nameCtrl = TextEditingController(text: method?.name ?? '');
+    final bankCtrl = TextEditingController(text: method?.bankAccount ?? '');
+    final logoCtrl = TextEditingController(text: method?.logoUrl ?? '');
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: Text(method == null ? 'إضافة وسيلة دفع' : 'تعديل وسيلة دفع'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameCtrl,
+                decoration: const InputDecoration(labelText: 'اسم الخدمة'),
+              ),
+              TextField(
+                controller: bankCtrl,
+                decoration: const InputDecoration(labelText: 'رقم الحساب البنكي'),
+              ),
+              TextField(
+                controller: logoCtrl,
+                decoration: const InputDecoration(labelText: 'رابط شعار الشركة'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('إلغاء'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('حفظ'),
+            ),
+          ],
+        );
+      },
+    );
+    if (result == true) {
+      if (method == null) {
+        await _billingService.createPaymentMethod(
+          name: nameCtrl.text.trim(),
+          bankAccount: bankCtrl.text.trim(),
+          logoUrl: logoCtrl.text.trim().isEmpty ? null : logoCtrl.text.trim(),
+        );
+      } else {
+        await _billingService.updatePaymentMethod(
+          id: method.id,
+          name: nameCtrl.text.trim(),
+          bankAccount: bankCtrl.text.trim(),
+          logoUrl: logoCtrl.text.trim().isEmpty ? null : logoCtrl.text.trim(),
+          isActive: true,
+        );
+      }
+    }
+    nameCtrl.dispose();
+    bankCtrl.dispose();
+    logoCtrl.dispose();
+  }
+
+  Widget _buildComplaintsSection(ColorScheme scheme) {
+    if (_loadingComplaints) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_complaints.isEmpty) {
+      return const Center(child: Text('لا توجد شكاوى حالياً'));
+    }
+    return ListView(
+      children: _complaints.map((c) {
+        return NeuCard(
+          margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+          padding: const EdgeInsets.all(12),
+          child: ListTile(
+            title: Text(c.subject ?? 'شكوى'),
+            subtitle: Text('${c.message}\nالحالة: ${c.status}'),
+            trailing: PopupMenuButton<String>(
+              onSelected: (v) async {
+                await _billingService.updateComplaintStatus(id: c.id, status: v);
+                await _fetchComplaints();
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'open', child: Text('مفتوحة')),
+                PopupMenuItem(value: 'in_progress', child: Text('قيد المعالجة')),
+                PopupMenuItem(value: 'closed', child: Text('مغلقة')),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildPaymentStatsSection(ColorScheme scheme) {
+    if (_loadingStats) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    final hasAny = _paymentStats.isNotEmpty ||
+        _paymentPlanStats.isNotEmpty ||
+        _paymentMonthlyStats.isNotEmpty ||
+        _paymentDailyStats.isNotEmpty;
+    if (!hasAny) {
+      return const Center(child: Text('لا توجد بيانات مالية بعد'));
+    }
+
+    final modeLabels = ['وسائل الدفع', 'حسب الباقة', 'شهري', 'يومي'];
+    Widget listBody;
+
+    if (_statsMode == 1) {
+      listBody = ListView(
+        children: _paymentPlanStats.map((s) {
+          return NeuCard(
+            margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+            padding: const EdgeInsets.all(12),
+            child: ListTile(
+              title: Text(s.planCode?.toUpperCase() ?? 'غير محدد'),
+              subtitle: Text('المدفوعات: ${s.paymentsCount}'),
+              trailing: Text(
+                '\$${s.totalAmount.toStringAsFixed(0)}',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: scheme.primary,
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      );
+    } else if (_statsMode == 2) {
+      final fmt = DateFormat('yyyy-MM');
+      listBody = ListView(
+        children: _paymentMonthlyStats.map((s) {
+          final label =
+              s.period == null ? 'غير محدد' : fmt.format(s.period!);
+          return NeuCard(
+            margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+            padding: const EdgeInsets.all(12),
+            child: ListTile(
+              title: Text(label),
+              subtitle: Text('المدفوعات: ${s.paymentsCount}'),
+              trailing: Text(
+                '\$${s.totalAmount.toStringAsFixed(0)}',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: scheme.primary,
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      );
+    } else if (_statsMode == 3) {
+      final fmt = DateFormat('yyyy-MM-dd');
+      listBody = ListView(
+        children: _paymentDailyStats.map((s) {
+          final label =
+              s.period == null ? 'غير محدد' : fmt.format(s.period!);
+          return NeuCard(
+            margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+            padding: const EdgeInsets.all(12),
+            child: ListTile(
+              title: Text(label),
+              subtitle: Text('المدفوعات: ${s.paymentsCount}'),
+              trailing: Text(
+                '\$${s.totalAmount.toStringAsFixed(0)}',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: scheme.primary,
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      );
+    } else {
+      listBody = ListView(
+        children: _paymentStats.map((s) {
+          return NeuCard(
+            margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+            padding: const EdgeInsets.all(12),
+            child: ListTile(
+              title: Text(s.paymentMethodName ?? 'غير محدد'),
+              subtitle: Text('المدفوعات: ${s.paymentsCount}'),
+              trailing: Text(
+                '\$${s.totalAmount.toStringAsFixed(0)}',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: scheme.primary,
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      );
+    }
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          child: ToggleButtons(
+            isSelected: List.generate(
+              modeLabels.length,
+              (i) => i == _statsMode,
+            ),
+            onPressed: (i) => setState(() => _statsMode = i),
+            borderRadius: BorderRadius.circular(12),
+            children: modeLabels
+                .map((label) => Padding(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      child: Text(label),
+                    ))
+                .toList(),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Expanded(child: listBody),
       ],
     );
   }
@@ -470,6 +1055,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
 
   Widget _buildCreateEmployeeTab() {
     final scheme = Theme.of(context).colorScheme;
+    final planCode = (_selectedClinic?.planCode ?? 'free').toLowerCase();
+    final planIsFree = planCode == 'free';
 
     return ListView(
       children: [
@@ -518,7 +1105,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                       .map((c) =>
                       DropdownMenuItem(value: c, child: Text(c.name)))
                       .toList(),
-                  onChanged: (c) => setState(() => _selectedClinic = c),
+                  onChanged: (c) => setState(() {
+                    _selectedClinic = c;
+                    _createStaffPlanError = null;
+                  }),
                   icon: const Icon(Icons.expand_more_rounded),
                 ),
               ),
@@ -528,6 +1118,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                 labelText: 'بريد الموظف',
                 keyboardType: TextInputType.emailAddress,
                 prefix: const Icon(Icons.alternate_email_rounded),
+                enabled: !planIsFree,
               ),
               const SizedBox(height: 12),
               NeuField(
@@ -535,13 +1126,28 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                 labelText: 'كلمة مرور الموظف',
                 obscureText: true,
                 prefix: const Icon(Icons.lock_outline_rounded),
+                enabled: !planIsFree,
               ),
+              if (planIsFree) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'خطة العيادة FREE: لا يمكن إضافة موظفين حتى تتم الترقية.',
+                  style: TextStyle(color: scheme.error),
+                ),
+              ],
+              if (_createStaffPlanError != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  _createStaffPlanError!,
+                  style: TextStyle(color: scheme.error),
+                ),
+              ],
               const SizedBox(height: 18),
               Align(
                 alignment: Alignment.centerRight,
                 child: NeuButton.primary(
                   label: 'إنشاء الموظف',
-                  onPressed: _createStaffAccount,
+                  onPressed: planIsFree ? null : _createStaffAccount,
                   icon: Icons.person_add_alt_1_rounded,
                 ),
               ),
@@ -588,6 +1194,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         itemCount: _clinics.length,
         itemBuilder: (_, i) {
           final clinic = _clinics[i];
+          final planCode = (clinic.planCode ?? 'free').toUpperCase();
+          final planStatus = (clinic.planStatus ?? 'active').toLowerCase();
+          final planEnd = clinic.planEndAt;
           return Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
             child: NeuCard(
@@ -614,7 +1223,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                   ),
                 ),
                 subtitle: Text(
-                  'مجمّدة: ${clinic.isFrozen ? "نعم" : "لا"} | الإنشاء: ${clinic.createdAt.toLocal()}',
+                  [
+                    'الخطة: $planCode',
+                    'الحالة: $planStatus',
+                    if (planEnd != null) 'الانتهاء: ${planEnd.toLocal()}',
+                    'مجمّدة: ${clinic.isFrozen ? "نعم" : "لا"}',
+                    'الإنشاء: ${clinic.createdAt.toLocal()}',
+                  ].join(' | '),
                   style: TextStyle(
                     color: scheme.onSurface.withValues(alpha: .7),
                     fontWeight: FontWeight.w600,

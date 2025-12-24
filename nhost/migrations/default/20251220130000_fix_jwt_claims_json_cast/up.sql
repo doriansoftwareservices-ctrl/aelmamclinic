@@ -18,7 +18,6 @@ DECLARE
     )
   );
   v_lookup_email text;
-  v_super_email constant text := 'admin@elmam.com';
 BEGIN
   -- allow service_role and other elevated JWTs outright
   IF v_role = 'service_role' THEN
@@ -45,9 +44,6 @@ BEGIN
     ) THEN
       RETURN true;
     END IF;
-    IF v_email = v_super_email THEN
-      RETURN true;
-    END IF;
   END IF;
 
   -- fallback: fetch email from auth.users when JWT omitted it
@@ -64,9 +60,6 @@ BEGIN
           FROM public.super_admins sa
          WHERE lower(sa.email) = v_lookup_email
       ) THEN
-        RETURN true;
-      END IF;
-      IF v_lookup_email = v_super_email THEN
         RETURN true;
       END IF;
     END IF;

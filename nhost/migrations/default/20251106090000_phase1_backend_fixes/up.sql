@@ -27,9 +27,7 @@ SET search_path = public, auth
 AS $$
 declare
   v_uid uuid := nullif(public.request_uid_text(), '')::uuid;
-  v_is_super boolean := coalesce(public.fn_is_super_admin(), false)
-    or lower(coalesce(current_setting('request.jwt.claims', true)::json ->> 'role', '')) = 'superadmin'
-    or lower(coalesce(current_setting('request.jwt.claims', true)::json ->> 'email', '')) = 'admin@elmam.com';
+  v_is_super boolean := coalesce(public.fn_is_super_admin(), false);
   v_allowed text[];
   v_can_create boolean;
   v_can_update boolean;

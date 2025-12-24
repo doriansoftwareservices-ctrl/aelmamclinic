@@ -158,6 +158,39 @@ async function ensureSuperAdmin(authHeader) {
   }
 }
 
+async function ensureAccountPaid(accountId, authHeader) {
+  const gqlUrl = process.env.NHOST_GRAPHQL_URL;
+  if (!gqlUrl) {
+    throw new Error('Missing NHOST_GRAPHQL_URL');
+  }
+  const query = `
+    query AccountPaid($account: uuid!) {
+      account_is_paid(args: {p_account: $account})
+    }
+  `;
+  const res = await fetch(gqlUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: authHeader,
+    },
+    body: JSON.stringify({ query, variables: { account: accountId } }),
+  });
+  if (!res.ok) {
+    throw new Error(`Plan check failed: ${res.status}`);
+  }
+  const json = await res.json();
+  if (json.errors?.length) {
+    throw new Error(json.errors.map((e) => e.message).join(' | '));
+  }
+  const raw = json.data?.account_is_paid;
+  if (typeof raw === 'boolean') return raw;
+  if (Array.isArray(raw) && raw.length > 0) {
+    return raw[0]?.account_is_paid === true;
+  }
+  return raw === true;
+}
+
 module.exports = async function handler(req, res) {
   try {
     const body = await readBody(req);
@@ -173,6 +206,12 @@ module.exports = async function handler(req, res) {
 
     if (!accountId || !email || !password) {
       res.status(400).json({ ok: false, error: 'Missing fields' });
+      return;
+    }
+
+    const paid = await ensureAccountPaid(accountId, authHeader);
+    if (!paid) {
+      res.status(403).json({ ok: false, error: 'plan is free' });
       return;
     }
 

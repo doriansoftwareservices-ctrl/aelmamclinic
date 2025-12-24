@@ -28,8 +28,6 @@ SET search_path = public, auth
 AS $$
 DECLARE
   claims jsonb := coalesce(current_setting('request.jwt.claims', true)::jsonb, '{}'::jsonb);
-  caller_email text := lower(coalesce(claims->>'email', ''));
-  super_admin_email text := 'admin@elmam.com';
   normalized_email text := lower(coalesce(trim(owner_email), ''));
   normalized_role text := coalesce(nullif(trim(owner_role), ''), 'owner');
   owner_uid uuid;
@@ -43,7 +41,7 @@ BEGIN
     RAISE EXCEPTION 'owner_email is required';
   END IF;
 
-  IF NOT (fn_is_super_admin() = true OR caller_email = super_admin_email) THEN
+  IF fn_is_super_admin() IS DISTINCT FROM true THEN
     RAISE EXCEPTION 'forbidden' USING errcode = '42501';
   END IF;
 
@@ -90,9 +88,7 @@ SECURITY DEFINER
 SET search_path = public, auth
 AS $$
 DECLARE
-  v_is_super boolean := coalesce(fn_is_super_admin(), false)
-    OR lower(coalesce(current_setting('request.jwt.claims', true)::json ->> 'role', '')) = 'superadmin'
-    OR lower(coalesce(current_setting('request.jwt.claims', true)::json ->> 'email', '')) = 'admin@elmam.com';
+  v_is_super boolean := coalesce(fn_is_super_admin(), false);
   v_account uuid := p_account;
   v_email text := nullif(lower(trim(p_email)), '');
   v_uid uuid;
@@ -142,5 +138,3 @@ $$;
 
 REVOKE ALL ON FUNCTION public.admin_create_employee_full(uuid, text, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.admin_create_employee_full(uuid, text, text) TO PUBLIC;
-
-

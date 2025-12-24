@@ -7,7 +7,7 @@
 - Flutter 3.35 أو أحدث.
 - Dart 3.9 أو أحدث.
 - Nhost CLI 1.31 أو أحدث (`nhost config pull/apply`).
-- حساب Nhost مع مشروع مهيأ (plbwpsqxtizkxnqgxgfm أو ما يعادله).
+- حساب Nhost مع مشروع مهيأ (mergrgclboxflnucehgb أو ما يعادله).
 
 ## الإعداد السريع
 
@@ -32,18 +32,18 @@
 
    ```json
    {
-     "nhostSubdomain": "plbwpsqxtizkxnqgxgfm",
+     "nhostSubdomain": "mergrgclboxflnucehgb",
      "nhostRegion": "ap-southeast-1",
-     "nhostGraphqlUrl": "https://plbwpsqxtizkxnqgxgfm.graphql.ap-southeast-1.nhost.run/v1",
-     "nhostAuthUrl": "https://plbwpsqxtizkxnqgxgfm.auth.ap-southeast-1.nhost.run/v1",
-     "nhostStorageUrl": "https://plbwpsqxtizkxnqgxgfm.storage.ap-southeast-1.nhost.run/v1"
+     "nhostGraphqlUrl": "https://mergrgclboxflnucehgb.graphql.ap-southeast-1.nhost.run/v1",
+     "nhostAuthUrl": "https://mergrgclboxflnucehgb.auth.ap-southeast-1.nhost.run/v1",
+     "nhostStorageUrl": "https://mergrgclboxflnucehgb.storage.ap-southeast-1.nhost.run/v1"
    }
    ```
 
    تُحمَّل هذه القيم تلقائيًا عند الإقلاع وتتفوق على الإعدادات المضمّنة. تستمر
    آلية البحث عن الملف في نفس المسارات (`C:\aelmam_clinic`, `D:\aelmam_clinic`,
    `%APPDATA%\aelmam_clinic`, إلخ) ويمكن تمرير مسار مخصّص عبر المتغيرات
-   `AELMAM_SUPABASE_CONFIG` / `AELMAM_CONFIG` (للتوافق مع الإصدارات السابقة).
+   `AELMAM_NHOST_CONFIG` أو `AELMAM_CONFIG` / `AELMAM_CLINIC_CONFIG` (للتوافق مع الإصدارات السابقة).
 
 3. **تهيئة Firebase (اختياري)**
    استورد إعدادات `firebase_options.dart` المطابقة لبيئتك.
