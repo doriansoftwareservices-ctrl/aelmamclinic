@@ -26,7 +26,7 @@ BEGIN
     RETURNS text
     LANGUAGE sql
     STABLE
-    AS $$ SELECT null; $$;
+    AS $func$ SELECT null; $func$;
   END IF;
 END$$;
 
