@@ -70,10 +70,14 @@ class _LoginScreenState extends State<LoginScreen> {
     if (user == null) return;
 
     // إنشاء عيادة تلقائيًا إن لم يكن هناك حساب مرتبط
+    final session = NhostManager.client.auth.currentSession;
     if (!authProv.isSuperAdmin &&
+        authProv.isLoggedIn &&
+        session != null &&
         (authProv.accountId ?? '').isEmpty &&
         !_autoAccountAttempted) {
       _autoAccountAttempted = true;
+      await authProv.refreshSession();
       await _ensureAutoAccount(authProv);
     }
 
@@ -152,6 +156,7 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       if ((auth.accountId ?? '').isEmpty && !auth.isSuperAdmin) {
+        await auth.refreshSession();
         await _ensureAutoAccount(auth);
       }
 
@@ -251,6 +256,10 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _ensureAutoAccount(AuthProvider auth) async {
     if (auth.isSuperAdmin) return;
     if ((auth.accountId ?? '').isNotEmpty) return;
+    if (!auth.isLoggedIn) return;
+
+    final session = NhostManager.client.auth.currentSession;
+    if (session == null || (session.accessToken ?? '').isEmpty) return;
 
     final email = auth.email ?? _email.text.trim();
     final seed = email.isEmpty
@@ -258,11 +267,14 @@ class _LoginScreenState extends State<LoginScreen> {
         : 'عيادة ${email.split('@').first}';
 
     Future<void> tryCreate(String name, int attempt) async {
-      try {
-        await auth.selfCreateAccount(name);
-      } catch (e) {
-        final msg = e.toString();
-        final lower = msg.toLowerCase();
+    try {
+      await auth.selfCreateAccount(name);
+    } catch (e) {
+      final msg = e.toString();
+      // سجل الخطأ للمساعدة في التشخيص على الديسكتوب
+      // ignore: avoid_print
+      print('auto_create_account_failed: $msg');
+      final lower = msg.toLowerCase();
         if (lower.contains('already linked')) {
           return;
         }
