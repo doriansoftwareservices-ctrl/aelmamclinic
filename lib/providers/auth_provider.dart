@@ -310,16 +310,15 @@ class AuthProvider extends ChangeNotifier {
 
   /*──────── Actions ────────*/
 
-  Future<void> signIn(String email, String password) async {
-    await _auth.signInWithEmailPassword(
+  Future<AuthResponse> signIn(String email, String password) {
+    return _auth.signInWithEmailPassword(
       email: email,
       password: password,
     );
-    // سيستكمل الـ listener ما يلزم (refresh/permissions/bootstrap).
   }
 
-  Future<void> signUp(String email, String password) async {
-    await _auth.signUpWithEmailPassword(
+  Future<AuthResponse> signUp(String email, String password) {
+    return _auth.signUpWithEmailPassword(
       email: email,
       password: password,
     );

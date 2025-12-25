@@ -133,7 +133,14 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      await auth.signIn(email, pass);
+      final signInResp = await auth.signIn(email, pass);
+      if (signInResp.session == null) {
+        setState(
+          () => _error =
+              'تعذّر تسجيل الدخول. تأكد من البريد وكلمة المرور أو فعّل حسابك عبر البريد.',
+        );
+        return;
+      }
       final result = await auth.refreshAndValidateCurrentUser();
       if (!mounted) return;
 
@@ -189,8 +196,18 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      await auth.signUp(email, pass);
-      await auth.signIn(email, pass);
+      final signUpResp = await auth.signUp(email, pass);
+      if (signUpResp.session == null) {
+        setState(
+          () =>
+              _error = 'تم إنشاء الحساب. يرجى تأكيد البريد الإلكتروني ثم تسجيل الدخول.',
+        );
+        return;
+      }
+      if (auth.currentUser == null || auth.accessToken == null) {
+        setState(() => _error = 'لم يتم إنشاء جلسة صالحة للمستخدم.');
+        return;
+      }
       await auth.selfCreateAccount(clinicName.trim());
       final result = await auth.refreshAndValidateCurrentUser();
       if (!mounted) return;
