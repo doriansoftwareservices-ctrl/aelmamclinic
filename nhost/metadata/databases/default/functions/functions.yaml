@@ -222,6 +222,7 @@
     exposed_as: mutation
     custom_name: self_create_account
   permissions:
+    - role: anonymous
     - role: me
     - role: user
     - role: owner
