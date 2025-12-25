@@ -10,6 +10,7 @@ WHERE false;
 DROP FUNCTION IF EXISTS public.create_subscription_request(text, uuid, numeric, text);
 DROP FUNCTION IF EXISTS public.create_subscription_request(text, uuid, numeric, text, text, text);
 DROP FUNCTION IF EXISTS public.create_subscription_request(text, uuid, text, text, text);
+DROP FUNCTION IF EXISTS public.self_create_account(text);
 
 -- self_create_account now returns a table-backed row.
 CREATE OR REPLACE FUNCTION public.self_create_account(p_clinic_name text)
