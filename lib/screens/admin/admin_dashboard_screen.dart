@@ -351,13 +351,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       _snack('اختر عيادة أولًا');
       return;
     }
-    if ((_selectedClinic?.planCode ?? 'free').toLowerCase() == 'free') {
-      setState(
-        () => _createStaffPlanError =
-            'لا يمكن إضافة موظفين لخطة FREE. قم بترقية الخطة أولاً.',
-      );
-      return;
-    }
     final email = _staffEmailCtrl.text.trim();
     final pass = _staffPassCtrl.text;
 

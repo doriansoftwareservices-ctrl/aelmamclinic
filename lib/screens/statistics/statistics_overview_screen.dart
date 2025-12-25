@@ -12,6 +12,7 @@ import 'package:graphql_flutter/graphql_flutter.dart';
 /*── تصميم TBIAN ─*/
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
+import 'package:aelmamclinic/core/features.dart';
 
 import 'package:aelmamclinic/models/return_entry.dart';
 import 'package:aelmamclinic/providers/statistics_provider.dart';
@@ -57,25 +58,6 @@ import 'package:aelmamclinic/screens/admin/admin_dashboard_screen.dart';
 /// true  → إخفاء العناصر غير المسموح بها.
 /// false → إظهارها لكن تعطيل التفاعل مع تنبيه المستخدم.
 const bool kHideDeniedTabs = false;
-
-/// مفاتيح الميزات (تبويبات/أقسام) التي يعتمدها المالك في جدول account_feature_permissions.allowed_features
-class FeatureKeys {
-  static const String dashboard = 'dashboard';
-  static const String patientNew = 'patients.new';
-  static const String patientsList = 'patients.list';
-  static const String returns = 'returns';
-  static const String employees = 'employees';
-  static const String payments = 'payments';
-  static const String labRadiology = 'lab_radiology';
-  static const String charts = 'charts';
-  static const String repository = 'repository';
-  static const String prescriptions = 'prescriptions';
-  static const String backup = 'backup';
-  static const String accounts = 'accounts'; // إدارة مستخدمي الحساب
-  static const String chat = 'chat'; // الدردشة 👈 جديد
-  static const String auditLogs = 'audit.logs';
-  static const String auditPermissions = 'audit.permissions';
-}
 
 class StatisticsOverviewScreen extends StatefulWidget {
   const StatisticsOverviewScreen({super.key});
@@ -310,14 +292,10 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final scheme = Theme.of(ctx).colorScheme;
 
-    final isPaidOwner =
-        auth.role?.toLowerCase() == 'owner' && auth.planCode != 'free';
-    final canView = auth.isSuperAdmin ||
-        auth.featureAllowed(FeatureKeys.returns) ||
-        isPaidOwner;
-    final canCreate = auth.isSuperAdmin ||
-        ((auth.featureAllowed(FeatureKeys.returns) || isPaidOwner) &&
-            auth.canCreate);
+    final canView =
+        auth.isSuperAdmin || auth.featureAllowed(FeatureKeys.returns);
+    final canCreate =
+        auth.isSuperAdmin || (auth.featureAllowed(FeatureKeys.returns) && auth.canCreate);
 
     if (!canView) {
       _handleDeniedAccess();
@@ -392,11 +370,8 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final scheme = Theme.of(ctx).colorScheme;
 
-    final isPaidOwner =
-        auth.role?.toLowerCase() == 'owner' && auth.planCode != 'free';
-    final allowed = auth.isSuperAdmin ||
-        isPaidOwner ||
-        auth.featureAllowed(FeatureKeys.prescriptions);
+    final allowed =
+        auth.isSuperAdmin || auth.featureAllowed(FeatureKeys.prescriptions);
     if (!allowed) {
       _handleDeniedAccess();
       return;
@@ -604,13 +579,11 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
     bool requireUpdate = false,
     bool requireDelete = false,
   }) {
-    final isOwner = auth.role?.toLowerCase() == 'owner';
-    final isPaidOwner = isOwner && auth.planCode != 'free';
-    // السوبر أدمن أو مالك بخطة مدفوعة يرون الكل، والباقي عبر permissions
-    bool allowed = auth.isSuperAdmin || isPaidOwner || auth.featureAllowed(featureKey);
+    // السوبر أدمن يرى الكل، والباقي عبر permissions/feature matrix
+    bool allowed = auth.isSuperAdmin || auth.featureAllowed(featureKey);
 
     // تطبيق CRUD إذا طُلب (لمالك/سوبر نتجاوز، للموظف نطبّق)
-    if (allowed && !auth.isSuperAdmin && !isPaidOwner) {
+    if (allowed && !auth.isSuperAdmin) {
       if (requireCreate) allowed = allowed && auth.canCreate;
       if (requireUpdate) allowed = allowed && auth.canUpdate;
       if (requireDelete) allowed = allowed && auth.canDelete;

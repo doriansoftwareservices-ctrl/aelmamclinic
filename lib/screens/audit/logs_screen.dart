@@ -338,9 +338,8 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final auth = context.watch<AuthProvider>();
-    final canView = auth.isSuperAdmin ||
-        (auth.role?.toLowerCase() == 'owner' && auth.planCode != 'free') ||
-        auth.featureAllowed(FeatureKeys.auditLogs);
+    final canView =
+        auth.isSuperAdmin || auth.featureAllowed(FeatureKeys.auditLogs);
 
     return Directionality(
       textDirection: ui.TextDirection.ltr,

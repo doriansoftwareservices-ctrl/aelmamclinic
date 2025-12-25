@@ -59,11 +59,9 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
 
     final auth = context.read<AuthProvider>();
     final accId = auth.accountId ?? '';
-    final isPaidOwner =
-        auth.role?.toLowerCase() == 'owner' && auth.planCode != 'free';
-    final isOwnerOrSuper = isPaidOwner || auth.isSuperAdmin;
-    final canView =
-        isOwnerOrSuper || auth.featureAllowed(FeatureKeys.auditPermissions);
+    final isOwnerOrSuper = auth.isSuperAdmin ||
+        auth.featureAllowed(FeatureKeys.auditPermissions);
+    final canView = isOwnerOrSuper;
 
     if (!canView) {
       setState(() {
@@ -259,11 +257,9 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
-    final isPaidOwner =
-        auth.role?.toLowerCase() == 'owner' && auth.planCode != 'free';
-    final isOwnerOrSuper = isPaidOwner || auth.isSuperAdmin;
-    final canView =
-        isOwnerOrSuper || auth.featureAllowed(FeatureKeys.auditPermissions);
+    final isOwnerOrSuper = auth.isSuperAdmin ||
+        auth.featureAllowed(FeatureKeys.auditPermissions);
+    final canView = isOwnerOrSuper;
 
     // تحميل أولي عند أول بناء
     if (!_initialLoaded && !_loading && canView) {
@@ -604,23 +600,6 @@ class _FeaturePerm {
 
 /*────────────────────── تعريف محلّي لقائمة الميزات ──────────────────────*/
 // مفاتيح الميزات المستخدمة في الواجهة/التخزين
-class _FeatureKeys {
-  static const dashboard = 'dashboard';
-  static const patientNew = 'patients.new';
-  static const patientsList = 'patients.list';
-  static const returns = 'returns';
-  static const employees = 'employees';
-  static const payments = 'payments';
-  static const labRadiology = 'lab_radiology';
-  static const charts = 'charts';
-  static const repository = 'repository';
-  static const prescriptions = 'prescriptions';
-  static const backup = 'backup';
-  static const accounts = 'accounts';
-  static const auditLogs = 'audit.logs';
-  static const auditPermissions = 'audit.permissions';
-}
-
 // توصيف مبسّط (key + label + icon)
 class _FeatureDef {
   final String key;
@@ -631,29 +610,29 @@ class _FeatureDef {
 
 // اللائحة المعروضة في واجهة التحديد
 const List<_FeatureDef> _kFeatureDefs = [
-  _FeatureDef(_FeatureKeys.dashboard, 'لوحة الإحصاءات', Icons.insights_rounded),
-  _FeatureDef(_FeatureKeys.patientNew, 'تسجيل مريض جديد',
+  _FeatureDef(FeatureKeys.dashboard, 'لوحة الإحصاءات', Icons.insights_rounded),
+  _FeatureDef(FeatureKeys.patientNew, 'تسجيل مريض جديد',
       Icons.person_add_alt_1_rounded),
-  _FeatureDef(
-      _FeatureKeys.patientsList, 'قائمة المرضى', Icons.people_outline_rounded),
-  _FeatureDef(
-      _FeatureKeys.returns, 'العودات', Icons.assignment_return_outlined),
-  _FeatureDef(_FeatureKeys.employees, 'شؤون الموظفين', Icons.groups_rounded),
-  _FeatureDef(_FeatureKeys.payments, 'الشؤون المالية', Icons.payments_rounded),
-  _FeatureDef(
-      _FeatureKeys.labRadiology, 'الأشعة والمختبرات', Icons.biotech_rounded),
-  _FeatureDef(_FeatureKeys.charts, 'الرسوم البيانية', Icons.bar_chart_rounded),
-  _FeatureDef(
-      _FeatureKeys.repository, 'قسم المستودع', Icons.inventory_2_rounded),
-  _FeatureDef(
-      _FeatureKeys.prescriptions, 'الوصفات الطبية', Icons.menu_book_rounded),
-  _FeatureDef(_FeatureKeys.backup, 'النسخ الاحتياطي', Icons.backup_rounded),
-  _FeatureDef(
-      _FeatureKeys.accounts, 'الحسابات', Icons.supervisor_account_rounded),
-  _FeatureDef(
-      _FeatureKeys.auditLogs, 'سجلات التدقيق', Icons.receipt_long_rounded),
-  _FeatureDef(
-      _FeatureKeys.auditPermissions, 'صلاحيات الميزات', Icons.tune_rounded),
+  _FeatureDef(FeatureKeys.patientsList, 'قائمة المرضى',
+      Icons.people_outline_rounded),
+  _FeatureDef(FeatureKeys.returns, 'العودات',
+      Icons.assignment_return_outlined),
+  _FeatureDef(FeatureKeys.employees, 'شؤون الموظفين', Icons.groups_rounded),
+  _FeatureDef(FeatureKeys.payments, 'الشؤون المالية', Icons.payments_rounded),
+  _FeatureDef(FeatureKeys.labRadiology, 'الأشعة والمختبرات',
+      Icons.biotech_rounded),
+  _FeatureDef(FeatureKeys.charts, 'الرسوم البيانية', Icons.bar_chart_rounded),
+  _FeatureDef(FeatureKeys.repository, 'قسم المستودع',
+      Icons.inventory_2_rounded),
+  _FeatureDef(FeatureKeys.prescriptions, 'الوصفات الطبية',
+      Icons.menu_book_rounded),
+  _FeatureDef(FeatureKeys.chat, 'الدردشة', Icons.chat_bubble_outline_rounded),
+  _FeatureDef(FeatureKeys.backup, 'النسخ الاحتياطي', Icons.backup_rounded),
+  _FeatureDef(FeatureKeys.accounts, 'الحسابات',
+      Icons.supervisor_account_rounded),
+  _FeatureDef(FeatureKeys.auditLogs, 'سجلات التدقيق',
+      Icons.receipt_long_rounded),
+  _FeatureDef(FeatureKeys.auditPermissions, 'صلاحيات الميزات', Icons.tune_rounded),
 ];
 
 // أدوات مساعدة محليّة

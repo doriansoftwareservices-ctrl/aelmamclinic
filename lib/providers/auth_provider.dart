@@ -16,6 +16,7 @@ import 'package:flutter/foundation.dart';
 import 'package:meta/meta.dart';
 import 'package:flutter/widgets.dart';
 import 'package:nhost_dart/nhost_dart.dart';
+import 'package:nhost_sdk/nhost_sdk.dart' show AuthResponse;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:aelmamclinic/core/features.dart'; // FeatureKeys.chat
@@ -182,6 +183,7 @@ class AuthProvider extends ChangeNotifier {
 
   /*──────── Getters ────────*/
   bool get isLoggedIn => currentUser != null;
+  String? get accessToken => _auth.accessToken;
   String? get uid => currentUser?['uid'] as String?;
   String? get email => currentUser?['email'] as String?;
   String? get role => currentUser?['role'] as String?;
