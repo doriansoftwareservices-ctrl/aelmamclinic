@@ -84,7 +84,6 @@ class _PaymentRequestScreenState extends State<PaymentRequestScreen> {
       await _billing.createSubscriptionRequest(
         planCode: widget.plan.code,
         paymentMethodId: widget.method.id,
-        amount: widget.plan.priceUsd,
         proofUrl: proofId,
         referenceText: _referenceCtrl.text.trim(),
         senderName: _senderCtrl.text.trim(),

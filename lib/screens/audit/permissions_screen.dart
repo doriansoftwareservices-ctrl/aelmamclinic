@@ -77,6 +77,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
         final query = '''
           query MyFeaturePermissions(\$account: uuid!) {
             my_feature_permissions(args: {p_account: \$account}) {
+              allow_all
               allowed_features
               can_create
               can_update
@@ -117,6 +118,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
           query FeaturePerms(\$account: uuid!) {
             account_feature_permissions(where: {account_id: {_eq: \$account}}) {
               user_uid
+              allow_all
               allowed_features
               can_create
               can_update
@@ -207,6 +209,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
           'account': accId,
           'uid': userUid,
           'set': {
+            'allow_all': perm.allowAll,
             'allowed_features': perm.allowedFeatures,
             'can_create': perm.canCreate,
             'can_update': perm.canUpdate,
@@ -228,6 +231,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
             'object': {
               'account_id': accId,
               'user_uid': userUid,
+              'allow_all': perm.allowAll,
               'allowed_features': perm.allowedFeatures,
               'can_create': perm.canCreate,
               'can_update': perm.canUpdate,
@@ -416,14 +420,24 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
                   readOnly: true,
                 ),
                 const SizedBox(height: 12),
-                _FeatureChips(
-                  selected: p.allowedFeatures,
-                  readOnly: true,
-                ),
-                const SizedBox(height: 8),
-                if (p.isDefaultAll)
+                if (p.allowAll)
                   Text(
-                    'ملاحظة: لا يوجد سجل مخصص لك، لذلك تُطبَّق الصلاحيات الافتراضية (كل الميزات + كامل CRUD).',
+                    'كل الميزات مفعّلة',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: scheme.onSurface.withValues(alpha: .75),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  )
+                else
+                  _FeatureChips(
+                    selected: p.allowedFeatures,
+                    readOnly: true,
+                  ),
+                const SizedBox(height: 8),
+                if (p.allowAll)
+                  Text(
+                    'ملاحظة: تم تفعيل السماح الكلي لك من الإدارة.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: scheme.onSurface.withValues(alpha: .7),
@@ -514,6 +528,7 @@ class _Employee {
 
 class _FeaturePerm {
   final String? userUid; // اختياري (يملأ عند الحفظ)
+  final bool allowAll;
   final List<String> allowedFeatures;
   final bool canCreate;
   final bool canUpdate;
@@ -521,6 +536,7 @@ class _FeaturePerm {
 
   const _FeaturePerm({
     this.userUid,
+    required this.allowAll,
     required this.allowedFeatures,
     required this.canCreate,
     required this.canUpdate,
@@ -528,10 +544,11 @@ class _FeaturePerm {
   });
 
   bool get isDefaultAll =>
-      allowedFeatures.isEmpty && canCreate && canUpdate && canDelete;
+      !allowAll && allowedFeatures.isEmpty && !canCreate && !canUpdate && !canDelete;
 
   _FeaturePerm copyWith({
     String? userUid,
+    bool? allowAll,
     List<String>? allowedFeatures,
     bool? canCreate,
     bool? canUpdate,
@@ -539,6 +556,7 @@ class _FeaturePerm {
   }) {
     return _FeaturePerm(
       userUid: userUid ?? this.userUid,
+      allowAll: allowAll ?? this.allowAll,
       allowedFeatures: allowedFeatures ?? this.allowedFeatures,
       canCreate: canCreate ?? this.canCreate,
       canUpdate: canUpdate ?? this.canUpdate,
@@ -549,10 +567,11 @@ class _FeaturePerm {
   factory _FeaturePerm.defaults({String? userUid}) {
     return _FeaturePerm(
       userUid: userUid,
-      allowedFeatures: <String>[], // فارغة = كل الميزات (افتراضي SQL)
-      canCreate: true,
-      canUpdate: true,
-      canDelete: true,
+      allowAll: false,
+      allowedFeatures: <String>[], // فارغة = بدون ميزات في الوضع الآمن
+      canCreate: false,
+      canUpdate: false,
+      canDelete: false,
     );
   }
 
@@ -569,10 +588,11 @@ class _FeaturePerm {
     }
     return _FeaturePerm(
       userUid: j['user_uid']?.toString(),
+      allowAll: j['allow_all'] == true,
       allowedFeatures: feats,
-      canCreate: (j['can_create'] as bool?) ?? true,
-      canUpdate: (j['can_update'] as bool?) ?? true,
-      canDelete: (j['can_delete'] as bool?) ?? true,
+      canCreate: (j['can_create'] as bool?) ?? false,
+      canUpdate: (j['can_update'] as bool?) ?? false,
+      canDelete: (j['can_delete'] as bool?) ?? false,
     );
   }
 
@@ -590,10 +610,11 @@ class _FeaturePerm {
     }
 
     return _FeaturePerm(
+      allowAll: j['allow_all'] == true,
       allowedFeatures: feats,
-      canCreate: (j['can_create'] as bool?) ?? true,
-      canUpdate: (j['can_update'] as bool?) ?? true,
-      canDelete: (j['can_delete'] as bool?) ?? true,
+      canCreate: (j['can_create'] as bool?) ?? false,
+      canUpdate: (j['can_update'] as bool?) ?? false,
+      canDelete: (j['can_delete'] as bool?) ?? false,
     );
   }
 }
@@ -670,10 +691,12 @@ class _EmployeeTile extends StatelessWidget {
 
     String summary() {
       final feats = perm.allowedFeatures;
-      final featsText = feats.isEmpty
+      final featsText = perm.allowAll
           ? 'كل الميزات'
-          : feats.map(_labelOf).take(4).join('، ') +
-              (feats.length > 4 ? '…' : '');
+          : feats.isEmpty
+              ? 'بدون ميزات'
+              : feats.map(_labelOf).take(4).join('، ') +
+                  (feats.length > 4 ? '…' : '');
       final crud = [
         if (perm.canCreate) 'إضافة',
         if (perm.canUpdate) 'تعديل',
@@ -789,6 +812,7 @@ class _PermissionEditor extends StatefulWidget {
 
 class _PermissionEditorState extends State<_PermissionEditor> {
   late List<String> _selected;
+  late bool _allowAll;
   late bool _canCreate;
   late bool _canUpdate;
   late bool _canDelete;
@@ -797,13 +821,17 @@ class _PermissionEditorState extends State<_PermissionEditor> {
   void initState() {
     super.initState();
     _selected = [...widget.initial.allowedFeatures];
+    _allowAll = widget.initial.allowAll;
+    if (_allowAll) {
+      _selected = [];
+    }
     _canCreate = widget.initial.canCreate;
     _canUpdate = widget.initial.canUpdate;
     _canDelete = widget.initial.canDelete;
   }
 
   bool get _isDefaultAll =>
-      _selected.isEmpty && _canCreate && _canUpdate && _canDelete;
+      !_allowAll && _selected.isEmpty && !_canCreate && !_canUpdate && !_canDelete;
 
   void _toggleAll(bool sel) {
     setState(() {
@@ -818,6 +846,7 @@ class _PermissionEditorState extends State<_PermissionEditor> {
   void _save() {
     final p = _FeaturePerm(
       userUid: widget.employee.userUid,
+      allowAll: _allowAll,
       allowedFeatures: _selected,
       canCreate: _canCreate,
       canUpdate: _canUpdate,
@@ -828,10 +857,11 @@ class _PermissionEditorState extends State<_PermissionEditor> {
 
   void _resetToDefault() {
     setState(() {
+      _allowAll = false;
       _selected = [];
-      _canCreate = true;
-      _canUpdate = true;
-      _canDelete = true;
+      _canCreate = false;
+      _canUpdate = false;
+      _canDelete = false;
     });
   }
 
@@ -912,6 +942,30 @@ class _PermissionEditorState extends State<_PermissionEditor> {
                             children: [
                               Row(
                                 children: [
+                                  Expanded(
+                                    child: Text(
+                                      'السماح بكل الميزات',
+                                      style: TextStyle(
+                                        color: scheme.onSurface,
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 14.5,
+                                      ),
+                                    ),
+                                  ),
+                                  Switch.adaptive(
+                                    value: _allowAll,
+                                    onChanged: (val) => setState(() {
+                                      _allowAll = val;
+                                      if (val) {
+                                        _selected = [];
+                                      }
+                                    }),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
                                   Text(
                                     'الوصول إلى التبويبات / الميزات',
                                     style: TextStyle(
@@ -922,12 +976,12 @@ class _PermissionEditorState extends State<_PermissionEditor> {
                                   ),
                                   const Spacer(),
                                   TextButton.icon(
-                                    onPressed: () => _toggleAll(true),
+                                    onPressed: _allowAll ? null : () => _toggleAll(true),
                                     icon: const Icon(Icons.done_all_rounded),
                                     label: const Text('تحديد الكل'),
                                   ),
                                   TextButton.icon(
-                                    onPressed: () => _toggleAll(false),
+                                    onPressed: _allowAll ? null : () => _toggleAll(false),
                                     icon: const Icon(Icons.clear_all_rounded),
                                     label: const Text('إلغاء الكل'),
                                   ),
@@ -936,22 +990,33 @@ class _PermissionEditorState extends State<_PermissionEditor> {
                               const SizedBox(height: 8),
                               _FeatureChips(
                                 selected: _selected,
-                                onToggle: (key, sel) {
-                                  setState(() {
-                                    if (sel) {
-                                      if (!_selected.contains(key)) {
-                                        _selected.add(key);
-                                      }
-                                    } else {
-                                      _selected.remove(key);
-                                    }
-                                  });
-                                },
+                                onToggle: _allowAll
+                                    ? null
+                                    : (key, sel) {
+                                        setState(() {
+                                          if (sel) {
+                                            if (!_selected.contains(key)) {
+                                              _selected.add(key);
+                                            }
+                                          } else {
+                                            _selected.remove(key);
+                                          }
+                                        });
+                                      },
                               ),
                               const SizedBox(height: 8),
-                              if (_isDefaultAll)
+                              if (_allowAll)
                                 Text(
-                                  'إذا بقيت القائمة فارغة مع تفعيل CRUD الكامل، فسيتم استخدام الصلاحيات الافتراضية (كل الميزات).',
+                                  'عند تفعيل السماح الكلي يتم تجاهل القائمة.',
+                                  style: TextStyle(
+                                    color:
+                                        scheme.onSurface.withValues(alpha: .7),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              if (!_allowAll && _isDefaultAll)
+                                Text(
+                                  'الوضع الحالي: بدون صلاحيات (الافتراضي الآمن).',
                                   style: TextStyle(
                                     color:
                                         scheme.onSurface.withValues(alpha: .7),

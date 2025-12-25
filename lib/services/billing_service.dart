@@ -101,7 +101,6 @@ class BillingService {
   Future<String> createSubscriptionRequest({
     required String planCode,
     required String paymentMethodId,
-    required double amount,
     String? proofUrl,
     String? referenceText,
     String? senderName,
@@ -110,7 +109,6 @@ class BillingService {
       mutation CreateRequest(
         $plan: String!
         $method: uuid!
-        $amount: numeric!
         $proof: String
         $reference: String
         $sender: String
@@ -119,7 +117,6 @@ class BillingService {
           args: {
             p_plan: $plan
             p_payment_method: $method
-            p_amount: $amount
             p_proof_url: $proof
             p_reference_text: $reference
             p_sender_name: $sender
@@ -133,7 +130,6 @@ class BillingService {
         variables: {
           'plan': planCode,
           'method': paymentMethodId,
-          'amount': amount,
           'proof': proofUrl,
           'reference': referenceText,
           'sender': senderName,

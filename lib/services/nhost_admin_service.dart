@@ -133,6 +133,7 @@ class NhostAdminService {
     required String accountId,
     bool includeDisabled = true,
   }) async {
+    await _ensureSuperAdminOrThrow();
     const query = '''
       query EmployeesWithEmail(\$accountId: uuid!) {
         list_employees_with_email(args: {p_account: \$accountId}) {
@@ -162,6 +163,7 @@ class NhostAdminService {
     required String userUid,
     required bool disabled,
   }) async {
+    await _ensureSuperAdminOrThrow();
     const mutation = '''
       mutation SetEmployeeDisabled(\$accountId: uuid!, \$uid: uuid!, \$disabled: Boolean!) {
         set_employee_disabled(args: {p_account: \$accountId, p_user_uid: \$uid, p_disabled: \$disabled}) {
@@ -185,6 +187,7 @@ class NhostAdminService {
     required String accountId,
     required String userUid,
   }) async {
+    await _ensureSuperAdminOrThrow();
     const mutation = '''
       mutation DeleteEmployee(\$accountId: uuid!, \$uid: uuid!) {
         delete_employee(args: {p_account: \$accountId, p_user_uid: \$uid}) {

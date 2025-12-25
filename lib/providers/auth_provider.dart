@@ -40,6 +40,7 @@ const int _kNetCheckIntervalDays = 30; // فحص شبكة كل 30 يوم
 
 // مفاتيح صلاحيات الميزات + CRUD
 const _kAllowedFeatures = 'auth.allowedFeatures'; // CSV
+const _kAllowAllFeatures = 'auth.allowAllFeatures';
 const _kCanCreate = 'auth.canCreate';
 const _kCanUpdate = 'auth.canUpdate';
 const _kCanDelete = 'auth.canDelete';
@@ -149,6 +150,7 @@ class AuthProvider extends ChangeNotifier {
   String? deviceId;
 
   // === صلاحيات الميزات + CRUD ===
+  bool _allowAllFeatures = false;
   Set<String> _allowedFeatures = <String>{};
   bool _canCreate = true;
   bool _canUpdate = true;
@@ -157,17 +159,18 @@ class AuthProvider extends ChangeNotifier {
   String? _permissionsError;
 
   Set<String> get allowedFeatures => _allowedFeatures;
+  bool get allowAllFeatures => _allowAllFeatures;
   bool get canCreate => isSuperAdmin || (_permissionsLoaded && _canCreate);
   bool get canUpdate => isSuperAdmin || (_permissionsLoaded && _canUpdate);
   bool get canDelete => isSuperAdmin || (_permissionsLoaded && _canDelete);
   bool get permissionsLoaded => _permissionsLoaded;
   String? get permissionsError => _permissionsError;
 
-  /// اعتبارًا لمخطط الـ SQL: إذا كانت القائمة فارغة فهذا يعني "لا قيود" (الكل مسموح).
+  /// السماح يعتمد على allow_all أو على القائمة المخزنة فقط (fail-closed).
   bool featureAllowed(String featureKey) {
     if (isSuperAdmin) return true;
     if (!_permissionsLoaded) return false;
-    if (_allowedFeatures.isEmpty) return true;
+    if (_allowAllFeatures) return true;
     return _allowedFeatures.contains(featureKey);
   }
 
@@ -719,6 +722,7 @@ class AuthProvider extends ChangeNotifier {
     if (accId == null || accId.isEmpty) return;
     try {
       final perms = await _auth.fetchMyFeaturePermissions(accountId: accId);
+      _allowAllFeatures = perms.allowAll;
       _allowedFeatures = perms.allowedFeatures;
       _canCreate = perms.canCreate;
       _canUpdate = perms.canUpdate;
@@ -730,6 +734,7 @@ class AuthProvider extends ChangeNotifier {
       dev.log('refreshFeaturePermissions failed', error: e, stackTrace: st);
       _permissionsLoaded = false;
       _permissionsError = '${e}';
+      _allowAllFeatures = false;
       _canCreate = false;
       _canUpdate = false;
       _canDelete = false;
@@ -738,16 +743,18 @@ class AuthProvider extends ChangeNotifier {
   }
 
   void _resetPermissionsInMemory() {
+    _allowAllFeatures = false;
     _allowedFeatures = <String>{};
-    _canCreate = true;
-    _canUpdate = true;
-    _canDelete = true;
+    _canCreate = false;
+    _canUpdate = false;
+    _canDelete = false;
     _permissionsLoaded = false;
     _permissionsError = null;
   }
 
 Future<void> _persistPermissions() async {
     final sp = await SharedPreferences.getInstance();
+    await sp.setBool(_kAllowAllFeatures, _allowAllFeatures);
     await sp.setString(_kAllowedFeatures, _allowedFeatures.join(','));
     await sp.setBool(_kCanCreate, _canCreate);
     await sp.setBool(_kCanUpdate, _canUpdate);
@@ -756,16 +763,18 @@ Future<void> _persistPermissions() async {
 
   Future<void> _loadPermissionsFromStorage() async {
     final sp = await SharedPreferences.getInstance();
+    _allowAllFeatures = sp.getBool(_kAllowAllFeatures) ?? false;
     final csv = sp.getString(_kAllowedFeatures);
     if (csv != null) {
       final list =
       csv.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
       _allowedFeatures = Set<String>.from(list);
     }
-    _canCreate = sp.getBool(_kCanCreate) ?? true;
-    _canUpdate = sp.getBool(_kCanUpdate) ?? true;
-    _canDelete = sp.getBool(_kCanDelete) ?? true;
-    _permissionsLoaded = sp.containsKey(_kAllowedFeatures) ||
+    _canCreate = sp.getBool(_kCanCreate) ?? false;
+    _canUpdate = sp.getBool(_kCanUpdate) ?? false;
+    _canDelete = sp.getBool(_kCanDelete) ?? false;
+    _permissionsLoaded = sp.containsKey(_kAllowAllFeatures) ||
+        sp.containsKey(_kAllowedFeatures) ||
         sp.containsKey(_kCanCreate) ||
         sp.containsKey(_kCanUpdate) ||
         sp.containsKey(_kCanDelete);
@@ -834,6 +843,7 @@ Future<void> _persistPermissions() async {
 
     // نظّف أيضًا الصلاحيات المخزّنة
     await sp.remove(_kAllowedFeatures);
+    await sp.remove(_kAllowAllFeatures);
     await sp.remove(_kCanCreate);
     await sp.remove(_kCanUpdate);
     await sp.remove(_kCanDelete);

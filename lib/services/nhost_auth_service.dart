@@ -511,7 +511,7 @@ class NhostAuthService {
     FeaturePermissions? fallback,
   }) async {
     if (accountId.trim().isEmpty) {
-      return FeaturePermissions.defaultsAllAllowed();
+      return FeaturePermissions.defaultsDenyAll();
     }
 
     try {
@@ -519,6 +519,7 @@ class NhostAuthService {
         '''
         query MyFeaturePermissions(\$account: uuid!) {
           my_feature_permissions(args: {p_account: \$account}) {
+            allow_all
             allowed_features
             can_create
             can_update
@@ -530,13 +531,13 @@ class NhostAuthService {
       );
       final rows = _rowsFromData(data, 'my_feature_permissions');
       if (rows.isEmpty) {
-        return FeaturePermissions.defaultsAllAllowed();
+        return FeaturePermissions.defaultsDenyAll();
       }
       return FeaturePermissions.fromRpcPayload(rows.first);
     } catch (e, st) {
       throw FeaturePermissionsFetchException(
         message: 'fetchMyFeaturePermissions failed',
-        fallback: fallback,
+        fallback: fallback ?? FeaturePermissions.defaultsDenyAll(),
         cause: e,
         stackTrace: st,
       );
