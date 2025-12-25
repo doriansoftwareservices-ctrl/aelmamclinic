@@ -288,20 +288,24 @@ class AuthProvider extends ChangeNotifier {
       }
     } else {
       await _loadFromStorage();
-    }
-
-    // تأكيد الحساب الفعّال
-    await _ensureActiveAccountOrSignOut();
-
-    await _ensureDeviceId();
-
-    // تحميل الصلاحيات من التخزين (إن وُجدت) ثم محاولة تحديثها من الشبكة
-    await _loadPermissionsFromStorage();
-    if (accountId != null && accountId!.isNotEmpty && !isSuperAdmin) {
-      unawaited(_refreshFeaturePermissions());
+      // لا يوجد مستخدم على Nhost، امسح أي حالة محلية قديمة.
+      currentUser = null;
+      _resetPermissionsInMemory();
+      await _clearStorage();
     }
 
     if (isLoggedIn) {
+      // تأكيد الحساب الفعّال
+      await _ensureActiveAccountOrSignOut();
+
+      await _ensureDeviceId();
+
+      // تحميل الصلاحيات من التخزين (إن وُجدت) ثم محاولة تحديثها من الشبكة
+      await _loadPermissionsFromStorage();
+      if (accountId != null && accountId!.isNotEmpty && !isSuperAdmin) {
+        unawaited(_refreshFeaturePermissions());
+      }
+
       unawaited(bootstrapSync());
     }
 
@@ -697,6 +701,14 @@ class AuthProvider extends ChangeNotifier {
 
         dev.log('Active account invalid: $e', stackTrace: st);
         currentUser ??= {};
+        if (result == AuthAccountGuardResult.signedOut) {
+          _authDiagWarn(
+            '_ensureActiveAccountOrSignOut:signedOut',
+            context: {'attempt': attempt},
+            stackTrace: st,
+          );
+          return result;
+        }
         if (result == AuthAccountGuardResult.noAccount) {
           // Keep session for onboarding (self_create_account flow).
           currentUser!['disabled'] = false;

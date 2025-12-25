@@ -70,10 +70,9 @@ class _LoginScreenState extends State<LoginScreen> {
     if (user == null) return;
 
     // إنشاء عيادة تلقائيًا إن لم يكن هناك حساب مرتبط
-    final session = NhostManager.client.auth.currentSession;
     if (!authProv.isSuperAdmin &&
         authProv.isLoggedIn &&
-        session != null &&
+        (authProv.accessToken ?? '').isNotEmpty &&
         (authProv.accountId ?? '').isEmpty &&
         !_autoAccountAttempted) {
       _autoAccountAttempted = true;
@@ -258,8 +257,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if ((auth.accountId ?? '').isNotEmpty) return;
     if (!auth.isLoggedIn) return;
 
-    final session = NhostManager.client.auth.currentSession;
-    if (session == null || (session.accessToken ?? '').isEmpty) return;
+    if ((auth.accessToken ?? '').isEmpty) return;
 
     final email = auth.email ?? _email.text.trim();
     final seed = email.isEmpty
