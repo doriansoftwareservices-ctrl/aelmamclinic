@@ -2628,6 +2628,114 @@
 
 - table:
     schema: public
+    name: v_my_account_plan
+  select_permissions:
+    - role: me
+      permission:
+        columns:
+          - plan_code
+          - plan_end_at
+        filter: {}
+    - role: user
+      permission:
+        columns:
+          - plan_code
+          - plan_end_at
+        filter: {}
+    - role: owner
+      permission:
+        columns:
+          - plan_code
+          - plan_end_at
+        filter: {}
+    - role: employee
+      permission:
+        columns:
+          - plan_code
+          - plan_end_at
+        filter: {}
+    - role: admin
+      permission:
+        columns:
+          - plan_code
+          - plan_end_at
+        filter: {}
+    - role: superadmin
+      permission:
+        columns:
+          - plan_code
+          - plan_end_at
+        filter: {}
+
+- table:
+    schema: public
+    name: v_payment_methods
+  select_permissions:
+    - role: me
+      permission:
+        columns:
+          - id
+          - name
+          - logo_url
+          - bank_account
+          - is_active
+        filter: {}
+    - role: user
+      permission:
+        columns:
+          - id
+          - name
+          - logo_url
+          - bank_account
+          - is_active
+        filter: {}
+    - role: owner
+      permission:
+        columns:
+          - id
+          - name
+          - logo_url
+          - bank_account
+          - is_active
+        filter: {}
+    - role: employee
+      permission:
+        columns:
+          - id
+          - name
+          - logo_url
+          - bank_account
+          - is_active
+        filter: {}
+    - role: admin
+      permission:
+        columns:
+          - id
+          - name
+          - logo_url
+          - bank_account
+          - is_active
+        filter: {}
+    - role: superadmin
+      permission:
+        columns:
+          - id
+          - name
+          - logo_url
+          - bank_account
+          - is_active
+        filter: {}
+
+- table:
+    schema: public
+    name: v_debug_auth_context
+
+- table:
+    schema: public
+    name: v_uuid_result
+
+- table:
+    schema: public
     name: v_admin_list_clinics
   select_permissions:
     - role: me

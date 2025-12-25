@@ -154,11 +154,14 @@ class NhostAuthService {
   Future<String> selfCreateAccount({required String clinicName}) async {
     const mutation = r'''
       mutation SelfCreateAccount($name: String!) {
-        self_create_account(args: {p_clinic_name: $name})
+        self_create_account(args: {p_clinic_name: $name}) {
+          id
+        }
       }
     ''';
     final data = await _runMutation(mutation, {'name': clinicName.trim()});
-    return data['self_create_account']?.toString() ?? '';
+    final rows = _rowsFromData(data, 'self_create_account');
+    return rows.isEmpty ? '' : (rows.first['id']?.toString() ?? '');
   }
 
   List<Map<String, dynamic>> _rowsFromData(

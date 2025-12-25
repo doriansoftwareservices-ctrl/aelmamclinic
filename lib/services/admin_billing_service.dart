@@ -60,10 +60,12 @@ class AdminBillingService {
       ),
     );
     if (res.hasException) throw res.exception!;
-    final ok = (res.data?['admin_approve_subscription_request'] as Map?)?['ok'];
+    final rows =
+        (res.data?['admin_approve_subscription_request'] as List?) ?? const [];
+    final ok =
+        rows.isEmpty ? null : (rows.first as Map)['ok'];
     if (ok != true) {
-      final err =
-          (res.data?['admin_approve_subscription_request'] as Map?)?['error'];
+      final err = rows.isEmpty ? null : (rows.first as Map)['error'];
       throw Exception(err ?? 'Approve failed');
     }
   }
@@ -85,10 +87,12 @@ class AdminBillingService {
       ),
     );
     if (res.hasException) throw res.exception!;
-    final ok = (res.data?['admin_reject_subscription_request'] as Map?)?['ok'];
+    final rows =
+        (res.data?['admin_reject_subscription_request'] as List?) ?? const [];
+    final ok =
+        rows.isEmpty ? null : (rows.first as Map)['ok'];
     if (ok != true) {
-      final err =
-          (res.data?['admin_reject_subscription_request'] as Map?)?['error'];
+      final err = rows.isEmpty ? null : (rows.first as Map)['error'];
       throw Exception(err ?? 'Reject failed');
     }
   }

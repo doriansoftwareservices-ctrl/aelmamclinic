@@ -1,0 +1,11 @@
+DROP FUNCTION IF EXISTS public.expire_account_subscriptions(boolean);
+DROP FUNCTION IF EXISTS public.admin_set_account_plan(uuid, text, text);
+DROP FUNCTION IF EXISTS public.admin_reject_subscription_request(uuid, text);
+DROP FUNCTION IF EXISTS public.admin_approve_subscription_request(uuid, text);
+DROP FUNCTION IF EXISTS public.create_subscription_request(text, uuid, text, text, text);
+DROP FUNCTION IF EXISTS public.self_create_account(text);
+DROP FUNCTION IF EXISTS public.admin_payment_stats_by_month();
+DROP FUNCTION IF EXISTS public.admin_payment_stats_by_day();
+DROP FUNCTION IF EXISTS public.admin_payment_stats_by_plan();
+DROP FUNCTION IF EXISTS public.admin_payment_stats();
+DROP VIEW IF EXISTS public.v_uuid_result;

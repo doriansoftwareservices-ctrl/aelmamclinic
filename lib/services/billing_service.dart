@@ -121,7 +121,9 @@ class BillingService {
             p_reference_text: $reference
             p_sender_name: $sender
           }
-        )
+        ) {
+          id
+        }
       }
     ''';
     final res = await _gql.mutate(
@@ -140,6 +142,8 @@ class BillingService {
     if (res.hasException) {
       throw res.exception!;
     }
-    return res.data?['create_subscription_request']?.toString() ?? '';
+    final rows = (res.data?['create_subscription_request'] as List?) ?? const [];
+    if (rows.isEmpty) return '';
+    return (rows.first as Map)['id']?.toString() ?? '';
   }
 }
