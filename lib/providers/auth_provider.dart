@@ -676,6 +676,20 @@ class AuthProvider extends ChangeNotifier {
 
         dev.log('Active account invalid: $e', stackTrace: st);
         currentUser ??= {};
+        if (result == AuthAccountGuardResult.noAccount) {
+          // Keep session for onboarding (self_create_account flow).
+          currentUser!['disabled'] = false;
+          currentUser!['accountId'] = null;
+          await _persistUser();
+          _authDiagWarn(
+            '_ensureActiveAccountOrSignOut:noAccount',
+            context: {
+              'attempt': attempt,
+            },
+            stackTrace: st,
+          );
+          return result;
+        }
         currentUser!['disabled'] = true;
         await _persistUser();
         _authDiagError(
