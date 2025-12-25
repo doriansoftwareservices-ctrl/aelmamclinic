@@ -34,6 +34,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   // نضمن تشغيل الـ Bootstrap مرة واحدة عند وجود جلسة مسبقة
   bool _bootstrappedOnce = false;
+  bool _autoAccountAttempted = false;
 
   @override
   void initState() {
@@ -67,6 +68,14 @@ class _LoginScreenState extends State<LoginScreen> {
     final authProv = context.read<AuthProvider>();
     final user = NhostManager.client.auth.currentUser;
     if (user == null) return;
+
+    // إنشاء عيادة تلقائيًا إن لم يكن هناك حساب مرتبط
+    if (!authProv.isSuperAdmin &&
+        (authProv.accountId ?? '').isEmpty &&
+        !_autoAccountAttempted) {
+      _autoAccountAttempted = true;
+      await _ensureAutoAccount(authProv);
+    }
 
     if (!authProv.isLoggedIn ||
         (!authProv.isSuperAdmin &&
@@ -141,6 +150,11 @@ class _LoginScreenState extends State<LoginScreen> {
         );
         return;
       }
+
+      if ((auth.accountId ?? '').isEmpty && !auth.isSuperAdmin) {
+        await _ensureAutoAccount(auth);
+      }
+
       final result = await auth.refreshAndValidateCurrentUser();
       if (!mounted) return;
 
@@ -186,9 +200,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     final clinicName = await _askClinicName();
-    if (clinicName == null || clinicName.trim().isEmpty) {
-      return;
-    }
 
     setState(() {
       _loading = true;
@@ -208,7 +219,11 @@ class _LoginScreenState extends State<LoginScreen> {
         setState(() => _error = 'لم يتم إنشاء جلسة صالحة للمستخدم.');
         return;
       }
-      await auth.selfCreateAccount(clinicName.trim());
+      if (clinicName != null && clinicName.trim().isNotEmpty) {
+        await auth.selfCreateAccount(clinicName.trim());
+      } else {
+        await _ensureAutoAccount(auth);
+      }
       final result = await auth.refreshAndValidateCurrentUser();
       if (!mounted) return;
       if (!result.isSuccess) {
@@ -230,6 +245,21 @@ class _LoginScreenState extends State<LoginScreen> {
       if (mounted) {
         setState(() => _loading = false);
       }
+    }
+  }
+
+  Future<void> _ensureAutoAccount(AuthProvider auth) async {
+    if (auth.isSuperAdmin) return;
+    if ((auth.accountId ?? '').isNotEmpty) return;
+    final email = auth.email ?? _email.text.trim();
+    final seed = email.isEmpty
+        ? 'عيادة جديدة'
+        : 'عيادة ${email.split('@').first}';
+    try {
+      await auth.selfCreateAccount(seed);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = 'تعذّر إنشاء العيادة تلقائيًا: $e');
     }
   }
 
