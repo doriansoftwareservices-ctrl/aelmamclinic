@@ -14,8 +14,12 @@ WHERE allow_all = false
   AND coalesce(can_update, true) = true
   AND coalesce(can_delete, true) = true;
 
+-- Drop view/function to allow column shape change
+DROP FUNCTION IF EXISTS public.my_feature_permissions(uuid);
+DROP VIEW IF EXISTS public.v_my_feature_permissions;
+
 -- Update return view to include allow_all
-CREATE OR REPLACE VIEW public.v_my_feature_permissions AS
+CREATE VIEW public.v_my_feature_permissions AS
 SELECT
   NULL::uuid AS account_id,
   false AS allow_all,

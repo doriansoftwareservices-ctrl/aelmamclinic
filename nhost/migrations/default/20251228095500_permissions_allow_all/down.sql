@@ -2,7 +2,10 @@
 
 BEGIN;
 
-CREATE OR REPLACE VIEW public.v_my_feature_permissions AS
+DROP FUNCTION IF EXISTS public.my_feature_permissions(uuid);
+DROP VIEW IF EXISTS public.v_my_feature_permissions;
+
+CREATE VIEW public.v_my_feature_permissions AS
 SELECT
   NULL::uuid AS account_id,
   ARRAY[]::text[] AS allowed_features,
@@ -61,10 +64,10 @@ begin
 end;
 $$;
 
-REVOKE ALL ON FUNCTION public.my_feature_permissions(uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.my_feature_permissions(uuid) TO PUBLIC;
-
 ALTER TABLE public.account_feature_permissions
   DROP COLUMN IF EXISTS allow_all;
+
+REVOKE ALL ON FUNCTION public.my_feature_permissions(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.my_feature_permissions(uuid) TO PUBLIC;
 
 COMMIT;
