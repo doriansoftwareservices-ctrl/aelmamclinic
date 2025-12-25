@@ -36,7 +36,7 @@ const _kDisabled = 'auth.disabled';
 const _kPlanCode = 'auth.planCode';
 const _kDeviceId = 'auth.deviceId';
 const _kLastNetCheckAt = 'auth.lastNetCheckAt';
-const int _kNetCheckIntervalDays = 30; // فحص شبكة كل 30 يوم
+const int _kNetCheckIntervalMinutes = 5; // فحص شبكة كل 5 دقائق
 
 // مفاتيح صلاحيات الميزات + CRUD
 const _kAllowedFeatures = 'auth.allowedFeatures'; // CSV
@@ -100,6 +100,7 @@ enum AuthAccountGuardResult {
   disabled,
   accountFrozen,
   noAccount,
+  planUpgradeRequired,
   signedOut,
   transientFailure,
   unknown,
@@ -111,6 +112,7 @@ enum AuthSessionStatus {
   disabled,
   accountFrozen,
   noAccount,
+  planUpgradeRequired,
   signedOut,
   networkError,
   unknown,
@@ -129,6 +131,8 @@ class AuthSessionResult {
   const AuthSessionResult.accountFrozen()
       : this._(AuthSessionStatus.accountFrozen);
   const AuthSessionResult.noAccount() : this._(AuthSessionStatus.noAccount);
+  const AuthSessionResult.planUpgradeRequired()
+      : this._(AuthSessionStatus.planUpgradeRequired);
   const AuthSessionResult.signedOut() : this._(AuthSessionStatus.signedOut);
   const AuthSessionResult.networkError({Object? error, StackTrace? stackTrace})
       : this._(AuthSessionStatus.networkError,
@@ -370,6 +374,8 @@ class AuthProvider extends ChangeNotifier {
           return const AuthSessionResult.disabled();
         case AuthAccountGuardResult.noAccount:
           return const AuthSessionResult.noAccount();
+        case AuthAccountGuardResult.planUpgradeRequired:
+          return const AuthSessionResult.planUpgradeRequired();
         case AuthAccountGuardResult.signedOut:
           return const AuthSessionResult.signedOut();
         case AuthAccountGuardResult.transientFailure:
@@ -540,8 +546,11 @@ class AuthProvider extends ChangeNotifier {
   }
 
   bool _isTransientNetworkError(Object error) {
-    return error is SocketException ||
-        error is TimeoutException;
+    if (error is SocketException || error is TimeoutException) return true;
+    final msg = error.toString().toLowerCase();
+    return msg.contains('timeout') ||
+        msg.contains('timed out') ||
+        msg.contains('semaphore');
   }
 
   Future<bool> _isNetCheckDue() async {
@@ -550,7 +559,8 @@ class AuthProvider extends ChangeNotifier {
     if (iso == null) return true;
     final last = DateTime.tryParse(iso);
     if (last == null) return true;
-    return DateTime.now().difference(last).inDays >= _kNetCheckIntervalDays;
+    return DateTime.now().difference(last).inMinutes >=
+        _kNetCheckIntervalMinutes;
   }
 
   /// يجلب بيانات المستخدم من السيرفر مع حسم accountId مؤكد عبر عدة fallbacks
@@ -669,10 +679,16 @@ class AuthProvider extends ChangeNotifier {
         AuthAccountGuardResult result = AuthAccountGuardResult.disabled;
         if (e is AccountFrozenException) {
           result = AuthAccountGuardResult.accountFrozen;
+        } else if (e is PlanUpgradeRequiredException) {
+          result = AuthAccountGuardResult.planUpgradeRequired;
         } else if (e is AccountUserDisabledException) {
           result = AuthAccountGuardResult.disabled;
         } else if (e is StateError) {
           final lower = e.message.toLowerCase();
+          if (lower.contains('not signed in') ||
+              lower.contains('not authenticated')) {
+            result = AuthAccountGuardResult.signedOut;
+          }
           if (lower.contains('no active clinic') ||
               lower.contains('unable to resolve account')) {
             result = AuthAccountGuardResult.noAccount;
@@ -706,6 +722,9 @@ class AuthProvider extends ChangeNotifier {
           error: e,
           stackTrace: st,
         );
+        if (result == AuthAccountGuardResult.signedOut) {
+          return result;
+        }
         await signOut();
         return result;
       }
@@ -735,6 +754,7 @@ class AuthProvider extends ChangeNotifier {
       _permissionsLoaded = false;
       _permissionsError = '${e}';
       _allowAllFeatures = false;
+      _allowedFeatures = <String>{};
       _canCreate = false;
       _canUpdate = false;
       _canDelete = false;
@@ -752,7 +772,7 @@ class AuthProvider extends ChangeNotifier {
     _permissionsError = null;
   }
 
-Future<void> _persistPermissions() async {
+  Future<void> _persistPermissions() async {
     final sp = await SharedPreferences.getInstance();
     await sp.setBool(_kAllowAllFeatures, _allowAllFeatures);
     await sp.setString(_kAllowedFeatures, _allowedFeatures.join(','));

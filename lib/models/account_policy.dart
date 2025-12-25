@@ -28,3 +28,10 @@ class AccountUserDisabledException extends AccountPolicyException {
   AccountUserDisabledException(this.accountId)
       : super('Account user $accountId is disabled');
 }
+
+class PlanUpgradeRequiredException extends AccountPolicyException {
+  final String accountId;
+  final String planCode;
+  PlanUpgradeRequiredException(this.accountId, {this.planCode = 'free'})
+      : super('Plan upgrade required: $planCode');
+}

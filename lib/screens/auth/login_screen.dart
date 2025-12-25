@@ -275,6 +275,14 @@ class _LoginScreenState extends State<LoginScreen> {
       // ignore: avoid_print
       print('auto_create_account_failed: $msg');
       final lower = msg.toLowerCase();
+        if (lower.contains('not found in type') ||
+            lower.contains('mutation_root') ||
+            lower.contains('backend schema')) {
+          if (!mounted) return;
+          setState(() => _error =
+              'تعذّر إنشاء العيادة تلقائيًا: الخادم غير مهيأ بعد. حاول بعد اكتمال النشر.');
+          return;
+        }
         if (lower.contains('already linked')) {
           return;
         }
@@ -337,6 +345,8 @@ class _LoginScreenState extends State<LoginScreen> {
         return 'تم تجميد حساب العيادة. تواصل مع الإدارة لاستعادة الوصول.';
       case AuthSessionStatus.noAccount:
         return 'لم يتم ربط هذا المستخدم بأي عيادة بعد. اطلب من الإدارة إكمال الإعداد.';
+      case AuthSessionStatus.planUpgradeRequired:
+        return 'هذه العيادة على خطة FREE ولا تدعم حسابات الموظفين. اطلب من المالك ترقية الخطة.';
       case AuthSessionStatus.signedOut:
         return 'انتهت الجلسة أثناء التحقق من الحساب. حاول تسجيل الدخول مجددًا.';
       case AuthSessionStatus.networkError:

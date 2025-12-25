@@ -479,8 +479,9 @@ class NhostAuthService {
     try {
       planCode = await fetchMyPlanCode() ?? 'free';
     } catch (_) {}
-    if (role.toLowerCase() != 'owner' && planCode == 'free') {
-      throw AccountUserDisabledException(accountId);
+    final roleLower = role.toLowerCase();
+    if (planCode == 'free' && roleLower != 'owner' && roleLower != 'admin') {
+      throw PlanUpgradeRequiredException(accountId, planCode: planCode);
     }
 
     try {
