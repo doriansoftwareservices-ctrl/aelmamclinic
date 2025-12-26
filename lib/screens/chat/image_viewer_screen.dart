@@ -25,6 +25,7 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:aelmamclinic/services/save_file_service.dart';
 class ImageViewerItem {
   /// يمكن أن يكون رابط HTTP(S) أو مسار ملف محلي أو file://URI
   final String url;
@@ -584,23 +585,18 @@ class _ImageViewerScreenState extends State<ImageViewerScreen>
     _showProgress();
     try {
       final bytes = await _httpGetBytes(url);
-      final dirPath = await _resolveDownloadsDir();
-      if (dirPath == null) {
-        throw 'تعذر تحديد مجلد التنزيلات على هذا النظام.';
-      }
-      final filePath = _uniquePath(
-        dirPath,
-        suggestedName ??
-            _fileNameFromAny(url) ??
-            'image_${DateTime.now().millisecondsSinceEpoch}.jpg',
-      );
-      final f = File(filePath);
-      await f.create(recursive: true);
-      await f.writeAsBytes(bytes);
+      final name = suggestedName ??
+          _fileNameFromAny(url) ??
+          'image_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final savedPath = await saveFileBytesWithPath(bytes, name);
       if (!mounted) return;
       Navigator.of(context).pop(); // إغلاق حوار التقدم
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تم الحفظ في: ${f.path}')),
+        SnackBar(
+          content: Text(
+            savedPath.isEmpty ? 'تم حفظ الملف بنجاح.' : 'تم الحفظ في: $savedPath',
+          ),
+        ),
       );
     } catch (e) {
       if (!mounted) return;
@@ -614,21 +610,19 @@ class _ImageViewerScreenState extends State<ImageViewerScreen>
       {String? suggestedName}) async {
     _showProgress();
     try {
-      final dirPath = await _resolveDownloadsDir();
-      if (dirPath == null) {
-        throw 'تعذر تحديد مجلد التنزيلات على هذا النظام.';
-      }
-      final filePath = _uniquePath(
-        dirPath,
-        suggestedName ??
-            _fileNameFromAny(srcPath) ??
-            'image_${DateTime.now().millisecondsSinceEpoch}.jpg',
-      );
-      await File(srcPath).copy(filePath);
+      final name = suggestedName ??
+          _fileNameFromAny(srcPath) ??
+          'image_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final savedPath =
+          await saveFileToDownloads(File(srcPath), fileName: name);
       if (!mounted) return;
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تم الحفظ في: $filePath')),
+        SnackBar(
+          content: Text(
+            savedPath.isEmpty ? 'تم حفظ الملف بنجاح.' : 'تم الحفظ في: $savedPath',
+          ),
+        ),
       );
     } catch (e) {
       if (!mounted) return;
@@ -651,66 +645,6 @@ class _ImageViewerScreenState extends State<ImageViewerScreen>
     } finally {
       client.close(force: true);
     }
-  }
-
-  Future<String?> _resolveDownloadsDir() async {
-    try {
-      if (Platform.isWindows) {
-        final user = Platform.environment['USERPROFILE'] ?? '';
-        if (user.isNotEmpty) {
-          final p = '$user\\Downloads';
-          if (Directory(p).existsSync()) return p;
-        }
-        final homeDrive = Platform.environment['HOMEDRIVE'] ?? '';
-        final homePath = Platform.environment['HOMEPATH'] ?? '';
-        if (homeDrive.isNotEmpty && homePath.isNotEmpty) {
-          final p = '$homeDrive$homePath\\Downloads';
-          if (Directory(p).existsSync()) return p;
-        }
-        return null;
-      } else if (Platform.isAndroid) {
-        const candidates = [
-          '/storage/emulated/0/Download',
-          '/sdcard/Download',
-        ];
-        for (final p in candidates) {
-          final d = Directory(p);
-          if (d.existsSync()) return p;
-        }
-        final d = Directory(candidates.first);
-        if (!d.existsSync()) {
-          try {
-            d.createSync(recursive: true);
-          } catch (_) {}
-        }
-        return d.existsSync() ? d.path : null;
-      } else {
-        return null; // منصات أخرى غير مطلوبة حاليًا
-      }
-    } catch (_) {
-      return null;
-    }
-  }
-
-  String _uniquePath(String dir, String baseName) {
-    final sanitized = baseName.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
-    String path = _join(dir, sanitized);
-    if (!File(path).existsSync()) return path;
-    final dot = sanitized.lastIndexOf('.');
-    final name = dot > 0 ? sanitized.substring(0, dot) : sanitized;
-    final ext = dot > 0 ? sanitized.substring(dot) : '';
-    int i = 1;
-    while (File(path).existsSync()) {
-      path = _join(dir, '$name ($i)$ext');
-      i++;
-    }
-    return path;
-  }
-
-  String _join(String a, String b) {
-    final sep = Platform.isWindows ? '\\' : '/';
-    if (a.endsWith(sep)) return '$a$b';
-    return '$a$sep$b';
   }
 
   /// يستخرج اسم ملف سواء من رابط HTTP أو من مسار محلي أو file://

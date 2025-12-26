@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:nhost_dart/nhost_dart.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:aelmamclinic/core/nhost_manager.dart';
@@ -28,6 +29,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _loading = false;
   bool _obscure = true;
   String? _error;
+  bool _rememberMe = false;
 
   UnsubscribeDelegate? _authUnsub;
   bool _navigating = false;
@@ -36,9 +38,15 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _bootstrappedOnce = false;
   bool _autoAccountAttempted = false;
 
+  static const _rememberMeKey = 'auth.remember_me';
+  static const _rememberEmailKey = 'auth.remember_email';
+  static const _rememberPassKey = 'auth.remember_pass';
+
   @override
   void initState() {
     super.initState();
+
+    _loadRememberedCredentials();
 
     // 1) لو فيه جلسة محفوظة، قرّر الوجهة + فعّل المزامنة بعد أول إطار.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -51,6 +59,40 @@ class _LoginScreenState extends State<LoginScreen> {
         _checkAndRouteIfSignedIn();
       }
     });
+  }
+
+  Future<void> _loadRememberedCredentials() async {
+    try {
+      final sp = await SharedPreferences.getInstance();
+      final remember = sp.getBool(_rememberMeKey) ?? false;
+      if (!remember) return;
+      final email = sp.getString(_rememberEmailKey) ?? '';
+      final pass = sp.getString(_rememberPassKey) ?? '';
+      if (email.isEmpty || pass.isEmpty) return;
+      if (!mounted) return;
+      setState(() {
+        _rememberMe = true;
+        _email.text = email;
+        _pass.text = pass;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _persistRememberedCredentials({
+    required String email,
+    required String password,
+  }) async {
+    try {
+      final sp = await SharedPreferences.getInstance();
+      await sp.setBool(_rememberMeKey, _rememberMe);
+      if (_rememberMe) {
+        await sp.setString(_rememberEmailKey, email);
+        await sp.setString(_rememberPassKey, password);
+      } else {
+        await sp.remove(_rememberEmailKey);
+        await sp.remove(_rememberPassKey);
+      }
+    } catch (_) {}
   }
 
   @override
@@ -138,6 +180,10 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => _error = 'من فضلك أدخل البريد الإلكتروني وكلمة المرور.');
       return;
     }
+    if (pass.length < 9) {
+      setState(() => _error = 'كلمة المرور يجب ألا تقل عن 9 أحرف.');
+      return;
+    }
 
     setState(() {
       _loading = true;
@@ -153,6 +199,7 @@ class _LoginScreenState extends State<LoginScreen> {
         );
         return;
       }
+      await _persistRememberedCredentials(email: email, password: pass);
 
       if ((auth.accountId ?? '').isEmpty && !auth.isSuperAdmin) {
         await auth.refreshSession();
@@ -202,6 +249,10 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => _error = 'أدخل البريد وكلمة المرور أولًا.');
       return;
     }
+    if (pass.length < 9) {
+      setState(() => _error = 'كلمة المرور يجب ألا تقل عن 9 أحرف.');
+      return;
+    }
 
     final clinicName = await _askClinicName();
 
@@ -219,6 +270,7 @@ class _LoginScreenState extends State<LoginScreen> {
         );
         return;
       }
+      await _persistRememberedCredentials(email: email, password: pass);
       if (auth.currentUser == null || auth.accessToken == null) {
         setState(() => _error = 'لم يتم إنشاء جلسة صالحة للمستخدم.');
         return;
@@ -460,6 +512,25 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
 
                   const SizedBox(height: 10),
+
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      Text(
+                        'تذكرني',
+                        style: TextStyle(
+                          color: scheme.onSurface.withValues(alpha: 0.75),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      Checkbox(
+                        value: _rememberMe,
+                        onChanged: (value) {
+                          setState(() => _rememberMe = value ?? false);
+                        },
+                      ),
+                    ],
+                  ),
 
                   if (_error != null)
                     Padding(

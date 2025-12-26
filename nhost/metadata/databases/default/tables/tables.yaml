@@ -699,45 +699,6 @@
       permission:
         columns: "*"
         filter: {}
-  insert_permissions:
-    - role: me
-      permission:
-        check: {}
-        columns: "*"
-    - role: user
-      permission:
-        check: {}
-        columns: "*"
-    - role: superadmin
-      permission:
-        check: {}
-        columns: "*"
-  update_permissions:
-    - role: me
-      permission:
-        columns: "*"
-        filter: {}
-        check: {}
-    - role: user
-      permission:
-        columns: "*"
-        filter: {}
-        check: {}
-    - role: superadmin
-      permission:
-        columns: "*"
-        filter: {}
-        check: {}
-  delete_permissions:
-    - role: me
-      permission:
-        filter: {}
-    - role: user
-      permission:
-        filter: {}
-    - role: superadmin
-      permission:
-        filter: {}
 
 - table:
     schema: public
@@ -2729,10 +2690,57 @@
 - table:
     schema: public
     name: v_debug_auth_context
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+
+- table:
+    schema: public
+    name: v_bool_result
+  select_permissions:
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
 
 - table:
     schema: public
     name: v_uuid_result
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: owner
+      permission:
+        columns: "*"
+        filter: {}
+    - role: employee
+      permission:
+        columns: "*"
+        filter: {}
+    - role: admin
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
 
 - table:
     schema: public
@@ -2877,23 +2885,173 @@
 - table:
     schema: public
     name: v_chat_conversations_for_me
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: owner
+      permission:
+        columns: "*"
+        filter: {}
+    - role: employee
+      permission:
+        columns: "*"
+        filter: {}
+    - role: admin
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
 
 - table:
     schema: public
     name: v_chat_group_invitations_for_me
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: owner
+      permission:
+        columns: "*"
+        filter: {}
+    - role: employee
+      permission:
+        columns: "*"
+        filter: {}
+    - role: admin
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
 
 - table:
     schema: public
     name: v_chat_typing_active
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: owner
+      permission:
+        columns: "*"
+        filter: {}
+    - role: employee
+      permission:
+        columns: "*"
+        filter: {}
+    - role: admin
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
 
 - table:
     schema: public
     name: v_chat_messages_with_attachments
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: owner
+      permission:
+        columns: "*"
+        filter: {}
+    - role: employee
+      permission:
+        columns: "*"
+        filter: {}
+    - role: admin
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
 
 - table:
     schema: public
     name: v_chat_reads_for_me
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: owner
+      permission:
+        columns: "*"
+        filter: {}
+    - role: employee
+      permission:
+        columns: "*"
+        filter: {}
+    - role: admin
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
 
 - table:
     schema: public
     name: v_chat_last_message
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter: {}
+    - role: user
+      permission:
+        columns: "*"
+        filter: {}
+    - role: owner
+      permission:
+        columns: "*"
+        filter: {}
+    - role: employee
+      permission:
+        columns: "*"
+        filter: {}
+    - role: admin
+      permission:
+        columns: "*"
+        filter: {}
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}

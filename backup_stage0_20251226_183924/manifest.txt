@@ -1,0 +1,14 @@
+Stage0 backup created: /mnt/c/Users/zidan/AndroidStudioProjects/aelmamclinic/backup_stage0_20251226_183924
+Timestamp: 20251226_184016
+Included paths:
+- nhost/
+- lib/
+- functions/
+- tool/
+- nhost.toml
+- nhost/config.yaml
+- config.json
+- config.example.json
+- pubspec.yaml
+- pubspec.lock
+- server_snapshot_mergrgclboxflnucehgb_20251226_170240.tar.gz

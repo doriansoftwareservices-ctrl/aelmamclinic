@@ -45,6 +45,13 @@ class NhostConfig {
   );
   static String? _overrideFunctionsUrl;
 
+  static final String _defaultResetPasswordRedirectUrl =
+      const String.fromEnvironment(
+    'NHOST_PASSWORD_RESET_REDIRECT_URL',
+    defaultValue: '',
+  );
+  static String? _overrideResetPasswordRedirectUrl;
+
   /// Nhost project subdomain (e.g. `mergrgclboxflnucehgb`).
   static String get subdomain => _overrideSubdomain ?? _defaultSubdomain;
 
@@ -76,6 +83,10 @@ class NhostConfig {
   static String get functionsUrl =>
       _overrideFunctionsUrl ?? _defaultFunctionsUrl;
 
+  /// Optional URL for password reset redirects (used when email links are sent).
+  static String get resetPasswordRedirectUrl =>
+      _overrideResetPasswordRedirectUrl ?? _defaultResetPasswordRedirectUrl;
+
   static void applyOverrides({
     String? subdomain,
     String? region,
@@ -83,6 +94,7 @@ class NhostConfig {
     String? authUrl,
     String? storageUrl,
     String? functionsUrl,
+    String? resetPasswordRedirectUrl,
   }) {
     String? normalize(String? value) {
       final trimmed = value?.trim();
@@ -98,5 +110,8 @@ class NhostConfig {
     _overrideAuthUrl = normalize(authUrl) ?? _overrideAuthUrl;
     _overrideStorageUrl = normalize(storageUrl) ?? _overrideStorageUrl;
     _overrideFunctionsUrl = normalize(functionsUrl) ?? _overrideFunctionsUrl;
+    _overrideResetPasswordRedirectUrl =
+        normalize(resetPasswordRedirectUrl) ??
+        _overrideResetPasswordRedirectUrl;
   }
 }

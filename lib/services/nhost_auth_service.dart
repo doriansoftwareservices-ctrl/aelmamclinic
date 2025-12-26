@@ -6,6 +6,7 @@ import 'package:nhost_dart/nhost_dart.dart';
 import 'package:nhost_sdk/nhost_sdk.dart' show AuthResponse, User;
 
 import 'package:aelmamclinic/core/active_account_store.dart';
+import 'package:aelmamclinic/core/constants.dart';
 import 'package:aelmamclinic/core/nhost_manager.dart';
 import 'package:aelmamclinic/models/account_policy.dart';
 import 'package:aelmamclinic/models/backend_errors.dart';
@@ -89,7 +90,13 @@ class NhostAuthService {
 
   /// طلب إعادة تعيين كلمة المرور.
   Future<void> requestPasswordReset(String email, {String? redirectTo}) {
-    return _client.auth.resetPassword(email: email, redirectTo: redirectTo);
+    final fallback = AppConstants.resetPasswordRedirectUrl.trim();
+    final target =
+        (redirectTo == null || redirectTo.trim().isEmpty) ? fallback : redirectTo;
+    return _client.auth.resetPassword(
+      email: email,
+      redirectTo: target.isEmpty ? null : target,
+    );
   }
 
   /// محاولة تحديث الجلسة من refreshToken (إن وُجد).
@@ -287,13 +294,23 @@ class NhostAuthService {
       if (rows is List && rows.isNotEmpty) {
         final flag = rows.first['is_super_admin'];
         if (flag is bool) {
-          return flag;
+          if (flag) return true;
+          final email = (fallbackEmail ?? '').trim().toLowerCase();
+          if (email.isNotEmpty &&
+              AppConstants.superAdminEmails.contains(email)) {
+            return true;
+          }
+          return false;
         }
       }
       dev.log(
         'fn_is_super_admin_gql returned unexpected shape: ${rows.runtimeType}',
         name: 'AUTH',
       );
+      final email = (fallbackEmail ?? '').trim().toLowerCase();
+      if (email.isNotEmpty && AppConstants.superAdminEmails.contains(email)) {
+        return true;
+      }
       return false;
     } catch (e, st) {
       dev.log(
@@ -302,6 +319,10 @@ class NhostAuthService {
         error: e,
         stackTrace: st,
       );
+      final email = (fallbackEmail ?? '').trim().toLowerCase();
+      if (email.isNotEmpty && AppConstants.superAdminEmails.contains(email)) {
+        return true;
+      }
       return false;
     }
   }
@@ -491,14 +512,15 @@ class NhostAuthService {
       final data = await _runQuery(
         '''
         query ClinicFrozen(\$id: uuid!) {
-          clinics_by_pk(id: \$id) {
+          clinics(where: {id: {_eq: \$id}}, limit: 1) {
             frozen
           }
         }
         ''',
         {'id': accountId},
       );
-      final frozen = (data['clinics_by_pk'] as Map?)?['frozen'] == true;
+      final rows = _rowsFromData(data, 'clinics');
+      final frozen = rows.isNotEmpty && rows.first['frozen'] == true;
       if (frozen) {
         throw AccountFrozenException(accountId);
       }

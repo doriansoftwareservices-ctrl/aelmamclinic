@@ -7,6 +7,7 @@ Future<
       String? nhostAuthUrl,
       String? nhostStorageUrl,
       String? nhostFunctionsUrl,
+      String? resetPasswordRedirectUrl,
       String? source
     })?> loadNhostRuntimeOverrides({
   required String windowsDataDir,

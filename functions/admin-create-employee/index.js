@@ -165,7 +165,9 @@ async function ensureAccountPaid(accountId, authHeader) {
   }
   const query = `
     query AccountPaid($account: uuid!) {
-      account_is_paid(args: {p_account: $account})
+      account_is_paid_gql(args: {p_account: $account}) {
+        account_is_paid
+      }
     }
   `;
   const res = await fetch(gqlUrl, {
@@ -183,12 +185,11 @@ async function ensureAccountPaid(accountId, authHeader) {
   if (json.errors?.length) {
     throw new Error(json.errors.map((e) => e.message).join(' | '));
   }
-  const raw = json.data?.account_is_paid;
-  if (typeof raw === 'boolean') return raw;
+  const raw = json.data?.account_is_paid_gql;
   if (Array.isArray(raw) && raw.length > 0) {
     return raw[0]?.account_is_paid === true;
   }
-  return raw === true;
+  return false;
 }
 
 module.exports = async function handler(req, res) {

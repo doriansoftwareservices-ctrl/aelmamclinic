@@ -359,11 +359,14 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
       // تستدعي دالة chat_admin_start_dm(target_email text) وترجع conv_id (uuid)
       final mutation = '''
         mutation StartAdminDM(\$email: String!) {
-          chat_admin_start_dm(args: {target_email: \$email})
+          chat_admin_start_dm(args: {target_email: \$email}) {
+            id
+          }
         }
       ''';
       final data = await _runMutation(mutation, {'email': targetEmail});
-      final convId = data['chat_admin_start_dm']?.toString();
+      final rows = _rowsFromData(data, 'chat_admin_start_dm');
+      final convId = rows.isEmpty ? null : rows.first['id']?.toString();
 
       if (convId == null || convId.isEmpty) {
         _snack('تعذّر إنشاء/استرجاع المحادثة.');

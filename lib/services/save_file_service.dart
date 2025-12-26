@@ -25,15 +25,20 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:fluttertoast/fluttertoast.dart';
 
-/// يحفظ بايتات ملف (Excel مثلًا) باسم [fileName] ويُظهر Toast بالمسار النهائي.
-Future<void> saveExcelFile(Uint8List bytes, String fileName) async {
+/// يحفظ بايتات ملف باسم [fileName] ويُظهر Toast بالمسار النهائي.
+Future<void> saveFileBytes(Uint8List bytes, String fileName) async {
+  await saveFileBytesWithPath(bytes, fileName);
+}
+
+/// يحفظ بايتات ملف باسم [fileName] ويُعيد المسار النهائي.
+Future<String> saveFileBytesWithPath(Uint8List bytes, String fileName) async {
   if (kIsWeb) {
     Fluttertoast.showToast(
       msg: "الحفظ المباشر غير مدعوم على الويب في هذا المسار.",
       toastLength: Toast.LENGTH_LONG,
       gravity: ToastGravity.BOTTOM,
     );
-    return;
+    return '';
   }
 
   try {
@@ -51,12 +56,54 @@ Future<void> saveExcelFile(Uint8List bytes, String fileName) async {
       toastLength: Toast.LENGTH_LONG,
       gravity: ToastGravity.BOTTOM,
     );
+    return file.path;
   } catch (e) {
     Fluttertoast.showToast(
       msg: "فشل حفظ الملف: $e",
       toastLength: Toast.LENGTH_LONG,
       gravity: ToastGravity.BOTTOM,
     );
+    return '';
+  }
+}
+
+/// يحفظ بايتات ملف (Excel مثلًا) باسم [fileName] ويُظهر Toast بالمسار النهائي.
+Future<void> saveExcelFile(Uint8List bytes, String fileName) async {
+  await saveFileBytes(bytes, fileName);
+}
+
+/// ينسخ ملفًا موجودًا إلى مجلد مناسب حسب المنصة ويُعيد المسار النهائي.
+Future<String> saveFileToDownloads(File file, {String? fileName}) async {
+  if (kIsWeb) {
+    Fluttertoast.showToast(
+      msg: "الحفظ المباشر غير مدعوم على الويب في هذا المسار.",
+      toastLength: Toast.LENGTH_LONG,
+      gravity: ToastGravity.BOTTOM,
+    );
+    return '';
+  }
+
+  try {
+    final dir = await _resolveTargetDirectory();
+    await dir.create(recursive: true);
+
+    final safeName = _sanitizeFileName(fileName ?? p.basename(file.path));
+    final targetPath = await _uniqueFilePath(dir.path, safeName);
+    final copied = await file.copy(targetPath);
+
+    Fluttertoast.showToast(
+      msg: "تم حفظ الملف بنجاح في: ${copied.path}",
+      toastLength: Toast.LENGTH_LONG,
+      gravity: ToastGravity.BOTTOM,
+    );
+    return copied.path;
+  } catch (e) {
+    Fluttertoast.showToast(
+      msg: "فشل حفظ الملف: $e",
+      toastLength: Toast.LENGTH_LONG,
+      gravity: ToastGravity.BOTTOM,
+    );
+    return '';
   }
 }
 

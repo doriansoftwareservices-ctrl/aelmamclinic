@@ -18,6 +18,7 @@ import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/core/tbian_ui.dart';
 
 import 'package:aelmamclinic/services/db_service.dart';
+import 'package:aelmamclinic/services/save_file_service.dart';
 import 'package:aelmamclinic/models/patient.dart';
 import 'package:aelmamclinic/models/consumption.dart';
 
@@ -314,30 +315,12 @@ class _PdfUtils {
   static Future<void> downloadDoc(
       BuildContext context, pw.Document doc, String prefix) async {
     final bytes = await doc.save();
-    String path;
-    if (Platform.isAndroid) {
-      final downloads = Directory("/storage/emulated/0/Download");
-      downloads.createSync(recursive: true);
-      path =
-          "${downloads.path}/${prefix}_${DateTime.now().millisecondsSinceEpoch}.pdf";
-    } else if (Platform.isWindows) {
-      final user = Platform.environment['USERNAME'] ?? "User";
-      final downloads = Directory("C:/Users/$user/Downloads")
-        ..createSync(recursive: true);
-      path =
-          "${downloads.path}/${prefix}_${DateTime.now().millisecondsSinceEpoch}.pdf";
-    } else {
-      final tmp = await getTemporaryDirectory();
-      path =
-          "${tmp.path}/${prefix}_${DateTime.now().millisecondsSinceEpoch}.pdf";
-    }
-    final file = File(path);
-    await file.writeAsBytes(bytes);
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("تم حفظ الملف في: $path")),
-      );
-    }
+    final fileName = "${prefix}_${DateTime.now().millisecondsSinceEpoch}.pdf";
+    await saveFileBytes(bytes, fileName);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("تم حفظ الملف بنجاح")),
+    );
   }
 }
 

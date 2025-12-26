@@ -118,3 +118,4 @@ linux/flutter/ephemeral/
 
 
 .secrets
+.env.local

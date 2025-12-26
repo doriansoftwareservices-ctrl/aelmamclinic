@@ -13,6 +13,7 @@ import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/core/tbian_ui.dart';
 import 'package:aelmamclinic/models/storage_type.dart';
 import 'package:aelmamclinic/services/backup_restore_service.dart';
+import 'package:aelmamclinic/services/save_file_service.dart';
 
 class BackupRestoreScreen extends StatefulWidget {
   const BackupRestoreScreen({super.key});
@@ -49,13 +50,11 @@ class _BackupRestoreScreenState extends State<BackupRestoreScreen> {
       File backupFile = file;
       if (storageType == StorageType.local && Platform.isAndroid) {
         try {
-          final aelmamDir =
-              Directory('/storage/emulated/0/Download/AelmamClinic');
-          if (!await aelmamDir.exists()) {
-            await aelmamDir.create(recursive: true);
+          final savedPath =
+              await saveFileToDownloads(file, fileName: p.basename(file.path));
+          if (savedPath.isNotEmpty) {
+            backupFile = File(savedPath);
           }
-          final destPath = p.join(aelmamDir.path, p.basename(file.path));
-          backupFile = await file.copy(destPath);
         } catch (_) {
           backupFile = file;
         }

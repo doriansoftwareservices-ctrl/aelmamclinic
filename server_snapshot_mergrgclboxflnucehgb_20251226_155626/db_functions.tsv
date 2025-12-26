@@ -1,0 +1,143 @@
+schema	name	args	returns	kind
+auth	set_current_timestamp_updated_at		trigger	f
+public	account_is_paid	p_account uuid	boolean	f
+public	admin_approve_subscription_request	p_request uuid, p_note text	SETOF v_rpc_result	f
+public	admin_attach_employee	p_account uuid, p_user_uid uuid, p_role text	void	f
+public	admin_bootstrap_clinic	clinic_name text, owner_email text, owner_role text	uuid	f
+public	admin_bootstrap_clinic_for_email	clinic_name text, owner_email text	uuid	f
+public	admin_bootstrap_clinic_for_email	clinic_name text, owner_email text, owner_role text	uuid	f
+public	admin_create_employee_full	p_account uuid, p_email text, p_password text	SETOF v_rpc_result	f
+public	admin_create_owner_full	p_clinic_name text, p_owner_email text, p_owner_password text	SETOF v_rpc_result	f
+public	admin_delete_clinic	p_account_id uuid	SETOF v_rpc_result	f
+public	admin_list_clinics		SETOF v_admin_list_clinics	f
+public	admin_payment_stats		TABLE(payment_method_id uuid, payment_method_name text, total_amount numeric, payments_count bigint)	f
+public	admin_payment_stats_by_day		TABLE(day date, total_amount numeric, payments_count bigint)	f
+public	admin_payment_stats_by_month		TABLE(month date, total_amount numeric, payments_count bigint)	f
+public	admin_payment_stats_by_plan		TABLE(plan_code text, total_amount numeric, payments_count bigint)	f
+public	admin_reject_subscription_request	p_request uuid, p_note text	SETOF v_rpc_result	f
+public	admin_resolve_or_create_auth_user	p_email text, p_password text, p_role text	uuid	f
+public	admin_set_account_plan	p_account uuid, p_plan text, p_note text	SETOF v_rpc_result	f
+public	admin_set_clinic_frozen	p_account_id uuid, p_frozen boolean	SETOF v_rpc_result	f
+public	admin_sync_super_admin_emails	p_emails text[]	void	f
+public	apply_plan_permissions	p_account uuid, p_plan text	void	f
+public	armor	bytea, text[], text[]	text	f
+public	armor	bytea	text	f
+public	chat_accept_invitation	p_invitation_id uuid	SETOF v_rpc_result	f
+public	chat_admin_start_dm	target_email text	uuid	f
+public	chat_conversation_id_from_path	_name text	uuid	f
+public	chat_decline_invitation	p_invitation_id uuid, p_note text	SETOF v_rpc_result	f
+public	chat_mark_delivered	p_message_ids uuid[]	SETOF v_rpc_result	f
+public	citext	character	citext	f
+public	citext	boolean	citext	f
+public	citext	inet	citext	f
+public	citext_cmp	citext, citext	integer	f
+public	citext_eq	citext, citext	boolean	f
+public	citext_ge	citext, citext	boolean	f
+public	citext_gt	citext, citext	boolean	f
+public	citext_hash	citext	integer	f
+public	citext_hash_extended	citext, bigint	bigint	f
+public	citext_larger	citext, citext	citext	f
+public	citext_le	citext, citext	boolean	f
+public	citext_lt	citext, citext	boolean	f
+public	citext_ne	citext, citext	boolean	f
+public	citext_pattern_cmp	citext, citext	integer	f
+public	citext_pattern_ge	citext, citext	boolean	f
+public	citext_pattern_gt	citext, citext	boolean	f
+public	citext_pattern_le	citext, citext	boolean	f
+public	citext_pattern_lt	citext, citext	boolean	f
+public	citext_smaller	citext, citext	citext	f
+public	citextin	cstring	citext	f
+public	citextout	citext	cstring	f
+public	citextrecv	internal	citext	f
+public	citextsend	citext	bytea	f
+public	create_subscription_request	p_plan text, p_payment_method uuid, p_proof_url text, p_reference_text text, p_sender_name text	SETOF v_uuid_result	f
+public	crypt	text, text	text	f
+public	dearmor	text	bytea	f
+public	debug_auth_context		SETOF v_debug_auth_context	f
+public	decrypt	bytea, bytea, text	bytea	f
+public	decrypt_iv	bytea, bytea, bytea, text	bytea	f
+public	delete_employee	p_account uuid, p_user_uid uuid	SETOF v_rpc_result	f
+public	digest	text, text	bytea	f
+public	digest	bytea, text	bytea	f
+public	encrypt	bytea, bytea, text	bytea	f
+public	encrypt_iv	bytea, bytea, bytea, text	bytea	f
+public	expire_account_subscriptions	p_dry_run boolean	SETOF v_rpc_result	f
+public	fn_is_account_member	p_account uuid	boolean	f
+public	fn_is_super_admin		boolean	f
+public	fn_is_super_admin_email	p_email text	boolean	f
+public	fn_is_super_admin_gql		SETOF v_is_super_admin	f
+public	fn_my_latest_account_id		text	f
+public	fn_sign_chat_attachment	p_bucket text, p_path text, p_expires_in integer	jsonb	f
+public	gen_random_bytes	integer	bytea	f
+public	gen_random_uuid		uuid	f
+public	gen_salt	text	text	f
+public	gen_salt	text, integer	text	f
+public	get_enum_types		TABLE(name text, labels text[])	f
+public	get_schema_info		jsonb	f
+public	hmac	text, text, text	bytea	f
+public	hmac	bytea, bytea, text	bytea	f
+public	list_employees_with_email	p_account uuid	SETOF v_list_employees_with_email	f
+public	list_payment_methods		SETOF v_payment_methods	f
+public	max	citext	citext	a
+public	min	citext	citext	a
+public	my_account_id		SETOF v_my_account_id	f
+public	my_account_plan		SETOF v_my_account_plan	f
+public	my_accounts		SETOF uuid	f
+public	my_feature_permissions	p_account uuid	SETOF v_my_feature_permissions	f
+public	my_profile		SETOF v_my_profile	f
+public	pgp_armor_headers	text, OUT key text, OUT value text	SETOF record	f
+public	pgp_key_id	bytea	text	f
+public	pgp_pub_decrypt	bytea, bytea, text	text	f
+public	pgp_pub_decrypt	bytea, bytea, text, text	text	f
+public	pgp_pub_decrypt	bytea, bytea	text	f
+public	pgp_pub_decrypt_bytea	bytea, bytea, text	bytea	f
+public	pgp_pub_decrypt_bytea	bytea, bytea, text, text	bytea	f
+public	pgp_pub_decrypt_bytea	bytea, bytea	bytea	f
+public	pgp_pub_encrypt	text, bytea	bytea	f
+public	pgp_pub_encrypt	text, bytea, text	bytea	f
+public	pgp_pub_encrypt_bytea	bytea, bytea	bytea	f
+public	pgp_pub_encrypt_bytea	bytea, bytea, text	bytea	f
+public	pgp_sym_decrypt	bytea, text, text	text	f
+public	pgp_sym_decrypt	bytea, text	text	f
+public	pgp_sym_decrypt_bytea	bytea, text	bytea	f
+public	pgp_sym_decrypt_bytea	bytea, text, text	bytea	f
+public	pgp_sym_encrypt	text, text	bytea	f
+public	pgp_sym_encrypt	text, text, text	bytea	f
+public	pgp_sym_encrypt_bytea	bytea, text	bytea	f
+public	pgp_sym_encrypt_bytea	bytea, text, text	bytea	f
+public	plan_allowed_features	p_plan text	text[]	f
+public	regexp_match	citext, citext	text[]	f
+public	regexp_match	citext, citext, text	text[]	f
+public	regexp_matches	citext, citext	SETOF text[]	f
+public	regexp_matches	citext, citext, text	SETOF text[]	f
+public	regexp_replace	citext, citext, text	text	f
+public	regexp_replace	citext, citext, text, text	text	f
+public	regexp_split_to_array	citext, citext, text	text[]	f
+public	regexp_split_to_array	citext, citext	text[]	f
+public	regexp_split_to_table	citext, citext	SETOF text	f
+public	regexp_split_to_table	citext, citext, text	SETOF text	f
+public	replace	citext, citext, citext	text	f
+public	request_uid_text		text	f
+public	self_create_account	p_clinic_name text	SETOF v_uuid_result	f
+public	set_employee_disabled	p_account uuid, p_user_uid uuid, p_disabled boolean	SETOF v_rpc_result	f
+public	split_part	citext, citext, integer	text	f
+public	strpos	citext, citext	integer	f
+public	texticlike	citext, text	boolean	f
+public	texticlike	citext, citext	boolean	f
+public	texticnlike	citext, citext	boolean	f
+public	texticnlike	citext, text	boolean	f
+public	texticregexeq	citext, text	boolean	f
+public	texticregexeq	citext, citext	boolean	f
+public	texticregexne	citext, citext	boolean	f
+public	texticregexne	citext, text	boolean	f
+public	tg_account_feature_permissions_touch		trigger	f
+public	tg_account_users_sync_profile		trigger	f
+public	tg_chat_aliases_set_updated_at		trigger	f
+public	tg_profiles_set_updated_at		trigger	f
+public	tg_set_updated_at		trigger	f
+public	tg_sync_complaints_fields		trigger	f
+public	tg_touch_updated_at		trigger	f
+public	translate	citext, citext, text	text	f
+storage	protect_default_bucket_delete		trigger	f
+storage	protect_default_bucket_update		trigger	f
+storage	set_current_timestamp_updated_at		trigger	f

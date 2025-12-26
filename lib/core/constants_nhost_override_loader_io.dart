@@ -12,6 +12,7 @@ Future<
       String? nhostAuthUrl,
       String? nhostStorageUrl,
       String? nhostFunctionsUrl,
+      String? resetPasswordRedirectUrl,
       String? source
     })?> loadNhostRuntimeOverrides({
   required String windowsDataDir,
@@ -148,6 +149,7 @@ Future<
       final nhostAuthUrl = readKey('nhostAuthUrl');
       final nhostStorageUrl = readKey('nhostStorageUrl');
       final nhostFunctionsUrl = readKey('nhostFunctionsUrl');
+      final resetPasswordRedirectUrl = readKey('resetPasswordRedirectUrl');
       final admins = readEmailList();
 
       final noNhostOverrides = (nhostSubdomain == null ||
@@ -156,7 +158,9 @@ Future<
           (nhostGraphqlUrl == null || nhostGraphqlUrl.isEmpty) &&
           (nhostAuthUrl == null || nhostAuthUrl.isEmpty) &&
           (nhostStorageUrl == null || nhostStorageUrl.isEmpty) &&
-          (nhostFunctionsUrl == null || nhostFunctionsUrl.isEmpty);
+          (nhostFunctionsUrl == null || nhostFunctionsUrl.isEmpty) &&
+          (resetPasswordRedirectUrl == null ||
+              resetPasswordRedirectUrl.isEmpty);
 
       if (noNhostOverrides && (admins == null || admins.isEmpty)) {
         continue;
@@ -170,6 +174,7 @@ Future<
         nhostAuthUrl: nhostAuthUrl,
         nhostStorageUrl: nhostStorageUrl,
         nhostFunctionsUrl: nhostFunctionsUrl,
+        resetPasswordRedirectUrl: resetPasswordRedirectUrl,
         source: file.path,
       );
     } catch (_) {

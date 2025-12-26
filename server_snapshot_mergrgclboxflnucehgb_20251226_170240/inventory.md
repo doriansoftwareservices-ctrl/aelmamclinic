@@ -1,0 +1,121 @@
+# Inventory (Server Snapshot)
+
+- Snapshot: `server_snapshot_mergrgclboxflnucehgb_20251226_170240`
+- Generated: `2025-12-26T17:03:01.332916`
+
+## Counts
+
+- Tracked tables (Hasura metadata): **75**
+- Tracked functions (Hasura metadata): **28**
+- db_objects rows: **78**
+- db_functions rows: **142**
+- db_policies rows: **129**
+
+## Tracked tables
+
+- `auth.provider_requests`
+- `auth.providers`
+- `auth.refresh_token_types`
+- `auth.refresh_tokens`
+- `auth.roles`
+- `auth.user_providers`
+- `auth.user_roles`
+- `auth.user_security_keys`
+- `auth.users`
+- `public.account_feature_permissions`
+- `public.account_subscriptions`
+- `public.account_users`
+- `public.accounts`
+- `public.alert_settings`
+- `public.appointments`
+- `public.audit_logs`
+- `public.chat_aliases`
+- `public.chat_attachments`
+- `public.chat_conversations`
+- `public.chat_delivery_receipts`
+- `public.chat_group_invitations`
+- `public.chat_messages`
+- `public.chat_participants`
+- `public.chat_reactions`
+- `public.chat_reads`
+- `public.chat_typing`
+- `public.clinics`
+- `public.complaints`
+- `public.consumption_types`
+- `public.consumptions`
+- `public.doctors`
+- `public.drugs`
+- `public.employees`
+- `public.employees_discounts`
+- `public.employees_loans`
+- `public.employees_salaries`
+- `public.financial_logs`
+- `public.item_types`
+- `public.items`
+- `public.medical_services`
+- `public.patient_services`
+- `public.patients`
+- `public.payment_methods`
+- `public.plan_features`
+- `public.prescription_items`
+- `public.prescriptions`
+- `public.profiles`
+- `public.purchases`
+- `public.returns`
+- `public.service_doctor_share`
+- `public.subscription_payments`
+- `public.subscription_plans`
+- `public.subscription_requests`
+- `public.super_admins`
+- `public.v_admin_list_clinics`
+- `public.v_auth_context`
+- `public.v_chat_conversations_for_me`
+- `public.v_chat_group_invitations_for_me`
+- `public.v_chat_last_message`
+- `public.v_chat_messages_with_attachments`
+- `public.v_chat_reads_for_me`
+- `public.v_chat_typing_active`
+- `public.v_debug_auth_context`
+- `public.v_is_super_admin`
+- `public.v_list_employees_with_email`
+- `public.v_my_account_id`
+- `public.v_my_account_plan`
+- `public.v_my_feature_permissions`
+- `public.v_my_profile`
+- `public.v_payment_methods`
+- `public.v_rpc_result`
+- `public.v_uuid_result`
+- `storage.buckets`
+- `storage.files`
+- `storage.virus`
+
+## Tracked functions
+
+- `public.admin_approve_subscription_request`
+- `public.admin_create_employee_full`
+- `public.admin_create_owner_full`
+- `public.admin_delete_clinic`
+- `public.admin_list_clinics`
+- `public.admin_payment_stats`
+- `public.admin_payment_stats_by_day`
+- `public.admin_payment_stats_by_month`
+- `public.admin_payment_stats_by_plan`
+- `public.admin_reject_subscription_request`
+- `public.admin_set_account_plan`
+- `public.admin_set_clinic_frozen`
+- `public.chat_accept_invitation`
+- `public.chat_decline_invitation`
+- `public.chat_mark_delivered`
+- `public.create_subscription_request`
+- `public.debug_auth_context`
+- `public.delete_employee`
+- `public.expire_account_subscriptions`
+- `public.fn_is_super_admin_gql`
+- `public.list_employees_with_email`
+- `public.list_payment_methods`
+- `public.my_account_id`
+- `public.my_account_plan`
+- `public.my_feature_permissions`
+- `public.my_profile`
+- `public.self_create_account`
+- `public.set_employee_disabled`

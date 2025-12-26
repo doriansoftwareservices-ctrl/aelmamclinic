@@ -3,12 +3,12 @@
 import 'dart:io';
 import 'package:excel/excel.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
 import 'package:aelmamclinic/models/item_type.dart';
 import 'package:aelmamclinic/models/item.dart';
 import 'package:aelmamclinic/models/consumption.dart';
 import 'package:aelmamclinic/models/purchase.dart';
+import 'package:aelmamclinic/services/save_file_service.dart';
 
 /// ‎ExcelExportHelper‎:
 /// • يُولّد ملفات ‎.xlsx‎ بتنسيقٍ يُناسب "إحصاءات وكشوفات المستودع".
@@ -16,26 +16,6 @@ import 'package:aelmamclinic/models/purchase.dart';
 ///
 class ExcelExportHelper {
   ExcelExportHelper._();
-
-  /// مسار مجلّد التنزيلات حسب المنصة
-  static Future<String> _defaultDir() async {
-    if (Platform.isAndroid) {
-      // حاول مجلّد التنزيلات القياسي أولاً
-      const androidDL = '/storage/emulated/0/Download';
-      if (Directory(androidDL).existsSync()) return androidDL;
-      // وإلا استخدم External Storage الخاص بالتطبيق
-      final dir = await getExternalStorageDirectory();
-      return dir?.path ?? androidDL;
-    } else if (Platform.isIOS) {
-      // لا يوجد Downloads قياسي في iOS، نستخدم Documents
-      final dir = await getApplicationDocumentsDirectory();
-      return dir.path;
-    } else {
-      // Windows / macOS / Linux
-      final dir = await getDownloadsDirectory();
-      return dir?.path ?? Directory.current.path;
-    }
-  }
 
   /// ⬇️ exportItemStatistics
   static Future<String> exportItemStatistics({
@@ -70,14 +50,17 @@ class ExcelExportHelper {
     }
 
     // حفظ في Downloads
-    final dir = exportsDir ?? await _defaultDir();
     final fileName =
         '${type.name}_statistics_${DateTime.now().millisecondsSinceEpoch}.xlsx';
-    final path = p.join(dir, fileName);
 
     final bytes = excel.encode();
     if (bytes == null) throw Exception('فشل في إنشاء ملف Excel.');
-    await File(path).writeAsBytes(bytes, flush: true);
+    if (exportsDir != null && exportsDir.trim().isNotEmpty) {
+      final path = p.join(exportsDir, fileName);
+      await File(path).writeAsBytes(bytes, flush: true);
+      return path;
+    }
+    final path = await saveFileBytesWithPath(bytes, fileName);
     return path;
   }
 
@@ -107,14 +90,17 @@ class ExcelExportHelper {
       ]);
     }
 
-    final dir = exportsDir ?? await _defaultDir();
     final fileName =
         '${item.name}_consumptions_${DateTime.now().millisecondsSinceEpoch}.xlsx';
-    final path = p.join(dir, fileName);
 
     final bytes = excel.encode();
     if (bytes == null) throw Exception('فشل في إنشاء ملف Excel.');
-    await File(path).writeAsBytes(bytes, flush: true);
+    if (exportsDir != null && exportsDir.trim().isNotEmpty) {
+      final path = p.join(exportsDir, fileName);
+      await File(path).writeAsBytes(bytes, flush: true);
+      return path;
+    }
+    final path = await saveFileBytesWithPath(bytes, fileName);
     return path;
   }
 
@@ -147,13 +133,16 @@ class ExcelExportHelper {
       ]);
     }
 
-    final dir = exportsDir ?? await _defaultDir();
     final fileName = 'purchases_${DateTime.now().millisecondsSinceEpoch}.xlsx';
-    final path = p.join(dir, fileName);
 
     final bytes = excel.encode();
     if (bytes == null) throw Exception('فشل في إنشاء ملف Excel.');
-    await File(path).writeAsBytes(bytes, flush: true);
+    if (exportsDir != null && exportsDir.trim().isNotEmpty) {
+      final path = p.join(exportsDir, fileName);
+      await File(path).writeAsBytes(bytes, flush: true);
+      return path;
+    }
+    final path = await saveFileBytesWithPath(bytes, fileName);
     return path;
   }
 }

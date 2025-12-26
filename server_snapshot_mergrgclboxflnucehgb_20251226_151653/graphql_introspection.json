@@ -1,0 +1,1 @@
+{"errors":[{"message":"invalid \"x-hasura-admin-secret\"/\"x-hasura-access-key\"","extensions":{"path":"$","code":"access-denied"}}]}

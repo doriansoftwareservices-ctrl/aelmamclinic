@@ -178,6 +178,14 @@
     - role: superadmin
 - function:
     schema: public
+    name: chat_admin_start_dm
+  configuration:
+    exposed_as: mutation
+    custom_name: chat_admin_start_dm
+  permissions:
+    - role: superadmin
+- function:
+    schema: public
     name: my_account_plan
   configuration:
     exposed_as: query
@@ -188,6 +196,14 @@
     - role: owner
     - role: employee
     - role: admin
+    - role: superadmin
+- function:
+    schema: public
+    name: account_is_paid_gql
+  configuration:
+    exposed_as: query
+    custom_name: account_is_paid_gql
+  permissions:
     - role: superadmin
 - function:
     schema: public
@@ -308,4 +324,20 @@
   permissions:
     - role: me
     - role: user
+    - role: superadmin
+- function:
+    schema: public
+    name: admin_sync_super_admin_emails
+  configuration:
+    exposed_as: mutation
+    custom_name: admin_sync_super_admin_emails
+  permissions:
+    - role: superadmin
+- function:
+    schema: public
+    name: admin_sync_super_admin_emails_gql
+  configuration:
+    exposed_as: mutation
+    custom_name: admin_sync_super_admin_emails_gql
+  permissions:
     - role: superadmin

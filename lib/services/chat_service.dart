@@ -1417,7 +1417,7 @@ class ChatService {
     final mime = _guessMime(name);
     final storageName = 'attachments/$conversationId/$messageId/$name';
 
-    final fileId = await _uploadToStorage(
+    await _uploadToStorage(
       name: storageName,
       file: file,
       mimeType: mime,
@@ -1427,7 +1427,7 @@ class ChatService {
     final payload = <String, dynamic>{
       'message_id': messageId,
       'bucket': attachmentsBucket,
-      'path': fileId,
+      'path': storageName,
       'mime_type': mime,
       'size_bytes': stat.size,
       'created_at': DateTime.now().toUtc().toIso8601String(),
@@ -1466,20 +1466,20 @@ class ChatService {
     final name = _friendlyFileName(file);
     final mime = _guessMime(name);
     final storageName = 'attachments/$conversationId/$messageId/$name';
-    final fileId = await _uploadToStorage(
+    await _uploadToStorage(
       name: storageName,
       file: file,
       mimeType: mime,
     );
 
-    final url = await _signedOrPublicUrl(attachmentsBucket, fileId);
+    final url = await _signedOrPublicUrl(attachmentsBucket, storageName);
     final stat = await file.stat();
 
     return {
       'type': 'image',
       'url': url,
       'bucket': attachmentsBucket,
-      'path': fileId,
+      'path': storageName,
       'mime_type': mime,
       'size_bytes': stat.size,
       'created_at': DateTime.now().toUtc().toIso8601String(),

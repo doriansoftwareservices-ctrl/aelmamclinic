@@ -57,7 +57,10 @@ Future<void> main(List<String> args) async {
   final body = jsonEncode({
     'query': r'''
       mutation SyncSuperAdmins($emails: [String!]!) {
-        admin_sync_super_admin_emails(args: {p_emails: $emails})
+        admin_sync_super_admin_emails_gql(args: {p_emails: $emails}) {
+          ok
+          error
+        }
       }
     ''',
     'variables': {'emails': emails},
@@ -77,6 +80,24 @@ Future<void> main(List<String> args) async {
   );
 
   if (resp.statusCode >= 200 && resp.statusCode < 300) {
+    final json = jsonDecode(resp.body);
+    final errors = json is Map ? json['errors'] : null;
+    if (errors is List && errors.isNotEmpty) {
+      final msg = errors.map((e) => e['message']).join(' | ');
+      stderr.writeln('[sync_super_admins] Sync failed (GraphQL): $msg');
+      exit(1);
+    }
+    final rows = json is Map
+        ? (json['data'] as Map?)?['admin_sync_super_admin_emails_gql']
+        : null;
+    if (rows is List && rows.isNotEmpty) {
+      final ok = rows.first['ok'] == true;
+      if (!ok) {
+        final err = rows.first['error'];
+        stderr.writeln('[sync_super_admins] Sync failed: ${err ?? 'unknown'}');
+        exit(1);
+      }
+    }
     stdout.writeln('[sync_super_admins] Sync completed successfully.');
     return;
   }

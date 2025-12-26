@@ -1,0 +1,126 @@
+name: aelmamclinic
+description: A new Flutter application for aelmamclinic
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependency_overrides:
+  syncfusion_flutter_core: 29.1.33
+  audioplayers_windows:
+    path: third_party/audioplayers_windows
+  permission_handler_windows:
+    path: third_party/permission_handler_windows
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  flutter_localizations:
+    sdk: flutter
+
+  meta: any
+  cupertino_icons: any
+  url_launcher: any
+  google_sign_in: 6.1.6
+  googleapis: any
+  font_awesome_flutter: any
+  flutter_local_notifications: ^17.2.4
+  timezone: ^0.9.4
+  provider: any
+  flutter_secure_storage: ^9.0.0
+  ntp: ^2.0.0
+  crypto: ^3.0.3
+
+  # اختيار/فتح الملفات
+  file_picker: ^9.2.2
+  open_file: any
+  path_provider: ^2.1.5
+  permission_handler: any
+  archive: any
+  mime: any
+
+  # قاعدة البيانات والتصدير
+  sqflite: ^2.4.2
+  sqflite_common_ffi: ^2.0.0+2
+  sqlite3: any
+  sqlite3_flutter_libs: any
+  path: ^1.9.1
+  bidi: ^2.0.13
+  excel: ^2.1.0
+  intl: 0.20.2
+
+  # ملفات ومشاركات
+  fluttertoast: ^8.2.12
+  share_plus: any
+  cross_file: ^0.3.3
+  screenshot: ^3.0.0
+
+  # التفعيل والإعدادات
+  shared_preferences: ^2.5.3
+  pdf: ^3.11.3
+  printing: ^5.9.0
+
+  #الاشعارات (محلية فقط)
+  audioplayers: ^5.2.1
+
+  # مخططات
+  syncfusion_flutter_charts: 29.1.33
+
+  # الشبكات والمزامنة
+  nhost_dart: any
+  nhost_sdk: any
+  graphql_flutter: any
+  uuid: ^4.4.0
+  http: any
+  http_parser: any
+  image_picker: ^1.2.0
+  flutter_timezone: 4.1.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_launcher_icons: ^0.13.1
+  flutter_lints: any
+  integration_test:
+    sdk: flutter
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/images/logo3.png"
+  adaptive_icon_foreground: "assets/images/logo3.png"
+  adaptive_icon_background: "#FFFFFF"
+  min_sdk_android: 21
+  windows:
+    generate: true
+    image_path: "assets/images/logo.png"
+  web:
+    generate: false
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/logo.png
+    - assets/images/logo2.png
+    - assets/activation_codes_fixed.json
+    - assets/images/whatsapp_icon.png
+    - assets/images/bell_icon1.png
+    - assets/images/bell_icon2.png
+    - assets/images/doctor.png
+    - assets/images/patient.png
+    - assets/notification/notification1.mpeg
+
+    # ===== SQL =====
+    - assets/sql/aelmam_parity_v3.sql
+    - assets/sql/v3_initial.sql
+    - assets/sql/v3_reapply.sql
+
+  fonts:
+    - family: Cairo
+      fonts:
+        - asset: assets/fonts/Cairo-Regular.ttf
+        - asset: assets/fonts/Cairo-Bold.ttf
+          weight: 700

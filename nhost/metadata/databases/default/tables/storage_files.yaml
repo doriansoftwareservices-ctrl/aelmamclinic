@@ -52,3 +52,28 @@ object_relationships:
   - name: bucket
     using:
       foreign_key_constraint_on: bucket_id
+select_permissions:
+  - role: me
+    permission:
+      columns: "*"
+      filter: {}
+  - role: user
+    permission:
+      columns: "*"
+      filter: {}
+  - role: owner
+    permission:
+      columns: "*"
+      filter: {}
+  - role: employee
+    permission:
+      columns: "*"
+      filter: {}
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+  - role: superadmin
+    permission:
+      columns: "*"
+      filter: {}

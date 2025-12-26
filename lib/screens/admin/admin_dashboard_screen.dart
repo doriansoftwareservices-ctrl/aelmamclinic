@@ -314,8 +314,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       _snack('صيغة البريد غير صحيحة');
       return;
     }
-    if (pass.length < 6) {
-      _snack('الحد الأدنى لكلمة المرور هو 6 أحرف');
+    if (pass.length < 9) {
+      _snack('الحد الأدنى لكلمة المرور هو 9 أحرف');
       return;
     }
 
@@ -362,8 +362,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       _snack('صيغة البريد غير صحيحة');
       return;
     }
-    if (pass.length < 6) {
-      _snack('الحد الأدنى لكلمة المرور هو 6 أحرف');
+    if (pass.length < 9) {
+      _snack('الحد الأدنى لكلمة المرور هو 9 أحرف');
       return;
     }
 

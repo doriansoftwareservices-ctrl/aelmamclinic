@@ -17,6 +17,8 @@ class AppConstants {
   static String get nhostAuthUrl => NhostConfig.authUrl;
   static String get nhostStorageUrl => NhostConfig.storageUrl;
   static String get nhostFunctionsUrl => NhostConfig.functionsUrl;
+  static String get resetPasswordRedirectUrl =>
+      NhostConfig.resetPasswordRedirectUrl;
 
   static List<String> _superAdminEmails = const [];
   static bool _overridesLoaded = false;
@@ -28,7 +30,7 @@ class AppConstants {
   ///
   /// The JSON file supports the keys `nhostSubdomain`, `nhostRegion`,
   /// `nhostGraphqlUrl`, `nhostAuthUrl`, `nhostStorageUrl`, `nhostFunctionsUrl`,
-  /// and `superAdminEmails`.
+  /// `resetPasswordRedirectUrl`, and `superAdminEmails`.
   static Future<void> loadRuntimeOverrides() async {
     if (_overridesLoaded) {
       return;
@@ -68,6 +70,7 @@ class AppConstants {
       String? nhostAuthUrl,
       String? nhostStorageUrl,
       String? nhostFunctionsUrl,
+      String? resetPasswordRedirectUrl,
       String? source,
     }) overrides = result;
 
@@ -79,6 +82,7 @@ class AppConstants {
     final nhostAuthUrl = overrides.nhostAuthUrl;
     final nhostStorageUrl = overrides.nhostStorageUrl;
     final nhostFunctionsUrl = overrides.nhostFunctionsUrl;
+    final resetPasswordRedirectUrl = overrides.resetPasswordRedirectUrl;
     if (admins != null && admins.isNotEmpty) {
       _superAdminEmails = admins
           .map((e) => e.trim().toLowerCase())
@@ -93,6 +97,7 @@ class AppConstants {
       authUrl: nhostAuthUrl,
       storageUrl: nhostStorageUrl,
       functionsUrl: nhostFunctionsUrl,
+      resetPasswordRedirectUrl: resetPasswordRedirectUrl,
     );
 
     if (source != null && source.isNotEmpty) {
