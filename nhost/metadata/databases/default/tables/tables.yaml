@@ -3057,10 +3057,6 @@
       permission:
         columns: "*"
         filter: {}
-    - role: admin
-      permission:
-        columns: "*"
-        filter: {}
     - role: superadmin
       permission:
         columns: "*"
