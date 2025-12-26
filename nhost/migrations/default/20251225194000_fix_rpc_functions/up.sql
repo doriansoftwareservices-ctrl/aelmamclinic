@@ -184,6 +184,16 @@ $$;
 REVOKE ALL ON FUNCTION public.create_subscription_request(text, uuid, text, text, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.create_subscription_request(text, uuid, text, text, text) TO public;
 
+-- Drop old signatures BEFORE changing return types (Postgres 42P13 fix).
+DROP FUNCTION IF EXISTS public.admin_approve_subscription_request(uuid);
+DROP FUNCTION IF EXISTS public.admin_approve_subscription_request(uuid, text);
+DROP FUNCTION IF EXISTS public.admin_reject_subscription_request(uuid);
+DROP FUNCTION IF EXISTS public.admin_reject_subscription_request(uuid, text);
+DROP FUNCTION IF EXISTS public.admin_set_account_plan(uuid, text);
+DROP FUNCTION IF EXISTS public.admin_set_account_plan(uuid, text, text);
+DROP FUNCTION IF EXISTS public.expire_account_subscriptions();
+DROP FUNCTION IF EXISTS public.expire_account_subscriptions(boolean);
+
 -- Admin approve/reject now return table-backed results.
 CREATE OR REPLACE FUNCTION public.admin_approve_subscription_request(
   p_request uuid,
