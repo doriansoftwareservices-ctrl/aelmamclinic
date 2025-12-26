@@ -161,6 +161,7 @@ class AuthProvider extends ChangeNotifier {
   bool _canDelete = true;
   bool _permissionsLoaded = false;
   String? _permissionsError;
+  bool _autoCreateAttempted = false;
 
   Set<String> get allowedFeatures => _allowedFeatures;
   bool get allowAllFeatures => _allowAllFeatures;
@@ -346,6 +347,7 @@ class AuthProvider extends ChangeNotifier {
 
     currentUser = null;
     _resetPermissionsInMemory();
+    _autoCreateAttempted = false;
 
     final sp = await SharedPreferences.getInstance();
     await _clearStorage();
@@ -710,6 +712,39 @@ class AuthProvider extends ChangeNotifier {
           return result;
         }
         if (result == AuthAccountGuardResult.noAccount) {
+          if (!_autoCreateAttempted) {
+            _autoCreateAttempted = true;
+            final seed = _seedClinicName();
+            _authDiagWarn(
+              '_ensureActiveAccountOrSignOut:autoCreate:attempt',
+              context: {'seed': seed},
+              stackTrace: st,
+            );
+            try {
+              await selfCreateAccount(seed);
+              final aa = await _auth.resolveActiveAccountOrThrow();
+              currentUser ??= {};
+              currentUser!['accountId'] = aa.id;
+              currentUser!['role'] = aa.role.toLowerCase();
+              currentUser!['disabled'] = false;
+              await _persistUser();
+              _authDiag(
+                '_ensureActiveAccountOrSignOut:autoCreate:ok',
+                context: {'accountId': aa.id},
+              );
+              return AuthAccountGuardResult.ok;
+            } catch (autoErr, autoSt) {
+              dev.log(
+                'Auto-create account failed: $autoErr',
+                stackTrace: autoSt,
+              );
+              _authDiagWarn(
+                '_ensureActiveAccountOrSignOut:autoCreate:failed',
+                context: {'error': autoErr.runtimeType.toString()},
+                stackTrace: autoSt,
+              );
+            }
+          }
           // Keep session for onboarding (self_create_account flow).
           currentUser!['disabled'] = false;
           currentUser!['accountId'] = null;
@@ -745,6 +780,13 @@ class AuthProvider extends ChangeNotifier {
       'uid': uid,
     });
     return AuthAccountGuardResult.unknown;
+  }
+
+  String _seedClinicName() {
+    final addr = (email ?? '').trim();
+    if (addr.isEmpty) return 'عيادة جديدة';
+    final handle = addr.split('@').first;
+    return handle.isEmpty ? 'عيادة جديدة' : 'عيادة $handle';
   }
 
   /// يجلب صلاحيات الميزات + CRUD للحساب الحالي ويخزّنها محليًا
