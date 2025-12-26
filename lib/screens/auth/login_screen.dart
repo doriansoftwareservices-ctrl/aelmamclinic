@@ -262,13 +262,19 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      final signUpResp = await auth.signUp(email, pass);
+      var signUpResp = await auth.signUp(email, pass);
       if (signUpResp.session == null) {
-        setState(
-          () =>
-              _error = 'تم إنشاء الحساب. يرجى تأكيد البريد الإلكتروني ثم تسجيل الدخول.',
-        );
-        return;
+        // بعض البيئات لا تُرجع session مباشرةً؛ جرّب تسجيل الدخول فورًا.
+        try {
+          signUpResp = await auth.signIn(email, pass);
+        } catch (_) {}
+        if (signUpResp.session == null) {
+          setState(
+            () =>
+                _error = 'تم إنشاء الحساب. يرجى تأكيد البريد الإلكتروني ثم تسجيل الدخول.',
+          );
+          return;
+        }
       }
       await _persistRememberedCredentials(email: email, password: pass);
       if (auth.currentUser == null || auth.accessToken == null) {
