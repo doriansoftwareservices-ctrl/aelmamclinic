@@ -60,6 +60,7 @@ Future<void> main(List<String> args) async {
     return;
   }
 
+  final emailsLiteral = _toPgTextArrayLiteral(list);
   final body = jsonEncode({
     'query': r'''
       mutation SyncSuperAdmins($emails: _text!) {
@@ -69,7 +70,7 @@ Future<void> main(List<String> args) async {
         }
       }
     ''',
-    'variables': {'emails': list},
+    'variables': {'emails': emailsLiteral},
   });
 
   stdout.writeln(
@@ -181,4 +182,14 @@ String _expandHome(String value) {
     return value.replaceFirst('~', '');
   }
   return value.replaceFirst('~', home);
+}
+
+String _toPgTextArrayLiteral(List<String> values) {
+  if (values.isEmpty) return '{}';
+  final parts = values.map((value) {
+    final escaped =
+        value.replaceAll(r'\', r'\\').replaceAll('"', r'\"');
+    return '"$escaped"';
+  }).join(',');
+  return '{${parts}}';
 }
