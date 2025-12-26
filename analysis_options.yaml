@@ -5,6 +5,7 @@ analyzer:
   exclude:
     - build/**
     - .dart_tool/**
+    - backup_stage0_*/**
   language:
     strict-raw-types: false
 

@@ -1,6 +1,7 @@
 // lib/utils/excel_export_helper.dart
 
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:excel/excel.dart';
 import 'package:path/path.dart' as p;
 
@@ -60,7 +61,7 @@ class ExcelExportHelper {
       await File(path).writeAsBytes(bytes, flush: true);
       return path;
     }
-    final path = await saveFileBytesWithPath(bytes, fileName);
+    final path = await saveFileBytesWithPath(Uint8List.fromList(bytes), fileName);
     return path;
   }
 
@@ -100,7 +101,7 @@ class ExcelExportHelper {
       await File(path).writeAsBytes(bytes, flush: true);
       return path;
     }
-    final path = await saveFileBytesWithPath(bytes, fileName);
+    final path = await saveFileBytesWithPath(Uint8List.fromList(bytes), fileName);
     return path;
   }
 
@@ -142,7 +143,7 @@ class ExcelExportHelper {
       await File(path).writeAsBytes(bytes, flush: true);
       return path;
     }
-    final path = await saveFileBytesWithPath(bytes, fileName);
+    final path = await saveFileBytesWithPath(Uint8List.fromList(bytes), fileName);
     return path;
   }
 }
