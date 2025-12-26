@@ -327,14 +327,6 @@
     - role: superadmin
 - function:
     schema: public
-    name: admin_sync_super_admin_emails
-  configuration:
-    exposed_as: mutation
-    custom_name: admin_sync_super_admin_emails
-  permissions:
-    - role: superadmin
-- function:
-    schema: public
     name: admin_sync_super_admin_emails_gql
   configuration:
     exposed_as: mutation

@@ -2615,12 +2615,6 @@
           - plan_code
           - plan_end_at
         filter: {}
-    - role: admin
-      permission:
-        columns:
-          - plan_code
-          - plan_end_at
-        filter: {}
     - role: superadmin
       permission:
         columns:
@@ -2668,15 +2662,6 @@
           - bank_account
           - is_active
         filter: {}
-    - role: admin
-      permission:
-        columns:
-          - id
-          - name
-          - logo_url
-          - bank_account
-          - is_active
-        filter: {}
     - role: superadmin
       permission:
         columns:
@@ -2685,6 +2670,55 @@
           - logo_url
           - bank_account
           - is_active
+        filter: {}
+
+- table:
+    schema: public
+    name: v_payment_stats
+  select_permissions:
+    - role: superadmin
+      permission:
+        columns:
+          - payment_method_id
+          - payment_method_name
+          - total_amount
+          - payments_count
+        filter: {}
+
+- table:
+    schema: public
+    name: v_payment_stats_by_plan
+  select_permissions:
+    - role: superadmin
+      permission:
+        columns:
+          - plan_code
+          - total_amount
+          - payments_count
+        filter: {}
+
+- table:
+    schema: public
+    name: v_payment_stats_by_day
+  select_permissions:
+    - role: superadmin
+      permission:
+        columns:
+          - day
+          - total_amount
+          - payments_count
+        filter: {}
+
+- table:
+    schema: public
+    name: v_payment_stats_by_month
+  select_permissions:
+    - role: superadmin
+      permission:
+        columns:
+          - month
+          - total_amount
+          - payments_count
         filter: {}
 
 - table:
@@ -2730,10 +2764,6 @@
         columns: "*"
         filter: {}
     - role: employee
-      permission:
-        columns: "*"
-        filter: {}
-    - role: admin
       permission:
         columns: "*"
         filter: {}
@@ -2902,10 +2932,6 @@
       permission:
         columns: "*"
         filter: {}
-    - role: admin
-      permission:
-        columns: "*"
-        filter: {}
     - role: superadmin
       permission:
         columns: "*"
@@ -2928,10 +2954,6 @@
         columns: "*"
         filter: {}
     - role: employee
-      permission:
-        columns: "*"
-        filter: {}
-    - role: admin
       permission:
         columns: "*"
         filter: {}
@@ -2960,10 +2982,6 @@
       permission:
         columns: "*"
         filter: {}
-    - role: admin
-      permission:
-        columns: "*"
-        filter: {}
     - role: superadmin
       permission:
         columns: "*"
@@ -2989,10 +3007,6 @@
       permission:
         columns: "*"
         filter: {}
-    - role: admin
-      permission:
-        columns: "*"
-        filter: {}
     - role: superadmin
       permission:
         columns: "*"
@@ -3015,10 +3029,6 @@
         columns: "*"
         filter: {}
     - role: employee
-      permission:
-        columns: "*"
-        filter: {}
-    - role: admin
       permission:
         columns: "*"
         filter: {}
