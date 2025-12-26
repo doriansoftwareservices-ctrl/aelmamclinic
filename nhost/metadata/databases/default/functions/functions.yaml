@@ -109,7 +109,6 @@
     - role: user
     - role: owner
     - role: employee
-    - role: admin
     - role: superadmin
 - function:
     schema: public
@@ -122,7 +121,6 @@
     - role: user
     - role: owner
     - role: employee
-    - role: admin
     - role: superadmin
 - function:
     schema: public
@@ -135,7 +133,6 @@
     - role: user
     - role: owner
     - role: employee
-    - role: admin
     - role: superadmin
 - function:
     schema: public
@@ -148,7 +145,6 @@
     - role: user
     - role: owner
     - role: employee
-    - role: admin
     - role: superadmin
 - function:
     schema: public
@@ -161,7 +157,6 @@
     - role: user
     - role: owner
     - role: employee
-    - role: admin
     - role: superadmin
 - function:
     schema: public
@@ -174,7 +169,6 @@
     - role: user
     - role: owner
     - role: employee
-    - role: admin
     - role: superadmin
 - function:
     schema: public
@@ -195,7 +189,6 @@
     - role: user
     - role: owner
     - role: employee
-    - role: admin
     - role: superadmin
 - function:
     schema: public
@@ -216,7 +209,6 @@
     - role: user
     - role: owner
     - role: employee
-    - role: admin
     - role: superadmin
 - function:
     schema: public
@@ -229,7 +221,6 @@
     - role: user
     - role: owner
     - role: employee
-    - role: admin
     - role: superadmin
 - function:
     schema: public
@@ -243,7 +234,6 @@
     - role: user
     - role: owner
     - role: employee
-    - role: admin
     - role: superadmin
 - function:
     schema: public
