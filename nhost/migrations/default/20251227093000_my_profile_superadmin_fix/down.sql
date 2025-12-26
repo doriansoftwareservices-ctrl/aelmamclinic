@@ -1,0 +1,1 @@
+-- No-op: previous definition not restored automatically.
