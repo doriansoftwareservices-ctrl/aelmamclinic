@@ -1,0 +1,1 @@
+-- No-op: auth claim helper migration
