@@ -307,8 +307,6 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _ensureAutoAccount(AuthProvider auth) async {
     if (auth.isSuperAdmin) return;
     if ((auth.accountId ?? '').isNotEmpty) return;
-    if (!auth.isLoggedIn) return;
-
     if ((auth.accessToken ?? '').isEmpty) return;
 
     final email = auth.email ?? _email.text.trim();
