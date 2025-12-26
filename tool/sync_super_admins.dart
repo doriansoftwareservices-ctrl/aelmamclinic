@@ -62,7 +62,7 @@ Future<void> main(List<String> args) async {
 
   final body = jsonEncode({
     'query': r'''
-      mutation SyncSuperAdmins($emails: [String!]!) {
+      mutation SyncSuperAdmins($emails: _text!) {
         admin_sync_super_admin_emails_gql(args: {p_emails: $emails}) {
           ok
           error
