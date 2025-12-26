@@ -25,6 +25,7 @@ REVOKE ALL ON FUNCTION public.account_is_paid_gql(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.account_is_paid_gql(uuid) TO PUBLIC;
 
 -- 3) self_create_account → SETOF v_uuid_result (keep hardening logic)
+DROP FUNCTION IF EXISTS public.self_create_account(text);
 CREATE OR REPLACE FUNCTION public.self_create_account(p_clinic_name text)
 RETURNS SETOF public.v_uuid_result
 LANGUAGE plpgsql
@@ -120,6 +121,7 @@ REVOKE ALL ON FUNCTION public.self_create_account(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.self_create_account(text) TO public;
 
 -- 4) create_subscription_request → SETOF v_uuid_result (server-priced)
+DROP FUNCTION IF EXISTS public.create_subscription_request(text, uuid, text, text, text);
 CREATE OR REPLACE FUNCTION public.create_subscription_request(
   p_plan text,
   p_payment_method uuid,
@@ -206,6 +208,7 @@ REVOKE ALL ON FUNCTION public.create_subscription_request(text, uuid, text, text
 GRANT EXECUTE ON FUNCTION public.create_subscription_request(text, uuid, text, text, text) TO public;
 
 -- 5) chat_admin_start_dm → SETOF v_uuid_result
+DROP FUNCTION IF EXISTS public.chat_admin_start_dm(text);
 CREATE OR REPLACE FUNCTION public.chat_admin_start_dm(
   target_email text
 )
