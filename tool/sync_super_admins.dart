@@ -1,11 +1,11 @@
 // tool/sync_super_admins.dart
 //
-// Utility script that syncs the current AppConstants.superAdminEmails list
+// Utility script that syncs the configured super-admin emails list
 // into the Nhost/Hasura `public.super_admins` table by calling the
 // `admin_sync_super_admin_emails` RPC via GraphQL using the admin secret.
 //
 // Usage:
-//   flutter pub run tool/sync_super_admins.dart
+//   dart run tool/sync_super_admins.dart
 //
 // Required environment variables:
 //   NHOST_GRAPHQL_URL           – GraphQL endpoint URL
@@ -17,13 +17,10 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:aelmamclinic/core/constants.dart';
 import 'package:aelmamclinic/core/nhost_config.dart';
 import 'package:http/http.dart' as http;
 
 Future<void> main(List<String> args) async {
-  await AppConstants.loadRuntimeOverrides();
-
   final graphqlUrl =
       (Platform.environment['NHOST_GRAPHQL_URL'] ?? NhostConfig.graphqlUrl)
           .trim();
@@ -43,11 +40,20 @@ Future<void> main(List<String> args) async {
   }
   final adminSecretValue = adminSecret.trim();
 
-  final emails = AppConstants.superAdminEmails
+  final emails = <String>{};
+  final envEmails = _readEmailsFromEnv();
+  if (envEmails.isNotEmpty) {
+    emails.addAll(envEmails);
+  }
+  final configEmails = await _readEmailsFromConfig();
+  if (configEmails.isNotEmpty) {
+    emails.addAll(configEmails);
+  }
+  final list = emails
       .map((e) => e.trim().toLowerCase())
       .where((e) => e.isNotEmpty)
       .toList();
-  if (emails.isEmpty) {
+  if (list.isEmpty) {
     stdout.writeln(
       '[sync_super_admins] No super-admin emails configured. Nothing to sync.',
     );
@@ -63,11 +69,11 @@ Future<void> main(List<String> args) async {
         }
       }
     ''',
-    'variables': {'emails': emails},
+    'variables': {'emails': list},
   });
 
   stdout.writeln(
-    '[sync_super_admins] Syncing ${emails.length} super-admin email(s) → $graphqlUrl',
+    '[sync_super_admins] Syncing ${list.length} super-admin email(s) → $graphqlUrl',
   );
   final resp = await http.post(
     Uri.parse(graphqlUrl),
@@ -80,15 +86,17 @@ Future<void> main(List<String> args) async {
   );
 
   if (resp.statusCode >= 200 && resp.statusCode < 300) {
-    final json = jsonDecode(resp.body);
-    final errors = json is Map ? json['errors'] : null;
+    final decoded = jsonDecode(resp.body);
+    final root = decoded is Map<String, dynamic> ? decoded : null;
+    final errors = root?['errors'];
     if (errors is List && errors.isNotEmpty) {
       final msg = errors.map((e) => e['message']).join(' | ');
       stderr.writeln('[sync_super_admins] Sync failed (GraphQL): $msg');
       exit(1);
     }
-    final rows = json is Map
-        ? (json['data'] as Map?)?['admin_sync_super_admin_emails_gql']
+    final data = root?['data'];
+    final rows = data is Map<String, dynamic>
+        ? data['admin_sync_super_admin_emails_gql']
         : null;
     if (rows is List && rows.isNotEmpty) {
       final ok = rows.first['ok'] == true;
@@ -106,4 +114,71 @@ Future<void> main(List<String> args) async {
     '[sync_super_admins] Sync failed (${resp.statusCode}): ${resp.body}',
   );
   exit(1);
+}
+
+List<String> _readEmailsFromEnv() {
+  final raw = Platform.environment['SUPER_ADMIN_EMAILS'] ??
+      Platform.environment['SUPERADMIN_EMAILS'] ??
+      '';
+  if (raw.trim().isEmpty) return const [];
+  return raw
+      .split(',')
+      .map((e) => e.trim())
+      .where((e) => e.isNotEmpty)
+      .toList();
+}
+
+Future<List<String>> _readEmailsFromConfig() async {
+  final path = await _findConfigPath();
+  if (path == null) return const [];
+  try {
+    final raw = await File(path).readAsString();
+    if (raw.trim().isEmpty) return const [];
+    final decoded = jsonDecode(raw);
+    if (decoded is! Map) return const [];
+    final rawEmails = decoded['superAdminEmails'] ??
+        decoded['super_admin_emails'] ??
+        decoded['superAdmins'] ??
+        decoded['super_admins'];
+    if (rawEmails == null) return const [];
+    if (rawEmails is String) {
+      final trimmed = rawEmails.trim();
+      return trimmed.isEmpty ? const [] : [trimmed];
+    }
+    if (rawEmails is List) {
+      return rawEmails
+          .map((e) => e?.toString().trim() ?? '')
+          .where((e) => e.isNotEmpty)
+          .toList();
+    }
+    return const [];
+  } catch (_) {
+    return const [];
+  }
+}
+
+Future<String?> _findConfigPath() async {
+  final candidates = <String>{
+    r'C:\aelmam_clinic\config.json',
+    r'D:\aelmam_clinic\config.json',
+    '${_expandHome(r"~/.aelmam_clinic")}/config.json',
+    '${_expandHome(r"~/Library/Application Support/aelmam_clinic")}/config.json',
+    r'/sdcard/Android/data/com.aelmam.clinic/files/config.json',
+  };
+  for (final path in candidates) {
+    try {
+      if (await File(path).exists()) return path;
+    } catch (_) {}
+  }
+  return null;
+}
+
+String _expandHome(String value) {
+  if (!value.startsWith('~')) return value;
+  final home =
+      Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
+  if (home == null || home.isEmpty) {
+    return value.replaceFirst('~', '');
+  }
+  return value.replaceFirst('~', home);
 }
