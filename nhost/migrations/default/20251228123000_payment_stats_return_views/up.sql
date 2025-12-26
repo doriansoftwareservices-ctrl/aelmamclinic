@@ -2,6 +2,11 @@
 
 BEGIN;
 
+DROP FUNCTION IF EXISTS public.admin_payment_stats();
+DROP FUNCTION IF EXISTS public.admin_payment_stats_by_plan();
+DROP FUNCTION IF EXISTS public.admin_payment_stats_by_day();
+DROP FUNCTION IF EXISTS public.admin_payment_stats_by_month();
+
 CREATE OR REPLACE VIEW public.v_payment_stats AS
 SELECT
   NULL::uuid AS payment_method_id,
