@@ -4,7 +4,6 @@
   configuration:
     exposed_as: query
     custom_name: fn_is_super_admin_gql
-    session_argument: hasura_session
   permissions:
     - role: me
     - role: user
@@ -15,7 +14,6 @@
   configuration:
     exposed_as: query
     custom_name: debug_auth_context
-    session_argument: hasura_session
   permissions:
     - role: me
     - role: user
@@ -108,7 +106,6 @@
   configuration:
     exposed_as: query
     custom_name: my_account_id
-    session_argument: hasura_session
   permissions:
     - role: me
     - role: user
@@ -121,7 +118,6 @@
   configuration:
     exposed_as: query
     custom_name: my_profile
-    session_argument: hasura_session
   permissions:
     - role: me
     - role: user
