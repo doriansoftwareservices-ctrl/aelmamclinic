@@ -11,6 +11,19 @@ key = '{{ secrets.HASURA_GRAPHQL_JWT_SECRET }}'
 claims_namespace = 'https://hasura.io/jwt/claims'
 claims_format = 'json'
 
+
+# Added to force Hasura session vars mapping from JWT payload
+[[hasura.jwtSecrets.claims_map]]
+claim = 'x-hasura-user-id'
+path = '$.sub'
+
+[[hasura.jwtSecrets.claims_map]]
+claim = 'x-hasura-default-role'
+path = '$["https://hasura.io/jwt/claims"]["x-hasura-default-role"]'
+
+[[hasura.jwtSecrets.claims_map]]
+claim = 'x-hasura-allowed-roles'
+path = '$["https://hasura.io/jwt/claims"]["x-hasura-allowed-roles"]'
 [hasura.settings]
 corsDomain = ['*']
 devMode = true
