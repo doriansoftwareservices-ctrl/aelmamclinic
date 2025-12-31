@@ -9,6 +9,7 @@ webhookSecret = '{{ secrets.NHOST_WEBHOOK_SECRET }}'
 type = 'HS256'
 key = '{{ secrets.HASURA_GRAPHQL_JWT_SECRET }}'
 claims_namespace = 'https://hasura.io/jwt/claims'
+claims_format = 'json'
 
 [hasura.settings]
 corsDomain = ['*']
