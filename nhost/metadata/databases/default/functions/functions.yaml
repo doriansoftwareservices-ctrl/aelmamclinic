@@ -218,7 +218,6 @@
   configuration:
     exposed_as: mutation
     custom_name: self_create_account
-    session_argument: hasura_session
   permissions:
     - role: anonymous
     - role: me
