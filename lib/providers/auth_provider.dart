@@ -589,6 +589,7 @@ class AuthProvider extends ChangeNotifier {
 
     // accountId مبدئيًا من info
     String? accId = info?['accountId'] as String?;
+    final infoDisabled = info?['disabled'] == true;
 
     // Fallbacks لحسم accountId
     if (accId == null || accId.isEmpty) {
@@ -615,7 +616,7 @@ class AuthProvider extends ChangeNotifier {
       'email': u.email ?? info?['email'],
       'accountId': accId, // ← المهم
       'role': role,
-      'disabled': false, // إن وُجد لديك إشارة تعطيل؛ حدّثها هنا.
+      'disabled': infoDisabled,
       'isSuperAdmin': isSuper,
       'planCode': infoPlan ?? 'free',
       if (deviceId != null) _kDeviceId: deviceId,

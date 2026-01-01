@@ -18,11 +18,29 @@
     - role: me
       permission:
         columns: "*"
-        filter: {}
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              account_id:
+                _ceq: "id"
     - role: user
       permission:
         columns: "*"
-        filter: {}
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              account_id:
+                _ceq: "id"
     - role: superadmin
       permission:
         columns: "*"
