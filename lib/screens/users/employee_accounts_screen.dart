@@ -319,12 +319,17 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title,
-                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                  Text(
+                    title,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
                   const SizedBox(height: 4),
-                  Text(subtitle,
-                      style: TextStyle(
-                          color: scheme.onSurface.withValues(alpha: .7))),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: scheme.onSurface.withValues(alpha: .7),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -363,7 +368,7 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
               Icon(Icons.lock_rounded, color: scheme.tertiary, size: 36),
               const SizedBox(height: 10),
               const Text(
-                'ميزة حسابات الموظفين متاحة لباقات PRO فقط',
+                'قم برفع خطة اشتراكك لإضافة حسابات موظفين',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontWeight: FontWeight.w700),
               ),
@@ -427,7 +432,10 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
   }) {
     final remaining = (_baseLimit - activeEmployees).clamp(0, _baseLimit);
     return NeuCard(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 14,
+        vertical: 12,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -448,7 +456,9 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
           const SizedBox(height: 8),
           Text(
             'إجمالي الحسابات المرتبطة: $totalEmployees',
-            style: TextStyle(color: scheme.onSurface.withValues(alpha: .7)),
+            style: TextStyle(
+              color: scheme.onSurface.withValues(alpha: .7),
+            ),
           ),
         ],
       ),
@@ -461,18 +471,22 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
         child: Column(
           children: [
-            Text(value,
-                style: TextStyle(
-                    color: scheme.primary,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800)),
+            Text(
+              value,
+              style: TextStyle(
+                color: scheme.primary,
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
             const SizedBox(height: 4),
             Text(
               label,
               textAlign: TextAlign.center,
               style: TextStyle(
-                  color: scheme.onSurface.withValues(alpha: .7),
-                  fontSize: 11),
+                color: scheme.onSurface.withValues(alpha: .7),
+                fontSize: 11,
+              ),
             ),
           ],
         ),
@@ -566,14 +580,18 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
                       const SizedBox(height: 12),
                       NeuCard(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 12),
+                          horizontal: 14,
+                          vertical: 12,
+                        ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const Text(
                               'إدارة الموظفين',
                               style: TextStyle(
-                                  fontWeight: FontWeight.w700, fontSize: 14),
+                                fontWeight: FontWeight.w700,
+                                fontSize: 14,
+                              ),
                             ),
                             const SizedBox(height: 8),
                             Text(
@@ -581,7 +599,8 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
                                   ? 'يمكنك إضافة موظف جديد ضمن الحد المجاني.'
                                   : 'وصلت للحد الأقصى للمقاعد المجانية.',
                               style: TextStyle(
-                                  color: scheme.onSurface.withValues(alpha: .7)),
+                                color: scheme.onSurface.withValues(alpha: .7),
+                              ),
                             ),
                             if (activeEmployees >= _baseLimit) ...[
                               const SizedBox(height: 10),
@@ -600,8 +619,9 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
                                       child: Text(
                                         'لديك $activeEmployees موظفين. الحد الأقصى $_baseLimit.',
                                         style: TextStyle(
-                                            color: scheme.error,
-                                            fontWeight: FontWeight.w600),
+                                          color: scheme.error,
+                                          fontWeight: FontWeight.w600,
+                                        ),
                                       ),
                                     ),
                                   ],
@@ -639,7 +659,9 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
                             padding: const EdgeInsets.only(bottom: 8),
                             child: NeuCard(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 10),
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
                               child: ListTile(
                                 contentPadding: EdgeInsets.zero,
                                 leading: CircleAvatar(
@@ -655,17 +677,21 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
                                 title: Text(
                                   emp.email.isEmpty ? emp.userUid : emp.email,
                                   style: const TextStyle(
-                                      fontWeight: FontWeight.w700),
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
                                 subtitle: Text(
                                   'الدور: ${_roleLabel(emp.role)} • ${_fmtDate(emp.createdAt)}',
                                   style: TextStyle(
-                                      color: scheme.onSurface
-                                          .withValues(alpha: .7)),
+                                    color:
+                                        scheme.onSurface.withValues(alpha: .7),
+                                  ),
                                 ),
                                 trailing: Container(
                                   padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 4),
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: statusColor.withValues(alpha: 0.15),
                                     borderRadius: BorderRadius.circular(12),

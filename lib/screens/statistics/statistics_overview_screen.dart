@@ -451,6 +451,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
     required IconData icon,
     required String title,
     required VoidCallback onTap,
+    VoidCallback? onDenied,
     bool enabled = true,
     bool showProBadge = false,
   }) {
@@ -503,10 +504,16 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
             isRtl ? Icons.chevron_left_rounded : Icons.chevron_right_rounded,
             color: iconColor,
           ),
-          onTap: enabled ? onTap : () {
-            Navigator.pop(context);
-            _handleDeniedAccess();
-          },
+          onTap: enabled
+              ? onTap
+              : () {
+                  Navigator.pop(context);
+                  if (onDenied != null) {
+                    onDenied();
+                  } else {
+                    _handleDeniedAccess();
+                  }
+                },
         ),
       ),
     );
@@ -716,6 +723,29 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
                       title: 'حسابات الموظفين',
                       enabled: _canManageEmployeeAccounts(auth),
                       showProBadge: !auth.isSuperAdmin && auth.planCode == 'free',
+                      onDenied: () {
+                        final isFree =
+                            auth.planCode == 'free' && !auth.isSuperAdmin;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              isFree
+                                  ? 'قم برفع خطة اشتراكك لإضافة حسابات موظفين'
+                                  : 'ليس لديك صلاحية لإدارة حسابات الموظفين',
+                            ),
+                            behavior: SnackBarBehavior.floating,
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                        if (isFree && auth.role?.toLowerCase() == 'owner') {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const MyPlanScreen(),
+                            ),
+                          );
+                        }
+                      },
                       onTap: () {
                         Navigator.pop(context);
                         Navigator.push(
