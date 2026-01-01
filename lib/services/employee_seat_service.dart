@@ -103,6 +103,46 @@ class EmployeeSeatService {
         .toList();
   }
 
+  Future<List<EmployeeSeatRequest>> fetchMySeatRequests({
+    required String requesterUid,
+  }) async {
+    const query = r'''
+      query MySeatRequests($uid: uuid!) {
+        employee_seat_requests(
+          where: {requested_by_uid: {_eq: $uid}}
+          order_by: {created_at: desc}
+          limit: 5
+        ) {
+          id
+          account_id
+          requested_by_uid
+          employee_user_uid
+          employee_email
+          status
+          receipt_file_id
+          admin_note
+          created_at
+        }
+      }
+    ''';
+    final res = await _gql.query(
+      QueryOptions(
+        document: gql(query),
+        variables: {'uid': requesterUid},
+        fetchPolicy: FetchPolicy.noCache,
+      ),
+    );
+    if (res.hasException) {
+      throw res.exception!;
+    }
+    final rows = (res.data?['employee_seat_requests'] as List?) ?? const [];
+    return rows
+        .whereType<Map>()
+        .map((row) =>
+            EmployeeSeatRequest.fromMap(Map<String, dynamic>.from(row)))
+        .toList();
+  }
+
   Future<void> reviewSeatRequest({
     required String requestId,
     required bool approve,

@@ -1,4 +1,6 @@
 // lib/screens/admin/admin_dashboard_screen.dart
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
@@ -52,13 +54,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   // تبويبات
   late final TabController _tabController;
   int _sectionIndex = 0;
+  Timer? _pendingPollTimer;
 
   // اشتراكات ودفع وشكاوى
   List<SubscriptionRequest> _subscriptionRequests = [];
   bool _loadingRequests = false;
+  int _lastSubscriptionPending = 0;
 
   List<EmployeeSeatRequest> _seatRequests = [];
   bool _loadingSeatRequests = false;
+  int _lastSeatPending = 0;
 
   List<PaymentMethod> _paymentMethods = [];
   bool _loadingPaymentMethods = false;
@@ -114,10 +119,19 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       }
     });
     _fetchClinics();
+    _fetchSubscriptionRequests();
+    _fetchSeatRequests();
+    _pendingPollTimer =
+        Timer.periodic(const Duration(seconds: 30), (_) async {
+      if (_sectionIndex != 2) return;
+      await _fetchSubscriptionRequests();
+      await _fetchSeatRequests();
+    });
   }
 
   @override
   void dispose() {
+    _pendingPollTimer?.cancel();
     _tabController.dispose();
     _clinicNameCtrl.dispose();
     _ownerEmailCtrl.dispose();
@@ -138,6 +152,39 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   void _snack(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  int get _pendingSubscriptionCount =>
+      _subscriptionRequests.where((r) => r.status == 'pending').length;
+  int get _pendingSeatCount => _seatRequests.length;
+
+  Widget _navIconWithBadge(IconData icon, int count) {
+    if (count <= 0) return Icon(icon);
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Icon(icon),
+        Positioned(
+          right: -4,
+          top: -4,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.redAccent,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              count > 99 ? '99+' : '$count',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   Future<String?> _askDecisionNote(String title) async {
@@ -256,10 +303,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       setState(() => _loadingRequests = true);
       final rows = await _billingService.fetchSubscriptionRequests();
       if (!mounted) return;
+      final pending = rows.where((r) => r.status == 'pending').length;
       setState(() {
         _subscriptionRequests = rows;
         _loadingRequests = false;
       });
+      if (pending > _lastSubscriptionPending && _lastSubscriptionPending > 0) {
+        _snack('طلبات اشتراك جديدة بانتظار الاعتماد.');
+      }
+      _lastSubscriptionPending = pending;
     } catch (e) {
       if (!mounted) return;
       setState(() => _loadingRequests = false);
@@ -272,10 +324,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       setState(() => _loadingSeatRequests = true);
       final rows = await _seatService.fetchPendingSeatRequests();
       if (!mounted) return;
+      final pending = rows.length;
       setState(() {
         _seatRequests = rows;
         _loadingSeatRequests = false;
       });
+      if (pending > _lastSeatPending && _lastSeatPending > 0) {
+        _snack('طلبات موظفين جديدة بانتظار المراجعة.');
+      }
+      _lastSeatPending = pending;
     } catch (e) {
       if (!mounted) return;
       setState(() => _loadingSeatRequests = false);
@@ -559,28 +616,31 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                           await _refreshCurrentSection();
                         },
                         labelType: NavigationRailLabelType.all,
-                        destinations: const [
-                          NavigationRailDestination(
+                        destinations: [
+                          const NavigationRailDestination(
                             icon: Icon(Icons.local_hospital_outlined),
                             label: Text('العيادات'),
                           ),
-                          NavigationRailDestination(
+                          const NavigationRailDestination(
                             icon: Icon(Icons.chat_bubble_outline),
                             label: Text('الدردشات'),
                           ),
                           NavigationRailDestination(
-                            icon: Icon(Icons.workspace_premium_rounded),
-                            label: Text('الاشتراكات'),
+                            icon: _navIconWithBadge(
+                              Icons.workspace_premium_rounded,
+                              _pendingSubscriptionCount + _pendingSeatCount,
+                            ),
+                            label: const Text('الاشتراكات'),
                           ),
-                          NavigationRailDestination(
+                          const NavigationRailDestination(
                             icon: Icon(Icons.account_balance_rounded),
                             label: Text('طرق الدفع'),
                           ),
-                          NavigationRailDestination(
+                          const NavigationRailDestination(
                             icon: Icon(Icons.report_problem_rounded),
                             label: Text('الشكاوى'),
                           ),
-                          NavigationRailDestination(
+                          const NavigationRailDestination(
                             icon: Icon(Icons.analytics_rounded),
                             label: Text('الإحصاءات'),
                           ),
@@ -689,6 +749,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       length: 2,
       child: Column(
         children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+            child: Row(
+              children: [
+                _statChip('طلبات الاشتراك', _pendingSubscriptionCount),
+                const SizedBox(width: 8),
+                _statChip('طلبات الموظفين', _pendingSeatCount),
+              ],
+            ),
+          ),
           TabBar(
             labelColor: Theme.of(context).colorScheme.onSurface,
             unselectedLabelColor:
@@ -710,6 +780,33 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _statChip(String label, int value) {
+    return Expanded(
+      child: NeuCard(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        child: Row(
+          children: [
+            Text(
+              '$value',
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  color:
+                      Theme.of(context).colorScheme.onSurface.withValues(alpha: .7),
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

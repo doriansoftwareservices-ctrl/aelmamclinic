@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/models/employee_account_record.dart';
+import 'package:aelmamclinic/models/employee_seat_request.dart';
 import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:aelmamclinic/screens/subscription/my_plan_screen.dart';
 import 'package:aelmamclinic/screens/users/employee_seat_payment_screen.dart';
@@ -24,6 +25,9 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
   final _seatService = EmployeeSeatService();
   late Future<List<EmployeeAccountRecord>> _employees;
   bool _busy = false;
+  bool _loadingRequests = false;
+  List<EmployeeSeatRequest> _seatRequests = const [];
+  final Set<String> _notifiedRequestIds = <String>{};
 
   static const int _baseLimit = 5;
 
@@ -32,6 +36,7 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
     super.initState();
     final accountId = context.read<AuthProvider>().accountId;
     _employees = _loadEmployees(accountId);
+    _refreshSeatRequests();
   }
 
   @override
@@ -56,6 +61,42 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
     final accountId = context.read<AuthProvider>().accountId;
     setState(() => _employees = _loadEmployees(accountId));
     await _employees;
+    await _refreshSeatRequests();
+  }
+
+  Future<void> _refreshSeatRequests() async {
+    final uid = context.read<AuthProvider>().uid;
+    if (uid == null || uid.isEmpty) return;
+    setState(() => _loadingRequests = true);
+    try {
+      final rows = await _seatService.fetchMySeatRequests(requesterUid: uid);
+      if (!mounted) return;
+      setState(() {
+        _seatRequests = rows;
+        _loadingRequests = false;
+      });
+      for (final req in rows) {
+        if (_notifiedRequestIds.contains(req.id)) continue;
+        if (req.status == 'approved') {
+          _notifiedRequestIds.add(req.id);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('تم اعتماد طلب الموظف بنجاح.')),
+            );
+          }
+        } else if (req.status == 'rejected') {
+          _notifiedRequestIds.add(req.id);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('تم رفض طلب الموظف.')),
+            );
+          }
+        }
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loadingRequests = false);
+    }
   }
 
   Future<Map<String, String>?> _promptCredentials({
@@ -244,6 +285,70 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
   String _fmtDate(DateTime? dt) {
     if (dt == null) return '—';
     return formatYmd(dt.toLocal());
+  }
+
+  Widget _buildPendingRequestBanner(ColorScheme scheme) {
+    if (_loadingRequests || _seatRequests.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final latest = _seatRequests.first;
+    final status = latest.status;
+    final isAwaiting = status == 'awaiting_payment';
+    final isSubmitted = status == 'submitted';
+    if (!isAwaiting && !isSubmitted) return const SizedBox.shrink();
+
+    final title = isAwaiting
+        ? 'لديك طلب لم يتم دفعه بعد'
+        : 'تم إرسال طلب التفعيل للمراجعة';
+    final subtitle = isAwaiting
+        ? 'أكمل الدفع لإرسال الطلب للمراجعة.'
+        : 'سيتم تفعيل الحساب بعد اعتماد السوبر أدمن.';
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: NeuCard(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            Icon(
+              isAwaiting ? Icons.payment_rounded : Icons.hourglass_top_rounded,
+              color: scheme.tertiary,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 4),
+                  Text(subtitle,
+                      style: TextStyle(
+                          color: scheme.onSurface.withValues(alpha: .7))),
+                ],
+              ),
+            ),
+            if (isAwaiting)
+              FilledButton(
+                onPressed: _busy
+                    ? null
+                    : () async {
+                        await Navigator.of(context).push<bool>(
+                          MaterialPageRoute(
+                            builder: (_) => EmployeeSeatPaymentScreen(
+                              requestId: latest.id,
+                              employeeEmail: latest.employeeEmail,
+                            ),
+                          ),
+                        );
+                        await _refreshSeatRequests();
+                      },
+                child: const Text('استكمال الدفع'),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildLockedView(ColorScheme scheme) {
@@ -452,6 +557,7 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
                     physics: physics,
                     padding: const EdgeInsets.all(12),
                     children: [
+                      _buildPendingRequestBanner(scheme),
                       _buildSummaryCard(
                         scheme,
                         activeEmployees: activeEmployees,
