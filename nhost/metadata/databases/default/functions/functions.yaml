@@ -251,6 +251,7 @@
   configuration:
     exposed_as: mutation
     custom_name: create_subscription_request
+    session_argument: hasura_session
   permissions:
     - role: me
     - role: user
