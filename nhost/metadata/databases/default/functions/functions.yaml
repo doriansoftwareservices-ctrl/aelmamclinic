@@ -133,10 +133,11 @@
     - role: superadmin
 - function:
     schema: public
-    name: my_feature_permissions
+    name: my_feature_permissions_rpc
   configuration:
     exposed_as: query
     custom_name: my_feature_permissions
+    session_argument: hasura_session
   permissions:
     - role: me
     - role: user
