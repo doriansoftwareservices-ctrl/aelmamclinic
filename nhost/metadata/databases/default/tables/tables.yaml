@@ -2421,6 +2421,7 @@
       permission:
         columns:
           - account_id
+          - allow_all
           - allowed_features
           - can_create
           - can_update
@@ -2430,6 +2431,7 @@
       permission:
         columns:
           - account_id
+          - allow_all
           - allowed_features
           - can_create
           - can_update
@@ -2439,6 +2441,7 @@
       permission:
         columns:
           - account_id
+          - allow_all
           - allowed_features
           - can_create
           - can_update
