@@ -145,7 +145,7 @@
     - role: superadmin
 - function:
     schema: public
-    name: my_account_id
+    name: my_account_id_rpc
   configuration:
     exposed_as: query
     custom_name: my_account_id

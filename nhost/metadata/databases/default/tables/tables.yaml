@@ -27,7 +27,7 @@
               user_uid:
                 _eq: "X-Hasura-User-Id"
               account_id:
-                _ceq: "id"
+                _ceq: "account_id"
     - role: user
       permission:
         columns: "*"
@@ -40,7 +40,7 @@
               user_uid:
                 _eq: "X-Hasura-User-Id"
               account_id:
-                _ceq: "id"
+                _ceq: "account_id"
     - role: superadmin
       permission:
         columns: "*"
