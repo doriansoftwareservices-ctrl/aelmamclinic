@@ -5,7 +5,6 @@ import 'package:path/path.dart' as p;
 
 Future<
     ({
-      List<String>? superAdminEmails,
       String? nhostSubdomain,
       String? nhostRegion,
       String? nhostGraphqlUrl,
@@ -119,30 +118,6 @@ Future<
         return '$value'.trim();
       }
 
-      List<String>? readEmailList() {
-        final raw = data['superAdminEmails'] ??
-            data['super_admin_emails'] ??
-            data['superAdmins'] ??
-            data['super_admins'];
-        if (raw == null) return null;
-        List<String> normalizeList(List list) {
-          return list
-              .map((e) => e?.toString().trim() ?? '')
-              .where((value) => value.isNotEmpty)
-              .toList();
-        }
-
-        if (raw is String) {
-          final trimmed = raw.trim();
-          return trimmed.isEmpty ? null : [trimmed];
-        }
-        if (raw is List) {
-          final values = normalizeList(raw);
-          return values.isEmpty ? null : values;
-        }
-        return null;
-      }
-
       final nhostSubdomain = readKey('nhostSubdomain');
       final nhostRegion = readKey('nhostRegion');
       final nhostGraphqlUrl = readKey('nhostGraphqlUrl');
@@ -150,7 +125,6 @@ Future<
       final nhostStorageUrl = readKey('nhostStorageUrl');
       final nhostFunctionsUrl = readKey('nhostFunctionsUrl');
       final resetPasswordRedirectUrl = readKey('resetPasswordRedirectUrl');
-      final admins = readEmailList();
 
       final noNhostOverrides = (nhostSubdomain == null ||
               nhostSubdomain.isEmpty) &&
@@ -162,12 +136,11 @@ Future<
           (resetPasswordRedirectUrl == null ||
               resetPasswordRedirectUrl.isEmpty);
 
-      if (noNhostOverrides && (admins == null || admins.isEmpty)) {
+      if (noNhostOverrides) {
         continue;
       }
 
       return (
-        superAdminEmails: admins,
         nhostSubdomain: nhostSubdomain,
         nhostRegion: nhostRegion,
         nhostGraphqlUrl: nhostGraphqlUrl,

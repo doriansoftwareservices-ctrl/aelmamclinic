@@ -15,6 +15,11 @@ class NhostGraphqlService {
         NhostConfig.graphqlUrl,
       );
 
+  static bool _isSuperAdmin(NhostClient client) {
+    final roles = client.auth.currentUser?.roles ?? const [];
+    return roles.any((role) => role.toLowerCase() == 'superadmin');
+  }
+
   static WebSocketLink _buildWebSocketLink(NhostClient client) {
     return WebSocketLink(
       NhostConfig.graphqlWsUrl,
@@ -23,11 +28,15 @@ class NhostGraphqlService {
         inactivityTimeout: const Duration(seconds: 30),
         initialPayload: () async {
           final token = client.auth.accessToken;
+          final isSuper = _isSuperAdmin(client);
           if (token == null || token.isEmpty) {
             return <String, dynamic>{};
           }
           return <String, dynamic>{
-            'headers': {'Authorization': 'Bearer $token'},
+            'headers': {
+              'Authorization': 'Bearer $token',
+              if (isSuper) 'x-hasura-role': 'superadmin',
+            },
           };
         },
       ),
@@ -38,13 +47,28 @@ class NhostGraphqlService {
     final nhost = client ?? NhostManager.client;
     final httpLink = _buildHttpLink();
     final wsLink = _buildWebSocketLink(nhost);
+    final roleLink = Link.function((request, [forward]) {
+      final isSuper = _isSuperAdmin(nhost);
+      if (!isSuper) return forward!(request);
+      final existing =
+          request.context.entry<HttpLinkHeaders>()?.headers ?? const {};
+      request = request.updateContextEntry(
+        HttpLinkHeaders(
+          headers: {
+            ...existing,
+            'x-hasura-role': 'superadmin',
+          },
+        ),
+      );
+      return forward!(request);
+    });
     final authLink = AuthLink(
       getToken: () async {
         final access = nhost.auth.accessToken;
         return access != null && access.isNotEmpty ? 'Bearer $access' : null;
       },
     );
-    final authedHttp = authLink.concat(httpLink);
+    final authedHttp = roleLink.concat(authLink).concat(httpLink);
     return Link.split((request) => request.isSubscription, wsLink, authedHttp);
   }
 

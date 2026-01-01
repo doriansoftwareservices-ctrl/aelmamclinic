@@ -201,11 +201,6 @@ class _LoginScreenState extends State<LoginScreen> {
       }
       await _persistRememberedCredentials(email: email, password: pass);
 
-      if ((auth.accountId ?? '').isEmpty && !auth.isSuperAdmin) {
-        await auth.refreshSession();
-        await _ensureAutoAccount(auth);
-      }
-
       final result = await auth.refreshAndValidateCurrentUser();
       if (!mounted) return;
 
@@ -284,7 +279,8 @@ class _LoginScreenState extends State<LoginScreen> {
       if (clinicName != null && clinicName.trim().isNotEmpty) {
         await auth.selfCreateAccount(clinicName.trim());
       } else {
-        await _ensureAutoAccount(auth);
+        setState(() => _error = 'اسم العيادة مطلوب لإكمال إنشاء الحساب.');
+        return;
       }
       final result = await auth.refreshAndValidateCurrentUser();
       if (!mounted) return;
@@ -308,55 +304,6 @@ class _LoginScreenState extends State<LoginScreen> {
         setState(() => _loading = false);
       }
     }
-  }
-
-  Future<void> _ensureAutoAccount(AuthProvider auth) async {
-    if (auth.isSuperAdmin) return;
-    if ((auth.accountId ?? '').isNotEmpty) return;
-    if ((auth.accessToken ?? '').isEmpty) return;
-
-    final email = auth.email ?? _email.text.trim();
-    final seed = email.isEmpty
-        ? 'عيادة جديدة'
-        : 'عيادة ${email.split('@').first}';
-
-    Future<void> tryCreate(String name, int attempt) async {
-    try {
-      await auth.selfCreateAccount(name);
-    } catch (e) {
-      final msg = e.toString();
-      // سجل الخطأ للمساعدة في التشخيص على الديسكتوب
-      // ignore: avoid_print
-      print('auto_create_account_failed: $msg');
-      final lower = msg.toLowerCase();
-        if (lower.contains('not found in type') ||
-            lower.contains('mutation_root') ||
-            lower.contains('backend schema')) {
-          if (!mounted) return;
-          setState(() => _error =
-              'تعذّر إنشاء العيادة تلقائيًا: الخادم غير مهيأ بعد. حاول بعد اكتمال النشر.');
-          return;
-        }
-        if (lower.contains('already linked')) {
-          return;
-        }
-        if (lower.contains('not authenticated') ||
-            lower.contains('not signed in') ||
-            lower.contains('permission')) {
-          if (attempt < 3) {
-            await Future.delayed(Duration(milliseconds: 250 * attempt));
-            return tryCreate(name, attempt + 1);
-          }
-        }
-        if (lower.contains('clinic_name is required') && name != 'عيادة جديدة') {
-          return tryCreate('عيادة جديدة', attempt + 1);
-        }
-        if (!mounted) return;
-        setState(() => _error = 'تعذّر إنشاء العيادة تلقائيًا: $msg');
-      }
-    }
-
-    await tryCreate(seed, 1);
   }
 
   Future<String?> _askClinicName() async {

@@ -1,7 +1,7 @@
 // tool/sync_super_admins.dart
 //
-// Utility script that syncs the configured super-admin emails list
-// into the Nhost/Hasura `public.super_admins` table by calling the
+// Utility script that syncs super-admin emails (from env) into the
+// Nhost/Hasura `public.super_admins` table by calling the
 // `admin_sync_super_admin_emails` RPC via GraphQL using the admin secret.
 //
 // Usage:
@@ -44,10 +44,6 @@ Future<void> main(List<String> args) async {
   final envEmails = _readEmailsFromEnv();
   if (envEmails.isNotEmpty) {
     emails.addAll(envEmails);
-  }
-  final configEmails = await _readEmailsFromConfig();
-  if (configEmails.isNotEmpty) {
-    emails.addAll(configEmails);
   }
   final list = emails
       .map((e) => e.trim().toLowerCase())
@@ -127,61 +123,6 @@ List<String> _readEmailsFromEnv() {
       .map((e) => e.trim())
       .where((e) => e.isNotEmpty)
       .toList();
-}
-
-Future<List<String>> _readEmailsFromConfig() async {
-  final path = await _findConfigPath();
-  if (path == null) return const [];
-  try {
-    final raw = await File(path).readAsString();
-    if (raw.trim().isEmpty) return const [];
-    final decoded = jsonDecode(raw);
-    if (decoded is! Map) return const [];
-    final rawEmails = decoded['superAdminEmails'] ??
-        decoded['super_admin_emails'] ??
-        decoded['superAdmins'] ??
-        decoded['super_admins'];
-    if (rawEmails == null) return const [];
-    if (rawEmails is String) {
-      final trimmed = rawEmails.trim();
-      return trimmed.isEmpty ? const [] : [trimmed];
-    }
-    if (rawEmails is List) {
-      return rawEmails
-          .map((e) => e?.toString().trim() ?? '')
-          .where((e) => e.isNotEmpty)
-          .toList();
-    }
-    return const [];
-  } catch (_) {
-    return const [];
-  }
-}
-
-Future<String?> _findConfigPath() async {
-  final candidates = <String>{
-    r'C:\aelmam_clinic\config.json',
-    r'D:\aelmam_clinic\config.json',
-    '${_expandHome(r"~/.aelmam_clinic")}/config.json',
-    '${_expandHome(r"~/Library/Application Support/aelmam_clinic")}/config.json',
-    r'/sdcard/Android/data/com.aelmam.clinic/files/config.json',
-  };
-  for (final path in candidates) {
-    try {
-      if (await File(path).exists()) return path;
-    } catch (_) {}
-  }
-  return null;
-}
-
-String _expandHome(String value) {
-  if (!value.startsWith('~')) return value;
-  final home =
-      Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
-  if (home == null || home.isEmpty) {
-    return value.replaceFirst('~', '');
-  }
-  return value.replaceFirst('~', home);
 }
 
 String _toPgTextArrayLiteral(List<String> values) {

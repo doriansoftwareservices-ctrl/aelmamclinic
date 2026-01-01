@@ -5,15 +5,18 @@
 class NhostConfig {
   const NhostConfig._();
 
+  static const String _fallbackSubdomain = 'mergrgclboxflnucehgb';
+  static const String _fallbackRegion = 'ap-southeast-1';
+
   static final String _defaultSubdomain = const String.fromEnvironment(
     'NHOST_SUBDOMAIN',
-    defaultValue: 'mergrgclboxflnucehgb',
+    defaultValue: _fallbackSubdomain,
   );
   static String? _overrideSubdomain;
 
   static final String _defaultRegion = const String.fromEnvironment(
     'NHOST_REGION',
-    defaultValue: 'ap-southeast-1',
+    defaultValue: _fallbackRegion,
   );
   static String? _overrideRegion;
 
@@ -53,13 +56,22 @@ class NhostConfig {
   static String? _overrideResetPasswordRedirectUrl;
 
   /// Nhost project subdomain (e.g. `mergrgclboxflnucehgb`).
-  static String get subdomain => _overrideSubdomain ?? _defaultSubdomain;
+  static String get subdomain =>
+      _overrideSubdomain ??
+      _normalizeOrFallback(_defaultSubdomain, _fallbackSubdomain);
 
   /// Nhost region (e.g. `ap-southeast-1`).
-  static String get region => _overrideRegion ?? _defaultRegion;
+  static String get region =>
+      _overrideRegion ?? _normalizeOrFallback(_defaultRegion, _fallbackRegion);
 
   /// REST endpoints exposed by Nhost services.
-  static String get graphqlUrl => _overrideGraphqlUrl ?? _defaultGraphqlUrl;
+  static String get graphqlUrl {
+    final candidate = _overrideGraphqlUrl ?? _defaultGraphqlUrl;
+    if (candidate.trim().isNotEmpty) {
+      return candidate;
+    }
+    return _buildServiceUrl('graphql');
+  }
 
   /// WebSocket endpoint for Hasura subscriptions (derived from graphqlUrl).
   static String get graphqlWsUrl {
@@ -76,16 +88,47 @@ class NhostConfig {
         );
   }
 
-  static String get authUrl => _overrideAuthUrl ?? _defaultAuthUrl;
+  static String get authUrl {
+    final candidate = _overrideAuthUrl ?? _defaultAuthUrl;
+    if (candidate.trim().isNotEmpty) {
+      return candidate;
+    }
+    return _buildServiceUrl('auth');
+  }
 
-  static String get storageUrl => _overrideStorageUrl ?? _defaultStorageUrl;
+  static String get storageUrl {
+    final candidate = _overrideStorageUrl ?? _defaultStorageUrl;
+    if (candidate.trim().isNotEmpty) {
+      return candidate;
+    }
+    return _buildServiceUrl('storage');
+  }
 
-  static String get functionsUrl =>
-      _overrideFunctionsUrl ?? _defaultFunctionsUrl;
+  static String get functionsUrl {
+    final candidate = _overrideFunctionsUrl ?? _defaultFunctionsUrl;
+    if (candidate.trim().isNotEmpty) {
+      return candidate;
+    }
+    return _buildServiceUrl('functions');
+  }
 
   /// Optional URL for password reset redirects (used when email links are sent).
   static String get resetPasswordRedirectUrl =>
       _overrideResetPasswordRedirectUrl ?? _defaultResetPasswordRedirectUrl;
+
+  static String _normalizeOrFallback(String value, String fallback) {
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? fallback : trimmed;
+  }
+
+  static String _buildServiceUrl(String service) {
+    final sub = subdomain.trim();
+    final reg = region.trim();
+    if (sub.isEmpty || reg.isEmpty) {
+      return '';
+    }
+    return 'https://$sub.$service.$reg.nhost.run/v1';
+  }
 
   static void applyOverrides({
     String? subdomain,

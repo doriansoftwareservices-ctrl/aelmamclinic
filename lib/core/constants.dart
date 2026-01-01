@@ -20,17 +20,14 @@ class AppConstants {
   static String get resetPasswordRedirectUrl =>
       NhostConfig.resetPasswordRedirectUrl;
 
-  static List<String> _superAdminEmails = const [];
   static bool _overridesLoaded = false;
-
-  static List<String> get superAdminEmails => _superAdminEmails;
 
   /// Loads runtime overrides for Nhost configuration from the platform
   /// data directory (e.g. `C:\aelmam_clinic\config.json` on Windows).
   ///
   /// The JSON file supports the keys `nhostSubdomain`, `nhostRegion`,
   /// `nhostGraphqlUrl`, `nhostAuthUrl`, `nhostStorageUrl`, `nhostFunctionsUrl`,
-  /// `resetPasswordRedirectUrl`, and `superAdminEmails`.
+  /// and `resetPasswordRedirectUrl`.
   static Future<void> loadRuntimeOverrides() async {
     if (_overridesLoaded) {
       return;
@@ -63,7 +60,6 @@ class AppConstants {
     }
 
     final ({
-      List<String>? superAdminEmails,
       String? nhostSubdomain,
       String? nhostRegion,
       String? nhostGraphqlUrl,
@@ -74,7 +70,6 @@ class AppConstants {
       String? source,
     }) overrides = result;
 
-    final admins = overrides.superAdminEmails;
     final source = overrides.source;
     final nhostSubdomain = overrides.nhostSubdomain;
     final nhostRegion = overrides.nhostRegion;
@@ -83,12 +78,6 @@ class AppConstants {
     final nhostStorageUrl = overrides.nhostStorageUrl;
     final nhostFunctionsUrl = overrides.nhostFunctionsUrl;
     final resetPasswordRedirectUrl = overrides.resetPasswordRedirectUrl;
-    if (admins != null && admins.isNotEmpty) {
-      _superAdminEmails = admins
-          .map((e) => e.trim().toLowerCase())
-          .where((e) => e.isNotEmpty)
-          .toList();
-    }
 
     NhostConfig.applyOverrides(
       subdomain: nhostSubdomain,

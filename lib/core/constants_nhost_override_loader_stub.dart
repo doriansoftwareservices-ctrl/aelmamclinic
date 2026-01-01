@@ -1,6 +1,5 @@
 Future<
     ({
-      List<String>? superAdminEmails,
       String? nhostSubdomain,
       String? nhostRegion,
       String? nhostGraphqlUrl,

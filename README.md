@@ -37,8 +37,7 @@
      "nhostGraphqlUrl": "https://mergrgclboxflnucehgb.graphql.ap-southeast-1.nhost.run/v1",
      "nhostAuthUrl": "https://mergrgclboxflnucehgb.auth.ap-southeast-1.nhost.run/v1",
      "nhostStorageUrl": "https://mergrgclboxflnucehgb.storage.ap-southeast-1.nhost.run/v1",
-     "nhostFunctionsUrl": "https://mergrgclboxflnucehgb.functions.ap-southeast-1.nhost.run/v1",
-     "superAdminEmails": ["admin@elmam.com"]
+     "nhostFunctionsUrl": "https://mergrgclboxflnucehgb.functions.ap-southeast-1.nhost.run/v1"
    }
    ```
 

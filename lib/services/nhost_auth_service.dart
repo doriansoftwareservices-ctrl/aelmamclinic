@@ -294,23 +294,13 @@ class NhostAuthService {
       if (rows is List && rows.isNotEmpty) {
         final flag = rows.first['is_super_admin'];
         if (flag is bool) {
-          if (flag) return true;
-          final email = (fallbackEmail ?? '').trim().toLowerCase();
-          if (email.isNotEmpty &&
-              AppConstants.superAdminEmails.contains(email)) {
-            return true;
-          }
-          return false;
+          return flag;
         }
       }
       dev.log(
         'fn_is_super_admin_gql returned unexpected shape: ${rows.runtimeType}',
         name: 'AUTH',
       );
-      final email = (fallbackEmail ?? '').trim().toLowerCase();
-      if (email.isNotEmpty && AppConstants.superAdminEmails.contains(email)) {
-        return true;
-      }
       return false;
     } catch (e, st) {
       dev.log(
@@ -319,10 +309,6 @@ class NhostAuthService {
         error: e,
         stackTrace: st,
       );
-      final email = (fallbackEmail ?? '').trim().toLowerCase();
-      if (email.isNotEmpty && AppConstants.superAdminEmails.contains(email)) {
-        return true;
-      }
       return false;
     }
   }

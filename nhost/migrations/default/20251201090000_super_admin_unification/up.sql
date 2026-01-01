@@ -1,8 +1,7 @@
 -- 20251201090000_super_admin_unification.sql
 -- Unify super-admin handling between the Flutter client and Supabase by
 -- introducing a reusable helper, eliminating hard-coded email checks, and
--- exposing an RPC that allows the tool/sync_super_admins.dart script to seed
--- `public.super_admins` from AppConstants.superAdminEmails.
+-- exposing an RPC that allows external tooling to seed `public.super_admins`.
 
 BEGIN;
 

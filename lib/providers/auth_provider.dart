@@ -162,6 +162,7 @@ class AuthProvider extends ChangeNotifier {
   bool _permissionsLoaded = false;
   String? _permissionsError;
   bool _autoCreateAttempted = false;
+  bool _allowAutoCreateAccount = false;
 
   Set<String> get allowedFeatures => _allowedFeatures;
   bool get allowAllFeatures => _allowAllFeatures;
@@ -212,15 +213,16 @@ class AuthProvider extends ChangeNotifier {
     if (listenAuthChanges) {
       // الاستماع لتغيّرات المصادقة
       _authSub = _auth.authStateChanges.listen((event) async {
-        if (event == AuthenticationState.signedOut) {
-          // هذه الإشارة تأتي بعد signOut — نظّف الحالة المحلية فقط.
-          currentUser = null;
-          _resetPermissionsInMemory();
-          await _stopDoctorPatientAlerts();
-          await _clearStorage();
-          notifyListeners();
-          return;
-        }
+      if (event == AuthenticationState.signedOut) {
+        // هذه الإشارة تأتي بعد signOut — نظّف الحالة المحلية فقط.
+        currentUser = null;
+        _resetPermissionsInMemory();
+        _allowAutoCreateAccount = false;
+        await _stopDoctorPatientAlerts();
+        await _clearStorage();
+        notifyListeners();
+        return;
+      }
 
         // لأي حدث آخر: نحدّث من الشبكة عند الدخول أو عند حلول موعد الفحص
         final due = await _isNetCheckDue();
@@ -712,8 +714,21 @@ class AuthProvider extends ChangeNotifier {
           return result;
         }
         if (result == AuthAccountGuardResult.noAccount) {
+          if (!_allowAutoCreateAccount) {
+            _authDiagWarn(
+              '_ensureActiveAccountOrSignOut:autoCreate:skipped',
+              context: {'reason': 'auto-create disabled'},
+              stackTrace: st,
+            );
+            currentUser!['disabled'] = false;
+            currentUser!['accountId'] = null;
+            await _persistUser();
+            return result;
+          }
+
           if (!_autoCreateAttempted) {
             _autoCreateAttempted = true;
+            _allowAutoCreateAccount = false;
             final seed = _seedClinicName();
             _authDiagWarn(
               '_ensureActiveAccountOrSignOut:autoCreate:attempt',
@@ -787,6 +802,12 @@ class AuthProvider extends ChangeNotifier {
     if (addr.isEmpty) return 'عيادة جديدة';
     final handle = addr.split('@').first;
     return handle.isEmpty ? 'عيادة جديدة' : 'عيادة $handle';
+  }
+
+  /// يسمح لمحاولة واحدة فقط لإنشاء حساب تلقائي (مسار onboarding المالك).
+  void allowAutoCreateAccountOnce() {
+    _allowAutoCreateAccount = true;
+    _autoCreateAttempted = false;
   }
 
   /// يجلب صلاحيات الميزات + CRUD للحساب الحالي ويخزّنها محليًا

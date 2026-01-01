@@ -578,51 +578,31 @@
     - role: me
       permission:
         columns: "*"
-        filter: {}
+        filter:
+          user_uid:
+            _eq: "X-Hasura-User-Id"
     - role: user
       permission:
         columns: "*"
-        filter: {}
+        filter:
+          user_uid:
+            _eq: "X-Hasura-User-Id"
     - role: superadmin
       permission:
         columns: "*"
         filter: {}
   insert_permissions:
-    - role: me
-      permission:
-        check: {}
-        columns: "*"
-    - role: user
-      permission:
-        check: {}
-        columns: "*"
     - role: superadmin
       permission:
         check: {}
         columns: "*"
   update_permissions:
-    - role: me
-      permission:
-        columns: "*"
-        filter: {}
-        check: {}
-    - role: user
-      permission:
-        columns: "*"
-        filter: {}
-        check: {}
     - role: superadmin
       permission:
         columns: "*"
         filter: {}
         check: {}
   delete_permissions:
-    - role: me
-      permission:
-        filter: {}
-    - role: user
-      permission:
-        filter: {}
     - role: superadmin
       permission:
         filter: {}
@@ -634,51 +614,31 @@
     - role: me
       permission:
         columns: "*"
-        filter: {}
+        filter:
+          id:
+            _eq: "X-Hasura-User-Id"
     - role: user
       permission:
         columns: "*"
-        filter: {}
+        filter:
+          id:
+            _eq: "X-Hasura-User-Id"
     - role: superadmin
       permission:
         columns: "*"
         filter: {}
   insert_permissions:
-    - role: me
-      permission:
-        check: {}
-        columns: "*"
-    - role: user
-      permission:
-        check: {}
-        columns: "*"
     - role: superadmin
       permission:
         check: {}
         columns: "*"
   update_permissions:
-    - role: me
-      permission:
-        columns: "*"
-        filter: {}
-        check: {}
-    - role: user
-      permission:
-        columns: "*"
-        filter: {}
-        check: {}
     - role: superadmin
       permission:
         columns: "*"
         filter: {}
         check: {}
   delete_permissions:
-    - role: me
-      permission:
-        filter: {}
-    - role: user
-      permission:
-        filter: {}
     - role: superadmin
       permission:
         filter: {}
@@ -760,54 +720,22 @@
     schema: public
     name: accounts
   select_permissions:
-    - role: me
-      permission:
-        columns: "*"
-        filter: {}
-    - role: user
-      permission:
-        columns: "*"
-        filter: {}
     - role: superadmin
       permission:
         columns: "*"
         filter: {}
   insert_permissions:
-    - role: me
-      permission:
-        check: {}
-        columns: "*"
-    - role: user
-      permission:
-        check: {}
-        columns: "*"
     - role: superadmin
       permission:
         check: {}
         columns: "*"
   update_permissions:
-    - role: me
-      permission:
-        columns: "*"
-        filter: {}
-        check: {}
-    - role: user
-      permission:
-        columns: "*"
-        filter: {}
-        check: {}
     - role: superadmin
       permission:
         columns: "*"
         filter: {}
         check: {}
   delete_permissions:
-    - role: me
-      permission:
-        filter: {}
-    - role: user
-      permission:
-        filter: {}
     - role: superadmin
       permission:
         filter: {}
@@ -2104,54 +2032,22 @@
     schema: public
     name: account_subscriptions
   select_permissions:
-    - role: me
-      permission:
-        columns: "*"
-        filter: {}
-    - role: user
-      permission:
-        columns: "*"
-        filter: {}
     - role: superadmin
       permission:
         columns: "*"
         filter: {}
   insert_permissions:
-    - role: me
-      permission:
-        check: {}
-        columns: "*"
-    - role: user
-      permission:
-        check: {}
-        columns: "*"
     - role: superadmin
       permission:
         check: {}
         columns: "*"
   update_permissions:
-    - role: me
-      permission:
-        columns: "*"
-        filter: {}
-        check: {}
-    - role: user
-      permission:
-        columns: "*"
-        filter: {}
-        check: {}
     - role: superadmin
       permission:
         columns: "*"
         filter: {}
         check: {}
   delete_permissions:
-    - role: me
-      permission:
-        filter: {}
-    - role: user
-      permission:
-        filter: {}
     - role: superadmin
       permission:
         filter: {}
@@ -2163,51 +2059,31 @@
     - role: me
       permission:
         columns: "*"
-        filter: {}
+        filter:
+          is_active:
+            _eq: true
     - role: user
       permission:
         columns: "*"
-        filter: {}
+        filter:
+          is_active:
+            _eq: true
     - role: superadmin
       permission:
         columns: "*"
         filter: {}
   insert_permissions:
-    - role: me
-      permission:
-        check: {}
-        columns: "*"
-    - role: user
-      permission:
-        check: {}
-        columns: "*"
     - role: superadmin
       permission:
         check: {}
         columns: "*"
   update_permissions:
-    - role: me
-      permission:
-        columns: "*"
-        filter: {}
-        check: {}
-    - role: user
-      permission:
-        columns: "*"
-        filter: {}
-        check: {}
     - role: superadmin
       permission:
         columns: "*"
         filter: {}
         check: {}
   delete_permissions:
-    - role: me
-      permission:
-        filter: {}
-    - role: user
-      permission:
-        filter: {}
     - role: superadmin
       permission:
         filter: {}
@@ -2216,54 +2092,22 @@
     schema: public
     name: subscription_payments
   select_permissions:
-    - role: me
-      permission:
-        columns: "*"
-        filter: {}
-    - role: user
-      permission:
-        columns: "*"
-        filter: {}
     - role: superadmin
       permission:
         columns: "*"
         filter: {}
   insert_permissions:
-    - role: me
-      permission:
-        check: {}
-        columns: "*"
-    - role: user
-      permission:
-        check: {}
-        columns: "*"
     - role: superadmin
       permission:
         check: {}
         columns: "*"
   update_permissions:
-    - role: me
-      permission:
-        columns: "*"
-        filter: {}
-        check: {}
-    - role: user
-      permission:
-        columns: "*"
-        filter: {}
-        check: {}
     - role: superadmin
       permission:
         columns: "*"
         filter: {}
         check: {}
   delete_permissions:
-    - role: me
-      permission:
-        filter: {}
-    - role: user
-      permission:
-        filter: {}
     - role: superadmin
       permission:
         filter: {}
@@ -2275,51 +2119,31 @@
     - role: me
       permission:
         columns: "*"
-        filter: {}
+        filter:
+          is_active:
+            _eq: true
     - role: user
       permission:
         columns: "*"
-        filter: {}
+        filter:
+          is_active:
+            _eq: true
     - role: superadmin
       permission:
         columns: "*"
         filter: {}
   insert_permissions:
-    - role: me
-      permission:
-        check: {}
-        columns: "*"
-    - role: user
-      permission:
-        check: {}
-        columns: "*"
     - role: superadmin
       permission:
         check: {}
         columns: "*"
   update_permissions:
-    - role: me
-      permission:
-        columns: "*"
-        filter: {}
-        check: {}
-    - role: user
-      permission:
-        columns: "*"
-        filter: {}
-        check: {}
     - role: superadmin
       permission:
         columns: "*"
         filter: {}
         check: {}
   delete_permissions:
-    - role: me
-      permission:
-        filter: {}
-    - role: user
-      permission:
-        filter: {}
     - role: superadmin
       permission:
         filter: {}
@@ -2331,51 +2155,31 @@
     - role: me
       permission:
         columns: "*"
-        filter: {}
+        filter:
+          user_uid:
+            _eq: "X-Hasura-User-Id"
     - role: user
       permission:
         columns: "*"
-        filter: {}
+        filter:
+          user_uid:
+            _eq: "X-Hasura-User-Id"
     - role: superadmin
       permission:
         columns: "*"
         filter: {}
   insert_permissions:
-    - role: me
-      permission:
-        check: {}
-        columns: "*"
-    - role: user
-      permission:
-        check: {}
-        columns: "*"
     - role: superadmin
       permission:
         check: {}
         columns: "*"
   update_permissions:
-    - role: me
-      permission:
-        columns: "*"
-        filter: {}
-        check: {}
-    - role: user
-      permission:
-        columns: "*"
-        filter: {}
-        check: {}
     - role: superadmin
       permission:
         columns: "*"
         filter: {}
         check: {}
   delete_permissions:
-    - role: me
-      permission:
-        filter: {}
-    - role: user
-      permission:
-        filter: {}
     - role: superadmin
       permission:
         filter: {}
