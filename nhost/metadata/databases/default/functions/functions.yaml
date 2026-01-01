@@ -125,6 +125,14 @@
     - role: superadmin
 - function:
     schema: public
+    name: superadmin_review_employee_seat_request
+  configuration:
+    exposed_as: mutation
+    custom_name: superadmin_review_employee_seat_request
+  permissions:
+    - role: superadmin
+- function:
+    schema: public
     name: my_feature_permissions
   configuration:
     exposed_as: query

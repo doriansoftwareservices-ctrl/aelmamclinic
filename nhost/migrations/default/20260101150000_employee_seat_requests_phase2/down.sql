@@ -1,5 +1,6 @@
 BEGIN;
 
+DROP FUNCTION IF EXISTS public.superadmin_review_employee_seat_request(uuid, boolean, text);
 DROP FUNCTION IF EXISTS public.owner_submit_employee_seat_payment(json, uuid, uuid, text);
 DROP FUNCTION IF EXISTS public.owner_request_extra_employee(json, text, text);
 DROP FUNCTION IF EXISTS public.owner_create_employee_within_limit(json, text, text);

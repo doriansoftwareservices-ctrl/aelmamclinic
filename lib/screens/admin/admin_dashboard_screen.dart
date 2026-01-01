@@ -10,7 +10,9 @@ import 'package:aelmamclinic/models/payment_stat.dart';
 import 'package:aelmamclinic/models/payment_time_stat.dart';
 import 'package:aelmamclinic/models/provisioning_result.dart';
 import 'package:aelmamclinic/models/subscription_request.dart';
+import 'package:aelmamclinic/models/employee_seat_request.dart';
 import 'package:aelmamclinic/services/admin_billing_service.dart';
+import 'package:aelmamclinic/services/employee_seat_service.dart';
 import 'package:aelmamclinic/services/nhost_storage_service.dart';
 import 'package:aelmamclinic/services/nhost_admin_service.dart';
 import 'package:provider/provider.dart';
@@ -40,6 +42,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   // ---------- Services & Controllers ----------
   final NhostAdminService _authService = NhostAdminService();
   final AdminBillingService _billingService = AdminBillingService();
+  final EmployeeSeatService _seatService = EmployeeSeatService();
   final NhostStorageService _storageService = NhostStorageService();
 
   // عيادات
@@ -53,6 +56,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   // اشتراكات ودفع وشكاوى
   List<SubscriptionRequest> _subscriptionRequests = [];
   bool _loadingRequests = false;
+
+  List<EmployeeSeatRequest> _seatRequests = [];
+  bool _loadingSeatRequests = false;
 
   List<PaymentMethod> _paymentMethods = [];
   bool _loadingPaymentMethods = false;
@@ -119,6 +125,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     _staffEmailCtrl.dispose();
     _staffPassCtrl.dispose();
     _storageService.dispose();
+    _seatService.dispose();
     super.dispose();
   }
 
@@ -172,6 +179,21 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     final uri = Uri.tryParse(url);
     if (uri == null) {
       _snack('رابط الإثبات غير صالح.');
+      return;
+    }
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  Future<void> _openSeatProof(String fileId) async {
+    if (fileId.isEmpty) {
+      _snack('لا يوجد وصل مرفق.');
+      return;
+    }
+    final signed = await _storageService.createSignedUrl(fileId);
+    final url = signed ?? _storageService.publicFileUrl(fileId);
+    final uri = Uri.tryParse(url);
+    if (uri == null) {
+      _snack('رابط الوصل غير صالح.');
       return;
     }
     await launchUrl(uri, mode: LaunchMode.externalApplication);
@@ -242,6 +264,22 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       if (!mounted) return;
       setState(() => _loadingRequests = false);
       _snack('تعذّر تحميل طلبات الاشتراك: $e');
+    }
+  }
+
+  Future<void> _fetchSeatRequests() async {
+    try {
+      setState(() => _loadingSeatRequests = true);
+      final rows = await _seatService.fetchPendingSeatRequests();
+      if (!mounted) return;
+      setState(() {
+        _seatRequests = rows;
+        _loadingSeatRequests = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loadingSeatRequests = false);
+      _snack('تعذّر تحميل طلبات الموظفين: $e');
     }
   }
 
@@ -583,6 +621,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         break;
       case 2:
         await _fetchSubscriptionRequests();
+        await _fetchSeatRequests();
         break;
       case 3:
         await _fetchPaymentMethods();
@@ -646,6 +685,36 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   }
 
   Widget _buildSubscriptionRequestsSection() {
+    return DefaultTabController(
+      length: 2,
+      child: Column(
+        children: [
+          TabBar(
+            labelColor: Theme.of(context).colorScheme.onSurface,
+            unselectedLabelColor:
+                Theme.of(context).colorScheme.onSurface.withValues(alpha: .6),
+            indicatorColor: kPrimaryColor,
+            indicatorWeight: 3,
+            tabs: const [
+              Tab(icon: Icon(Icons.workspace_premium_rounded), text: 'اشتراكات'),
+              Tab(icon: Icon(Icons.badge_rounded), text: 'طلبات الموظفين'),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Expanded(
+            child: TabBarView(
+              children: [
+                _buildSubscriptionRequestsList(),
+                _buildSeatRequestsSection(),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSubscriptionRequestsList() {
     if (_loadingRequests) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -713,6 +782,83 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                     tooltip: 'عرض الإثبات',
                     icon: const Icon(Icons.receipt_long_rounded),
                     onPressed: () => _openProof(req),
+                  ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildSeatRequestsSection() {
+    if (_loadingSeatRequests) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_seatRequests.isEmpty) {
+      return const Center(child: Text('لا توجد طلبات موظفين إضافيين حاليًا'));
+    }
+    return ListView(
+      children: _seatRequests.map((req) {
+        final status = req.status;
+        final note = req.adminNote?.trim() ?? '';
+        return NeuCard(
+          margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+          padding: const EdgeInsets.all(12),
+          child: ListTile(
+            title: Text('موظف: ${req.employeeEmail}'),
+            subtitle: Text(
+              [
+                'الحساب: ${req.accountId}',
+                'الحالة: $status',
+                if (note.isNotEmpty) 'ملاحظة: $note',
+              ].join('\n'),
+            ),
+            trailing: status == 'submitted'
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        tooltip: 'عرض الوصل',
+                        icon: const Icon(Icons.receipt_long_rounded),
+                        onPressed: () async {
+                          await _openSeatProof(req.receiptFileId ?? '');
+                        },
+                      ),
+                      const SizedBox(width: 6),
+                      NeuButton.primary(
+                        label: 'اعتماد',
+                        onPressed: () async {
+                          final note =
+                              await _askDecisionNote('ملاحظة الاعتماد');
+                          await _seatService.reviewSeatRequest(
+                            requestId: req.id,
+                            approve: true,
+                            note: note,
+                          );
+                          await _fetchSeatRequests();
+                        },
+                      ),
+                      const SizedBox(width: 6),
+                      IconButton(
+                        tooltip: 'رفض',
+                        icon: const Icon(Icons.cancel_outlined),
+                        onPressed: () async {
+                          final note = await _askDecisionNote('سبب الرفض');
+                          await _seatService.reviewSeatRequest(
+                            requestId: req.id,
+                            approve: false,
+                            note: note,
+                          );
+                          await _fetchSeatRequests();
+                        },
+                      ),
+                    ],
+                  )
+                : IconButton(
+                    tooltip: 'عرض الوصل',
+                    icon: const Icon(Icons.receipt_long_rounded),
+                    onPressed: () async {
+                      await _openSeatProof(req.receiptFileId ?? '');
+                    },
                   ),
           ),
         );
