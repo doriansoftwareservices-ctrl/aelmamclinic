@@ -197,6 +197,35 @@ class _LoginScreenState extends State<LoginScreen> {
       final result = await auth.refreshAndValidateCurrentUser();
       if (!mounted) return;
 
+      if (result.status == AuthSessionStatus.noAccount) {
+        final clinicName = await _askClinicName();
+        if (clinicName == null || clinicName.trim().isEmpty) {
+          await auth.signOut();
+          setState(() => _error = 'اسم العيادة مطلوب لإكمال إنشاء الحساب.');
+          return;
+        }
+        auth.setPendingClinicName(clinicName);
+        try {
+          await auth.selfCreateAccount(clinicName.trim());
+        } catch (e) {
+          await auth.signOut();
+          setState(() => _error = 'تعذّر إنشاء الحساب: $e');
+          return;
+        }
+        final recheck = await auth.refreshAndValidateCurrentUser();
+        if (!mounted) return;
+        if (!recheck.isSuccess) {
+          if (recheck.status == AuthSessionStatus.noAccount ||
+              recheck.status == AuthSessionStatus.planUpgradeRequired) {
+            await auth.signOut();
+          }
+          setState(
+              () => _error = _messageForStatus(recheck.status) ??
+                  'تعذّر التحقق من الحساب. حاول مرة أخرى.');
+          return;
+        }
+      }
+
       if (!result.isSuccess) {
         if (result.status == AuthSessionStatus.noAccount ||
             result.status == AuthSessionStatus.planUpgradeRequired) {
