@@ -36,7 +36,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
   // نضمن تشغيل الـ Bootstrap مرة واحدة عند وجود جلسة مسبقة
   bool _bootstrappedOnce = false;
-  bool _autoAccountAttempted = false;
 
   static const _rememberMeKey = 'auth.remember_me';
   static const _rememberEmailKey = 'auth.remember_email';
@@ -110,17 +109,6 @@ class _LoginScreenState extends State<LoginScreen> {
     final authProv = context.read<AuthProvider>();
     final user = NhostManager.client.auth.currentUser;
     if (user == null) return;
-
-    // إنشاء عيادة تلقائيًا إن لم يكن هناك حساب مرتبط
-    if (!authProv.isSuperAdmin &&
-        authProv.isLoggedIn &&
-        (authProv.accessToken ?? '').isNotEmpty &&
-        (authProv.accountId ?? '').isEmpty &&
-        !_autoAccountAttempted) {
-      _autoAccountAttempted = true;
-      await authProv.refreshSession();
-      await _ensureAutoAccount(authProv);
-    }
 
     if (!authProv.isLoggedIn ||
         (!authProv.isSuperAdmin &&
@@ -341,7 +329,7 @@ class _LoginScreenState extends State<LoginScreen> {
       case AuthSessionStatus.success:
         return null;
       case AuthSessionStatus.disabled:
-        return 'تم تعطيل هذا الحساب. يرجى التواصل مع الإدارة.';
+        return 'حسابك مجمد. نرجو التواصل مع خدمة العملاء.';
       case AuthSessionStatus.accountFrozen:
         return 'تم تجميد حساب العيادة. تواصل مع الإدارة لاستعادة الوصول.';
       case AuthSessionStatus.noAccount:

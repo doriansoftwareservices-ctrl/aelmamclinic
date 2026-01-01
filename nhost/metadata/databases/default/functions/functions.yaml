@@ -92,6 +92,39 @@
     - role: superadmin
 - function:
     schema: public
+    name: owner_create_employee_within_limit
+  configuration:
+    exposed_as: mutation
+    custom_name: owner_create_employee_within_limit
+    session_argument: hasura_session
+  permissions:
+    - role: me
+    - role: user
+    - role: superadmin
+- function:
+    schema: public
+    name: owner_request_extra_employee
+  configuration:
+    exposed_as: mutation
+    custom_name: owner_request_extra_employee
+    session_argument: hasura_session
+  permissions:
+    - role: me
+    - role: user
+    - role: superadmin
+- function:
+    schema: public
+    name: owner_submit_employee_seat_payment
+  configuration:
+    exposed_as: mutation
+    custom_name: owner_submit_employee_seat_payment
+    session_argument: hasura_session
+  permissions:
+    - role: me
+    - role: user
+    - role: superadmin
+- function:
+    schema: public
     name: my_feature_permissions
   configuration:
     exposed_as: query

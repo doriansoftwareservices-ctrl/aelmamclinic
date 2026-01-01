@@ -52,14 +52,16 @@ class NhostGraphqlService {
       if (!isSuper) return forward!(request);
       final existing =
           request.context.entry<HttpLinkHeaders>()?.headers ?? const {};
-      request = request.updateContextEntry(
-        HttpLinkHeaders(
+      request = request.updateContextEntry<HttpLinkHeaders>((entry) {
+        final headers = entry?.headers ?? const <String, String>{};
+        return HttpLinkHeaders(
           headers: {
+            ...headers,
             ...existing,
             'x-hasura-role': 'superadmin',
           },
-        ),
-      );
+        );
+      });
       return forward!(request);
     });
     final authLink = AuthLink(

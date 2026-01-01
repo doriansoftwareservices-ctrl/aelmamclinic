@@ -38,6 +38,7 @@ import '/services/lab_and_radiology_home_screen.dart';
 
 /*── استيرادات لإدارة الحسابات ─*/
 import 'package:aelmamclinic/providers/auth_provider.dart';
+import 'package:aelmamclinic/screens/users/employee_accounts_screen.dart';
 import 'package:aelmamclinic/screens/users/users_screen.dart';
 import 'package:aelmamclinic/core/nhost_manager.dart';
 import 'package:aelmamclinic/services/nhost_graphql_service.dart';
@@ -592,6 +593,13 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
     return allowed;
   }
 
+  bool _canManageEmployeeAccounts(AuthProvider auth) {
+    if (auth.isSuperAdmin) return true;
+    if (!auth.isPro) return false;
+    final role = auth.role?.toLowerCase();
+    return role == 'owner' || role == 'admin';
+  }
+
   /*──────── Drawer ────────*/
   Widget _buildDrawer(BuildContext context, StatisticsProvider stats) {
     final scheme = Theme.of(context).colorScheme;
@@ -698,6 +706,22 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
                           context,
                           MaterialPageRoute(
                               builder: (_) => const EmployeesHomeScreen()),
+                        );
+                      },
+                    ),
+
+                    // حسابات الموظفين (PRO)
+                    _drawerItem(
+                      icon: Icons.badge_rounded,
+                      title: 'حسابات الموظفين',
+                      enabled: _canManageEmployeeAccounts(auth),
+                      showProBadge: !auth.isSuperAdmin && auth.planCode == 'free',
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const EmployeeAccountsScreen()),
                         );
                       },
                     ),

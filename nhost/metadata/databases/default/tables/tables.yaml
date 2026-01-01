@@ -2186,6 +2186,42 @@
 
 - table:
     schema: public
+    name: employee_seat_requests
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter:
+          requested_by_uid:
+            _eq: "X-Hasura-User-Id"
+    - role: user
+      permission:
+        columns: "*"
+        filter:
+          requested_by_uid:
+            _eq: "X-Hasura-User-Id"
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: superadmin
+      permission:
+        filter: {}
+
+- table:
+    schema: public
     name: plan_features
   select_permissions:
     - role: me
