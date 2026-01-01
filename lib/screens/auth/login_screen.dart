@@ -55,6 +55,7 @@ class _LoginScreenState extends State<LoginScreen> {
     // 2) استمع لتغيّر حالة المصادقة لتوجيه مضمون بعد signIn.
     _authUnsub = NhostManager.client.auth.addAuthStateChangedCallback((state) {
       if (state == AuthenticationState.signedIn) {
+        if (_loading || _navigating) return;
         _checkAndRouteIfSignedIn();
       }
     });
@@ -104,7 +105,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   /// يقرر التوجيه حسب المستخدم الحالي (سوبر أدمن أو لا) ويضمن تشغيل المزامنة.
   Future<void> _checkAndRouteIfSignedIn() async {
-    if (_navigating || !mounted) return;
+    if (_navigating || _loading || !mounted) return;
 
     final authProv = context.read<AuthProvider>();
     final user = NhostManager.client.auth.currentUser;
@@ -116,6 +117,10 @@ class _LoginScreenState extends State<LoginScreen> {
       final result = await authProv.refreshAndValidateCurrentUser();
       if (!mounted) return;
       if (!result.isSuccess) {
+        if (result.status == AuthSessionStatus.noAccount ||
+            result.status == AuthSessionStatus.planUpgradeRequired) {
+          await authProv.signOut();
+        }
         final message = _messageForStatus(result.status);
         if (message != null) {
           setState(() {
@@ -193,6 +198,10 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
 
       if (!result.isSuccess) {
+        if (result.status == AuthSessionStatus.noAccount ||
+            result.status == AuthSessionStatus.planUpgradeRequired) {
+          await auth.signOut();
+        }
         final message = _messageForStatus(result.status) ??
             'تعذّر التحقق من الحساب. حاول مرة أخرى.';
         setState(() => _error = message);
@@ -245,6 +254,8 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
+      auth.setPendingClinicName(clinicName);
+      auth.allowAutoCreateAccountOnce();
       var signUpResp = await auth.signUp(email, pass);
       if (signUpResp.session == null) {
         // بعض البيئات لا تُرجع session مباشرةً؛ جرّب تسجيل الدخول فورًا.
@@ -260,10 +271,6 @@ class _LoginScreenState extends State<LoginScreen> {
         }
       }
       await _persistRememberedCredentials(email: email, password: pass);
-      if (auth.currentUser == null || auth.accessToken == null) {
-        setState(() => _error = 'لم يتم إنشاء جلسة صالحة للمستخدم.');
-        return;
-      }
       if (clinicName != null && clinicName.trim().isNotEmpty) {
         await auth.selfCreateAccount(clinicName.trim());
       } else {

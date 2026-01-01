@@ -162,6 +162,7 @@ class AuthProvider extends ChangeNotifier {
   bool _permissionsLoaded = false;
   String? _permissionsError;
   bool _autoCreateAttempted = false;
+  String? _pendingClinicName;
   bool _allowAutoCreateAccount = false;
 
   Set<String> get allowedFeatures => _allowedFeatures;
@@ -350,6 +351,7 @@ class AuthProvider extends ChangeNotifier {
     currentUser = null;
     _resetPermissionsInMemory();
     _autoCreateAttempted = false;
+    _pendingClinicName = null;
 
     final sp = await SharedPreferences.getInstance();
     await _clearStorage();
@@ -799,10 +801,20 @@ class AuthProvider extends ChangeNotifier {
   }
 
   String _seedClinicName() {
+    final pending = (_pendingClinicName ?? '').trim();
+    if (pending.isNotEmpty) {
+      _pendingClinicName = null;
+      return pending;
+    }
     final addr = (email ?? '').trim();
     if (addr.isEmpty) return 'عيادة جديدة';
     final handle = addr.split('@').first;
     return handle.isEmpty ? 'عيادة جديدة' : 'عيادة $handle';
+  }
+
+  void setPendingClinicName(String? name) {
+    final trimmed = (name ?? '').trim();
+    _pendingClinicName = trimmed.isEmpty ? null : trimmed;
   }
 
   /// يسمح لمحاولة واحدة فقط لإنشاء حساب تلقائي (مسار onboarding المالك).
