@@ -20,6 +20,7 @@ class StatisticsProvider extends ChangeNotifier {
   }
 
   Timer? _pollTimer;
+  bool _disposed = false;
   void _startPolling() {
     _pollTimer ??= Timer.periodic(const Duration(seconds: 5), (_) async {
       final db = DBService.instance;
@@ -32,6 +33,7 @@ class StatisticsProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     _pollTimer?.cancel();
     super.dispose();
   }
@@ -105,9 +107,12 @@ class StatisticsProvider extends ChangeNotifier {
 
   /// تحميل / تحديث جميع الإحصاءات
   Future<void> refresh() async {
+    if (_disposed) return;
     if (_busy) return;
     _busy = true;
-    notifyListeners();
+    if (!_disposed) {
+      notifyListeners();
+    }
 
     final db = DBService.instance;
 
@@ -183,7 +188,9 @@ class StatisticsProvider extends ChangeNotifier {
     _pendingLoans = pendLoans;
 
     _busy = false;
-    notifyListeners();
+    if (!_disposed) {
+      notifyListeners();
+    }
   }
 
   Future<int> _getLowStockCount() async {
