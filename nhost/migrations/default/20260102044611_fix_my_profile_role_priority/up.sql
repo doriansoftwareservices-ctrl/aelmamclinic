@@ -37,7 +37,7 @@ AS $$
     COALESCE((SELECT role FROM best), p.role, 'employee') AS role,
     COALESCE((SELECT account_id FROM best), p.account_id) AS account_id,
     p.display_name,
-    COALESCE((SELECT array_agg(account_id) FROM au), p.account_ids, ARRAY[]::uuid[]) AS account_ids
+    COALESCE((SELECT array_agg(account_id) FROM au), ARRAY[]::uuid[]) AS account_ids
   FROM public.profiles p
   JOIN me ON p.id = me.uid;
 $$;
