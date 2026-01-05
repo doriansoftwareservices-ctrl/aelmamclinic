@@ -70,6 +70,97 @@
     - role: superadmin
       permission:
         filter: {}
+
+- table:
+    schema: public
+    name: chat_conversations
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: chat_participants
+            _where:
+              conversation_id:
+                _ceq: "id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+    - role: user
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: chat_participants
+            _where:
+              conversation_id:
+                _ceq: "id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check:
+          created_by:
+            _eq: "X-Hasura-User-Id"
+        columns: "*"
+    - role: user
+      permission:
+        check:
+          created_by:
+            _eq: "X-Hasura-User-Id"
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter:
+          created_by:
+            _eq: "X-Hasura-User-Id"
+        check:
+          created_by:
+            _eq: "X-Hasura-User-Id"
+    - role: user
+      permission:
+        columns: "*"
+        filter:
+          created_by:
+            _eq: "X-Hasura-User-Id"
+        check:
+          created_by:
+            _eq: "X-Hasura-User-Id"
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter:
+          created_by:
+            _eq: "X-Hasura-User-Id"
+    - role: user
+      permission:
+        filter:
+          created_by:
+            _eq: "X-Hasura-User-Id"
+    - role: superadmin
+      permission:
+        filter: {}
+
 - table:
     schema: public
     name: chat_participants
@@ -893,9 +984,9 @@
         columns: "*"
         filter:
           _or:
-            - inviter:
+            - inviter_uid:
                 _eq: "X-Hasura-User-Id"
-            - invitee_user:
+            - invitee_uid:
                 _eq: "X-Hasura-User-Id"
             - _exists:
                 _table:
@@ -911,9 +1002,9 @@
         columns: "*"
         filter:
           _or:
-            - inviter:
+            - inviter_uid:
                 _eq: "X-Hasura-User-Id"
-            - invitee_user:
+            - invitee_uid:
                 _eq: "X-Hasura-User-Id"
             - _exists:
                 _table:
@@ -932,7 +1023,7 @@
     - role: me
       permission:
         check:
-          inviter:
+          inviter_uid:
             _eq: "X-Hasura-User-Id"
           _exists:
             _table:
@@ -947,7 +1038,7 @@
     - role: user
       permission:
         check:
-          inviter:
+          inviter_uid:
             _eq: "X-Hasura-User-Id"
           _exists:
             _table:
@@ -969,30 +1060,30 @@
         columns: "*"
         filter:
           _or:
-            - inviter:
+            - inviter_uid:
                 _eq: "X-Hasura-User-Id"
-            - invitee_user:
+            - invitee_uid:
                 _eq: "X-Hasura-User-Id"
         check:
           _or:
-            - inviter:
+            - inviter_uid:
                 _eq: "X-Hasura-User-Id"
-            - invitee_user:
+            - invitee_uid:
                 _eq: "X-Hasura-User-Id"
     - role: user
       permission:
         columns: "*"
         filter:
           _or:
-            - inviter:
+            - inviter_uid:
                 _eq: "X-Hasura-User-Id"
-            - invitee_user:
+            - invitee_uid:
                 _eq: "X-Hasura-User-Id"
         check:
           _or:
-            - inviter:
+            - inviter_uid:
                 _eq: "X-Hasura-User-Id"
-            - invitee_user:
+            - invitee_uid:
                 _eq: "X-Hasura-User-Id"
     - role: superadmin
       permission:
@@ -1003,12 +1094,12 @@
     - role: me
       permission:
         filter:
-          inviter:
+          inviter_uid:
             _eq: "X-Hasura-User-Id"
     - role: user
       permission:
         filter:
-          inviter:
+          inviter_uid:
             _eq: "X-Hasura-User-Id"
     - role: superadmin
       permission:
