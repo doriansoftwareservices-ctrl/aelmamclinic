@@ -6,9 +6,9 @@
     custom_name: fn_is_super_admin_gql
     session_argument: hasura_session
   permissions:
-    - role: me
-    - role: user
-    - role: superadmin
+  - role: me
+  - role: user
+  - role: superadmin
 - function:
     schema: public
     name: debug_auth_context
@@ -17,9 +17,7 @@
     custom_name: debug_auth_context
     session_argument: hasura_session
   permissions:
-    - role: me
-    - role: user
-    - role: superadmin
+  - role: superadmin
 - function:
     schema: public
     name: admin_list_clinics
@@ -27,7 +25,7 @@
     exposed_as: query
     custom_name: admin_list_clinics
   permissions:
-    - role: superadmin
+  - role: superadmin
 - function:
     schema: public
     name: admin_set_clinic_frozen
@@ -35,7 +33,7 @@
     exposed_as: mutation
     custom_name: admin_set_clinic_frozen
   permissions:
-    - role: superadmin
+  - role: superadmin
 - function:
     schema: public
     name: admin_delete_clinic
@@ -43,7 +41,7 @@
     exposed_as: mutation
     custom_name: admin_delete_clinic
   permissions:
-    - role: superadmin
+  - role: superadmin
 - function:
     schema: public
     name: admin_create_owner_full
@@ -51,7 +49,7 @@
     exposed_as: mutation
     custom_name: admin_create_owner_full
   permissions:
-    - role: superadmin
+  - role: superadmin
 - function:
     schema: public
     name: admin_create_employee_full
@@ -59,7 +57,7 @@
     exposed_as: mutation
     custom_name: admin_create_employee_full
   permissions:
-    - role: superadmin
+  - role: superadmin
 - function:
     schema: public
     name: list_employees_with_email
@@ -67,9 +65,9 @@
     exposed_as: query
     custom_name: list_employees_with_email
   permissions:
-    - role: me
-    - role: user
-    - role: superadmin
+  - role: me
+  - role: user
+  - role: superadmin
 - function:
     schema: public
     name: set_employee_disabled
@@ -77,9 +75,9 @@
     exposed_as: mutation
     custom_name: set_employee_disabled
   permissions:
-    - role: me
-    - role: user
-    - role: superadmin
+  - role: me
+  - role: user
+  - role: superadmin
 - function:
     schema: public
     name: delete_employee
@@ -87,9 +85,9 @@
     exposed_as: mutation
     custom_name: delete_employee
   permissions:
-    - role: me
-    - role: user
-    - role: superadmin
+  - role: me
+  - role: user
+  - role: superadmin
 - function:
     schema: public
     name: owner_create_employee_within_limit
@@ -98,9 +96,9 @@
     custom_name: owner_create_employee_within_limit
     session_argument: hasura_session
   permissions:
-    - role: me
-    - role: user
-    - role: superadmin
+  - role: me
+  - role: user
+  - role: superadmin
 - function:
     schema: public
     name: owner_request_extra_employee
@@ -109,9 +107,9 @@
     custom_name: owner_request_extra_employee
     session_argument: hasura_session
   permissions:
-    - role: me
-    - role: user
-    - role: superadmin
+  - role: me
+  - role: user
+  - role: superadmin
 - function:
     schema: public
     name: owner_submit_employee_seat_payment
@@ -120,9 +118,9 @@
     custom_name: owner_submit_employee_seat_payment
     session_argument: hasura_session
   permissions:
-    - role: me
-    - role: user
-    - role: superadmin
+  - role: me
+  - role: user
+  - role: superadmin
 - function:
     schema: public
     name: superadmin_review_employee_seat_request
@@ -130,7 +128,7 @@
     exposed_as: mutation
     custom_name: superadmin_review_employee_seat_request
   permissions:
-    - role: superadmin
+  - role: superadmin
 - function:
     schema: public
     name: my_feature_permissions_rpc
@@ -139,23 +137,31 @@
     custom_name: my_feature_permissions
     session_argument: hasura_session
   permissions:
-    - role: me
-    - role: user
-    - role: owner
-    - role: employee
-    - role: superadmin
+  - role: me
+  - role: user
+  - role: superadmin
 - function:
     schema: public
     name: my_account_id_rpc
   configuration:
     exposed_as: query
     custom_name: my_account_id
+    session_argument: hasura_session
   permissions:
-    - role: me
-    - role: user
-    - role: owner
-    - role: employee
-    - role: superadmin
+  - role: me
+  - role: user
+  - role: superadmin
+- function:
+    schema: public
+    name: set_current_account
+  configuration:
+    exposed_as: mutation
+    custom_name: set_current_account
+    session_argument: hasura_session
+  permissions:
+  - role: me
+  - role: user
+  - role: superadmin
 - function:
     schema: public
     name: my_profile
@@ -164,11 +170,9 @@
     custom_name: my_profile
     session_argument: hasura_session
   permissions:
-    - role: me
-    - role: user
-    - role: owner
-    - role: employee
-    - role: superadmin
+  - role: me
+  - role: user
+  - role: superadmin
 - function:
     schema: public
     name: chat_accept_invitation
@@ -176,11 +180,9 @@
     exposed_as: mutation
     custom_name: chat_accept_invitation
   permissions:
-    - role: me
-    - role: user
-    - role: owner
-    - role: employee
-    - role: superadmin
+  - role: me
+  - role: user
+  - role: superadmin
 - function:
     schema: public
     name: chat_decline_invitation
@@ -188,11 +190,9 @@
     exposed_as: mutation
     custom_name: chat_decline_invitation
   permissions:
-    - role: me
-    - role: user
-    - role: owner
-    - role: employee
-    - role: superadmin
+  - role: me
+  - role: user
+  - role: superadmin
 - function:
     schema: public
     name: chat_mark_delivered
@@ -200,11 +200,9 @@
     exposed_as: mutation
     custom_name: chat_mark_delivered
   permissions:
-    - role: me
-    - role: user
-    - role: owner
-    - role: employee
-    - role: superadmin
+  - role: me
+  - role: user
+  - role: superadmin
 - function:
     schema: public
     name: chat_admin_start_dm
@@ -212,7 +210,7 @@
     exposed_as: mutation
     custom_name: chat_admin_start_dm
   permissions:
-    - role: superadmin
+  - role: superadmin
 - function:
     schema: public
     name: my_account_plan
@@ -220,11 +218,9 @@
     exposed_as: query
     custom_name: my_account_plan
   permissions:
-    - role: me
-    - role: user
-    - role: owner
-    - role: employee
-    - role: superadmin
+  - role: me
+  - role: user
+  - role: superadmin
 - function:
     schema: public
     name: account_is_paid_gql
@@ -232,7 +228,7 @@
     exposed_as: query
     custom_name: account_is_paid_gql
   permissions:
-    - role: superadmin
+  - role: superadmin
 - function:
     schema: public
     name: list_payment_methods
@@ -240,11 +236,9 @@
     exposed_as: query
     custom_name: list_payment_methods
   permissions:
-    - role: me
-    - role: user
-    - role: owner
-    - role: employee
-    - role: superadmin
+  - role: me
+  - role: user
+  - role: superadmin
 - function:
     schema: public
     name: create_subscription_request
@@ -253,11 +247,9 @@
     custom_name: create_subscription_request
     session_argument: hasura_session
   permissions:
-    - role: me
-    - role: user
-    - role: owner
-    - role: employee
-    - role: superadmin
+  - role: me
+  - role: user
+  - role: superadmin
 - function:
     schema: public
     name: self_create_account
@@ -265,12 +257,10 @@
     exposed_as: mutation
     custom_name: self_create_account
   permissions:
-    - role: anonymous
-    - role: me
-    - role: user
-    - role: owner
-    - role: employee
-    - role: superadmin
+  - role: anonymous
+  - role: me
+  - role: user
+  - role: superadmin
 - function:
     schema: public
     name: admin_approve_subscription_request
@@ -278,7 +268,7 @@
     exposed_as: mutation
     custom_name: admin_approve_subscription_request
   permissions:
-    - role: superadmin
+  - role: superadmin
 - function:
     schema: public
     name: admin_reject_subscription_request
@@ -286,7 +276,7 @@
     exposed_as: mutation
     custom_name: admin_reject_subscription_request
   permissions:
-    - role: superadmin
+  - role: superadmin
 - function:
     schema: public
     name: admin_set_account_plan
@@ -294,7 +284,7 @@
     exposed_as: mutation
     custom_name: admin_set_account_plan
   permissions:
-    - role: superadmin
+  - role: superadmin
 - function:
     schema: public
     name: admin_payment_stats
@@ -302,7 +292,7 @@
     exposed_as: query
     custom_name: admin_payment_stats
   permissions:
-    - role: superadmin
+  - role: superadmin
 - function:
     schema: public
     name: admin_payment_stats_by_plan
@@ -310,7 +300,7 @@
     exposed_as: query
     custom_name: admin_payment_stats_by_plan
   permissions:
-    - role: superadmin
+  - role: superadmin
 - function:
     schema: public
     name: admin_payment_stats_by_day
@@ -318,7 +308,7 @@
     exposed_as: query
     custom_name: admin_payment_stats_by_day
   permissions:
-    - role: superadmin
+  - role: superadmin
 - function:
     schema: public
     name: admin_payment_stats_by_month
@@ -326,7 +316,7 @@
     exposed_as: query
     custom_name: admin_payment_stats_by_month
   permissions:
-    - role: superadmin
+  - role: superadmin
 - function:
     schema: public
     name: expire_account_subscriptions
@@ -334,9 +324,7 @@
     exposed_as: mutation
     custom_name: expire_account_subscriptions
   permissions:
-    - role: me
-    - role: user
-    - role: superadmin
+  - role: superadmin
 - function:
     schema: public
     name: admin_sync_super_admin_emails_gql
@@ -344,4 +332,70 @@
     exposed_as: mutation
     custom_name: admin_sync_super_admin_emails_gql
   permissions:
-    - role: superadmin
+  - role: superadmin
+- function:
+    schema: public
+    name: admin_dashboard_pending_subscription_requests
+  configuration:
+    custom_name: admin_dashboard_pending_subscription_requests
+    session_argument: hasura_session
+  permissions:
+  - role: superadmin
+- function:
+    schema: public
+    name: admin_dashboard_active_subscriptions
+  configuration:
+    custom_name: admin_dashboard_active_subscriptions
+    session_argument: hasura_session
+  permissions:
+  - role: superadmin
+- function:
+    schema: public
+    name: admin_dashboard_payments
+  configuration:
+    custom_name: admin_dashboard_payments
+    session_argument: hasura_session
+  permissions:
+  - role: superadmin
+- function:
+    schema: public
+    name: admin_dashboard_revenue_monthly
+  configuration:
+    custom_name: admin_dashboard_revenue_monthly
+    session_argument: hasura_session
+  permissions:
+  - role: superadmin
+- function:
+    schema: public
+    name: admin_dashboard_audit_tail
+  configuration:
+    custom_name: admin_dashboard_audit_tail
+    session_argument: hasura_session
+  permissions:
+  - role: superadmin
+- function:
+    schema: public
+    name: admin_dashboard_account_member_counts
+  configuration:
+    custom_name: admin_dashboard_account_member_counts
+    session_argument: hasura_session
+  permissions:
+  - role: superadmin
+- function:
+    schema: public
+    name: admin_dashboard_account_members
+  configuration:
+    custom_name: admin_dashboard_account_members
+    session_argument: hasura_session
+  permissions:
+  - role: superadmin
+- function:
+    schema: public
+    name: user_cancel_subscription_request
+  configuration:
+    exposed_as: mutation
+    custom_name: user_cancel_subscription_request
+    session_argument: hasura_session
+  permissions:
+  - role: user
+  - role: superadmin

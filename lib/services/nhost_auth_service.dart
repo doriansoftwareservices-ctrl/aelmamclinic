@@ -313,6 +313,23 @@ class NhostAuthService {
     }
   }
 
+  Future<void> syncCurrentAccount(String? accountId) async {
+    final trimmed = accountId?.trim() ?? '';
+    if (trimmed.isEmpty) return;
+    const mutation = r'''
+      mutation SetCurrentAccount($account: uuid!) {
+        set_current_account(args: {p_account: $account}) {
+          id
+        }
+      }
+    ''';
+    try {
+      await _runMutation(mutation, {'account': trimmed});
+    } catch (_) {
+      // Best-effort: ignore sync failures.
+    }
+  }
+
   /// يجلب معلومات المستخدم الحالي (accountId/role/disabled/isSuperAdmin).
   Future<Map<String, dynamic>> fetchCurrentUser() async {
     final user = _client.auth.currentUser;

@@ -56,19 +56,73 @@ select_permissions:
   - role: me
     permission:
       columns: "*"
-      filter: {}
+      filter:
+        _or:
+          - uploaded_by_user_id:
+              _eq: "X-Hasura-User-Id"
+          - _and:
+              - bucket_id:
+                  _eq: "chat-attachments"
+              - _exists:
+                  _table:
+                    schema: public
+                    name: chat_attachments
+                  _where:
+                    bucket:
+                      _eq: "chat-attachments"
+                    path:
+                      _ceq: "name"
+                    _exists:
+                      _table:
+                        schema: public
+                        name: chat_messages
+                      _where:
+                        id:
+                          _ceq: "message_id"
+                        _exists:
+                          _table:
+                            schema: public
+                            name: chat_participants
+                          _where:
+                            conversation_id:
+                              _ceq: "conversation_id"
+                            user_uid:
+                              _eq: "X-Hasura-User-Id"
   - role: user
     permission:
       columns: "*"
-      filter: {}
-  - role: owner
-    permission:
-      columns: "*"
-      filter: {}
-  - role: employee
-    permission:
-      columns: "*"
-      filter: {}
+      filter:
+        _or:
+          - uploaded_by_user_id:
+              _eq: "X-Hasura-User-Id"
+          - _and:
+              - bucket_id:
+                  _eq: "chat-attachments"
+              - _exists:
+                  _table:
+                    schema: public
+                    name: chat_attachments
+                  _where:
+                    bucket:
+                      _eq: "chat-attachments"
+                    path:
+                      _ceq: "name"
+                    _exists:
+                      _table:
+                        schema: public
+                        name: chat_messages
+                      _where:
+                        id:
+                          _ceq: "message_id"
+                        _exists:
+                          _table:
+                            schema: public
+                            name: chat_participants
+                          _where:
+                            conversation_id:
+                              _ceq: "conversation_id"
+                            user_uid:
+                              _eq: "X-Hasura-User-Id"
   - role: superadmin
     permission:
       columns: "*"

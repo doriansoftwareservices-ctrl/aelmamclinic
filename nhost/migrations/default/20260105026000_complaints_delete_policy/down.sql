@@ -1,0 +1,1 @@
+-- No-op: keep DELETE policy for complaints.

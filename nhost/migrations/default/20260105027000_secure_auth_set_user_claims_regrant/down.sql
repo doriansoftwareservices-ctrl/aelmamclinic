@@ -1,0 +1,1 @@
+-- No-op: keep restricted grants for auth_set_user_claims.

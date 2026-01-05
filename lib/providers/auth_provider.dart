@@ -582,6 +582,7 @@ class AuthProvider extends ChangeNotifier {
       return;
     }
 
+    final prevAccountId = currentUser?['accountId']?.toString();
     Map<String, dynamic>? info;
     try {
       info = await _auth.fetchCurrentUser(); // { uid,email,accountId,role,isSuperAdmin }
@@ -623,6 +624,12 @@ class AuthProvider extends ChangeNotifier {
       'planCode': infoPlan ?? 'free',
       if (deviceId != null) _kDeviceId: deviceId,
     };
+
+    if (!isSuper && accId != null && accId.isNotEmpty) {
+      if (prevAccountId != accId) {
+        await _auth.syncCurrentAccount(accId);
+      }
+    }
   }
 
   /// يتأكد أن الحساب الفعّال قابل للكتابة (غير مجمّد/غير معطّل) وإلا يخرج.
