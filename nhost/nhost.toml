@@ -25,13 +25,13 @@ path = '$["https://hasura.io/jwt/claims"]["x-hasura-default-role"]'
 claim = 'x-hasura-allowed-roles'
 path = '$["https://hasura.io/jwt/claims"]["x-hasura-allowed-roles"]'
 [hasura.settings]
-corsDomain = ['*']
-devMode = true
+corsDomain = ['https://mergrgclboxflnucehgb.nhost.run', 'http://localhost:3000']
+devMode = false
 enableAllowList = false
-enableConsole = true
+enableConsole = false
 enableRemoteSchemaPermissions = false
 enabledAPIs = ['metadata', 'graphql', 'pgdump', 'config']
-inferFunctionPermissions = true
+inferFunctionPermissions = false
 liveQueriesMultiplexedRefetchInterval = 1000
 stringifyNumericTypes = false
 
