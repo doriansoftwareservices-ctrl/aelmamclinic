@@ -1341,6 +1341,21 @@ class SyncService {
     return error.toString();
   }
 
+  bool _isSubscriptionsUnsupported(OperationException error) {
+    final text = _formatGqlError(error).toLowerCase();
+    return text.contains('no subscriptions exist');
+  }
+
+  Future<void> _disableRealtimeForUnsupportedSubscriptions() async {
+    if (!_realtimeSupported) return;
+    _realtimeSupported = false;
+    if (!_realtimeUnsupportedNotified) {
+      _realtimeUnsupportedNotified = true;
+      _log('Realtime disabled: GraphQL subscriptions not supported by server.');
+    }
+    await stopRealtime();
+  }
+
   bool _isUniqueViolation(OperationException error, List<String> hints) {
     final text = _formatGqlError(error).toLowerCase();
     if (!text.contains('duplicate') && !text.contains('unique')) {
@@ -2786,6 +2801,8 @@ class SyncService {
   final Map<String, StreamSubscription<QueryResult>> _subscriptions = {};
   final Map<String, Map<String, String>> _realtimeRowVersions = {};
   bool _realtimeEnabled = false;
+  bool _realtimeSupported = true;
+  bool _realtimeUnsupportedNotified = false;
   VoidCallback? _clientListener;
 
   bool _remoteRowIsDeleted(Map<String, dynamic> row) {
@@ -2867,8 +2884,13 @@ class SyncService {
     final sub = _runSubscription(doc, {'accountId': accountId}).listen(
       (result) async {
         if (result.hasException) {
+          final ex = result.exception!;
+          if (_isSubscriptionsUnsupported(ex)) {
+            unawaited(_disableRealtimeForUnsupportedSubscriptions());
+            return;
+          }
           _log(
-              'Realtime subscription error for $remoteTable: ${_formatGqlError(result.exception!)}');
+              'Realtime subscription error for $remoteTable: ${_formatGqlError(ex)}');
           return;
         }
         final rows = (result.data?[remoteTable] as List?) ?? const [];
@@ -3111,6 +3133,9 @@ class SyncService {
 
   /// اشترك في كل الجداول (Realtime) لهذا الحساب.
   Future<void> startRealtime() async {
+    if (!_realtimeSupported) {
+      return;
+    }
     // ✅ تفادي ازدواج الاشتراكات عند إعادة التهيئة (مثلاً بعد تغيير المستخدم)
     await stopRealtime();
     if (!_hasAccount) {
