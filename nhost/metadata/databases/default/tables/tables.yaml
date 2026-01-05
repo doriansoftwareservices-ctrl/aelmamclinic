@@ -3290,6 +3290,133 @@
 
 - table:
     schema: public
+    name: v_admin_dashboard_pending_subscription_requests
+  select_permissions:
+    - role: superadmin
+      permission:
+        columns:
+          - request_id
+          - created_at
+          - age_hours
+          - status
+          - account_id
+          - account_name
+          - requester_uid
+          - requester_email
+          - plan_code
+          - plan_name
+          - amount_usd
+          - payment_method
+          - proof_url
+          - note
+        filter: {}
+
+- table:
+    schema: public
+    name: v_admin_dashboard_active_subscriptions
+  select_permissions:
+    - role: superadmin
+      permission:
+        columns:
+          - account_id
+          - account_name
+          - plan_code
+          - plan_name
+          - status
+          - start_at
+          - end_at
+          - grace_days
+          - effective_end_at
+          - remaining_days_including_grace
+          - approved_at
+          - approved_by
+          - approved_by_email
+          - request_id
+        filter: {}
+
+- table:
+    schema: public
+    name: v_admin_dashboard_payments
+  select_permissions:
+    - role: superadmin
+      permission:
+        columns:
+          - payment_id
+          - received_at
+          - account_id
+          - account_name
+          - plan_code
+          - plan_name
+          - amount_usd
+          - payment_method
+          - request_id
+          - created_by
+          - created_by_email
+        filter: {}
+
+- table:
+    schema: public
+    name: v_admin_dashboard_revenue_monthly
+  select_permissions:
+    - role: superadmin
+      permission:
+        columns:
+          - month
+          - payments_count
+          - total_amount_usd
+          - avg_payment_usd
+        filter: {}
+
+- table:
+    schema: public
+    name: v_admin_dashboard_audit_tail
+  select_permissions:
+    - role: superadmin
+      permission:
+        columns:
+          - created_at
+          - account_id
+          - actor_uid
+          - actor_email
+          - table_name
+          - op
+          - row_pk
+          - diff
+        filter: {}
+
+- table:
+    schema: public
+    name: v_admin_dashboard_account_member_counts
+  select_permissions:
+    - role: superadmin
+      permission:
+        columns:
+          - account_id
+          - account_name
+          - owners_count
+          - admins_count
+          - employees_count
+          - total_members
+        filter: {}
+
+- table:
+    schema: public
+    name: v_admin_dashboard_account_members
+  select_permissions:
+    - role: superadmin
+      permission:
+        columns:
+          - account_id
+          - account_name
+          - user_uid
+          - email
+          - role
+          - disabled
+          - created_at
+        filter: {}
+
+- table:
+    schema: public
     name: v_my_profile
   select_permissions:
     - role: me
