@@ -491,6 +491,14 @@ class AuthProvider extends ChangeNotifier {
 
       if (((currentUser?['accountId'] ?? '').toString().isEmpty) ||
           ((currentUser?['role'] ?? '').toString().isEmpty)) {
+        if (isSuperAdmin) {
+          _authDiag(
+            '_networkRefreshAndMark:superAdminSkipActiveAccount',
+            context: {'uid': currentUser?['uid']},
+          );
+          success = true;
+          return true;
+        }
         try {
           final aa = await _auth.resolveActiveAccountOrThrow();
           currentUser ??= {};

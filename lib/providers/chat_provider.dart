@@ -152,7 +152,8 @@ class ChatProvider extends ChangeNotifier {
     _safeNotify();
     try {
       await _primeMyEmail();
-      final accId = accountId ?? await fetchAccountIdForCurrentUser();
+      final accId = accountId ??
+          await fetchAccountIdForCurrentUser(isSuperAdmin: isSuperAdmin);
       final accountFilter =
           (accId == null || accId.trim().isEmpty) ? null : accId.trim();
 
@@ -220,9 +221,10 @@ class ChatProvider extends ChangeNotifier {
     }
   }
 
-  Future<String?> fetchAccountIdForCurrentUser() async {
+  Future<String?> fetchAccountIdForCurrentUser({bool isSuperAdmin = false}) async {
     final uid = currentUid;
     if (uid.isEmpty) return null;
+    if (isSuperAdmin) return null;
 
     final preferred = await ActiveAccountStore.readAccountId();
     if (preferred != null && preferred.isNotEmpty) {

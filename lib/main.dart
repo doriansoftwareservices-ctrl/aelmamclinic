@@ -273,7 +273,9 @@ void main() {
                   if (uid == null || uid.isEmpty) return;
 
                   String? accId = auth.accountId;
-                  accId ??= await cp.fetchAccountIdForCurrentUser();
+                  accId ??= await cp.fetchAccountIdForCurrentUser(
+                    isSuperAdmin: auth.isSuperAdmin,
+                  );
 
                   await ChatRealtimeNotifier.instance.start(
                     accountId: accId, // قد تكون null (كل الحسابات)
@@ -287,7 +289,9 @@ void main() {
               if (auth.isLoggedIn && !cp.ready) {
                 Future.microtask(() async {
                   String? accId = auth.accountId;
-                  accId ??= await cp.fetchAccountIdForCurrentUser();
+                  accId ??= await cp.fetchAccountIdForCurrentUser(
+                    isSuperAdmin: auth.isSuperAdmin,
+                  );
                   if ((accId == null || accId.isEmpty) && !auth.isSuperAdmin) {
                     return;
                   }
