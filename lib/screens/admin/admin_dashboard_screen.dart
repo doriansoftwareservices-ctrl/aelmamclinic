@@ -4,6 +4,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
+import 'package:aelmamclinic/models/admin_account_member.dart';
+import 'package:aelmamclinic/models/admin_account_member_count.dart';
 import 'package:aelmamclinic/models/clinic.dart';
 import 'package:aelmamclinic/models/complaint.dart';
 import 'package:aelmamclinic/models/payment_method.dart';
@@ -13,6 +15,7 @@ import 'package:aelmamclinic/models/payment_time_stat.dart';
 import 'package:aelmamclinic/models/provisioning_result.dart';
 import 'package:aelmamclinic/models/subscription_request.dart';
 import 'package:aelmamclinic/models/employee_seat_request.dart';
+import 'package:aelmamclinic/services/admin_account_members_service.dart';
 import 'package:aelmamclinic/services/admin_billing_service.dart';
 import 'package:aelmamclinic/services/employee_seat_service.dart';
 import 'package:aelmamclinic/services/nhost_storage_service.dart';
@@ -46,6 +49,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   final AdminBillingService _billingService = AdminBillingService();
   final EmployeeSeatService _seatService = EmployeeSeatService();
   final NhostStorageService _storageService = NhostStorageService();
+  final AdminAccountMembersService _membersService =
+      AdminAccountMembersService();
 
   // عيادات
   List<Clinic> _clinics = [];
@@ -78,6 +83,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   List<PaymentTimeStat> _paymentDailyStats = [];
 
   int _statsMode = 0; // 0=methods, 1=plans, 2=monthly, 3=daily
+
+  // أعضاء الحسابات
+  List<AdminAccountMemberCount> _memberCounts = [];
+  List<AdminAccountMember> _accountMembers = [];
+  bool _loadingMemberCounts = false;
+  bool _loadingAccountMembers = false;
+  String? _membersAccountId;
+  bool _membersOnlyActive = true;
 
   // -------- إنشاء حساب عيادة رئيسية --------
   final TextEditingController _clinicNameCtrl = TextEditingController();
@@ -394,6 +407,46 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     }
   }
 
+  Future<void> _fetchMemberCounts() async {
+    try {
+      setState(() => _loadingMemberCounts = true);
+      final rows =
+          await _membersService.fetchMemberCounts(onlyActive: _membersOnlyActive);
+      if (!mounted) return;
+      setState(() {
+        _memberCounts = rows;
+        _loadingMemberCounts = false;
+        if (_membersAccountId != null &&
+            rows.every((r) => r.accountId != _membersAccountId)) {
+          _membersAccountId = null;
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loadingMemberCounts = false);
+      _snack('تعذّر تحميل إحصاءات الأعضاء: $e');
+    }
+  }
+
+  Future<void> _fetchAccountMembers({String? accountId}) async {
+    try {
+      setState(() => _loadingAccountMembers = true);
+      final rows = await _membersService.fetchMembers(
+        accountId: accountId,
+        onlyActive: _membersOnlyActive,
+      );
+      if (!mounted) return;
+      setState(() {
+        _accountMembers = rows;
+        _loadingAccountMembers = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loadingAccountMembers = false);
+      _snack('تعذّر تحميل قائمة الأعضاء: $e');
+    }
+  }
+
   // ---------- Actions ----------
   Future<void> _createClinicAccount() async {
     if (_busy) return;
@@ -644,6 +697,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                             icon: Icon(Icons.analytics_rounded),
                             label: Text('الإحصاءات'),
                           ),
+                          const NavigationRailDestination(
+                            icon: Icon(Icons.groups_rounded),
+                            label: Text('الأعضاء'),
+                          ),
                         ],
                       ),
                       const VerticalDivider(width: 18),
@@ -692,6 +749,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       case 5:
         await _fetchPaymentStats();
         break;
+      case 6:
+        await _fetchMemberCounts();
+        await _fetchAccountMembers(accountId: _membersAccountId);
+        break;
     }
   }
 
@@ -709,6 +770,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         return _buildComplaintsSection(scheme);
       case 5:
         return _buildPaymentStatsSection(scheme);
+      case 6:
+        return _buildAccountMembersSection(scheme);
       default:
         return const SizedBox.shrink();
     }
@@ -809,6 +872,25 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         ),
       ),
     );
+  }
+
+  int _sumMemberCounts(int Function(AdminAccountMemberCount row) getter) {
+    return _memberCounts.fold(0, (sum, row) => sum + getter(row));
+  }
+
+  String _roleLabel(String role) {
+    switch (role.toLowerCase()) {
+      case 'owner':
+        return 'مالك';
+      case 'admin':
+        return 'مدير';
+      case 'employee':
+        return 'موظف';
+      case 'superadmin':
+        return 'سوبر أدمن';
+      default:
+        return role.isEmpty ? 'غير محدد' : role;
+    }
   }
 
   Widget _buildSubscriptionRequestsList() {
@@ -1112,6 +1194,193 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
           ),
         );
       }).toList(),
+    );
+  }
+
+  Widget _buildAccountMembersSection(ColorScheme scheme) {
+    final ownersTotal = _sumMemberCounts((r) => r.ownersCount);
+    final adminsTotal = _sumMemberCounts((r) => r.adminsCount);
+    final employeesTotal = _sumMemberCounts((r) => r.employeesCount);
+    final membersTotal = _sumMemberCounts((r) => r.totalMembers);
+
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: DropdownButtonFormField<String?>(
+                value: _membersAccountId,
+                decoration: const InputDecoration(
+                  labelText: 'الحساب',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                items: [
+                  const DropdownMenuItem<String?>(
+                    value: null,
+                    child: Text('جميع الحسابات'),
+                  ),
+                  ..._memberCounts.map(
+                    (row) => DropdownMenuItem<String?>(
+                      value: row.accountId,
+                      child: Text(
+                        row.accountName.isEmpty
+                            ? row.accountId
+                            : row.accountName,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                ],
+                onChanged: (value) async {
+                  setState(() => _membersAccountId = value);
+                  await _fetchAccountMembers(accountId: value);
+                },
+              ),
+            ),
+            const SizedBox(width: 12),
+            Row(
+              children: [
+                const Text('النشط فقط'),
+                Switch(
+                  value: _membersOnlyActive,
+                  onChanged: (value) async {
+                    setState(() => _membersOnlyActive = value);
+                    await _fetchMemberCounts();
+                    await _fetchAccountMembers(accountId: _membersAccountId);
+                  },
+                ),
+              ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            _statChip('المالكون', ownersTotal),
+            const SizedBox(width: 8),
+            _statChip('المدراء', adminsTotal),
+            const SizedBox(width: 8),
+            _statChip('الموظفون', employeesTotal),
+            const SizedBox(width: 8),
+            _statChip('الإجمالي', membersTotal),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Expanded(
+          child: ListView(
+            children: [
+              _buildMemberCountsCard(scheme),
+              const SizedBox(height: 12),
+              _buildMembersListCard(scheme),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMemberCountsCard(ColorScheme scheme) {
+    if (_loadingMemberCounts) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_memberCounts.isEmpty) {
+      return const Center(child: Text('لا توجد بيانات للحسابات'));
+    }
+    final muted = scheme.onSurface.withValues(alpha: .6);
+    return NeuCard(
+      padding: const EdgeInsets.all(12),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: DataTable(
+          columns: const [
+            DataColumn(label: Text('الحساب')),
+            DataColumn(label: Text('مالك')),
+            DataColumn(label: Text('مدير')),
+            DataColumn(label: Text('موظف')),
+            DataColumn(label: Text('الإجمالي')),
+          ],
+          rows: _memberCounts.map((row) {
+            return DataRow(
+              cells: [
+                DataCell(
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(row.accountName.isEmpty
+                          ? row.accountId
+                          : row.accountName),
+                      if (row.accountName.isNotEmpty)
+                        Text(
+                          row.accountId,
+                          style: TextStyle(fontSize: 11, color: muted),
+                        ),
+                    ],
+                  ),
+                ),
+                DataCell(Text('${row.ownersCount}')),
+                DataCell(Text('${row.adminsCount}')),
+                DataCell(Text('${row.employeesCount}')),
+                DataCell(Text('${row.totalMembers}')),
+              ],
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMembersListCard(ColorScheme scheme) {
+    if (_loadingAccountMembers) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return NeuCard(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'الأعضاء (${_accountMembers.length})',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: scheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (_accountMembers.isEmpty)
+            const Text('لا توجد حسابات مطابقة للفلترة الحالية.')
+          else
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: _accountMembers.length,
+              separatorBuilder: (_, __) => const Divider(height: 18),
+              itemBuilder: (_, index) {
+                final row = _accountMembers[index];
+                final title = row.email.isEmpty ? row.userUid : row.email;
+                final roleLabel = _roleLabel(row.role);
+                final statusLabel = row.disabled ? 'معطل' : 'نشط';
+                final created = row.createdAt == null
+                    ? ''
+                    : DateFormat('yyyy-MM-dd').format(row.createdAt!);
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(title),
+                  subtitle: Text(
+                    [
+                      if (_membersAccountId == null)
+                        'الحساب: ${row.accountName}',
+                      'الدور: $roleLabel',
+                      'الحالة: $statusLabel',
+                      if (created.isNotEmpty) 'تاريخ الإضافة: $created',
+                    ].join(' • '),
+                  ),
+                );
+              },
+            ),
+        ],
+      ),
     );
   }
 
