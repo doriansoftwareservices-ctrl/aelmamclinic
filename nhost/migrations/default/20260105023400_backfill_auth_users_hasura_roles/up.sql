@@ -17,7 +17,7 @@ BEGIN
     SELECT 1 FROM information_schema.columns
     WHERE table_schema='auth' AND table_name='users' AND column_name='roles'
   ) THEN
-    EXECUTE $$
+    EXECUTE $sql$
       UPDATE auth.users u
       SET roles = CASE
         WHEN EXISTS (
@@ -26,7 +26,7 @@ BEGIN
         ) THEN ARRAY['user','superadmin']::text[]
         ELSE ARRAY['user']::text[]
       END
-    $$;
+    $sql$;
   END IF;
 END$$;
 
