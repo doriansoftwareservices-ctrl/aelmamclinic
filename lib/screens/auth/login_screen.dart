@@ -371,7 +371,7 @@ class _LoginScreenState extends State<LoginScreen> {
       case AuthSessionStatus.noAccount:
         return 'لم يتم ربط هذا المستخدم بأي عيادة بعد. اطلب من الإدارة إكمال الإعداد.';
       case AuthSessionStatus.planUpgradeRequired:
-        return 'هذه العيادة على خطة FREE ولا تدعم حسابات الموظفين. اطلب من المالك ترقية الخطة.';
+        return 'الخطة الحالية للعيادة هي "FREE" لصلاحيات اكبر يجب ترقية الخطة';
       case AuthSessionStatus.signedOut:
         return 'انتهت الجلسة أثناء التحقق من الحساب. حاول تسجيل الدخول مجددًا.';
       case AuthSessionStatus.networkError:
