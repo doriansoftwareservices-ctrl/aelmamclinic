@@ -76,14 +76,18 @@ async function createOrGetUser(email, password) {
   return json.id;
 }
 
-async function callAdminCreateEmployee(accountId, email, password) {
+async function callAdminCreateEmployee(
+  accountId,
+  email,
+  password,
+  authHeader,
+) {
   const gqlUrl = process.env.NHOST_GRAPHQL_URL;
-  const adminSecret =
-    process.env.HASURA_GRAPHQL_ADMIN_SECRET || process.env.NHOST_ADMIN_SECRET;
-  if (!gqlUrl || !adminSecret) {
-    throw new Error(
-      'Missing NHOST_GRAPHQL_URL or HASURA_GRAPHQL_ADMIN_SECRET/NHOST_ADMIN_SECRET',
-    );
+  if (!gqlUrl) {
+    throw new Error('Missing NHOST_GRAPHQL_URL');
+  }
+  if (!authHeader) {
+    throw new Error('Missing authorization');
   }
   const query = `
     mutation CreateEmployee($account: uuid!, $email: String!, $password: String!) {
@@ -102,7 +106,8 @@ async function callAdminCreateEmployee(accountId, email, password) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-hasura-admin-secret': adminSecret,
+      Authorization: authHeader,
+      'x-hasura-role': 'superadmin',
     },
     body: JSON.stringify({
       query,
@@ -217,7 +222,12 @@ module.exports = async function handler(req, res) {
     }
 
     await createOrGetUser(email, password);
-    const result = await callAdminCreateEmployee(accountId, email, password);
+    const result = await callAdminCreateEmployee(
+      accountId,
+      email,
+      password,
+      authHeader,
+    );
     res.json(result);
   } catch (err) {
     const code = err?.statusCode ?? 500;

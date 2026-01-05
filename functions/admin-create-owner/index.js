@@ -76,14 +76,18 @@ async function createOrGetUser(email, password) {
   return json.id;
 }
 
-async function callAdminCreateOwner(clinicName, ownerEmail, ownerPassword) {
+async function callAdminCreateOwner(
+  clinicName,
+  ownerEmail,
+  ownerPassword,
+  authHeader,
+) {
   const gqlUrl = process.env.NHOST_GRAPHQL_URL;
-  const adminSecret =
-    process.env.HASURA_GRAPHQL_ADMIN_SECRET || process.env.NHOST_ADMIN_SECRET;
-  if (!gqlUrl || !adminSecret) {
-    throw new Error(
-      'Missing NHOST_GRAPHQL_URL or HASURA_GRAPHQL_ADMIN_SECRET/NHOST_ADMIN_SECRET',
-    );
+  if (!gqlUrl) {
+    throw new Error('Missing NHOST_GRAPHQL_URL');
+  }
+  if (!authHeader) {
+    throw new Error('Missing authorization');
   }
   const query = `
     mutation CreateOwner($clinic: String!, $email: String!, $password: String!) {
@@ -103,7 +107,8 @@ async function callAdminCreateOwner(clinicName, ownerEmail, ownerPassword) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-hasura-admin-secret': adminSecret,
+      Authorization: authHeader,
+      'x-hasura-role': 'superadmin',
     },
     body: JSON.stringify({
       query,
@@ -182,6 +187,7 @@ module.exports = async function handler(req, res) {
       clinicName,
       ownerEmail,
       ownerPassword,
+      authHeader,
     );
     res.json(result);
   } catch (err) {
