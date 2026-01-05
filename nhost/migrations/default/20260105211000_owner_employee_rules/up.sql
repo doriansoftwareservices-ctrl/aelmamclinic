@@ -16,7 +16,7 @@ AS $$
       AND au.user_uid::text = public.request_uid_text()::text
       AND coalesce(au.disabled, false) = false
       AND (
-        lower(coalesce(au.role, '')) IN ('owner','superadmin')
+        lower(coalesce(au.role, '')) IN ('owner','admin','superadmin')
         OR public.account_is_paid(p_account) = true
       )
   );

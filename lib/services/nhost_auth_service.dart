@@ -509,6 +509,7 @@ class NhostAuthService {
     final roleLower = role.toLowerCase();
     if (planCode == 'free' &&
         roleLower != 'owner' &&
+        roleLower != 'admin' &&
         roleLower != 'superadmin') {
       throw PlanUpgradeRequiredException(accountId, planCode: planCode);
     }
