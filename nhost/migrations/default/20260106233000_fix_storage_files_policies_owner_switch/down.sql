@@ -1,0 +1,1 @@
+-- No-op: keep storage.files policies in place.
