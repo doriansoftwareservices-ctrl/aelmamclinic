@@ -43,7 +43,12 @@ class NhostStorageService {
     String? bucketId,
     String? mimeType,
   }) async {
-    final uri = _api.storageUri('files');
+    final bucket = bucketId?.trim();
+    final uri = (bucket != null && bucket.isNotEmpty)
+        ? _api
+            .storageUri('files')
+            .replace(queryParameters: {'bucketId': bucket})
+        : _api.storageUri('files');
     final request = http.MultipartRequest('POST', uri);
     final filename = (name == null || name.trim().isEmpty)
         ? file.uri.pathSegments.last
@@ -58,9 +63,11 @@ class NhostStorageService {
       ),
     );
 
-    if (bucketId != null && bucketId.trim().isNotEmpty) {
-      request.fields['bucketId'] = bucketId.trim();
+    if (bucket != null && bucket.isNotEmpty) {
+      request.fields['bucketId'] = bucket;
+      request.fields['bucket_id'] = bucket;
     }
+    request.fields['name'] = filename;
 
     request.headers.addAll(
       await _api.authHeaders(),

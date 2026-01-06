@@ -31,12 +31,17 @@ async function createOrGetUser(email, password) {
     );
   }
 
-  const createRes = await fetch(`${authUrl}/admin/users`, {
+  const trimmed = authUrl.replace(/\/+$/, '');
+  const base = trimmed.endsWith('/v1') ? trimmed : `${trimmed}/v1`;
+  const adminHeaders = {
+    'Content-Type': 'application/json',
+    'x-hasura-admin-secret': adminSecret,
+    Authorization: `Bearer ${adminSecret}`,
+  };
+
+  const createRes = await fetch(`${base}/admin/users`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${adminSecret}`,
-    },
+    headers: adminHeaders,
     body: JSON.stringify({
       email,
       password,
@@ -47,12 +52,8 @@ async function createOrGetUser(email, password) {
 
   if (createRes.status === 409) {
     const listRes = await fetch(
-      `${authUrl}/admin/users?email=${encodeURIComponent(email)}`,
-      {
-        headers: {
-          Authorization: `Bearer ${adminSecret}`,
-        },
-      },
+      `${base}/admin/users?email=${encodeURIComponent(email)}`,
+      { headers: adminHeaders },
     );
     if (!listRes.ok) {
       throw new Error(`Auth lookup failed: ${listRes.status}`);
