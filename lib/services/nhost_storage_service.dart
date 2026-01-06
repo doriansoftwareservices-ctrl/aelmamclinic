@@ -1,11 +1,12 @@
-import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
-import 'package:http_parser/http_parser.dart';
+import 'package:nhost_storage_dart/nhost_storage_dart.dart';
 
 import '../core/constants.dart';
 import '../core/nhost_config.dart';
+import '../core/nhost_manager.dart';
 import 'nhost_api_client.dart';
 
 /// Minimal storage wrapper for Nhost (REST).
@@ -44,48 +45,38 @@ class NhostStorageService {
     String? mimeType,
   }) async {
     final bucket = bucketId?.trim();
-    final uri = (bucket != null && bucket.isNotEmpty)
-        ? _api
-            .storageUri('files')
-            .replace(queryParameters: {'bucketId': bucket})
-        : _api.storageUri('files');
-    final request = http.MultipartRequest('POST', uri);
     final filename = (name == null || name.trim().isEmpty)
         ? file.uri.pathSegments.last
         : name.trim();
-
-    request.files.add(
-      await http.MultipartFile.fromPath(
-        'file',
-        file.path,
+    try {
+      final bytes = await file.readAsBytes();
+      final fileData = FileData(
+        Uint8List.fromList(bytes),
         filename: filename,
-        contentType: mimeType == null ? null : _parseContentType(mimeType),
-      ),
-    );
-
-    if (bucket != null && bucket.isNotEmpty) {
-      request.fields['bucketId'] = bucket;
-      request.fields['bucket_id'] = bucket;
-    }
-    request.fields['name'] = filename;
-
-    request.headers.addAll(
-      await _api.authHeaders(),
-    );
-
-    final streamed = await request.send();
-    final response = await http.Response.fromStream(streamed);
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      final detail =
-          response.body.isEmpty ? '' : ' - ${response.body.toString()}';
-      throw HttpException(
-        'Upload failed: ${response.statusCode}$detail',
+        contentType: mimeType,
       );
+      final metadata = UploadFileMetadata(name: filename);
+      final results = await NhostManager.client.storage.uploadFiles(
+        files: [fileData],
+        bucketId: (bucket != null && bucket.isNotEmpty) ? bucket : null,
+        metadataList: [metadata],
+      );
+      if (results.isEmpty) {
+        return <String, dynamic>{};
+      }
+      final uploaded = results.first;
+      return <String, dynamic>{
+        'id': uploaded.id,
+        'name': uploaded.name,
+        'bucketId': uploaded.bucketId,
+        'mimeType': uploaded.mimeType,
+        'size': uploaded.size,
+        'etag': uploaded.etag,
+        'createdAt': uploaded.createdAt.toIso8601String(),
+      };
+    } catch (e) {
+      throw HttpException('Upload failed: $e');
     }
-    if (response.body.isEmpty) {
-      return <String, dynamic>{};
-    }
-    return _decodeJson(response.body);
   }
 
   /// Deletes a file by id.
@@ -120,24 +111,4 @@ class NhostStorageService {
   }
 
   void dispose() => _api.dispose();
-}
-
-MediaType? _parseContentType(String value) {
-  try {
-    final parts = value.split('/');
-    if (parts.length != 2) return null;
-    return MediaType(parts[0], parts[1]);
-  } catch (_) {
-    return null;
-  }
-}
-
-Map<String, dynamic> _decodeJson(String body) {
-  try {
-    final decoded = jsonDecode(body);
-    if (decoded is Map<String, dynamic>) return decoded;
-    return <String, dynamic>{'data': decoded};
-  } catch (_) {
-    return <String, dynamic>{};
-  }
 }
