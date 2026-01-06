@@ -33,6 +33,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   UnsubscribeDelegate? _authUnsub;
   bool _navigating = false;
+  bool _routeCheckScheduled = false;
 
   // نضمن تشغيل الـ Bootstrap مرة واحدة عند وجود جلسة مسبقة
   bool _bootstrappedOnce = false;
@@ -104,8 +105,8 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   /// يقرر التوجيه حسب المستخدم الحالي (سوبر أدمن أو لا) ويضمن تشغيل المزامنة.
-  Future<void> _checkAndRouteIfSignedIn() async {
-    if (_navigating || _loading || !mounted) return;
+  Future<void> _checkAndRouteIfSignedIn({bool force = false}) async {
+    if (_navigating || (!force && _loading) || !mounted) return;
 
     final authProv = context.read<AuthProvider>();
     final user = NhostManager.client.auth.currentUser;
@@ -249,7 +250,7 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       // نوجّه فورًا (ولا نعتمد فقط على المستمع).
-      await _checkAndRouteIfSignedIn();
+      await _checkAndRouteIfSignedIn(force: true);
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = 'فشل تسجيل الدخول: $e');
@@ -319,7 +320,7 @@ class _LoginScreenState extends State<LoginScreen> {
         debounce: const Duration(seconds: 1),
       );
       _bootstrappedOnce = true;
-      await _checkAndRouteIfSignedIn();
+      await _checkAndRouteIfSignedIn(force: true);
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = 'تعذّر إنشاء الحساب: $e');
@@ -383,8 +384,20 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final auth = context.read<AuthProvider>();
+    final auth = context.watch<AuthProvider>();
     final scheme = Theme.of(context).colorScheme;
+
+    if (!_routeCheckScheduled && auth.isLoggedIn && auth.isSuperAdmin) {
+      _routeCheckScheduled = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        try {
+          await _checkAndRouteIfSignedIn(force: true);
+        } finally {
+          _routeCheckScheduled = false;
+        }
+      });
+    }
 
     return Scaffold(
       appBar: AppBar(
