@@ -21,8 +21,28 @@ const readBody = (req) =>
     });
   });
 
+const resolveAuthUrl = () => {
+  const candidates = [
+    process.env.NHOST_AUTH_URL,
+    process.env.NHOST_GRAPHQL_URL,
+  ];
+  for (const raw of candidates) {
+    if (!raw) continue;
+    let url = raw.replace(/\/+$/, '');
+    url = url
+      .replace('.graphql.', '.auth.')
+      .replace('.functions.', '.auth.')
+      .replace('.storage.', '.auth.');
+    if (!url.endsWith('/v1')) {
+      url = `${url}/v1`;
+    }
+    return url;
+  }
+  return null;
+};
+
 async function createOrGetUser(email, password) {
-  const authUrl = process.env.NHOST_AUTH_URL;
+  const authUrl = resolveAuthUrl();
   const adminSecret =
     process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
   if (!authUrl || !adminSecret) {
@@ -31,8 +51,7 @@ async function createOrGetUser(email, password) {
     );
   }
 
-  const trimmed = authUrl.replace(/\/+$/, '');
-  const base = trimmed.endsWith('/v1') ? trimmed : `${trimmed}/v1`;
+  const base = authUrl;
   const adminHeaders = {
     'Content-Type': 'application/json',
     'x-hasura-admin-secret': adminSecret,

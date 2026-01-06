@@ -61,7 +61,7 @@ disableNewUsers = false
 [auth.user]
 [auth.user.roles]
 default = 'user'
-allowed = ['user', 'superadmin', 'anonymous']
+allowed = ['user', 'superadmin']
 
 [auth.user.locale]
 default = 'en'
