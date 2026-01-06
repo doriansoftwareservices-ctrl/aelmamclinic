@@ -83,6 +83,8 @@ async function callAdminCreateOwner(
   authHeader,
 ) {
   const gqlUrl = process.env.NHOST_GRAPHQL_URL;
+  const adminSecret =
+    process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
   if (!gqlUrl) {
     throw new Error('Missing NHOST_GRAPHQL_URL');
   }
@@ -103,34 +105,49 @@ async function callAdminCreateOwner(
       }
     }
   `;
-  const res = await fetch(gqlUrl, {
-    method: 'POST',
-    headers: {
+  const payload = {
+    query,
+    variables: { clinic: clinicName, email: ownerEmail, password: ownerPassword },
+  };
+  const run = async (headers) => {
+    const res = await fetch(gqlUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`GraphQL failed: ${res.status} ${txt}`);
+    }
+    const json = await res.json();
+    if (json.errors?.length) {
+      throw new Error(json.errors.map((e) => e.message).join(' | '));
+    }
+    const rows = json.data?.admin_create_owner_full;
+    if (Array.isArray(rows) && rows.length > 0) {
+      return rows[0];
+    }
+    if (rows && typeof rows === 'object') {
+      return rows;
+    }
+    return { ok: false, error: 'No data' };
+  };
+  try {
+    return await run({
       'Content-Type': 'application/json',
       Authorization: authHeader,
       'x-hasura-role': 'superadmin',
-    },
-    body: JSON.stringify({
-      query,
-      variables: { clinic: clinicName, email: ownerEmail, password: ownerPassword },
-    }),
-  });
-  if (!res.ok) {
-    const txt = await res.text();
-    throw new Error(`GraphQL failed: ${res.status} ${txt}`);
+    });
+  } catch (err) {
+    if (!adminSecret) {
+      throw err;
+    }
+    return run({
+      'Content-Type': 'application/json',
+      'x-hasura-admin-secret': adminSecret,
+      'x-hasura-role': 'service_role',
+    });
   }
-  const json = await res.json();
-  if (json.errors?.length) {
-    throw new Error(json.errors.map((e) => e.message).join(' | '));
-  }
-  const rows = json.data?.admin_create_owner_full;
-  if (Array.isArray(rows) && rows.length > 0) {
-    return rows[0];
-  }
-  if (rows && typeof rows === 'object') {
-    return rows;
-  }
-  return { ok: false, error: 'No data' };
 }
 
 async function ensureSuperAdmin(authHeader) {

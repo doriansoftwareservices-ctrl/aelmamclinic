@@ -83,6 +83,8 @@ async function callAdminCreateEmployee(
   authHeader,
 ) {
   const gqlUrl = process.env.NHOST_GRAPHQL_URL;
+  const adminSecret =
+    process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
   if (!gqlUrl) {
     throw new Error('Missing NHOST_GRAPHQL_URL');
   }
@@ -102,34 +104,49 @@ async function callAdminCreateEmployee(
       }
     }
   `;
-  const res = await fetch(gqlUrl, {
-    method: 'POST',
-    headers: {
+  const payload = {
+    query,
+    variables: { account: accountId, email, password },
+  };
+  const run = async (headers) => {
+    const res = await fetch(gqlUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`GraphQL failed: ${res.status} ${txt}`);
+    }
+    const json = await res.json();
+    if (json.errors?.length) {
+      throw new Error(json.errors.map((e) => e.message).join(' | '));
+    }
+    const rows = json.data?.admin_create_employee_full;
+    if (Array.isArray(rows) && rows.length > 0) {
+      return rows[0];
+    }
+    if (rows && typeof rows === 'object') {
+      return rows;
+    }
+    return { ok: false, error: 'No data' };
+  };
+  try {
+    return await run({
       'Content-Type': 'application/json',
       Authorization: authHeader,
       'x-hasura-role': 'superadmin',
-    },
-    body: JSON.stringify({
-      query,
-      variables: { account: accountId, email, password },
-    }),
-  });
-  if (!res.ok) {
-    const txt = await res.text();
-    throw new Error(`GraphQL failed: ${res.status} ${txt}`);
+    });
+  } catch (err) {
+    if (!adminSecret) {
+      throw err;
+    }
+    return run({
+      'Content-Type': 'application/json',
+      'x-hasura-admin-secret': adminSecret,
+      'x-hasura-role': 'service_role',
+    });
   }
-  const json = await res.json();
-  if (json.errors?.length) {
-    throw new Error(json.errors.map((e) => e.message).join(' | '));
-  }
-  const rows = json.data?.admin_create_employee_full;
-  if (Array.isArray(rows) && rows.length > 0) {
-    return rows[0];
-  }
-  if (rows && typeof rows === 'object') {
-    return rows;
-  }
-  return { ok: false, error: 'No data' };
 }
 
 async function ensureSuperAdmin(authHeader) {
@@ -165,6 +182,8 @@ async function ensureSuperAdmin(authHeader) {
 
 async function ensureAccountPaid(accountId, authHeader) {
   const gqlUrl = process.env.NHOST_GRAPHQL_URL;
+  const adminSecret =
+    process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
   if (!gqlUrl) {
     throw new Error('Missing NHOST_GRAPHQL_URL');
   }
@@ -175,26 +194,43 @@ async function ensureAccountPaid(accountId, authHeader) {
       }
     }
   `;
-  const res = await fetch(gqlUrl, {
-    method: 'POST',
-    headers: {
+  const payload = { query, variables: { account: accountId } };
+  const run = async (headers) => {
+    const res = await fetch(gqlUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      throw new Error(`Plan check failed: ${res.status}`);
+    }
+    const json = await res.json();
+    if (json.errors?.length) {
+      throw new Error(json.errors.map((e) => e.message).join(' | '));
+    }
+    const raw = json.data?.account_is_paid_gql;
+    if (Array.isArray(raw) && raw.length > 0) {
+      return raw[0]?.account_is_paid === true;
+    }
+    return false;
+  };
+
+  try {
+    return await run({
       'Content-Type': 'application/json',
       Authorization: authHeader,
-    },
-    body: JSON.stringify({ query, variables: { account: accountId } }),
-  });
-  if (!res.ok) {
-    throw new Error(`Plan check failed: ${res.status}`);
+      'x-hasura-role': 'superadmin',
+    });
+  } catch (err) {
+    if (!adminSecret) {
+      throw err;
+    }
+    return run({
+      'Content-Type': 'application/json',
+      'x-hasura-admin-secret': adminSecret,
+      'x-hasura-role': 'service_role',
+    });
   }
-  const json = await res.json();
-  if (json.errors?.length) {
-    throw new Error(json.errors.map((e) => e.message).join(' | '));
-  }
-  const raw = json.data?.account_is_paid_gql;
-  if (Array.isArray(raw) && raw.length > 0) {
-    return raw[0]?.account_is_paid === true;
-  }
-  return false;
 }
 
 module.exports = async function handler(req, res) {

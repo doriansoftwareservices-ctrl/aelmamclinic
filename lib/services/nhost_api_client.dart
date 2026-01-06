@@ -75,9 +75,26 @@ class NhostApiClient {
       body: jsonEncode(body),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw HttpException(
-        'POST ${url.toString()} failed: ${response.statusCode}',
-      );
+      final buffer = StringBuffer()
+        ..write('POST ${url.toString()} failed: ${response.statusCode}');
+      if (response.body.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map<String, dynamic>) {
+            final err = decoded['error'] ?? decoded['message'];
+            if (err != null && err.toString().trim().isNotEmpty) {
+              buffer.write(' - ${err.toString()}');
+            } else {
+              buffer.write(' - ${response.body}');
+            }
+          } else {
+            buffer.write(' - ${response.body}');
+          }
+        } catch (_) {
+          buffer.write(' - ${response.body}');
+        }
+      }
+      throw HttpException(buffer.toString());
     }
     if (response.body.isEmpty) {
       return <String, dynamic>{};

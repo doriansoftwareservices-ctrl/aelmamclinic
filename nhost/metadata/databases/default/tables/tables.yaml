@@ -4429,14 +4429,17 @@
           - frozen
           - created_at
         filter: {}
-    - role: superadmin
-      permission:
-        columns:
-          - id
-          - name
-          - frozen
-          - created_at
-        filter: {}
+      - role: superadmin
+        permission:
+          columns:
+            - id
+            - name
+            - frozen
+            - created_at
+            - plan_code
+            - plan_status
+            - plan_end_at
+          filter: {}
 
 - table:
     schema: public

@@ -69,8 +69,10 @@ class NhostStorageService {
     final streamed = await request.send();
     final response = await http.Response.fromStream(streamed);
     if (response.statusCode < 200 || response.statusCode >= 300) {
+      final detail =
+          response.body.isEmpty ? '' : ' - ${response.body.toString()}';
       throw HttpException(
-        'Upload failed: ${response.statusCode}',
+        'Upload failed: ${response.statusCode}$detail',
       );
     }
     if (response.body.isEmpty) {
