@@ -1,0 +1,1 @@
+-- No-op: keep auth roles/user_roles normalized.
