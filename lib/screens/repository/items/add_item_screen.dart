@@ -323,7 +323,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
                   children: [
                     // نوع الصنف
                     DropdownButtonFormField<ItemType?>(
-                      value: _selectedType,
+                      initialValue: _selectedType,
                       decoration: _dec('نوع الصنف',
                           prefixIcon: const Icon(Icons.category_outlined)),
                       items: [

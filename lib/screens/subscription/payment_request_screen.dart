@@ -58,7 +58,8 @@ class _PaymentRequestScreenState extends State<PaymentRequestScreen> {
     final filename = _proofFile!.uri.pathSegments.last;
     final res = await _storage.uploadFile(
       file: _proofFile!,
-      name: 'subscription_proof_${DateTime.now().millisecondsSinceEpoch}_$filename',
+      name:
+          'subscription_proof_${DateTime.now().millisecondsSinceEpoch}_$filename',
       bucketId: 'subscription-proofs',
     );
     final fileId = res['id']?.toString() ?? '';

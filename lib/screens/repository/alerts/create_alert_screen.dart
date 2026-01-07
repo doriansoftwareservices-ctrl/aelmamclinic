@@ -148,7 +148,7 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 6),
                       child: DropdownButtonFormField<ItemType>(
-                        value: _selectedType,
+                        initialValue: _selectedType,
                         decoration: const InputDecoration(
                           border: InputBorder.none,
                           labelText: 'نوع الصنف',
@@ -175,7 +175,7 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 6),
                       child: DropdownButtonFormField<Item>(
-                        value: _selectedItem,
+                        initialValue: _selectedItem,
                         decoration: const InputDecoration(
                           border: InputBorder.none,
                           labelText: 'اسم الصنف',

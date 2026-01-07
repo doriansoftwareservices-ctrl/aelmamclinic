@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import 'package:nhost_dart/nhost_dart.dart';
 
+import '../core/auth_role_state.dart';
 import '../core/nhost_config.dart';
 import '../core/nhost_manager.dart';
 
@@ -16,6 +17,9 @@ class NhostGraphqlService {
       );
 
   static bool _isSuperAdmin(NhostClient client) {
+    if (AuthRoleState.isSuperAdmin) {
+      return true;
+    }
     final roles = client.auth.currentUser?.roles ?? const [];
     return roles.any((role) => role.toLowerCase() == 'superadmin');
   }

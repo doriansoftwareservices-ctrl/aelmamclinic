@@ -310,9 +310,18 @@ class DBService {
   /// ⚠️ مهم: لا نستخدم DEFAULT دوال في ALTER TABLE. نضيف الأعمدة ثم نملأها وننشىء تريجر.
   Future<void> _ensureAlertSettingsColumns(Database db) async {
     try {
-      final cols = await db.rawQuery("PRAGMA table_info(alert_settings)");
+      var cols = await db.rawQuery("PRAGMA table_info(alert_settings)");
       bool has(String name) => cols.any((c) =>
           ((c['name'] ?? '') as String).toLowerCase() == name.toLowerCase());
+      String? columnType(String name) {
+        for (final row in cols) {
+          final colName = (row['name'] ?? '').toString();
+          if (colName.toLowerCase() == name.toLowerCase()) {
+            return (row['type'] ?? '').toString();
+          }
+        }
+        return null;
+      }
 
       // الأعمدة (camel + snake)
       Future<void> _ensureColumn(String name, String ddl) async {
@@ -323,6 +332,7 @@ class DBService {
 
       await _ensureColumn('itemId', 'INTEGER');
       await _ensureColumn('item_id', 'INTEGER');
+      await _ensureColumn('threshold', 'REAL NOT NULL DEFAULT 0');
 
       await _ensureColumn('isEnabled', 'INTEGER NOT NULL DEFAULT 1');
       await _ensureColumn('is_enabled', 'INTEGER NOT NULL DEFAULT 1');
@@ -347,32 +357,90 @@ class DBService {
         await db
             .execute('ALTER TABLE alert_settings ADD COLUMN created_at TEXT');
       }
+      cols = await db.rawQuery("PRAGMA table_info(alert_settings)");
+      final thresholdType = columnType('threshold');
+      final needsRebuild = thresholdType != null &&
+          !thresholdType.toUpperCase().contains('REAL');
+      if (needsRebuild) {
+        await db.rawQuery('PRAGMA foreign_keys = OFF');
+        try {
+          await db.execute(
+              'ALTER TABLE alert_settings RENAME TO alert_settings_old');
+          await db.execute(AlertSetting.createTable);
+          await db.execute('''
+            INSERT INTO alert_settings (
+              id,
+              item_id,
+              threshold,
+              is_enabled,
+              last_triggered,
+              notify_time,
+              item_uuid,
+              created_at
+            )
+            SELECT
+              id,
+              COALESCE(item_id, itemId),
+              CAST(threshold AS REAL),
+              COALESCE(is_enabled, isEnabled, 1),
+              COALESCE(last_triggered, lastTriggered),
+              COALESCE(notify_time, notifyTime),
+              COALESCE(item_uuid, itemUuid),
+              COALESCE(created_at, createdAt, CURRENT_TIMESTAMP)
+            FROM alert_settings_old;
+          ''');
+          await db.execute('DROP TABLE alert_settings_old');
+        } finally {
+          await db.rawQuery('PRAGMA foreign_keys = ON');
+        }
+
+        cols = await db.rawQuery("PRAGMA table_info(alert_settings)");
+        await _ensureColumn('itemId', 'INTEGER');
+        await _ensureColumn('isEnabled', 'INTEGER NOT NULL DEFAULT 1');
+        await _ensureColumn('lastTriggered', 'TEXT');
+        await _ensureColumn('notifyTime', 'TEXT');
+        await _ensureColumn('itemUuid', 'TEXT');
+        if (!has('createdAt')) {
+          await db
+              .execute('ALTER TABLE alert_settings ADD COLUMN createdAt TEXT');
+        }
+      }
 
       // ترحيل ثنائي الاتجاه + تعبئة تواريخ خالية
-      await db.execute(
-          'UPDATE alert_settings SET itemId = COALESCE(itemId, item_id)');
-      await db.execute(
-          'UPDATE alert_settings SET item_id = COALESCE(item_id, itemId)');
-      await db.execute(
-          'UPDATE alert_settings SET isEnabled = COALESCE(isEnabled, is_enabled, 1)');
-      await db.execute(
-          'UPDATE alert_settings SET is_enabled = COALESCE(is_enabled, isEnabled, 1)');
-      await db.execute(
-          'UPDATE alert_settings SET lastTriggered = COALESCE(lastTriggered, last_triggered)');
-      await db.execute(
-          'UPDATE alert_settings SET last_triggered = COALESCE(last_triggered, lastTriggered)');
-      await db.execute(
-          'UPDATE alert_settings SET notifyTime = COALESCE(notifyTime, notify_time)');
-      await db.execute(
-          'UPDATE alert_settings SET notify_time = COALESCE(notify_time, notifyTime)');
-      await db.execute(
-          'UPDATE alert_settings SET itemUuid = COALESCE(itemUuid, item_uuid)');
-      await db.execute(
-          'UPDATE alert_settings SET item_uuid = COALESCE(item_uuid, itemUuid)');
-      await db.execute(
-          'UPDATE alert_settings SET createdAt = COALESCE(createdAt, created_at, CURRENT_TIMESTAMP)');
-      await db.execute(
-          'UPDATE alert_settings SET created_at = COALESCE(created_at, createdAt, CURRENT_TIMESTAMP)');
+      final hasItemsTable = await _tableExists(db, 'items');
+      if (!hasItemsTable) {
+        await db.rawQuery('PRAGMA foreign_keys = OFF');
+      }
+      try {
+        await db.execute(
+            'UPDATE alert_settings SET itemId = COALESCE(itemId, item_id)');
+        await db.execute(
+            'UPDATE alert_settings SET item_id = COALESCE(item_id, itemId)');
+        await db.execute(
+            'UPDATE alert_settings SET isEnabled = COALESCE(isEnabled, is_enabled, 1)');
+        await db.execute(
+            'UPDATE alert_settings SET is_enabled = COALESCE(is_enabled, isEnabled, 1)');
+        await db.execute(
+            'UPDATE alert_settings SET lastTriggered = COALESCE(lastTriggered, last_triggered)');
+        await db.execute(
+            'UPDATE alert_settings SET last_triggered = COALESCE(last_triggered, lastTriggered)');
+        await db.execute(
+            'UPDATE alert_settings SET notifyTime = COALESCE(notifyTime, notify_time)');
+        await db.execute(
+            'UPDATE alert_settings SET notify_time = COALESCE(notify_time, notifyTime)');
+        await db.execute(
+            'UPDATE alert_settings SET itemUuid = COALESCE(itemUuid, item_uuid)');
+        await db.execute(
+            'UPDATE alert_settings SET item_uuid = COALESCE(item_uuid, itemUuid)');
+        await db.execute(
+            'UPDATE alert_settings SET createdAt = COALESCE(createdAt, created_at, CURRENT_TIMESTAMP)');
+        await db.execute(
+            'UPDATE alert_settings SET created_at = COALESCE(created_at, createdAt, CURRENT_TIMESTAMP)');
+      } finally {
+        if (!hasItemsTable) {
+          await db.rawQuery('PRAGMA foreign_keys = ON');
+        }
+      }
 
       // فهرس للأداء
       await db.execute(

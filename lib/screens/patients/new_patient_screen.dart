@@ -1076,7 +1076,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 12, vertical: 10),
                         child: DropdownButtonFormField<String>(
-                          value: _selectedServiceType,
+                          initialValue: _selectedServiceType,
                           decoration: const InputDecoration(
                             labelText: 'اختر نوع الخدمة',
                             border: InputBorder.none,

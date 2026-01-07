@@ -126,15 +126,15 @@ Future<
       final nhostFunctionsUrl = readKey('nhostFunctionsUrl');
       final resetPasswordRedirectUrl = readKey('resetPasswordRedirectUrl');
 
-      final noNhostOverrides = (nhostSubdomain == null ||
-              nhostSubdomain.isEmpty) &&
-          (nhostRegion == null || nhostRegion.isEmpty) &&
-          (nhostGraphqlUrl == null || nhostGraphqlUrl.isEmpty) &&
-          (nhostAuthUrl == null || nhostAuthUrl.isEmpty) &&
-          (nhostStorageUrl == null || nhostStorageUrl.isEmpty) &&
-          (nhostFunctionsUrl == null || nhostFunctionsUrl.isEmpty) &&
-          (resetPasswordRedirectUrl == null ||
-              resetPasswordRedirectUrl.isEmpty);
+      final noNhostOverrides =
+          (nhostSubdomain == null || nhostSubdomain.isEmpty) &&
+              (nhostRegion == null || nhostRegion.isEmpty) &&
+              (nhostGraphqlUrl == null || nhostGraphqlUrl.isEmpty) &&
+              (nhostAuthUrl == null || nhostAuthUrl.isEmpty) &&
+              (nhostStorageUrl == null || nhostStorageUrl.isEmpty) &&
+              (nhostFunctionsUrl == null || nhostFunctionsUrl.isEmpty) &&
+              (resetPasswordRedirectUrl == null ||
+                  resetPasswordRedirectUrl.isEmpty);
 
       if (noNhostOverrides) {
         continue;

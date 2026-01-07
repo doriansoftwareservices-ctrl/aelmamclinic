@@ -87,8 +87,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   int _pendingNewWhileAway = 0;
 
   String get _convId => widget.conversation.id;
-  String get _currentUid =>
-      NhostManager.client.auth.currentUser?.id ?? '';
+  String get _currentUid => NhostManager.client.auth.currentUser?.id ?? '';
 
   @override
   void initState() {
@@ -599,9 +598,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => WillPopScope(
-        onWillPop: () async => false,
-        child: const Center(child: CircularProgressIndicator()),
+      builder: (_) => const PopScope(
+        canPop: false,
+        child: Center(child: CircularProgressIndicator()),
       ),
     );
   }
@@ -702,7 +701,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
       colors: [
-        scheme.surfaceVariant.withValues(alpha: .40),
+        scheme.surfaceContainerHighest.withValues(alpha: .40),
         scheme.surface.withValues(alpha: .95),
       ],
     );

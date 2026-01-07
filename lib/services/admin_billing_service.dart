@@ -39,7 +39,8 @@ class AdminBillingService {
     final rows = (res.data?['subscription_requests'] as List?) ?? const [];
     return rows
         .whereType<Map>()
-        .map((row) => SubscriptionRequest.fromMap(Map<String, dynamic>.from(row)))
+        .map((row) =>
+            SubscriptionRequest.fromMap(Map<String, dynamic>.from(row)))
         .toList();
   }
 
@@ -62,8 +63,7 @@ class AdminBillingService {
     if (res.hasException) throw res.exception!;
     final rows =
         (res.data?['admin_approve_subscription_request'] as List?) ?? const [];
-    final ok =
-        rows.isEmpty ? null : (rows.first as Map)['ok'];
+    final ok = rows.isEmpty ? null : (rows.first as Map)['ok'];
     if (ok != true) {
       final err = rows.isEmpty ? null : (rows.first as Map)['error'];
       throw Exception(err ?? 'Approve failed');
@@ -89,8 +89,7 @@ class AdminBillingService {
     if (res.hasException) throw res.exception!;
     final rows =
         (res.data?['admin_reject_subscription_request'] as List?) ?? const [];
-    final ok =
-        rows.isEmpty ? null : (rows.first as Map)['ok'];
+    final ok = rows.isEmpty ? null : (rows.first as Map)['ok'];
     if (ok != true) {
       final err = rows.isEmpty ? null : (rows.first as Map)['error'];
       throw Exception(err ?? 'Reject failed');
@@ -273,7 +272,8 @@ class AdminBillingService {
       QueryOptions(document: gql(query), fetchPolicy: FetchPolicy.noCache),
     );
     if (res.hasException) throw res.exception!;
-    final rows = (res.data?['admin_payment_stats_by_plan'] as List?) ?? const [];
+    final rows =
+        (res.data?['admin_payment_stats_by_plan'] as List?) ?? const [];
     return rows
         .whereType<Map>()
         .map((row) => PaymentPlanStat.fromMap(Map<String, dynamic>.from(row)))
@@ -315,8 +315,8 @@ class AdminBillingService {
       QueryOptions(document: gql(query), fetchPolicy: FetchPolicy.noCache),
     );
     if (res.hasException) throw res.exception!;
-    final rows = (res.data?['admin_payment_stats_by_month'] as List?) ??
-        const [];
+    final rows =
+        (res.data?['admin_payment_stats_by_month'] as List?) ?? const [];
     return rows
         .whereType<Map>()
         .map((row) => PaymentTimeStat.fromMap(Map<String, dynamic>.from(row)))

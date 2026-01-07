@@ -4,6 +4,7 @@ import 'package:graphql_flutter/graphql_flutter.dart';
 
 import 'package:aelmamclinic/core/nhost_config.dart';
 import 'package:aelmamclinic/core/nhost_manager.dart';
+import 'package:aelmamclinic/core/auth_role_state.dart';
 import 'package:aelmamclinic/models/account_user_summary.dart';
 import 'package:aelmamclinic/models/clinic.dart';
 import 'package:aelmamclinic/models/provisioning_result.dart';
@@ -20,6 +21,7 @@ class NhostAdminService {
   GraphQLClient get _gql => _gqlOverride ?? NhostGraphqlService.client;
 
   bool get isSuperAdmin {
+    if (AuthRoleState.isSuperAdmin) return true;
     final user = NhostManager.client.auth.currentUser;
     final email = user?.email;
     if (email == null || email.isEmpty) return false;
@@ -264,9 +266,7 @@ class NhostAdminService {
         accountId: res['account_id']?.toString(),
         userUid: res['user_uid']?.toString() ?? res['owner_uid']?.toString(),
         role: role,
-        warnings: (res['warnings'] as List?)
-            ?.map((e) => e.toString())
-            .toList(),
+        warnings: (res['warnings'] as List?)?.map((e) => e.toString()).toList(),
       );
     }
     final err = res['error']?.toString() ?? 'عملية الإدارة فشلت.';

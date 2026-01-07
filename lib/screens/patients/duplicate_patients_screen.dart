@@ -328,7 +328,7 @@ class _DuplicatePatientsScreenState extends State<DuplicatePatientsScreen> {
                       fontSize: 16,
                       fontWeight: pw.FontWeight.bold)),
               pw.SizedBox(height: 12),
-              pw.Table.fromTextArray(
+              pw.TableHelper.fromTextArray(
                 headers: ['المريض', 'الخدمة', 'السعر', 'التاريخ'],
                 data: rows,
                 headerStyle: pw.TextStyle(

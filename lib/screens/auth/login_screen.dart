@@ -113,23 +113,31 @@ class _LoginScreenState extends State<LoginScreen> {
     if (user == null) return;
 
     if (!authProv.isLoggedIn ||
-        (!authProv.isSuperAdmin &&
-            (authProv.accountId ?? '').isEmpty)) {
+        (!authProv.isSuperAdmin && (authProv.accountId ?? '').isEmpty)) {
       final result = await authProv.refreshAndValidateCurrentUser();
       if (!mounted) return;
       if (!result.isSuccess) {
-        if (result.status == AuthSessionStatus.noAccount ||
-            result.status == AuthSessionStatus.planUpgradeRequired) {
+        var allowContinue = false;
+        if (result.status == AuthSessionStatus.planUpgradeRequired) {
+          final role = authProv.role?.toLowerCase();
+          if (role == 'owner' || role == 'admin') {
+            allowContinue = true;
+          } else {
+            await authProv.signOut();
+          }
+        } else if (result.status == AuthSessionStatus.noAccount) {
           await authProv.signOut();
         }
-        final message = _messageForStatus(result.status);
-        if (message != null) {
-          setState(() {
-            _error = message;
-            _loading = false;
-          });
+        if (!allowContinue) {
+          final message = _messageForStatus(result.status);
+          if (message != null) {
+            setState(() {
+              _error = message;
+              _loading = false;
+            });
+          }
+          return;
         }
-        return;
       }
     }
 
@@ -220,22 +228,38 @@ class _LoginScreenState extends State<LoginScreen> {
               recheck.status == AuthSessionStatus.planUpgradeRequired) {
             await auth.signOut();
           }
-          setState(
-              () => _error = _messageForStatus(recheck.status) ??
-                  'تعذّر التحقق من الحساب. حاول مرة أخرى.');
+          setState(() => _error = _messageForStatus(recheck.status) ??
+              'تعذّر التحقق من الحساب. حاول مرة أخرى.');
           return;
         }
       }
 
       if (!result.isSuccess) {
-        if (result.status == AuthSessionStatus.noAccount ||
-            result.status == AuthSessionStatus.planUpgradeRequired) {
+        if (result.status == AuthSessionStatus.planUpgradeRequired) {
+          final role = auth.role?.toLowerCase();
+          if (role == 'owner' || role == 'admin') {
+            // Treat as success for owners/admins; they can upgrade from داخل التطبيق.
+          } else {
+            await auth.signOut();
+            final message = _messageForStatus(result.status) ??
+                'تعذّر التحقق من الحساب. حاول مرة أخرى.';
+            setState(() => _error = message);
+            return;
+          }
+        } else if (result.status == AuthSessionStatus.noAccount) {
           await auth.signOut();
+          final message =
+              _messageForStatus(result.status) ??
+              'تعذّر التحقق من الحساب. حاول مرة أخرى.';
+          setState(() => _error = message);
+          return;
+        } else {
+          final message =
+              _messageForStatus(result.status) ??
+              'تعذّر التحقق من الحساب. حاول مرة أخرى.';
+          setState(() => _error = message);
+          return;
         }
-        final message = _messageForStatus(result.status) ??
-            'تعذّر التحقق من الحساب. حاول مرة أخرى.';
-        setState(() => _error = message);
-        return;
       }
 
       // ✅ بعد نجاح التحقق، نفّذ سحبًا أوليًا + Realtime
@@ -294,8 +318,8 @@ class _LoginScreenState extends State<LoginScreen> {
         } catch (_) {}
         if (signUpResp.session == null) {
           setState(
-            () =>
-                _error = 'تم إنشاء الحساب. يرجى تأكيد البريد الإلكتروني ثم تسجيل الدخول.',
+            () => _error =
+                'تم إنشاء الحساب. يرجى تأكيد البريد الإلكتروني ثم تسجيل الدخول.',
           );
           return;
         }

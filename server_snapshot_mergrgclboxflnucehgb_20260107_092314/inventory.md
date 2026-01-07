@@ -1,15 +1,15 @@
 # Inventory (Server Snapshot)
 
-- Snapshot: server_snapshot_mergrgclboxflnucehgb_20260101_113109
-- Generated: 2026-01-01T11:31:39.687440
+- Snapshot: server_snapshot_mergrgclboxflnucehgb_20260107_092314
+- Generated: 2026-01-07T09:23:32.637496
 
 ## Counts
 
-- Tracked tables (Hasura metadata): *80*
-- Tracked functions (Hasura metadata): *31*
-- db_objects rows: *83*
-- db_functions rows: *146*
-- db_policies rows: *129*
+- Tracked tables (Hasura metadata): *87*
+- Tracked functions (Hasura metadata): *44*
+- db_objects rows: *93*
+- db_functions rows: *165*
+- db_policies rows: *154*
 
 ## Tracked tables
 
@@ -41,10 +41,10 @@
 - public.chat_typing
 - public.clinics
 - public.complaints
-- public.consumption_types
 - public.consumptions
 - public.doctors
 - public.drugs
+- public.employee_seat_requests
 - public.employees
 - public.employees_discounts
 - public.employees_loans
@@ -67,6 +67,13 @@
 - public.subscription_plans
 - public.subscription_requests
 - public.super_admins
+- public.v_admin_dashboard_account_member_counts
+- public.v_admin_dashboard_account_members
+- public.v_admin_dashboard_active_subscriptions
+- public.v_admin_dashboard_audit_tail
+- public.v_admin_dashboard_payments
+- public.v_admin_dashboard_pending_subscription_requests
+- public.v_admin_dashboard_revenue_monthly
 - public.v_admin_list_clinics
 - public.v_auth_context
 - public.v_bool_result
@@ -100,6 +107,13 @@
 - public.admin_approve_subscription_request
 - public.admin_create_employee_full
 - public.admin_create_owner_full
+- public.admin_dashboard_account_member_counts
+- public.admin_dashboard_account_members
+- public.admin_dashboard_active_subscriptions
+- public.admin_dashboard_audit_tail
+- public.admin_dashboard_payments
+- public.admin_dashboard_pending_subscription_requests
+- public.admin_dashboard_revenue_monthly
 - public.admin_delete_clinic
 - public.admin_list_clinics
 - public.admin_payment_stats
@@ -121,9 +135,15 @@
 - public.fn_is_super_admin_gql
 - public.list_employees_with_email
 - public.list_payment_methods
-- public.my_account_id
+- public.my_account_id_rpc
 - public.my_account_plan
-- public.my_feature_permissions
+- public.my_feature_permissions_rpc
 - public.my_profile
+- public.owner_create_employee_within_limit
+- public.owner_request_extra_employee
+- public.owner_submit_employee_seat_payment
 - public.self_create_account
+- public.set_current_account
 - public.set_employee_disabled
+- public.superadmin_review_employee_seat_request
+- public.user_cancel_subscription_request

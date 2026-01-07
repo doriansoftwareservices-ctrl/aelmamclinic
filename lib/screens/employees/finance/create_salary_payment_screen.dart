@@ -110,7 +110,7 @@ class _CreateSalaryPaymentScreenState extends State<CreateSalaryPaymentScreen> {
                       // العام
                       Expanded(
                         child: DropdownButtonFormField<int>(
-                          value: _selectedYear,
+                          initialValue: _selectedYear,
                           decoration: const InputDecoration(
                             labelText: 'العام',
                             border: InputBorder.none,
@@ -128,7 +128,7 @@ class _CreateSalaryPaymentScreenState extends State<CreateSalaryPaymentScreen> {
                       // الشهر
                       Expanded(
                         child: DropdownButtonFormField<int>(
-                          value: _selectedMonth,
+                          initialValue: _selectedMonth,
                           decoration: const InputDecoration(
                             labelText: 'الشهر',
                             border: InputBorder.none,

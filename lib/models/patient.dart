@@ -190,8 +190,7 @@ class Patient {
 
   factory Patient.fromJson(Map<String, dynamic> json) => Patient.fromMap(json);
 
-  factory Patient.fromRemote(Map<String, dynamic> map) =>
-      Patient.fromMap(map);
+  factory Patient.fromRemote(Map<String, dynamic> map) => Patient.fromMap(map);
 
   /*──────────── إلى Map (لـ SQLite؛ SyncService سيحوّل للسحابة) ────────────*/
   Map<String, dynamic> toMap() => {

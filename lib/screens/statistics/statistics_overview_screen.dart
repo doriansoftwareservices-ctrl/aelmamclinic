@@ -145,8 +145,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
         ''',
         {'uid': uid},
       );
-      final partRows =
-          (partsData['chat_participants'] as List?) ?? const [];
+      final partRows = (partsData['chat_participants'] as List?) ?? const [];
       final convIds = partRows
           .whereType<Map>()
           .map((r) => r['conversation_id']?.toString())
@@ -171,8 +170,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
         ''',
         {'ids': convIds},
       );
-      final convRows =
-          (convData['chat_conversations'] as List?) ?? const [];
+      final convRows = (convData['chat_conversations'] as List?) ?? const [];
 
       final readData = await _runQuery(
         '''
@@ -295,8 +293,8 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
 
     final canView =
         auth.isSuperAdmin || auth.featureAllowed(FeatureKeys.returns);
-    final canCreate =
-        auth.isSuperAdmin || (auth.featureAllowed(FeatureKeys.returns) && auth.canCreate);
+    final canCreate = auth.isSuperAdmin ||
+        (auth.featureAllowed(FeatureKeys.returns) && auth.canCreate);
 
     if (!canView) {
       _handleDeniedAccess();
@@ -654,7 +652,8 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
                         Navigator.pop(context);
                         Navigator.push(
                           context,
-                          MaterialPageRoute(builder: (_) => const MyPlanScreen()),
+                          MaterialPageRoute(
+                              builder: (_) => const MyPlanScreen()),
                         );
                       },
                     ),
@@ -722,7 +721,8 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
                       icon: Icons.badge_rounded,
                       title: 'حسابات الموظفين',
                       enabled: _canManageEmployeeAccounts(auth),
-                      showProBadge: !auth.isSuperAdmin && auth.planCode == 'free',
+                      showProBadge:
+                          !auth.isSuperAdmin && auth.planCode == 'free',
                       onDenied: () {
                         final isFree =
                             auth.planCode == 'free' && !auth.isSuperAdmin;

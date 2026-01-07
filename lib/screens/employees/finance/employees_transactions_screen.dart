@@ -320,7 +320,7 @@ class _EmployeesTransactionsScreenState
           Switch(
             value: value,
             onChanged: onChanged,
-            activeColor: kPrimaryColor,
+            activeThumbColor: kPrimaryColor,
           ),
         ],
       ),

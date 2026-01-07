@@ -174,27 +174,26 @@ class ChatRealtimeNotifier {
     ''';
     _participantsSub = _gql
         .subscribe(
-          SubscriptionOptions(
-            document: gql(subDoc),
-            variables: {'uid': uid},
-            fetchPolicy: FetchPolicy.noCache,
-          ),
-        )
+      SubscriptionOptions(
+        document: gql(subDoc),
+        variables: {'uid': uid},
+        fetchPolicy: FetchPolicy.noCache,
+      ),
+    )
         .listen((result) async {
-          if (result.hasException) return;
-          final rows =
-              (result.data?['chat_participants'] as List?) ?? const [];
-          _convIds
-            ..clear()
-            ..addAll(
-              rows
-                  .whereType<Map>()
-                  .map((e) => (e['conversation_id'] ?? '').toString())
-                  .where((c) => c.isNotEmpty),
-            );
-          if (!_participantsCtrl.isClosed) _participantsCtrl.add(null);
-          if (!_conversationsCtrl.isClosed) _conversationsCtrl.add(null);
-        });
+      if (result.hasException) return;
+      final rows = (result.data?['chat_participants'] as List?) ?? const [];
+      _convIds
+        ..clear()
+        ..addAll(
+          rows
+              .whereType<Map>()
+              .map((e) => (e['conversation_id'] ?? '').toString())
+              .where((c) => c.isNotEmpty),
+        );
+      if (!_participantsCtrl.isClosed) _participantsCtrl.add(null);
+      if (!_conversationsCtrl.isClosed) _conversationsCtrl.add(null);
+    });
   }
 
   void _startMessageSubscription() {
@@ -280,8 +279,8 @@ class ChatRealtimeNotifier {
     final nid = id.hashCode & 0x7fffffff;
 
     try {
-      NotificationService()
-          .showChatNotification(id: nid, title: title, body: body, payload: cid);
+      NotificationService().showChatNotification(
+          id: nid, title: title, body: body, payload: cid);
     } catch (_) {}
   }
 

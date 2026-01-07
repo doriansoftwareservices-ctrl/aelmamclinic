@@ -79,12 +79,12 @@ class AdminAccountMembersService {
     if (res.hasException) {
       throw res.exception!;
     }
-    final rows = (res.data?['admin_dashboard_account_members'] as List?) ??
-        const [];
+    final rows =
+        (res.data?['admin_dashboard_account_members'] as List?) ?? const [];
     return rows
         .whereType<Map>()
-        .map((row) =>
-            AdminAccountMember.fromMap(Map<String, dynamic>.from(row)))
+        .map(
+            (row) => AdminAccountMember.fromMap(Map<String, dynamic>.from(row)))
         .toList();
   }
 }

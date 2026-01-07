@@ -17,7 +17,6 @@
 // * نستبق تحميل الصورة التالية/السابقة (precache) لتجربة أسرع (FileImage/NetworkImage حسب المصدر).
 
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui show TextDirection;
 
 import 'package:flutter/foundation.dart'
@@ -26,6 +25,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:aelmamclinic/services/save_file_service.dart';
+
 class ImageViewerItem {
   /// يمكن أن يكون رابط HTTP(S) أو مسار ملف محلي أو file://URI
   final String url;
@@ -229,9 +229,9 @@ class _ImageViewerScreenState extends State<ImageViewerScreen>
       final position = d.localPosition;
       const scale = 2.5;
       final m = Matrix4.identity()
-        ..translate(-position.dx, -position.dy)
-        ..scale(scale)
-        ..translate(position.dx, position.dy);
+        ..translateByDouble(-position.dx, -position.dy, 0, 1.0)
+        ..scaleByDouble(scale, scale, 1, 1.0)
+        ..translateByDouble(position.dx, position.dy, 0, 1.0);
       controller.value = m;
     }
     setState(() {});
@@ -594,7 +594,9 @@ class _ImageViewerScreenState extends State<ImageViewerScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            savedPath.isEmpty ? 'تم حفظ الملف بنجاح.' : 'تم الحفظ في: $savedPath',
+            savedPath.isEmpty
+                ? 'تم حفظ الملف بنجاح.'
+                : 'تم الحفظ في: $savedPath',
           ),
         ),
       );
@@ -620,7 +622,9 @@ class _ImageViewerScreenState extends State<ImageViewerScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            savedPath.isEmpty ? 'تم حفظ الملف بنجاح.' : 'تم الحفظ في: $savedPath',
+            savedPath.isEmpty
+                ? 'تم حفظ الملف بنجاح.'
+                : 'تم الحفظ في: $savedPath',
           ),
         ),
       );
@@ -670,9 +674,9 @@ class _ImageViewerScreenState extends State<ImageViewerScreen>
     showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => WillPopScope(
-        onWillPop: () async => false,
-        child: const Center(child: CircularProgressIndicator()),
+      builder: (_) => const PopScope(
+        canPop: false,
+        child: Center(child: CircularProgressIndicator()),
       ),
     );
   }

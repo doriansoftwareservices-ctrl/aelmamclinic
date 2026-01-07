@@ -134,8 +134,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     _fetchClinics();
     _fetchSubscriptionRequests();
     _fetchSeatRequests();
-    _pendingPollTimer =
-        Timer.periodic(const Duration(seconds: 30), (_) async {
+    _pendingPollTimer = Timer.periodic(const Duration(seconds: 30), (_) async {
       if (_sectionIndex != 2) return;
       await _fetchSubscriptionRequests();
       await _fetchSeatRequests();
@@ -410,8 +409,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   Future<void> _fetchMemberCounts() async {
     try {
       setState(() => _loadingMemberCounts = true);
-      final rows =
-          await _membersService.fetchMemberCounts(onlyActive: _membersOnlyActive);
+      final rows = await _membersService.fetchMemberCounts(
+          onlyActive: _membersOnlyActive);
       if (!mounted) return;
       setState(() {
         _memberCounts = rows;
@@ -829,7 +828,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             indicatorColor: kPrimaryColor,
             indicatorWeight: 3,
             tabs: const [
-              Tab(icon: Icon(Icons.workspace_premium_rounded), text: 'اشتراكات'),
+              Tab(
+                  icon: Icon(Icons.workspace_premium_rounded),
+                  text: 'اشتراكات'),
               Tab(icon: Icon(Icons.badge_rounded), text: 'طلبات الموظفين'),
             ],
           ),
@@ -862,8 +863,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
               child: Text(
                 label,
                 style: TextStyle(
-                  color:
-                      Theme.of(context).colorScheme.onSurface.withValues(alpha: .7),
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: .7),
                   fontSize: 12,
                 ),
               ),
@@ -1122,11 +1125,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
               ),
               TextField(
                 controller: bankCtrl,
-                decoration: const InputDecoration(labelText: 'رقم الحساب البنكي'),
+                decoration:
+                    const InputDecoration(labelText: 'رقم الحساب البنكي'),
               ),
               TextField(
                 controller: logoCtrl,
-                decoration: const InputDecoration(labelText: 'رابط شعار الشركة'),
+                decoration:
+                    const InputDecoration(labelText: 'رابط شعار الشركة'),
               ),
             ],
           ),
@@ -1182,12 +1187,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             subtitle: Text('${c.message}\nالحالة: ${c.status}'),
             trailing: PopupMenuButton<String>(
               onSelected: (v) async {
-                await _billingService.updateComplaintStatus(id: c.id, status: v);
+                await _billingService.updateComplaintStatus(
+                    id: c.id, status: v);
                 await _fetchComplaints();
               },
               itemBuilder: (_) => const [
                 PopupMenuItem(value: 'open', child: Text('مفتوحة')),
-                PopupMenuItem(value: 'in_progress', child: Text('قيد المعالجة')),
+                PopupMenuItem(
+                    value: 'in_progress', child: Text('قيد المعالجة')),
                 PopupMenuItem(value: 'closed', child: Text('مغلقة')),
               ],
             ),
@@ -1209,7 +1216,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
           children: [
             Expanded(
               child: DropdownButtonFormField<String?>(
-                value: _membersAccountId,
+                initialValue: _membersAccountId,
                 decoration: const InputDecoration(
                   labelText: 'الحساب',
                   border: OutlineInputBorder(),
@@ -1423,8 +1430,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       final fmt = DateFormat('yyyy-MM');
       listBody = ListView(
         children: _paymentMonthlyStats.map((s) {
-          final label =
-              s.period == null ? 'غير محدد' : fmt.format(s.period!);
+          final label = s.period == null ? 'غير محدد' : fmt.format(s.period!);
           return NeuCard(
             margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
             padding: const EdgeInsets.all(12),
@@ -1446,8 +1452,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       final fmt = DateFormat('yyyy-MM-dd');
       listBody = ListView(
         children: _paymentDailyStats.map((s) {
-          final label =
-              s.period == null ? 'غير محدد' : fmt.format(s.period!);
+          final label = s.period == null ? 'غير محدد' : fmt.format(s.period!);
           return NeuCard(
             margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
             padding: const EdgeInsets.all(12),

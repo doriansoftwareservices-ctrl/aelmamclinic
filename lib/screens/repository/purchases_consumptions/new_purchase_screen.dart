@@ -168,7 +168,8 @@ class _NewPurchaseScreenState extends State<NewPurchaseScreen> {
               children: [
                 // نوع الصنف
                 DropdownButtonFormField<ItemType>(
-                  value: types.contains(_selectedType) ? _selectedType : null,
+                  initialValue:
+                      types.contains(_selectedType) ? _selectedType : null,
                   decoration: _dec('نوع الصنف'),
                   items: types
                       .map((t) =>
@@ -184,7 +185,8 @@ class _NewPurchaseScreenState extends State<NewPurchaseScreen> {
 
                 // اسم الصنف
                 DropdownButtonFormField<Item>(
-                  value: items.contains(_selectedItem) ? _selectedItem : null,
+                  initialValue:
+                      items.contains(_selectedItem) ? _selectedItem : null,
                   decoration: _dec('اسم الصنف'),
                   items: items
                       .map((it) =>

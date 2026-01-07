@@ -221,7 +221,8 @@ class ChatProvider extends ChangeNotifier {
     }
   }
 
-  Future<String?> fetchAccountIdForCurrentUser({bool isSuperAdmin = false}) async {
+  Future<String?> fetchAccountIdForCurrentUser(
+      {bool isSuperAdmin = false}) async {
     final uid = currentUid;
     if (uid.isEmpty) return null;
     if (isSuperAdmin) return null;

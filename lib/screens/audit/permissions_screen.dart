@@ -59,8 +59,8 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
 
     final auth = context.read<AuthProvider>();
     final accId = auth.accountId ?? '';
-    final isOwnerOrSuper = auth.isSuperAdmin ||
-        auth.featureAllowed(FeatureKeys.auditPermissions);
+    final isOwnerOrSuper =
+        auth.isSuperAdmin || auth.featureAllowed(FeatureKeys.auditPermissions);
     final canView = isOwnerOrSuper;
 
     if (!canView) {
@@ -216,9 +216,8 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
             'can_delete': perm.canDelete,
           },
         });
-        final affected =
-            (updateRes['update_account_feature_permissions'] as Map?)?[
-                'affected_rows'] as int?;
+        final affected = (updateRes['update_account_feature_permissions']
+            as Map?)?['affected_rows'] as int?;
         if (affected == null || affected == 0) {
           final insert = '''
             mutation InsertPerm(\$object: account_feature_permissions_insert_input!) {
@@ -261,8 +260,8 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
-    final isOwnerOrSuper = auth.isSuperAdmin ||
-        auth.featureAllowed(FeatureKeys.auditPermissions);
+    final isOwnerOrSuper =
+        auth.isSuperAdmin || auth.featureAllowed(FeatureKeys.auditPermissions);
     final canView = isOwnerOrSuper;
 
     // تحميل أولي عند أول بناء
@@ -544,7 +543,11 @@ class _FeaturePerm {
   });
 
   bool get isDefaultAll =>
-      !allowAll && allowedFeatures.isEmpty && !canCreate && !canUpdate && !canDelete;
+      !allowAll &&
+      allowedFeatures.isEmpty &&
+      !canCreate &&
+      !canUpdate &&
+      !canDelete;
 
   _FeaturePerm copyWith({
     String? userUid,
@@ -634,26 +637,26 @@ const List<_FeatureDef> _kFeatureDefs = [
   _FeatureDef(FeatureKeys.dashboard, 'لوحة الإحصاءات', Icons.insights_rounded),
   _FeatureDef(FeatureKeys.patientNew, 'تسجيل مريض جديد',
       Icons.person_add_alt_1_rounded),
-  _FeatureDef(FeatureKeys.patientsList, 'قائمة المرضى',
-      Icons.people_outline_rounded),
-  _FeatureDef(FeatureKeys.returns, 'العودات',
-      Icons.assignment_return_outlined),
+  _FeatureDef(
+      FeatureKeys.patientsList, 'قائمة المرضى', Icons.people_outline_rounded),
+  _FeatureDef(FeatureKeys.returns, 'العودات', Icons.assignment_return_outlined),
   _FeatureDef(FeatureKeys.employees, 'شؤون الموظفين', Icons.groups_rounded),
   _FeatureDef(FeatureKeys.payments, 'الشؤون المالية', Icons.payments_rounded),
-  _FeatureDef(FeatureKeys.labRadiology, 'الأشعة والمختبرات',
-      Icons.biotech_rounded),
+  _FeatureDef(
+      FeatureKeys.labRadiology, 'الأشعة والمختبرات', Icons.biotech_rounded),
   _FeatureDef(FeatureKeys.charts, 'الرسوم البيانية', Icons.bar_chart_rounded),
-  _FeatureDef(FeatureKeys.repository, 'قسم المستودع',
-      Icons.inventory_2_rounded),
-  _FeatureDef(FeatureKeys.prescriptions, 'الوصفات الطبية',
-      Icons.menu_book_rounded),
+  _FeatureDef(
+      FeatureKeys.repository, 'قسم المستودع', Icons.inventory_2_rounded),
+  _FeatureDef(
+      FeatureKeys.prescriptions, 'الوصفات الطبية', Icons.menu_book_rounded),
   _FeatureDef(FeatureKeys.chat, 'الدردشة', Icons.chat_bubble_outline_rounded),
   _FeatureDef(FeatureKeys.backup, 'النسخ الاحتياطي', Icons.backup_rounded),
-  _FeatureDef(FeatureKeys.accounts, 'الحسابات',
-      Icons.supervisor_account_rounded),
-  _FeatureDef(FeatureKeys.auditLogs, 'سجلات التدقيق',
-      Icons.receipt_long_rounded),
-  _FeatureDef(FeatureKeys.auditPermissions, 'صلاحيات الميزات', Icons.tune_rounded),
+  _FeatureDef(
+      FeatureKeys.accounts, 'الحسابات', Icons.supervisor_account_rounded),
+  _FeatureDef(
+      FeatureKeys.auditLogs, 'سجلات التدقيق', Icons.receipt_long_rounded),
+  _FeatureDef(
+      FeatureKeys.auditPermissions, 'صلاحيات الميزات', Icons.tune_rounded),
 ];
 
 // أدوات مساعدة محليّة
@@ -831,7 +834,11 @@ class _PermissionEditorState extends State<_PermissionEditor> {
   }
 
   bool get _isDefaultAll =>
-      !_allowAll && _selected.isEmpty && !_canCreate && !_canUpdate && !_canDelete;
+      !_allowAll &&
+      _selected.isEmpty &&
+      !_canCreate &&
+      !_canUpdate &&
+      !_canDelete;
 
   void _toggleAll(bool sel) {
     setState(() {
@@ -976,12 +983,16 @@ class _PermissionEditorState extends State<_PermissionEditor> {
                                   ),
                                   const Spacer(),
                                   TextButton.icon(
-                                    onPressed: _allowAll ? null : () => _toggleAll(true),
+                                    onPressed: _allowAll
+                                        ? null
+                                        : () => _toggleAll(true),
                                     icon: const Icon(Icons.done_all_rounded),
                                     label: const Text('تحديد الكل'),
                                   ),
                                   TextButton.icon(
-                                    onPressed: _allowAll ? null : () => _toggleAll(false),
+                                    onPressed: _allowAll
+                                        ? null
+                                        : () => _toggleAll(false),
                                     icon: const Icon(Icons.clear_all_rounded),
                                     label: const Text('إلغاء الكل'),
                                   ),

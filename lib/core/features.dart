@@ -88,7 +88,7 @@ enum DenyBehavior {
 
 /// أداة خفيفة للوصول الموحّد إلى الصلاحيات من AuthProvider مع تحمّل النواقص
 class FeatureAccess {
-  final AuthProvider auth;
+  final Object auth;
 
   FeatureAccess(this.auth);
 
@@ -308,7 +308,7 @@ class _FeatureLoadingPlaceholder extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: scheme.surfaceVariant.withValues(alpha: 0.35),
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.35),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: scheme.outline.withValues(alpha: 0.4)),
       ),

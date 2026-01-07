@@ -93,7 +93,7 @@ class ReplyPreview extends StatelessWidget {
 
     // ألوان خفيفة متوافقة مع الثيم
     final cs = Theme.of(context).colorScheme;
-    final surface = cs.surfaceVariant.withValues(alpha: 0.45);
+    final surface = cs.surfaceContainerHighest.withValues(alpha: 0.45);
     final borderColor = cs.outlineVariant;
     final barColor = cs.primary;
 

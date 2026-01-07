@@ -152,6 +152,6 @@ class Clinic {
           planEndAt == other.planEndAt;
 
   @override
-  int get hashCode =>
-      Object.hash(id, name, isFrozen, createdAt, planCode, planStatus, planEndAt);
+  int get hashCode => Object.hash(
+      id, name, isFrozen, createdAt, planCode, planStatus, planEndAt);
 }

@@ -574,8 +574,8 @@ class ConversationListItem {
     final isOnline = (m.containsKey('is_online') || m.containsKey('online'))
         ? _isTruthy(m['is_online'] ?? m['online'])
         : null;
-    final lastReadAt =
-        _parseDate(m['last_read_at'] ?? m['lastReadAt'] ?? convMap['last_read_at']);
+    final lastReadAt = _parseDate(
+        m['last_read_at'] ?? m['lastReadAt'] ?? convMap['last_read_at']);
     final lastMessageText =
         m['last_message_text']?.toString() ?? m['lastMessageText']?.toString();
 

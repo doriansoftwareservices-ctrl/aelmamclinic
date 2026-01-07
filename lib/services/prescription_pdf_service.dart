@@ -104,7 +104,7 @@ class PrescriptionPdfService {
                         fontWeight: pw.FontWeight.bold,
                         color: kAccent)),
                 pw.SizedBox(height: 20),
-                pw.Table.fromTextArray(
+                pw.TableHelper.fromTextArray(
                   headers: headers,
                   data: data,
                   headerStyle: pw.TextStyle(
@@ -254,7 +254,7 @@ class PrescriptionPdfService {
       data.add([drug.name, '$days', '$times']);
     }
 
-    return pw.Table.fromTextArray(
+    return pw.TableHelper.fromTextArray(
       headers: headers,
       data: data,
       headerStyle: pw.TextStyle(

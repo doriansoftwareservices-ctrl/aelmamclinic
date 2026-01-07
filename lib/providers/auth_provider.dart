@@ -13,18 +13,18 @@ import 'dart:async';
 import 'dart:developer' as dev;
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:meta/meta.dart';
-import 'package:flutter/widgets.dart';
 import 'package:nhost_dart/nhost_dart.dart';
 import 'package:nhost_sdk/nhost_sdk.dart' show AuthResponse;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:aelmamclinic/core/features.dart'; // FeatureKeys.chat
+import 'package:aelmamclinic/core/auth_role_state.dart';
 import 'package:aelmamclinic/models/account_policy.dart';
 import 'package:aelmamclinic/services/nhost_auth_service.dart';
 import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/services/device_id_service.dart';
 import 'package:aelmamclinic/services/notification_service.dart';
+import 'package:aelmamclinic/services/nhost_graphql_service.dart';
 import 'package:aelmamclinic/utils/logger.dart';
 
 /// مفاتيح التخزين المحلي
@@ -138,8 +138,7 @@ class AuthSessionResult {
       : this._(AuthSessionStatus.networkError,
             error: error, stackTrace: stackTrace);
   const AuthSessionResult.unknown({Object? error, StackTrace? stackTrace})
-      : this._(AuthSessionStatus.unknown,
-            error: error, stackTrace: stackTrace);
+      : this._(AuthSessionStatus.unknown, error: error, stackTrace: stackTrace);
 
   bool get isSuccess => status == AuthSessionStatus.success;
 }
@@ -214,16 +213,18 @@ class AuthProvider extends ChangeNotifier {
     if (listenAuthChanges) {
       // الاستماع لتغيّرات المصادقة
       _authSub = _auth.authStateChanges.listen((event) async {
-      if (event == AuthenticationState.signedOut) {
-        // هذه الإشارة تأتي بعد signOut — نظّف الحالة المحلية فقط.
-        currentUser = null;
-        _resetPermissionsInMemory();
-        _allowAutoCreateAccount = false;
-        await _stopDoctorPatientAlerts();
-        await _clearStorage();
-        notifyListeners();
-        return;
-      }
+        if (event == AuthenticationState.signedOut) {
+          // هذه الإشارة تأتي بعد signOut — نظّف الحالة المحلية فقط.
+          currentUser = null;
+          _resetPermissionsInMemory();
+          _allowAutoCreateAccount = false;
+          AuthRoleState.clear();
+          NhostGraphqlService.refreshClient();
+          await _stopDoctorPatientAlerts();
+          await _clearStorage();
+          notifyListeners();
+          return;
+        }
 
         // لأي حدث آخر: نحدّث من الشبكة عند الدخول أو عند حلول موعد الفحص
         final due = await _isNetCheckDue();
@@ -428,7 +429,8 @@ class AuthProvider extends ChangeNotifier {
   Future<void> refreshPermissions() => _refreshFeaturePermissions();
 
   /// أدوات مساعدة اختيارية: تغيير كلمة مرور/إعادة تعيين/تحديث جلسة
-  Future<void> changePassword(String newPassword) => _auth.changePassword(newPassword);
+  Future<void> changePassword(String newPassword) =>
+      _auth.changePassword(newPassword);
   Future<void> requestPasswordReset(String email, {String? redirectTo}) =>
       _auth.requestPasswordReset(email, redirectTo: redirectTo);
   Future<void> refreshSession() => _auth.refreshSession();
@@ -591,9 +593,11 @@ class AuthProvider extends ChangeNotifier {
     }
 
     final prevAccountId = currentUser?['accountId']?.toString();
+    final prevIsSuper = currentUser?['isSuperAdmin'] == true;
     Map<String, dynamic>? info;
     try {
-      info = await _auth.fetchCurrentUser(); // { uid,email,accountId,role,isSuperAdmin }
+      info = await _auth
+          .fetchCurrentUser(); // { uid,email,accountId,role,isSuperAdmin }
     } catch (_) {
       info = null;
     }
@@ -632,6 +636,11 @@ class AuthProvider extends ChangeNotifier {
       'planCode': infoPlan ?? 'free',
       if (deviceId != null) _kDeviceId: deviceId,
     };
+
+    AuthRoleState.setSuperAdmin(isSuper);
+    if (prevIsSuper != isSuper) {
+      NhostGraphqlService.refreshClient();
+    }
 
     if (!isSuper && accId != null && accId.isNotEmpty) {
       if (prevAccountId != accId) {
@@ -690,7 +699,8 @@ class AuthProvider extends ChangeNotifier {
             stackTrace: st,
           );
           if (attempt >= maxAttempts) {
-            dev.log('Keeping session after transient failure to validate account.');
+            dev.log(
+                'Keeping session after transient failure to validate account.');
             _authDiagWarn('_ensureActiveAccountOrSignOut:transientGivingUp',
                 context: {
                   'attempt': attempt,
@@ -787,6 +797,16 @@ class AuthProvider extends ChangeNotifier {
             context: {
               'attempt': attempt,
             },
+            stackTrace: st,
+          );
+          return result;
+        }
+        if (result == AuthAccountGuardResult.planUpgradeRequired) {
+          currentUser!['disabled'] = false;
+          await _persistUser();
+          _authDiagWarn(
+            '_ensureActiveAccountOrSignOut:planUpgradeRequired',
+            context: {'attempt': attempt},
             stackTrace: st,
           );
           return result;
@@ -889,8 +909,11 @@ class AuthProvider extends ChangeNotifier {
     _allowAllFeatures = sp.getBool(_kAllowAllFeatures) ?? false;
     final csv = sp.getString(_kAllowedFeatures);
     if (csv != null) {
-      final list =
-      csv.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+      final list = csv
+          .split(',')
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
       _allowedFeatures = Set<String>.from(list);
     }
     _canCreate = sp.getBool(_kCanCreate) ?? false;
@@ -915,9 +938,11 @@ class AuthProvider extends ChangeNotifier {
     await sp.setString(_kUid, currentUser!['uid'] ?? '');
     await sp.setString(_kEmail, currentUser!['email'] ?? '');
     await sp.setString(_kAccountId, currentUser!['accountId'] ?? '');
-    await sp.setString(_kRole, (currentUser!['role'] ?? '').toString().toLowerCase());
+    await sp.setString(
+        _kRole, (currentUser!['role'] ?? '').toString().toLowerCase());
     await sp.setBool(_kDisabled, currentUser!['disabled'] ?? false);
-    await sp.setString(_kPlanCode, (currentUser!['planCode'] ?? 'free').toString().toLowerCase());
+    await sp.setString(_kPlanCode,
+        (currentUser!['planCode'] ?? 'free').toString().toLowerCase());
     if (deviceId != null) {
       await sp.setString(_kDeviceId, deviceId!);
     }
@@ -933,18 +958,21 @@ class AuthProvider extends ChangeNotifier {
     final savedDev = sp.getString(_kDeviceId);
 
     if (uid != null && uid.isNotEmpty) {
+      final isSuper = (role ?? '').toLowerCase() == 'superadmin';
       currentUser = {
         'uid': uid,
         'email': sp.getString(_kEmail),
         'accountId': accountId,
         'role': (role ?? '').toLowerCase(),
         'disabled': disabled ?? false,
-        'isSuperAdmin': (role ?? '').toLowerCase() == 'superadmin',
+        'isSuperAdmin': isSuper,
         'planCode': (planCode ?? 'free').toLowerCase(),
       };
       if (savedDev != null && savedDev.isNotEmpty) {
         deviceId = savedDev;
       }
+
+      AuthRoleState.setSuperAdmin(isSuper);
 
       // حمّل صلاحيات الميزات من التخزين كذلك
       await _loadPermissionsFromStorage();
@@ -970,6 +998,9 @@ class AuthProvider extends ChangeNotifier {
     await sp.remove(_kCanCreate);
     await sp.remove(_kCanUpdate);
     await sp.remove(_kCanDelete);
+
+    AuthRoleState.clear();
+    NhostGraphqlService.refreshClient();
   }
 
   Future<void> _restartDoctorPatientAlerts() async {
@@ -1022,7 +1053,8 @@ class AuthProvider extends ChangeNotifier {
       final newIds = currentIds.difference(_pendingPatientAlerts);
       for (final id in newIds) {
         final label = current[id]?.trim();
-        final patientName = (label == null || label.isEmpty) ? 'مريض جديد' : label;
+        final patientName =
+            (label == null || label.isEmpty) ? 'مريض جديد' : label;
         try {
           await NotificationService().showPatientAssignmentNotification(
             patientId: id,

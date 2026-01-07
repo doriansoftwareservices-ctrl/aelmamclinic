@@ -91,8 +91,9 @@ class NhostAuthService {
   /// طلب إعادة تعيين كلمة المرور.
   Future<void> requestPasswordReset(String email, {String? redirectTo}) {
     final fallback = AppConstants.resetPasswordRedirectUrl.trim();
-    final target =
-        (redirectTo == null || redirectTo.trim().isEmpty) ? fallback : redirectTo;
+    final target = (redirectTo == null || redirectTo.trim().isEmpty)
+        ? fallback
+        : redirectTo;
     return _client.auth.resetPassword(
       email: email,
       redirectTo: target.isEmpty ? null : target,
@@ -419,9 +420,7 @@ class NhostAuthService {
       final data =
           await _runQuery('query { my_account_id { account_id } }', const {});
       final rows = _rowsFromData(data, 'my_account_id');
-      final acc = rows.isNotEmpty
-          ? rows.first['account_id']?.toString()
-          : null;
+      final acc = rows.isNotEmpty ? rows.first['account_id']?.toString() : null;
       if (acc != null && acc.isNotEmpty && acc != 'null') {
         await ActiveAccountStore.writeAccountId(acc);
         return acc;
@@ -464,6 +463,7 @@ class NhostAuthService {
 
     String? accountId;
     String role = 'employee';
+    bool roleResolved = false;
     bool disabled = false;
     String planCode = 'free';
 
@@ -476,7 +476,11 @@ class NhostAuthService {
             profileAccount != 'null') {
           accountId = profileAccount;
         }
-        role = (profile['role'] as String?) ?? role;
+        final profileRole = (profile['role'] as String?)?.trim();
+        if (profileRole != null && profileRole.isNotEmpty) {
+          role = profileRole;
+          roleResolved = true;
+        }
       }
     } catch (_) {}
 
@@ -489,7 +493,11 @@ class NhostAuthService {
           await _fetchAccountUserRow(uid: user.id);
       if (row != null) {
         accountId ??= row['account_id']?.toString();
-        role = (row['role'] as String?) ?? role;
+        final rowRole = (row['role'] as String?)?.trim();
+        if (rowRole != null && rowRole.isNotEmpty) {
+          role = rowRole;
+          roleResolved = true;
+        }
         disabled = disabled || row['disabled'] == true;
       }
     } catch (_) {}
@@ -507,7 +515,8 @@ class NhostAuthService {
       planCode = await fetchMyPlanCode() ?? 'free';
     } catch (_) {}
     final roleLower = role.toLowerCase();
-    if (planCode == 'free' &&
+    if (roleResolved &&
+        planCode == 'free' &&
         roleLower != 'owner' &&
         roleLower != 'admin' &&
         roleLower != 'superadmin') {

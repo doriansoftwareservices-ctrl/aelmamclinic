@@ -124,7 +124,7 @@ class _NewDoctorScreenState extends State<NewDoctorScreen> {
                       contentPadding: EdgeInsets.zero,
                       leading: Container(
                         decoration: BoxDecoration(
-                          color: kPrimaryColor.withOpacity(.10),
+                          color: kPrimaryColor.withValues(alpha: .10),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         padding: const EdgeInsets.all(10),
@@ -248,7 +248,7 @@ class _TimePickerCard extends StatelessWidget {
         contentPadding: EdgeInsets.zero,
         leading: Container(
           decoration: BoxDecoration(
-            color: kPrimaryColor.withOpacity(.10),
+            color: kPrimaryColor.withValues(alpha: .10),
             borderRadius: BorderRadius.circular(12),
           ),
           padding: const EdgeInsets.all(10),
@@ -261,7 +261,8 @@ class _TimePickerCard extends StatelessWidget {
         subtitle: Text(
           value,
           style: TextStyle(
-            color: Theme.of(context).colorScheme.onSurface.withOpacity(.6),
+            color:
+                Theme.of(context).colorScheme.onSurface.withValues(alpha: .6),
             fontWeight: FontWeight.w600,
           ),
         ),

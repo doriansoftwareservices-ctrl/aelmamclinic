@@ -7,7 +7,6 @@ import 'dart:math';
 import 'package:flutter/foundation.dart' show VoidCallback;
 import 'package:graphql_flutter/graphql_flutter.dart';
 import 'package:sqflite_common/sqlite_api.dart';
-import 'package:uuid/enums.dart';
 import 'package:uuid/uuid.dart';
 
 import 'package:aelmamclinic/data/sync/alert_settings_sync_service.dart';
@@ -352,17 +351,21 @@ class SyncService {
     'consumptions': 'consumptions_account_id_device_id_local_id_key',
     'drugs': 'drugs_account_id_device_id_local_id_key',
     'prescriptions': 'prescriptions_account_id_device_id_local_id_key',
-    'prescription_items': 'prescription_items_account_id_device_id_local_id_key',
+    'prescription_items':
+        'prescription_items_account_id_device_id_local_id_key',
     'complaints': 'complaints_account_id_device_id_local_id_key',
     'appointments': 'appointments_account_id_device_id_local_id_key',
     'doctors': 'doctors_account_id_device_id_local_id_key',
     'consumption_types': 'consumption_types_account_id_device_id_local_id_key',
     'medical_services': 'medical_services_account_id_device_id_local_id_key',
-    'service_doctor_share': 'service_doctor_share_account_id_device_id_local_id_key',
+    'service_doctor_share':
+        'service_doctor_share_account_id_device_id_local_id_key',
     'employees': 'employees_account_id_device_id_local_id_key',
     'employees_loans': 'employees_loans_account_id_device_id_local_id_key',
-    'employees_salaries': 'employees_salaries_account_id_device_id_local_id_key',
-    'employees_discounts': 'employees_discounts_account_id_device_id_local_id_key',
+    'employees_salaries':
+        'employees_salaries_account_id_device_id_local_id_key',
+    'employees_discounts':
+        'employees_discounts_account_id_device_id_local_id_key',
     'item_types': 'item_types_account_id_device_id_local_id_key',
     'items': 'items_account_id_device_id_local_id_key',
     'purchases': 'purchases_account_id_device_id_local_id_key',
@@ -2061,12 +2064,8 @@ class SyncService {
           }
 
           final bool isItemsCompositeConflict = (remoteTable == 'items') &&
-              _isUniqueViolation(e, const [
-                'items_type_name',
-                'items',
-                'type_id',
-                'name'
-              ]);
+              _isUniqueViolation(
+                  e, const ['items_type_name', 'items', 'type_id', 'name']);
 
           if (isItemsCompositeConflict) {
             _log(
@@ -2264,7 +2263,8 @@ class SyncService {
               await _upsertRemoteRows(remoteTable, [row]);
             });
           } on OperationException catch (e) {
-            if (_isUniqueViolation(e, const ['account_id', 'device_id', 'local_id'])) {
+            if (_isUniqueViolation(
+                e, const ['account_id', 'device_id', 'local_id'])) {
               try {
                 await _updateRemoteWhere(
                   remoteTable,
@@ -2806,9 +2806,8 @@ class SyncService {
   VoidCallback? _clientListener;
 
   bool _remoteRowIsDeleted(Map<String, dynamic> row) {
-    final v = row.containsKey('is_deleted')
-        ? row['is_deleted']
-        : row['isDeleted'];
+    final v =
+        row.containsKey('is_deleted') ? row['is_deleted'] : row['isDeleted'];
     if (v == null) return false;
     if (v is bool) return v;
     if (v is num) return v != 0;

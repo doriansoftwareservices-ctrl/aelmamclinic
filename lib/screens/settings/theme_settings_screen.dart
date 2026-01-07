@@ -15,7 +15,7 @@ class ThemeSettingsScreen extends StatelessWidget {
   const ThemeSettingsScreen({super.key});
 
   String _hex(Color c) =>
-      '#${c.value.toRadixString(16).padLeft(8, '0').toUpperCase().substring(2)}';
+      '#${c.toARGB32().toRadixString(16).padLeft(8, '0').toUpperCase().substring(2)}';
 
   @override
   Widget build(BuildContext context) {

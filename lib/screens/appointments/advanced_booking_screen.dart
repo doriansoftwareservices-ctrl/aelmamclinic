@@ -190,7 +190,7 @@ class _AdvancedBookingScreenState extends State<AdvancedBookingScreen> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
                   child: DropdownButtonFormField<String>(
-                    value: _status,
+                    initialValue: _status,
                     decoration: const InputDecoration(
                       border: InputBorder.none,
                       labelText: 'حالة الموعد',

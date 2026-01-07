@@ -145,5 +145,4 @@ class AppConstants {
       print('[$tag] $msg');
     }
   }
-
 }

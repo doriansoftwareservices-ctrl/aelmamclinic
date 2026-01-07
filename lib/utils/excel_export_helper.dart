@@ -61,7 +61,8 @@ class ExcelExportHelper {
       await File(path).writeAsBytes(bytes, flush: true);
       return path;
     }
-    final path = await saveFileBytesWithPath(Uint8List.fromList(bytes), fileName);
+    final path =
+        await saveFileBytesWithPath(Uint8List.fromList(bytes), fileName);
     return path;
   }
 
@@ -101,7 +102,8 @@ class ExcelExportHelper {
       await File(path).writeAsBytes(bytes, flush: true);
       return path;
     }
-    final path = await saveFileBytesWithPath(Uint8List.fromList(bytes), fileName);
+    final path =
+        await saveFileBytesWithPath(Uint8List.fromList(bytes), fileName);
     return path;
   }
 
@@ -143,7 +145,8 @@ class ExcelExportHelper {
       await File(path).writeAsBytes(bytes, flush: true);
       return path;
     }
-    final path = await saveFileBytesWithPath(Uint8List.fromList(bytes), fileName);
+    final path =
+        await saveFileBytesWithPath(Uint8List.fromList(bytes), fileName);
     return path;
   }
 }

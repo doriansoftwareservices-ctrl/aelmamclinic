@@ -500,7 +500,9 @@ class _FinancialLogsScreenState extends State<FinancialLogsScreen> {
                   fontWeight: FontWeight.w700, color: scheme.onSurface)),
           const SizedBox(width: 6),
           Switch(
-              value: value, onChanged: onChanged, activeColor: kPrimaryColor),
+              value: value,
+              onChanged: onChanged,
+              activeThumbColor: kPrimaryColor),
         ],
       ),
     );

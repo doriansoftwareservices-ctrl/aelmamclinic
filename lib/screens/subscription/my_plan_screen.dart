@@ -83,8 +83,7 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
   }
 
   void _snack(String msg) {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   @override
@@ -110,8 +109,7 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
                             fontWeight: FontWeight.w700,
                           ),
                         ),
-                        if (_planEndAt != null &&
-                            _currentPlan != 'free') ...[
+                        if (_planEndAt != null && _currentPlan != 'free') ...[
                           const SizedBox(height: 6),
                           Text(
                             'تنتهي في: ${DateFormat('yyyy-MM-dd').format(_planEndAt!)}',
@@ -129,7 +127,8 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
                             plan: plan,
                             isCurrent: isCurrent,
                             isFree: isFree,
-                            canUpgrade: auth.isLoggedIn && !isCurrent && !isFree,
+                            canUpgrade:
+                                auth.isLoggedIn && !isCurrent && !isFree,
                             onUpgrade: () => _startUpgrade(plan),
                           );
                         }),

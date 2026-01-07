@@ -239,7 +239,8 @@ class ChatService {
     return ChatMessage.fromMap(copy, currentUid: currentUserId);
   }
 
-  Future<List<ChatMessage>> _messagesFromRows(List<Map<String, dynamic>> rows) async {
+  Future<List<ChatMessage>> _messagesFromRows(
+      List<Map<String, dynamic>> rows) async {
     final list = <ChatMessage>[];
     for (final row in rows) {
       list.add(await _messageFromRow(row));
@@ -261,7 +262,8 @@ class ChatService {
       );
       final id = res['id']?.toString();
       if (id == null || id.isEmpty) {
-        throw ChatAttachmentUploadException('لم يتم استلام معرّف الملف من التخزين.');
+        throw ChatAttachmentUploadException(
+            'لم يتم استلام معرّف الملف من التخزين.');
       }
       return id;
     } catch (e) {
@@ -311,7 +313,8 @@ class ChatService {
           preferredQuery,
           {'uid': uid, 'account': preferred},
         );
-        final preferredRows = (preferredData[_tblAccUsers] as List?) ?? const [];
+        final preferredRows =
+            (preferredData[_tblAccUsers] as List?) ?? const [];
         if (preferredRows.isNotEmpty) {
           final row = _asJsonMap(preferredRows.first);
           return (
@@ -543,8 +546,7 @@ class ChatService {
     };
     final accountFilter =
         accountId == null ? '' : ', account_id: {_eq: \$accountId}';
-    final accountVar =
-        accountId == null ? '' : ', \$accountId: uuid!';
+    final accountVar = accountId == null ? '' : ', \$accountId: uuid!';
     if (accountId != null) {
       vars['accountId'] = accountId;
     }
@@ -676,7 +678,8 @@ class ChatService {
     final data = await _runQuery(query, {'uidA': uidA, 'uidB': uidB});
     final rows = (data[_tblConvs] as List?) ?? const [];
     if (rows.isEmpty) return null;
-    return ChatConversation.fromMap(Map<String, dynamic>.from(rows.first as Map));
+    return ChatConversation.fromMap(
+        Map<String, dynamic>.from(rows.first as Map));
   }
 
   Future<ChatConversation> startDMWithEmail(String email) async {

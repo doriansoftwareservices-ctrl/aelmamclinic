@@ -5,7 +5,8 @@ import 'package:aelmamclinic/models/subscription_plan.dart';
 import 'package:aelmamclinic/services/nhost_graphql_service.dart';
 
 class BillingService {
-  BillingService({GraphQLClient? client}) : _gql = client ?? NhostGraphqlService.client;
+  BillingService({GraphQLClient? client})
+      : _gql = client ?? NhostGraphqlService.client;
 
   final GraphQLClient _gql;
 
@@ -142,7 +143,8 @@ class BillingService {
     if (res.hasException) {
       throw res.exception!;
     }
-    final rows = (res.data?['create_subscription_request'] as List?) ?? const [];
+    final rows =
+        (res.data?['create_subscription_request'] as List?) ?? const [];
     if (rows.isEmpty) return '';
     return (rows.first as Map)['id']?.toString() ?? '';
   }

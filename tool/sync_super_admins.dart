@@ -128,8 +128,7 @@ List<String> _readEmailsFromEnv() {
 String _toPgTextArrayLiteral(List<String> values) {
   if (values.isEmpty) return '{}';
   final parts = values.map((value) {
-    final escaped =
-        value.replaceAll(r'\', r'\\').replaceAll('"', r'\"');
+    final escaped = value.replaceAll(r'\', r'\\').replaceAll('"', r'\"');
     return '"$escaped"';
   }).join(',');
   return '{${parts}}';

@@ -153,8 +153,7 @@ class NhostConfig {
     _overrideAuthUrl = normalize(authUrl) ?? _overrideAuthUrl;
     _overrideStorageUrl = normalize(storageUrl) ?? _overrideStorageUrl;
     _overrideFunctionsUrl = normalize(functionsUrl) ?? _overrideFunctionsUrl;
-    _overrideResetPasswordRedirectUrl =
-        normalize(resetPasswordRedirectUrl) ??
+    _overrideResetPasswordRedirectUrl = normalize(resetPasswordRedirectUrl) ??
         _overrideResetPasswordRedirectUrl;
   }
 }

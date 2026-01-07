@@ -12,7 +12,6 @@
 
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart'
     show consolidateHttpClientResponseBytes;
 import 'package:flutter/material.dart';
@@ -623,9 +622,9 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
     showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => WillPopScope(
-        onWillPop: () async => false,
-        child: const Center(
+      builder: (_) => const PopScope(
+        canPop: false,
+        child: Center(
           child: CircularProgressIndicator(color: kPrimaryColor),
         ),
       ),
@@ -674,8 +673,8 @@ class _ImagePageState extends State<_ImagePage>
       final x = -pos.dx * (zoom - 1);
       final y = -pos.dy * (zoom - 1);
       final m = Matrix4.identity()
-        ..translate(x, y)
-        ..scale(zoom);
+        ..translateByDouble(x, y, 0, 1.0)
+        ..scaleByDouble(zoom, zoom, 1, 1.0);
       _animateTo(m);
     }
   }
