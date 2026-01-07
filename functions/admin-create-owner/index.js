@@ -33,6 +33,7 @@ const resolveAuthUrl = () => {
       .replace('.graphql.', '.auth.')
       .replace('.functions.', '.auth.')
       .replace('.storage.', '.auth.');
+    url = url.replace(/\/v1\/graphql$/i, '/v1').replace(/\/graphql$/i, '');
     if (!url.endsWith('/v1')) {
       url = `${url}/v1`;
     }

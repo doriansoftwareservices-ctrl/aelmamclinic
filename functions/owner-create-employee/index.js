@@ -33,6 +33,7 @@ const resolveAuthUrl = () => {
       .replace('.graphql.', '.auth.')
       .replace('.functions.', '.auth.')
       .replace('.storage.', '.auth.');
+    url = url.replace(/\/v1\/graphql$/i, '/v1').replace(/\/graphql$/i, '');
     if (!url.endsWith('/v1')) {
       url = `${url}/v1`;
     }
@@ -51,12 +52,15 @@ async function createOrGetUser(email, password) {
     );
   }
 
+  const adminHeaders = {
+    'Content-Type': 'application/json',
+    'x-hasura-admin-secret': adminSecret,
+    Authorization: `Bearer ${adminSecret}`,
+  };
+
   const createRes = await fetch(`${authUrl}/admin/users`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${adminSecret}`,
-    },
+    headers: adminHeaders,
     body: JSON.stringify({
       email,
       password,
@@ -69,9 +73,7 @@ async function createOrGetUser(email, password) {
     const listRes = await fetch(
       `${authUrl}/admin/users?email=${encodeURIComponent(email)}`,
       {
-        headers: {
-          Authorization: `Bearer ${adminSecret}`,
-        },
+        headers: adminHeaders,
       },
     );
     if (!listRes.ok) {
@@ -104,6 +106,7 @@ async function deleteUser(userId) {
   await fetch(`${authUrl}/admin/users/${userId}`, {
     method: 'DELETE',
     headers: {
+      'x-hasura-admin-secret': adminSecret,
       Authorization: `Bearer ${adminSecret}`,
     },
   });
