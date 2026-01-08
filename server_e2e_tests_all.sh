@@ -83,14 +83,26 @@ signin() {
 make_payload() {
   local query="$1"
   local variables_json="${2:-{}}"
-  python3 - "$query" "$variables_json" <<'PY'
-import json, sys
-query = sys.argv[1] if len(sys.argv) > 1 else ""
-vars_raw = sys.argv[2] if len(sys.argv) > 2 else "{}"
-try:
-  variables = json.loads(vars_raw) if vars_raw else {}
-except Exception:
-  variables = {}
+  QUERY="$query" VARS_JSON="$variables_json" python3 - <<'PY'
+import json, os
+query = os.environ.get("QUERY", "")
+vars_raw = os.environ.get("VARS_JSON", "{}")
+def parse_vars(raw):
+  raw = (raw or "").strip()
+  if not raw:
+    return {}
+  try:
+    return json.loads(raw)
+  except Exception:
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start != -1 and end != -1 and end > start:
+      try:
+        return json.loads(raw[start:end + 1])
+      except Exception:
+        return {}
+    return {}
+variables = parse_vars(vars_raw)
 print(json.dumps({"query": query, "variables": variables}))
 PY
 }
