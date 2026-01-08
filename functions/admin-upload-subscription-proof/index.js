@@ -148,18 +148,18 @@ module.exports = async function handler(req, res) {
     });
 
     const text = await uploadRes.text();
-    let payload = text;
-    try { payload = JSON.parse(text); } catch (_) {}
+    let responsePayload = text;
+    try { responsePayload = JSON.parse(text); } catch (_) {}
 
     if (!uploadRes.ok) {
       res.status(uploadRes.status).json({
         ok: false,
-        error: payload?.error ?? payload ?? 'Upload failed',
+        error: responsePayload?.error ?? responsePayload ?? 'Upload failed',
       });
       return;
     }
 
-    res.status(uploadRes.status).json(payload);
+    res.status(uploadRes.status).json(responsePayload);
   } catch (err) {
     res.status(500).json({ ok: false, error: err?.message ?? 'Failed' });
   }
