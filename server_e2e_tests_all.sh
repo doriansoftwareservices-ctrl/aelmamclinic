@@ -94,7 +94,12 @@ raw = ""
 if vars_path:
   with open(vars_path, "r", encoding="utf-8") as f:
     raw = f.read().strip()
-variables = json.loads(raw) if raw else {}
+variables = {}
+if raw:
+  try:
+    variables, _ = json.JSONDecoder().raw_decode(raw)
+  except Exception:
+    variables = {}
 print(json.dumps({"query": query, "variables": variables}))
 PY
   rm -f "$vars_file"
