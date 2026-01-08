@@ -328,7 +328,6 @@ async function ensureAccountPaid(accountId, authHeader) {
 }
 
 module.exports = async function handler(req, res) {
-  let created = null;
   try {
     const body = await readBody(req);
     const authHeader = req.headers?.authorization;
@@ -352,7 +351,6 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    created = await createOrGetUser(email, password);
     const result = await callAdminCreateEmployee(
       accountId,
       email,
@@ -361,9 +359,6 @@ module.exports = async function handler(req, res) {
     );
     res.json(result);
   } catch (err) {
-    if (created && created.id && created.existed === false) {
-      await deleteUser(created.id);
-    }
     const code = err?.statusCode ?? 500;
     res.status(code).json({ ok: false, error: err?.message ?? 'Failed' });
   }

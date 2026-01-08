@@ -251,7 +251,6 @@ async function callOwnerCreateEmployee(authHeader, email, password) {
 }
 
 module.exports = async function handler(req, res) {
-  let created = null;
   try {
     const body = await readBody(req);
     const authHeader = req.headers?.authorization;
@@ -268,13 +267,9 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    created = await createOrGetUser(email, password);
     const result = await callOwnerCreateEmployee(authHeader, email, password);
     res.json(result);
   } catch (err) {
-    if (created && created.id && created.existed === false) {
-      await deleteUser(created.id);
-    }
     const code = err?.statusCode ?? 500;
     res.status(code).json({ ok: false, error: err?.message ?? 'Failed' });
   }
