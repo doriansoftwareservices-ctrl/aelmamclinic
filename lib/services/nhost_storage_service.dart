@@ -236,9 +236,31 @@ class NhostStorageService {
           res['presigned_url'];
       final value = signed?.toString() ?? '';
       return value.isEmpty ? null : value;
-    } catch (_) {
+    } catch (e) {
+      if (_shouldRetryWithFunction(e)) {
+        try {
+          return await _createSignedUrlViaFunction(fileId, ttl);
+        } catch (_) {
+          return null;
+        }
+      }
       return null;
     }
+  }
+
+  Future<String?> _createSignedUrlViaFunction(
+    String fileId,
+    int ttl,
+  ) async {
+    final base = NhostConfig.functionsUrl.replaceAll(RegExp(r'/+$'), '');
+    final url = Uri.parse('$base/admin-sign-storage-file');
+    final res = await _api.postJson(url, {'fileId': fileId, 'expiresIn': ttl});
+    final signed = res['url'] ??
+        res['signedUrl'] ??
+        res['presignedUrl'] ??
+        res['presigned_url'];
+    final value = signed?.toString() ?? '';
+    return value.isEmpty ? null : value;
   }
 
   void dispose() => _api.dispose();
