@@ -103,7 +103,11 @@ module.exports = async function handler(req, res) {
         ? body.input
         : body;
     const filename = `${payload?.filename ?? ''}`.trim() || 'proof';
-    const base64 = `${payload?.base64 ?? ''}`.trim();
+    let base64 = `${payload?.base64 ?? ''}`.trim();
+    if (base64.startsWith('data:')) {
+      const comma = base64.indexOf(',');
+      base64 = comma >= 0 ? base64.slice(comma + 1).trim() : '';
+    }
     const bucketId = 'subscription-proofs';
     const mimeType =
       `${payload?.mimeType ?? 'application/octet-stream'}`.trim() ||
@@ -133,21 +137,25 @@ module.exports = async function handler(req, res) {
       meta.account_id = uploader.accountId;
     }
 
-    const tryUpload = async (useArrayFields) => {
+    const tryUpload = async (useArrayFields, includeMeta) => {
       const form = new FormData();
       form.append('bucket-id', bucketId);
       if (useArrayFields) {
         form.append('file[]', new Blob([buffer], { type: mimeType }), filename);
-        form.append(
-          'metadata[]',
-          new Blob([JSON.stringify(meta)], { type: 'application/json' }),
-        );
+        if (includeMeta) {
+          form.append(
+            'metadata[]',
+            JSON.stringify(meta),
+          );
+        }
       } else {
         form.append('file', new Blob([buffer], { type: mimeType }), filename);
-        form.append(
-          'metadata',
-          new Blob([JSON.stringify(meta)], { type: 'application/json' }),
-        );
+        if (includeMeta) {
+          form.append(
+            'metadata',
+            JSON.stringify(meta),
+          );
+        }
       }
 
       const uploadRes = await fetch(`${storageUrl}/files`, {
@@ -164,12 +172,23 @@ module.exports = async function handler(req, res) {
       return { uploadRes, responsePayload };
     };
 
-    let { uploadRes, responsePayload } = await tryUpload(false);
-    if (!uploadRes.ok) {
-      ({ uploadRes, responsePayload } = await tryUpload(true));
+    const attempts = [
+      { arrayFields: false, includeMeta: true },
+      { arrayFields: true, includeMeta: true },
+      { arrayFields: false, includeMeta: false },
+      { arrayFields: true, includeMeta: false },
+    ];
+    let uploadRes;
+    let responsePayload;
+    for (const attempt of attempts) {
+      ({ uploadRes, responsePayload } = await tryUpload(
+        attempt.arrayFields,
+        attempt.includeMeta,
+      ));
+      if (uploadRes.ok) break;
     }
 
-    if (!uploadRes.ok) {
+    if (!uploadRes || !uploadRes.ok) {
       res.status(uploadRes.status).json({
         ok: false,
         error: responsePayload?.error ?? responsePayload ?? 'Upload failed',

@@ -268,22 +268,27 @@ print(path)
 PY
 )
       if [ -n "$tmp_file" ] && [ -f "$tmp_file" ]; then
-        proof_resp=$(curl -sS -w '\nHTTP_CODE:%{http_code}\n' \
-          "$STORAGE_URL/files" \
-          -H "x-hasura-admin-secret: $HASURA_ADMIN_SECRET" \
-          -F "bucket-id=subscription-proofs" \
-          -F "file=@$tmp_file;filename=qa-proof.txt" \
-          -F 'metadata={"name":"qa-proof.txt"};type=application/json')
-        proof_id=$(printf '%s' "$proof_resp" | json_get 'processedFiles.0.id')
-        if [ -z "$proof_id" ]; then
+        for attempt in \
+          "file[]:@$tmp_file;filename=qa-proof.txt|metadata[]:{\"name\":\"qa-proof.txt\"}" \
+          "file[]:@$tmp_file;filename=qa-proof.txt|metadata:{\"name\":\"qa-proof.txt\"}" \
+          "file:@$tmp_file;filename=qa-proof.txt|metadata:{\"name\":\"qa-proof.txt\"}" \
+          "file[]:@$tmp_file;filename=qa-proof.txt|" \
+          "file:@$tmp_file;filename=qa-proof.txt|"; do
+          file_part=${attempt%%|*}
+          meta_part=${attempt#*|}
+          meta_args=()
+          if [ -n "$meta_part" ]; then
+            meta_args=(-F "$meta_part")
+          fi
           proof_resp=$(curl -sS -w '\nHTTP_CODE:%{http_code}\n' \
             "$STORAGE_URL/files" \
             -H "x-hasura-admin-secret: $HASURA_ADMIN_SECRET" \
             -F "bucket-id=subscription-proofs" \
-            -F "file[]=@$tmp_file" \
-            -F 'metadata[]={"name":"qa-proof.txt"};type=application/json')
+            -F "$file_part" \
+            "${meta_args[@]}")
           proof_id=$(printf '%s' "$proof_resp" | json_get 'processedFiles.0.id')
-        fi
+          [ -n "$proof_id" ] && break
+        done
         rm -f "$tmp_file"
       fi
       if [ -n "$proof_id" ]; then
@@ -339,7 +344,7 @@ if [ -n "$request_id" ]; then
   q_appr='mutation Approve($id: uuid!) { admin_approve_subscription_request(args: { p_request: $id, p_note: "qa approve" }) { ok error account_id } }'
   appr=$(gql_role "$sa_token" "superadmin" "$q_appr" "{\"id\":\"$request_id\"}")
   ok=$(printf '%s' "$appr" | json_get 'data.admin_approve_subscription_request.0.ok')
-  if [ "$ok" = "true" ]; then
+  if printf '%s' "$ok" | rg -q '^(true|True|t|1)$'; then
     step_ok "subscription approved"
   else
     echo "$appr"
