@@ -96,20 +96,17 @@ class _CreateSalaryPaymentScreenState extends State<CreateSalaryPaymentScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // شريط خيارات العام/الشهر + أزرار تنقّل شهرية + زر عرض
                   NeuCard(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 12, vertical: 10),
                     child: Row(
                       children: [
-                        // السابق
                         NeuButton.flat(
                           label: 'السابق',
                           icon: Icons.chevron_right_rounded,
                           onPressed: _isLoading ? null : () => _shiftMonth(-1),
                         ),
                         const SizedBox(width: 8),
-                        // العام
                         Expanded(
                           child: DropdownButtonFormField<int>(
                             initialValue: _selectedYear,
@@ -127,7 +124,6 @@ class _CreateSalaryPaymentScreenState extends State<CreateSalaryPaymentScreen> {
                           ),
                         ),
                         const SizedBox(width: 12),
-                        // الشهر
                         Expanded(
                           child: DropdownButtonFormField<int>(
                             initialValue: _selectedMonth,
@@ -145,7 +141,6 @@ class _CreateSalaryPaymentScreenState extends State<CreateSalaryPaymentScreen> {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        // التالي
                         NeuButton.flat(
                           label: 'التالي',
                           icon: Icons.chevron_left_rounded,
@@ -161,8 +156,6 @@ class _CreateSalaryPaymentScreenState extends State<CreateSalaryPaymentScreen> {
                     ),
                   ),
                   const SizedBox(height: 10),
-
-                  // شريط البحث
                   TSearchField(
                     controller: _searchCtrl,
                     hint: 'ابحث بالاسم…',
@@ -173,8 +166,6 @@ class _CreateSalaryPaymentScreenState extends State<CreateSalaryPaymentScreen> {
                     },
                   ),
                   const SizedBox(height: 12),
-
-                  // لمحة إحصائية صغيرة
                   Wrap(
                     spacing: 12,
                     runSpacing: 8,
@@ -204,8 +195,6 @@ class _CreateSalaryPaymentScreenState extends State<CreateSalaryPaymentScreen> {
                     ],
                   ),
                   const SizedBox(height: 12),
-
-                  // النتائج
                   Expanded(
                     child: _isLoading
                         ? const Center(child: CircularProgressIndicator())
