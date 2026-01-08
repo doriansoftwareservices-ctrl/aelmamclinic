@@ -3230,12 +3230,13 @@ class SyncService {
 
   /// إلغاء جميع الاشتراكات.
   Future<void> stopRealtime() async {
-    for (final sub in _subscriptions.values) {
+    final subs = _subscriptions.values.toList(growable: false);
+    _subscriptions.clear();
+    for (final sub in subs) {
       try {
         await sub.cancel();
       } catch (_) {}
     }
-    _subscriptions.clear();
     _realtimeRowVersions.clear();
     _realtimeEnabled = false;
     _log('Realtime unsubscribed from all tables');
