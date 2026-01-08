@@ -118,12 +118,40 @@ Future<
         return '$value'.trim();
       }
 
-      final nhostSubdomain = readKey('nhostSubdomain');
-      final nhostRegion = readKey('nhostRegion');
-      final nhostGraphqlUrl = readKey('nhostGraphqlUrl');
-      final nhostAuthUrl = readKey('nhostAuthUrl');
-      final nhostStorageUrl = readKey('nhostStorageUrl');
-      final nhostFunctionsUrl = readKey('nhostFunctionsUrl');
+      bool isValidSimpleToken(String? value) {
+        if (value == null) return false;
+        final trimmed = value.trim();
+        if (trimmed.isEmpty || trimmed.contains(',') || trimmed.contains(' ')) {
+          return false;
+        }
+        return RegExp(r'^[a-z0-9-]+$', caseSensitive: false)
+            .hasMatch(trimmed);
+      }
+
+      String? sanitizeUrl(String? value) {
+        if (value == null) return null;
+        final trimmed = value.trim();
+        if (trimmed.isEmpty || trimmed.contains(',')) return null;
+        final uri = Uri.tryParse(trimmed);
+        if (uri == null ||
+            (uri.scheme != 'http' && uri.scheme != 'https') ||
+            uri.host.isEmpty ||
+            !uri.host.contains('nhost.run')) {
+          return null;
+        }
+        return trimmed;
+      }
+
+      final rawSubdomain = readKey('nhostSubdomain');
+      final rawRegion = readKey('nhostRegion');
+      final nhostSubdomain = isValidSimpleToken(rawSubdomain)
+          ? rawSubdomain?.trim()
+          : null;
+      final nhostRegion = isValidSimpleToken(rawRegion) ? rawRegion?.trim() : null;
+      final nhostGraphqlUrl = sanitizeUrl(readKey('nhostGraphqlUrl'));
+      final nhostAuthUrl = sanitizeUrl(readKey('nhostAuthUrl'));
+      final nhostStorageUrl = sanitizeUrl(readKey('nhostStorageUrl'));
+      final nhostFunctionsUrl = sanitizeUrl(readKey('nhostFunctionsUrl'));
       final resetPasswordRedirectUrl = readKey('resetPasswordRedirectUrl');
 
       final noNhostOverrides =

@@ -41,6 +41,49 @@ const resolveStorageUrl = () => {
   return null;
 };
 
+async function ensureUploaderRole(authHeader) {
+  const gqlUrl = process.env.NHOST_GRAPHQL_URL;
+  if (!gqlUrl) {
+    throw new Error('Missing NHOST_GRAPHQL_URL');
+  }
+  const res = await fetch(gqlUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: authHeader,
+    },
+    body: JSON.stringify({
+      query: `
+        query ProofUploaderRole {
+          fn_is_super_admin_gql { is_super_admin }
+          my_profile { role }
+        }
+      `,
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`Auth check failed: ${res.status}`);
+  }
+  const json = await res.json();
+  if (json.errors?.length) {
+    throw new Error(json.errors.map((e) => e.message).join(' | '));
+  }
+  const rows = json.data?.fn_is_super_admin_gql;
+  const isSuper =
+    Array.isArray(rows) && rows.length > 0 && rows[0]?.is_super_admin === true;
+  if (isSuper) return;
+  const profile = json.data?.my_profile;
+  const role = Array.isArray(profile) && profile.length > 0
+    ? `${profile[0]?.role ?? ''}`.toLowerCase()
+    : '';
+  if (role === 'owner' || role === 'admin') {
+    return;
+  }
+  const err = new Error('forbidden');
+  err.statusCode = 403;
+  throw err;
+}
+
 module.exports = async function handler(req, res) {
   try {
     if (req.method !== 'POST') {
@@ -52,17 +95,24 @@ module.exports = async function handler(req, res) {
       res.status(401).json({ ok: false, error: 'Missing authorization' });
       return;
     }
+    await ensureUploaderRole(authHeader);
 
     const body = await readBody(req);
     const filename = `${body.filename ?? ''}`.trim() || 'proof';
     const base64 = `${body.base64 ?? ''}`.trim();
-    const bucketId = `${body.bucketId ?? 'subscription-proofs'}`.trim();
+    const bucketId = 'subscription-proofs';
     const mimeType =
       `${body.mimeType ?? 'application/octet-stream'}`.trim() ||
       'application/octet-stream';
 
     if (!base64) {
       res.status(400).json({ ok: false, error: 'Missing base64 payload' });
+      return;
+    }
+    const maxBytes = 10 * 1024 * 1024;
+    const buffer = Buffer.from(base64, 'base64');
+    if (buffer.length > maxBytes) {
+      res.status(413).json({ ok: false, error: 'File too large' });
       return;
     }
 
@@ -74,7 +124,6 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    const buffer = Buffer.from(base64, 'base64');
     const form = new FormData();
     form.append('bucket-id', bucketId);
     form.append('file[]', new Blob([buffer], { type: mimeType }), filename);

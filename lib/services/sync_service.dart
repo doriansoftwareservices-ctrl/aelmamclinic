@@ -2799,6 +2799,7 @@ class SyncService {
   /*──────────────────── Realtime (اشتراك لحظي) ────────────────────*/
 
   final Map<String, StreamSubscription<QueryResult>> _subscriptions = {};
+  Future<void> _realtimeOp = Future.value();
   final Map<String, Map<String, String>> _realtimeRowVersions = {};
   bool _realtimeEnabled = false;
   bool _realtimeSupported = true;
@@ -3130,17 +3131,23 @@ class SyncService {
     }
   }
 
+  Future<void> _queueRealtimeOp(Future<void> Function() action) {
+    _realtimeOp = _realtimeOp.then((_) => action());
+    return _realtimeOp;
+  }
+
   /// اشترك في كل الجداول (Realtime) لهذا الحساب.
-  Future<void> startRealtime() async {
-    if (!_realtimeSupported) {
-      return;
-    }
-    // ✅ تفادي ازدواج الاشتراكات عند إعادة التهيئة (مثلاً بعد تغيير المستخدم)
-    await stopRealtime();
-    if (!_hasAccount) {
-      _log('Realtime skipped (no accountId)');
-      return;
-    }
+  Future<void> startRealtime() {
+    return _queueRealtimeOp(() async {
+      if (!_realtimeSupported) {
+        return;
+      }
+      // ✅ تفادي ازدواج الاشتراكات عند إعادة التهيئة (مثلاً بعد تغيير المستخدم)
+      await _stopRealtimeInternal();
+      if (!_hasAccount) {
+        _log('Realtime skipped (no accountId)');
+        return;
+      }
 
     // لا نُشغّل Realtime للمرفقات (محلي فقط)
     await _subscribeTableRealtime('drugs', 'drugs');
@@ -3225,11 +3232,16 @@ class SyncService {
       'patient_services',
       fkParentTables: _fkMap['patient_services'],
     );
-    _realtimeEnabled = true;
+      _realtimeEnabled = true;
+    });
   }
 
   /// إلغاء جميع الاشتراكات.
-  Future<void> stopRealtime() async {
+  Future<void> stopRealtime() {
+    return _queueRealtimeOp(_stopRealtimeInternal);
+  }
+
+  Future<void> _stopRealtimeInternal() async {
     final subs = _subscriptions.values.toList(growable: false);
     _subscriptions.clear();
     for (final sub in subs) {
