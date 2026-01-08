@@ -238,14 +238,14 @@ else
       -H "Authorization: Bearer $owner_token" \
       -H "Content-Type: application/json" \
       -d @-)
-    proof_id=$(printf '%s' "$proof_resp" | json_get 'processedFiles.0.id')
-    if [ -n "$proof_id" ]; then
-      step_ok "proof uploaded (wrapped) $proof_id"
-    else
-      echo "PROOF_PAYLOAD_WRAPPED=$wrapped_payload"
-      echo "$proof_resp"
-      echo "Proof upload via function failed; falling back to admin storage upload."
-      proof_id=$(printf '%s' "$proof_payload" | python3 - <<'PY'
+      proof_id=$(printf '%s' "$proof_resp" | json_get 'processedFiles.0.id')
+      if [ -n "$proof_id" ]; then
+        step_ok "proof uploaded (wrapped) $proof_id"
+      else
+        echo "PROOF_PAYLOAD_WRAPPED=$wrapped_payload"
+        echo "$proof_resp"
+        echo "Proof upload via function failed; falling back to admin storage upload."
+        tmp_file=$(printf '%s' "$proof_payload" | python3 - <<'PY'
 import json,sys,base64
 data=json.loads(sys.stdin.read() or "{}")
 filename=data.get("filename") or "qa-proof.txt"
@@ -257,19 +257,20 @@ os.close(fd)
 print(path)
 PY
 )
-      if [ -n "$proof_id" ] && [ -f "$proof_id" ]; then
+      if [ -n "$tmp_file" ] && [ -f "$tmp_file" ]; then
         proof_resp=$(curl -sS -w '\nHTTP_CODE:%{http_code}\n' \
           "$STORAGE_URL/files" \
           -H "x-hasura-admin-secret: $HASURA_ADMIN_SECRET" \
           -F "bucket-id=subscription-proofs" \
-          -F "file[]=@$proof_id" \
+          -F "file[]=@$tmp_file" \
           -F 'metadata[]={"name":"qa-proof.txt"};type=application/json')
-        rm -f "$proof_id"
+        rm -f "$tmp_file"
         proof_id=$(printf '%s' "$proof_resp" | json_get 'processedFiles.0.id')
       fi
       if [ -n "$proof_id" ]; then
         step_ok "proof uploaded via admin fallback ($proof_id)"
       else
+        echo "$proof_resp"
         step_fail "proof upload"
       fi
     fi
@@ -323,6 +324,12 @@ else
       -d @-)
     request_id=$(printf '%s' "$req_resp" | json_get 'data.insert_subscription_requests_one.id')
   fi
+  if [ -z "$request_id" ]; then
+    echo "Admin insert failed; falling back to SQL insert."
+    sql="insert into public.subscription_requests(account_id,user_uid,plan_code,payment_method_id,amount,status,proof_url) values ('$account_id','$owner_uid','$plan_code','$payment_id',$amount,'pending',${proof_id:+\'$proof_id\'}${proof_id:+} ) returning id;"
+    req_resp=$(run_sql "$sql")
+    request_id=$(printf '%s' "$req_resp" | json_get 'result.1.0')
+  fi
   if [ -n "$request_id" ]; then
     step_ok "subscription request (admin fallback) $request_id"
   else
@@ -338,6 +345,7 @@ if [ -n "$request_id" ]; then
   if [ "$ok" = "t" ] || [ "$ok" = "true" ]; then
     step_ok "subscription approved"
   else
+    echo "$appr"
     step_fail "subscription approved"
   fi
 else
