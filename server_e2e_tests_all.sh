@@ -112,16 +112,24 @@ PY
   rm -f "$vars_file"
 }
 
-gql_user() {
+gql_role() {
   local token="$1"
-  local query="$2"
-  local variables_json="${3:-{}}"
+  local role="$2"
+  local query="$3"
+  local variables_json="${4:-{}}"
   make_payload "$query" "$variables_json" \
     | curl -sS "$GRAPHQL_URL" \
       -H "Content-Type: application/json" \
       -H "Authorization: Bearer $token" \
-      -H "x-hasura-role: user" \
+      -H "x-hasura-role: $role" \
       -d @-
+}
+
+gql_user() {
+  local token="$1"
+  local query="$2"
+  local variables_json="${3:-{}}"
+  gql_role "$token" "user" "$query" "$variables_json"
 }
 
 gql_admin() {
@@ -218,6 +226,8 @@ proof_payload=$(python3 - <<PY
 import json
 print(json.dumps({
   "filename": "qa-proof.txt",
+  "bucketId": "subscription-proofs",
+  "mimeType": "text/plain",
   "base64": "$proof_data"
 }))
 PY
@@ -264,8 +274,17 @@ PY
           -F "bucket-id=subscription-proofs" \
           -F "file[]=@$tmp_file" \
           -F 'metadata[]={"name":"qa-proof.txt"};type=application/json')
-        rm -f "$tmp_file"
         proof_id=$(printf '%s' "$proof_resp" | json_get 'processedFiles.0.id')
+        if [ -z "$proof_id" ]; then
+          proof_resp=$(curl -sS -w '\nHTTP_CODE:%{http_code}\n' \
+            "$STORAGE_URL/files" \
+            -H "x-hasura-admin-secret: $HASURA_ADMIN_SECRET" \
+            -F "bucket-id=subscription-proofs" \
+            -F "file=@$tmp_file;filename=qa-proof.txt" \
+            -F 'metadata={"name":"qa-proof.txt"}')
+          proof_id=$(printf '%s' "$proof_resp" | json_get 'processedFiles.0.id')
+        fi
+        rm -f "$tmp_file"
       fi
       if [ -n "$proof_id" ]; then
         step_ok "proof uploaded via admin fallback ($proof_id)"
@@ -287,19 +306,14 @@ payment_id=$(printf '%s' "$payment_id" | json_get 'result.1.0')
 amount=$(run_sql "select price_usd from public.subscription_plans where code='$plan_code' limit 1")
 amount=$(printf '%s' "$amount" | json_get 'result.1.0')
 
-q_req='mutation InsertReq($obj: subscription_requests_insert_input!) { insert_subscription_requests_one(object: $obj) { id status plan_code account_id } }'
+q_req='mutation CreateReq($plan: String!, $payment: uuid!, $proof: String) { create_subscription_request(args: { p_plan: $plan, p_payment_method: $payment, p_proof_url: $proof }) { id } }'
 vars=$(python3 - <<PY
 import json
-obj={
-  "account_id":"$account_id",
-  "user_uid":"$owner_uid",
-  "plan_code":"$plan_code",
-  "payment_method_id":"$payment_id",
-  "amount":float("$amount") if "$amount" else None,
-  "status":"pending",
-  "proof_url":"$proof_id" if "$proof_id" else None
-}
-print(json.dumps({"obj":obj}))
+print(json.dumps({
+  "plan": "$plan_code",
+  "payment": "$payment_id",
+  "proof": "$proof_id" if "$proof_id" else None
+}))
 PY
 )
 req_payload=$(make_payload "$q_req" "$vars")
@@ -309,40 +323,23 @@ req_resp=$(printf '%s' "$req_payload" | curl -sS "$GRAPHQL_URL" \
   -H "Authorization: Bearer $owner_token" \
   -H "x-hasura-role: user" \
   -d @-)
-request_id=$(printf '%s' "$req_resp" | json_get 'data.insert_subscription_requests_one.id')
+request_id=$(printf '%s' "$req_resp" | json_get 'data.create_subscription_request.0.id')
 if [ -n "$request_id" ]; then
   step_ok "subscription request $request_id"
 else
   echo "REQ_PAYLOAD=$req_payload"
   echo "REQ_VARS=$vars"
   echo "$req_resp"
-  if printf '%s' "$req_resp" | rg -q "insert_subscription_requests_one"; then
-    echo "User insert not available; falling back to admin insert."
-    req_resp=$(printf '%s' "$req_payload" | curl -sS "$GRAPHQL_URL" \
-      -H "Content-Type: application/json" \
-      -H "x-hasura-admin-secret: $HASURA_ADMIN_SECRET" \
-      -d @-)
-    request_id=$(printf '%s' "$req_resp" | json_get 'data.insert_subscription_requests_one.id')
-  fi
-  if [ -z "$request_id" ]; then
-    echo "Admin insert failed; falling back to SQL insert."
-    sql="insert into public.subscription_requests(account_id,user_uid,plan_code,payment_method_id,amount,status,proof_url) values ('$account_id','$owner_uid','$plan_code','$payment_id',$amount,'pending',${proof_id:+\'$proof_id\'}${proof_id:+} ) returning id;"
-    req_resp=$(run_sql "$sql")
-    request_id=$(printf '%s' "$req_resp" | json_get 'result.1.0')
-  fi
-  if [ -n "$request_id" ]; then
-    step_ok "subscription request (admin fallback) $request_id"
-  else
-    step_fail "subscription request"
-  fi
+  step_fail "subscription request"
 fi
 
 # ---------- Step 6: Approve subscription (superadmin via SQL) ----------
 log "Approve subscription"
 if [ -n "$request_id" ]; then
-  appr=$(run_sql "select * from public.admin_approve_subscription_request('$request_id','qa approve');")
-  ok=$(printf '%s' "$appr" | json_get 'result.1.0')
-  if [ "$ok" = "t" ] || [ "$ok" = "true" ]; then
+  q_appr='mutation Approve($id: uuid!) { admin_approve_subscription_request(args: { p_request: $id, p_note: "qa approve" }) { ok error account_id } }'
+  appr=$(gql_role "$sa_token" "superadmin" "$q_appr" "{\"id\":\"$request_id\"}")
+  ok=$(printf '%s' "$appr" | json_get 'data.admin_approve_subscription_request.0.ok')
+  if [ "$ok" = "true" ]; then
     step_ok "subscription approved"
   else
     echo "$appr"

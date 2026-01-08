@@ -132,23 +132,39 @@ module.exports = async function handler(req, res) {
     if (uploader && uploader.accountId) {
       meta.account_id = uploader.accountId;
     }
-    const form = new FormData();
-    form.append('bucket-id', bucketId);
-    form.append('file[]', new Blob([buffer], { type: mimeType }), filename);
-    form.append(
-      'metadata[]',
-      new Blob([JSON.stringify(meta)], { type: 'application/json' }),
-    );
 
-    const uploadRes = await fetch(`${storageUrl}/files`, {
-      method: 'POST',
-      headers: { 'x-hasura-admin-secret': adminSecret },
-      body: form,
-    });
+    const tryUpload = async (useArrayFields) => {
+      const form = new FormData();
+      form.append('bucket-id', bucketId);
+      if (useArrayFields) {
+        form.append('file[]', new Blob([buffer], { type: mimeType }), filename);
+        form.append(
+          'metadata[]',
+          new Blob([JSON.stringify(meta)], { type: 'application/json' }),
+        );
+      } else {
+        form.append('file', new Blob([buffer], { type: mimeType }), filename);
+        form.append('metadata', JSON.stringify(meta));
+      }
 
-    const text = await uploadRes.text();
-    let responsePayload = text;
-    try { responsePayload = JSON.parse(text); } catch (_) {}
+      const uploadRes = await fetch(`${storageUrl}/files`, {
+        method: 'POST',
+        headers: { 'x-hasura-admin-secret': adminSecret },
+        body: form,
+      });
+
+      const text = await uploadRes.text();
+      let responsePayload = text;
+      try {
+        responsePayload = JSON.parse(text);
+      } catch (_) {}
+      return { uploadRes, responsePayload };
+    };
+
+    let { uploadRes, responsePayload } = await tryUpload(true);
+    if (!uploadRes.ok) {
+      ({ uploadRes, responsePayload } = await tryUpload(false));
+    }
 
     if (!uploadRes.ok) {
       res.status(uploadRes.status).json({
