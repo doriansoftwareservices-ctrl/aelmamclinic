@@ -144,7 +144,10 @@ module.exports = async function handler(req, res) {
         );
       } else {
         form.append('file', new Blob([buffer], { type: mimeType }), filename);
-        form.append('metadata', JSON.stringify(meta));
+        form.append(
+          'metadata',
+          new Blob([JSON.stringify(meta)], { type: 'application/json' }),
+        );
       }
 
       const uploadRes = await fetch(`${storageUrl}/files`, {
@@ -161,9 +164,9 @@ module.exports = async function handler(req, res) {
       return { uploadRes, responsePayload };
     };
 
-    let { uploadRes, responsePayload } = await tryUpload(true);
+    let { uploadRes, responsePayload } = await tryUpload(false);
     if (!uploadRes.ok) {
-      ({ uploadRes, responsePayload } = await tryUpload(false));
+      ({ uploadRes, responsePayload } = await tryUpload(true));
     }
 
     if (!uploadRes.ok) {

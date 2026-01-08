@@ -272,16 +272,16 @@ PY
           "$STORAGE_URL/files" \
           -H "x-hasura-admin-secret: $HASURA_ADMIN_SECRET" \
           -F "bucket-id=subscription-proofs" \
-          -F "file[]=@$tmp_file" \
-          -F 'metadata[]={"name":"qa-proof.txt"};type=application/json')
+          -F "file=@$tmp_file;filename=qa-proof.txt" \
+          -F 'metadata={"name":"qa-proof.txt"};type=application/json')
         proof_id=$(printf '%s' "$proof_resp" | json_get 'processedFiles.0.id')
         if [ -z "$proof_id" ]; then
           proof_resp=$(curl -sS -w '\nHTTP_CODE:%{http_code}\n' \
             "$STORAGE_URL/files" \
             -H "x-hasura-admin-secret: $HASURA_ADMIN_SECRET" \
             -F "bucket-id=subscription-proofs" \
-            -F "file=@$tmp_file;filename=qa-proof.txt" \
-            -F 'metadata={"name":"qa-proof.txt"}')
+            -F "file[]=@$tmp_file" \
+            -F 'metadata[]={"name":"qa-proof.txt"};type=application/json')
           proof_id=$(printf '%s' "$proof_resp" | json_get 'processedFiles.0.id')
         fi
         rm -f "$tmp_file"
