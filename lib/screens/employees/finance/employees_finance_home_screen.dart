@@ -34,84 +34,86 @@ class EmployeesFinanceHomeScreen extends StatelessWidget {
         textDirection: ui.TextDirection.rtl,
         child: Scaffold(
           appBar: AppBar(
-          centerTitle: true,
-          title: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Image.asset(
-                'assets/images/logo.png',
-                height: 24,
-                fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-              ),
-              const SizedBox(width: 8),
-              const Text('ELMAM CLINIC'),
-            ],
-          ),
-        ),
-        body: SafeArea(
-          child: SingleChildScrollView(
-            padding: kScreenPadding,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+            centerTitle: true,
+            title: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  'المالية للموظفين',
-                  style: TextStyle(
-                    color: scheme.onSurface,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                  ),
+                Image.asset(
+                  'assets/images/logo.png',
+                  height: 24,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
                 ),
-                const SizedBox(height: 12),
-
-                // شبكة بطاقات الإجراءات
-                Directionality(
-                  textDirection: ui.TextDirection.rtl,
-                  child: Wrap(
-                    alignment: WrapAlignment.center,
-                    spacing: 16,
-                    runSpacing: 18,
-                    children: [
-                      _ActionCard(
-                        icon: Icons.request_quote_outlined,
-                        label: 'إنشاء معاملة سُلَف',
-                        onTap: () =>
-                            _go(context, const EmployeeLoanHomeScreen()),
-                      ),
-                      _ActionCard(
-                        icon: Icons.discount_outlined,
-                        label: 'إنشاء معاملة خصم',
-                        onTap: () =>
-                            _go(context, const EmployeeDiscountHomeScreen()),
-                      ),
-                      _ActionCard(
-                        icon: Icons.payments_outlined,
-                        label: 'إنشاء صرف الراتب',
-                        onTap: () =>
-                            _go(context, const CreateSalaryPaymentScreen()),
-                      ),
-                      _ActionCard(
-                        icon: Icons.insights_outlined,
-                        label: 'الاستعراض (ملخّص)',
-                        onTap: () =>
-                            _go(context, const EmployeesFinanceSummaryScreen()),
-                      ),
-                      _ActionCard(
-                        icon: Icons.receipt_long_outlined,
-                        label: 'المعاملات',
-                        onTap: () =>
-                            _go(context, const EmployeesTransactionsScreen()),
-                      ),
-                      _ActionCard(
-                        icon: Icons.history_rounded,
-                        label: 'سجلات المعاملات',
-                        onTap: () => _go(context, const FinancialLogsScreen()),
-                      ),
-                    ],
-                  ),
-                ),
+                const SizedBox(width: 8),
+                const Text('ELMAM CLINIC'),
               ],
+            ),
+          ),
+          body: SafeArea(
+            child: SingleChildScrollView(
+              padding: kScreenPadding,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'المالية للموظفين',
+                    style: TextStyle(
+                      color: scheme.onSurface,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // شبكة بطاقات الإجراءات
+                  Directionality(
+                    textDirection: ui.TextDirection.rtl,
+                    child: Wrap(
+                      alignment: WrapAlignment.center,
+                      spacing: 16,
+                      runSpacing: 18,
+                      children: [
+                        _ActionCard(
+                          icon: Icons.request_quote_outlined,
+                          label: 'إنشاء معاملة سُلَف',
+                          onTap: () =>
+                              _go(context, const EmployeeLoanHomeScreen()),
+                        ),
+                        _ActionCard(
+                          icon: Icons.discount_outlined,
+                          label: 'إنشاء معاملة خصم',
+                          onTap: () =>
+                              _go(context, const EmployeeDiscountHomeScreen()),
+                        ),
+                        _ActionCard(
+                          icon: Icons.payments_outlined,
+                          label: 'إنشاء صرف الراتب',
+                          onTap: () =>
+                              _go(context, const CreateSalaryPaymentScreen()),
+                        ),
+                        _ActionCard(
+                          icon: Icons.insights_outlined,
+                          label: 'الاستعراض (ملخّص)',
+                          onTap: () => _go(
+                              context, const EmployeesFinanceSummaryScreen()),
+                        ),
+                        _ActionCard(
+                          icon: Icons.receipt_long_outlined,
+                          label: 'المعاملات',
+                          onTap: () =>
+                              _go(context, const EmployeesTransactionsScreen()),
+                        ),
+                        _ActionCard(
+                          icon: Icons.history_rounded,
+                          label: 'سجلات المعاملات',
+                          onTap: () =>
+                              _go(context, const FinancialLogsScreen()),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

@@ -308,77 +308,78 @@ class _EmployeeDiscountCreateScreenState
       child: Directionality(
         textDirection: ui.TextDirection.rtl,
         child: Scaffold(
-        appBar: AppBar(
-          centerTitle: true,
-          title: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: const [
-              Icon(Icons.receipt_long_rounded),
-              SizedBox(width: 8),
-              Text('إنشاء خصم'),
-            ],
+          appBar: AppBar(
+            centerTitle: true,
+            title: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: const [
+                Icon(Icons.receipt_long_rounded),
+                SizedBox(width: 8),
+                Text('إنشاء خصم'),
+              ],
+            ),
           ),
-        ),
-        body: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : SafeArea(
-                child: Padding(
-                  padding: kScreenPadding,
-                  child: Form(
-                    key: _formKey,
-                    child: ListView(
-                      children: [
-                        // بطاقة تعريف الموظف
-                        NeuCard(
-                          padding: const EdgeInsets.all(16),
-                          child: Row(
-                            children: [
-                              Container(
-                                decoration: BoxDecoration(
-                                  color: kPrimaryColor.withValues(alpha: .10),
-                                  borderRadius: BorderRadius.circular(16),
+          body: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : SafeArea(
+                  child: Padding(
+                    padding: kScreenPadding,
+                    child: Form(
+                      key: _formKey,
+                      child: ListView(
+                        children: [
+                          // بطاقة تعريف الموظف
+                          NeuCard(
+                            padding: const EdgeInsets.all(16),
+                            child: Row(
+                              children: [
+                                Container(
+                                  decoration: BoxDecoration(
+                                    color: kPrimaryColor.withValues(alpha: .10),
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  padding: const EdgeInsets.all(14),
+                                  child: const Icon(
+                                    Icons.badge_rounded,
+                                    color: kPrimaryColor,
+                                    size: 28,
+                                  ),
                                 ),
-                                padding: const EdgeInsets.all(14),
-                                child: const Icon(
-                                  Icons.badge_rounded,
-                                  color: kPrimaryColor,
-                                  size: 28,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      _employeeName.isEmpty
-                                          ? '—'
-                                          : _employeeName,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w900,
-                                        fontSize: 16,
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        _employeeName.isEmpty
+                                            ? '—'
+                                            : _employeeName,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w900,
+                                          fontSize: 16,
+                                        ),
                                       ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      _isDoctor
-                                          ? (_doctorId == null
-                                              ? 'طبيب (بدون سجل طبيب مرتبط)'
-                                              : 'طبيب (ID: $_doctorId)')
-                                          : 'غير طبيب',
-                                      style: TextStyle(
-                                        color:
-                                            cs.onSurface.withValues(alpha: .7),
-                                        fontWeight: FontWeight.w600,
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        _isDoctor
+                                            ? (_doctorId == null
+                                                ? 'طبيب (بدون سجل طبيب مرتبط)'
+                                                : 'طبيب (ID: $_doctorId)')
+                                            : 'غير طبيب',
+                                        style: TextStyle(
+                                          color: cs.onSurface
+                                              .withValues(alpha: .7),
+                                          fontWeight: FontWeight.w600,
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 12),
+                          const SizedBox(height: 12),
 
                         // إحصاءات سريعة
                         NeuCard(
@@ -511,11 +512,12 @@ class _EmployeeDiscountCreateScreenState
                             label: const Text('حفظ'),
                           ),
                         ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
+        ),
       ),
     );
   }
@@ -543,7 +545,6 @@ class _EmployeeDiscountCreateScreenState
             style: const TextStyle(fontWeight: FontWeight.w900),
           ),
         ],
-        ),
       ),
     );
   }

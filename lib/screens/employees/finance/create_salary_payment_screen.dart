@@ -74,187 +74,188 @@ class _CreateSalaryPaymentScreenState extends State<CreateSalaryPaymentScreen> {
       child: Directionality(
         textDirection: ui.TextDirection.rtl,
         child: Scaffold(
-        appBar: AppBar(
-          centerTitle: true,
-          title: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Image.asset(
-                'assets/images/logo.png',
-                height: 24,
-                fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-              ),
-              const SizedBox(width: 8),
-              const Text('ELMAM CLINIC'),
-            ],
-          ),
-        ),
-        body: SafeArea(
-          child: Padding(
-            padding: kScreenPadding,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+          appBar: AppBar(
+            centerTitle: true,
+            title: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                // شريط خيارات العام/الشهر + أزرار تنقّل شهرية + زر عرض
-                NeuCard(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  child: Row(
+                Image.asset(
+                  'assets/images/logo.png',
+                  height: 24,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                ),
+                const SizedBox(width: 8),
+                const Text('ELMAM CLINIC'),
+              ],
+            ),
+          ),
+          body: SafeArea(
+            child: Padding(
+              padding: kScreenPadding,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // شريط خيارات العام/الشهر + أزرار تنقّل شهرية + زر عرض
+                  NeuCard(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
+                    child: Row(
+                      children: [
+                        // السابق
+                        NeuButton.flat(
+                          label: 'السابق',
+                          icon: Icons.chevron_right_rounded,
+                          onPressed: _isLoading ? null : () => _shiftMonth(-1),
+                        ),
+                        const SizedBox(width: 8),
+                        // العام
+                        Expanded(
+                          child: DropdownButtonFormField<int>(
+                            initialValue: _selectedYear,
+                            decoration: const InputDecoration(
+                              labelText: 'العام',
+                              border: InputBorder.none,
+                            ),
+                            items: _years
+                                .map((y) => DropdownMenuItem(
+                                    value: y, child: Text('$y')))
+                                .toList(),
+                            onChanged: _isLoading
+                                ? null
+                                : (v) => setState(() => _selectedYear = v),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        // الشهر
+                        Expanded(
+                          child: DropdownButtonFormField<int>(
+                            initialValue: _selectedMonth,
+                            decoration: const InputDecoration(
+                              labelText: 'الشهر',
+                              border: InputBorder.none,
+                            ),
+                            items: _months
+                                .map((m) => DropdownMenuItem(
+                                    value: m, child: Text('$m')))
+                                .toList(),
+                            onChanged: _isLoading
+                                ? null
+                                : (v) => setState(() => _selectedMonth = v),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        // التالي
+                        NeuButton.flat(
+                          label: 'التالي',
+                          icon: Icons.chevron_left_rounded,
+                          onPressed: _isLoading ? null : () => _shiftMonth(1),
+                        ),
+                        const SizedBox(width: 12),
+                        NeuButton.primary(
+                          label: 'عرض',
+                          icon: Icons.play_arrow_rounded,
+                          onPressed: _isLoading ? null : _loadDataForSalary,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+
+                  // شريط البحث
+                  TSearchField(
+                    controller: _searchCtrl,
+                    hint: 'ابحث بالاسم…',
+                    onChanged: (_) => _applyFilter(),
+                    onClear: () {
+                      _searchCtrl.clear();
+                      _applyFilter();
+                    },
+                  ),
+                  const SizedBox(height: 12),
+
+                  // لمحة إحصائية صغيرة
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 8,
                     children: [
-                      // السابق
-                      NeuButton.flat(
-                        label: 'السابق',
-                        icon: Icons.chevron_right_rounded,
-                        onPressed: _isLoading ? null : () => _shiftMonth(-1),
+                      _miniStatChip(
+                        icon: Icons.calendar_today_rounded,
+                        label: 'الفترة',
+                        value: _fmtYearMonth(),
                       ),
-                      const SizedBox(width: 8),
-                      // العام
-                      Expanded(
-                        child: DropdownButtonFormField<int>(
-                          initialValue: _selectedYear,
-                          decoration: const InputDecoration(
-                            labelText: 'العام',
-                            border: InputBorder.none,
-                          ),
-                          items: _years
-                              .map((y) =>
-                                  DropdownMenuItem(value: y, child: Text('$y')))
-                              .toList(),
-                          onChanged: _isLoading
-                              ? null
-                              : (v) => setState(() => _selectedYear = v),
-                        ),
+                      _miniStatChip(
+                        icon: Icons.group_rounded,
+                        label: 'عدد الموظفين',
+                        value: '$totalCount',
                       ),
-                      const SizedBox(width: 12),
-                      // الشهر
-                      Expanded(
-                        child: DropdownButtonFormField<int>(
-                          initialValue: _selectedMonth,
-                          decoration: const InputDecoration(
-                            labelText: 'الشهر',
-                            border: InputBorder.none,
-                          ),
-                          items: _months
-                              .map((m) =>
-                                  DropdownMenuItem(value: m, child: Text('$m')))
-                              .toList(),
-                          onChanged: _isLoading
-                              ? null
-                              : (v) => setState(() => _selectedMonth = v),
-                        ),
+                      _miniStatChip(
+                        icon: Icons.check_circle_rounded,
+                        label: 'تم الصرف',
+                        value: '$paidCount',
+                        valueColor: Colors.green,
                       ),
-                      const SizedBox(width: 8),
-                      // التالي
-                      NeuButton.flat(
-                        label: 'التالي',
-                        icon: Icons.chevron_left_rounded,
-                        onPressed: _isLoading ? null : () => _shiftMonth(1),
-                      ),
-                      const SizedBox(width: 12),
-                      NeuButton.primary(
-                        label: 'عرض',
-                        icon: Icons.play_arrow_rounded,
-                        onPressed: _isLoading ? null : _loadDataForSalary,
+                      _miniStatChip(
+                        icon: Icons.cancel_rounded,
+                        label: 'لم يُصرف',
+                        value: '$unpaidCount',
+                        valueColor: Colors.redAccent,
                       ),
                     ],
                   ),
-                ),
-                const SizedBox(height: 10),
+                  const SizedBox(height: 12),
 
-                // شريط البحث
-                TSearchField(
-                  controller: _searchCtrl,
-                  hint: 'ابحث بالاسم…',
-                  onChanged: (_) => _applyFilter(),
-                  onClear: () {
-                    _searchCtrl.clear();
-                    _applyFilter();
-                  },
-                ),
-                const SizedBox(height: 12),
-
-                // لمحة إحصائية صغيرة
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 8,
-                  children: [
-                    _miniStatChip(
-                      icon: Icons.calendar_today_rounded,
-                      label: 'الفترة',
-                      value: _fmtYearMonth(),
-                    ),
-                    _miniStatChip(
-                      icon: Icons.group_rounded,
-                      label: 'عدد الموظفين',
-                      value: '$totalCount',
-                    ),
-                    _miniStatChip(
-                      icon: Icons.check_circle_rounded,
-                      label: 'تم الصرف',
-                      value: '$paidCount',
-                      valueColor: Colors.green,
-                    ),
-                    _miniStatChip(
-                      icon: Icons.cancel_rounded,
-                      label: 'لم يُصرف',
-                      value: '$unpaidCount',
-                      valueColor: Colors.redAccent,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-
-                // النتائج
-                Expanded(
-                  child: _isLoading
-                      ? const Center(child: CircularProgressIndicator())
-                      : RefreshIndicator(
-                          color: cs.primary,
-                          onRefresh: _loadDataForSalary,
-                          child: (_filteredDoctors.isEmpty &&
-                                  _filteredNonDoctors.isEmpty)
-                              ? ListView(
-                                  physics:
-                                      const AlwaysScrollableScrollPhysics(),
-                                  children: [
-                                    const SizedBox(height: 120),
-                                    Center(
-                                      child: Text(
-                                        'لا توجد نتائج',
-                                        style: TextStyle(
-                                          color: cs.onSurface
-                                              .withValues(alpha: .6),
-                                          fontWeight: FontWeight.w600,
+                  // النتائج
+                  Expanded(
+                    child: _isLoading
+                        ? const Center(child: CircularProgressIndicator())
+                        : RefreshIndicator(
+                            color: cs.primary,
+                            onRefresh: _loadDataForSalary,
+                            child: (_filteredDoctors.isEmpty &&
+                                    _filteredNonDoctors.isEmpty)
+                                ? ListView(
+                                    physics:
+                                        const AlwaysScrollableScrollPhysics(),
+                                    children: [
+                                      const SizedBox(height: 120),
+                                      Center(
+                                        child: Text(
+                                          'لا توجد نتائج',
+                                          style: TextStyle(
+                                            color: cs.onSurface
+                                                .withValues(alpha: .6),
+                                            fontWeight: FontWeight.w600,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                  ],
-                                )
-                              : ListView(
-                                  physics:
-                                      const AlwaysScrollableScrollPhysics(),
-                                  children: [
-                                    if (_filteredDoctors.isNotEmpty) ...[
-                                      _sectionHeader('الأطباء'),
-                                      const SizedBox(height: 8),
-                                      ..._filteredDoctors
-                                          .map(_buildEmployeeTile),
-                                      const SizedBox(height: 12),
                                     ],
-                                    if (_filteredNonDoctors.isNotEmpty) ...[
-                                      _sectionHeader('غير الأطباء'),
-                                      const SizedBox(height: 8),
-                                      ..._filteredNonDoctors
-                                          .map(_buildEmployeeTile),
-                                      const SizedBox(height: 8),
+                                  )
+                                : ListView(
+                                    physics:
+                                        const AlwaysScrollableScrollPhysics(),
+                                    children: [
+                                      if (_filteredDoctors.isNotEmpty) ...[
+                                        _sectionHeader('الأطباء'),
+                                        const SizedBox(height: 8),
+                                        ..._filteredDoctors
+                                            .map(_buildEmployeeTile),
+                                        const SizedBox(height: 12),
+                                      ],
+                                      if (_filteredNonDoctors.isNotEmpty) ...[
+                                        _sectionHeader('غير الأطباء'),
+                                        const SizedBox(height: 8),
+                                        ..._filteredNonDoctors
+                                            .map(_buildEmployeeTile),
+                                        const SizedBox(height: 8),
+                                      ],
+                                      const SizedBox(height: 60),
                                     ],
-                                    const SizedBox(height: 60),
-                                  ],
-                                ),
-                        ),
-                ),
-              ],
+                                  ),
+                          ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -489,7 +490,6 @@ class _CreateSalaryPaymentScreenState extends State<CreateSalaryPaymentScreen> {
       ),
     );
   }
-}
 
   Future<int?> _resolveDoctorIdByEmployee(int employeeId) async {
     try {
