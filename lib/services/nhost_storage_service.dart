@@ -1,7 +1,10 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:http/http.dart' as http;
 import 'package:nhost_storage_dart/nhost_storage_dart.dart';
+import 'package:http_parser/http_parser.dart';
 
 import '../core/constants.dart';
 import '../core/nhost_config.dart';
@@ -74,8 +77,86 @@ class NhostStorageService {
         'createdAt': uploaded.createdAt.toIso8601String(),
       };
     } catch (e) {
+      if (_shouldRetryWithRest(e)) {
+        return _uploadFileViaRest(
+          file: file,
+          filename: filename,
+          bucketId: bucket,
+          mimeType: mimeType,
+        );
+      }
       throw HttpException('Upload failed: $e');
     }
+  }
+
+  bool _shouldRetryWithRest(Object error) {
+    final text = error.toString().toLowerCase();
+    return text.contains('statuscode=401') ||
+        text.contains('statuscode=403') ||
+        text.contains('unauthorized') ||
+        text.contains('not authorized');
+  }
+
+  Future<Map<String, dynamic>> _uploadFileViaRest({
+    required File file,
+    required String filename,
+    String? bucketId,
+    String? mimeType,
+  }) async {
+    final uri = _api.storageUri('files');
+    final headers = await _api.authHeaders();
+    final request = http.MultipartRequest('POST', uri);
+    request.headers.addAll(headers);
+
+    final bucket = bucketId?.trim();
+    if (bucket != null && bucket.isNotEmpty) {
+      request.fields['bucket-id'] = bucket;
+    }
+
+    final bytes = await file.readAsBytes();
+    final contentType = (mimeType == null || mimeType.trim().isEmpty)
+        ? null
+        : MediaType.parse(mimeType);
+    request.files.add(
+      http.MultipartFile.fromBytes(
+        'file[]',
+        bytes,
+        filename: filename,
+        contentType: contentType,
+      ),
+    );
+
+    final meta = UploadFileMetadata(name: filename);
+    request.files.add(
+      http.MultipartFile.fromBytes(
+        'metadata[]',
+        utf8.encode(jsonEncode(meta.toJson())),
+        filename: '',
+        contentType: MediaType('application', 'json'),
+      ),
+    );
+
+    final response = await request.send();
+    final body = await response.stream.bytesToString();
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw HttpException(
+        'Upload failed: ${response.statusCode} - $body',
+      );
+    }
+
+    if (body.trim().isEmpty) {
+      return <String, dynamic>{};
+    }
+
+    final decoded = jsonDecode(body);
+    if (decoded is Map<String, dynamic>) {
+      final files = decoded['processedFiles'];
+      if (files is List && files.isNotEmpty && files.first is Map) {
+        return Map<String, dynamic>.from(files.first as Map);
+      }
+      return decoded;
+    }
+    return <String, dynamic>{};
   }
 
   /// Deletes a file by id.
