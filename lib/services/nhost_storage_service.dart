@@ -78,12 +78,25 @@ class NhostStorageService {
       };
     } catch (e) {
       if (_shouldRetryWithRest(e)) {
-        return _uploadFileViaRest(
-          file: file,
-          filename: filename,
-          bucketId: bucket,
-          mimeType: mimeType,
-        );
+        try {
+          return await _uploadFileViaRest(
+            file: file,
+            filename: filename,
+            bucketId: bucket,
+            mimeType: mimeType,
+          );
+        } catch (restError) {
+          if (_shouldRetryWithFunction(restError) &&
+              _isSubscriptionProofBucket(bucket)) {
+            return _uploadFileViaFunction(
+              file: file,
+              filename: filename,
+              bucketId: bucket,
+              mimeType: mimeType,
+            );
+          }
+          throw HttpException('Upload failed: $restError');
+        }
       }
       throw HttpException('Upload failed: $e');
     }
@@ -95,6 +108,18 @@ class NhostStorageService {
         text.contains('statuscode=403') ||
         text.contains('unauthorized') ||
         text.contains('not authorized');
+  }
+
+  bool _shouldRetryWithFunction(Object error) {
+    final text = error.toString().toLowerCase();
+    return text.contains('statuscode=401') ||
+        text.contains('statuscode=403') ||
+        text.contains('unauthorized') ||
+        text.contains('not authorized');
+  }
+
+  bool _isSubscriptionProofBucket(String? bucketId) {
+    return (bucketId ?? '').trim().toLowerCase() == 'subscription-proofs';
   }
 
   Future<Map<String, dynamic>> _uploadFileViaRest({
@@ -157,6 +182,32 @@ class NhostStorageService {
       return decoded;
     }
     return <String, dynamic>{};
+  }
+
+  Future<Map<String, dynamic>> _uploadFileViaFunction({
+    required File file,
+    required String filename,
+    String? bucketId,
+    String? mimeType,
+  }) async {
+    final base = NhostConfig.functionsUrl.replaceAll(RegExp(r'/+$'), '');
+    final url = Uri.parse('$base/admin-upload-subscription-proof');
+    final bucket = (bucketId == null || bucketId.trim().isEmpty)
+        ? 'subscription-proofs'
+        : bucketId.trim();
+    final bytes = await file.readAsBytes();
+    final payload = <String, dynamic>{
+      'filename': filename,
+      'bucketId': bucket,
+      'mimeType': mimeType,
+      'base64': base64Encode(bytes),
+    };
+    final res = await _api.postJson(url, payload);
+    final files = res['processedFiles'];
+    if (files is List && files.isNotEmpty && files.first is Map) {
+      return Map<String, dynamic>.from(files.first as Map);
+    }
+    return res;
   }
 
   /// Deletes a file by id.
