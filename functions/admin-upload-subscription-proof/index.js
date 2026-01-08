@@ -56,7 +56,7 @@ async function ensureUploaderRole(authHeader) {
       query: `
         query ProofUploaderRole {
           fn_is_super_admin_gql { is_super_admin }
-          my_profile { role }
+          my_profile { role account_id }
         }
       `,
     }),
@@ -71,13 +71,13 @@ async function ensureUploaderRole(authHeader) {
   const rows = json.data?.fn_is_super_admin_gql;
   const isSuper =
     Array.isArray(rows) && rows.length > 0 && rows[0]?.is_super_admin === true;
-  if (isSuper) return;
+  if (isSuper) return { isSuper: true };
   const profile = json.data?.my_profile;
-  const role = Array.isArray(profile) && profile.length > 0
-    ? `${profile[0]?.role ?? ''}`.toLowerCase()
-    : '';
-  if (role === 'owner' || role === 'admin') {
-    return;
+  const row = Array.isArray(profile) && profile.length > 0 ? profile[0] : null;
+  const role = `${row?.role ?? ''}`.toLowerCase();
+  const accountId = `${row?.account_id ?? ''}`.trim();
+  if ((role === 'owner' || role === 'admin') && accountId) {
+    return { isSuper: false, accountId };
   }
   const err = new Error('forbidden');
   err.statusCode = 403;
@@ -95,7 +95,7 @@ module.exports = async function handler(req, res) {
       res.status(401).json({ ok: false, error: 'Missing authorization' });
       return;
     }
-    await ensureUploaderRole(authHeader);
+    const uploader = await ensureUploaderRole(authHeader);
 
     const body = await readBody(req);
     const filename = `${body.filename ?? ''}`.trim() || 'proof';
@@ -124,12 +124,16 @@ module.exports = async function handler(req, res) {
       return;
     }
 
+    const meta = { name: filename };
+    if (uploader && uploader.accountId) {
+      meta.account_id = uploader.accountId;
+    }
     const form = new FormData();
     form.append('bucket-id', bucketId);
     form.append('file[]', new Blob([buffer], { type: mimeType }), filename);
     form.append(
       'metadata[]',
-      new Blob([JSON.stringify({ name: filename })], { type: 'application/json' }),
+      new Blob([JSON.stringify(meta)], { type: 'application/json' }),
       '',
     );
 

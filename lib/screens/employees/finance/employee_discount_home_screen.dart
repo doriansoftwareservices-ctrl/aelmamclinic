@@ -5,6 +5,7 @@ import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
 
 import 'employee_discount_select_employee_screen.dart';
+import 'finance_access_guard.dart';
 
 class EmployeeDiscountHomeScreen extends StatelessWidget {
   const EmployeeDiscountHomeScreen({super.key});
@@ -15,9 +16,10 @@ class EmployeeDiscountHomeScreen extends StatelessWidget {
     final crossAxis = width >= 1200 ? 2 : 1;
     final aspect = width >= 1200 ? 1.35 : 1.08;
 
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
+    return FinanceAccessGuard(
+      child: Directionality(
+        textDirection: TextDirection.rtl,
+        child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
           title: Row(
@@ -170,6 +172,7 @@ class EmployeeDiscountHomeScreen extends StatelessWidget {
               ],
             ),
           ),
+        ),
         ),
       ),
     );

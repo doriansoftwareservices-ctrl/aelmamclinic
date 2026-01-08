@@ -7,6 +7,7 @@ import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/core/tbian_ui.dart';
 
 import 'employee_loan_select_employee_screen.dart';
+import 'finance_access_guard.dart';
 
 /// شاشة «معاملة السلفة» بنمط TBIAN:
 /// - RTL افتراضيًا
@@ -29,9 +30,10 @@ class EmployeeLoanHomeScreen extends StatelessWidget {
             ? 1.1
             : 1.05;
 
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
+    return FinanceAccessGuard(
+      child: Directionality(
+        textDirection: TextDirection.rtl,
+        child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
           title: Row(
@@ -153,6 +155,7 @@ class EmployeeLoanHomeScreen extends StatelessWidget {
               ],
             ),
           ),
+        ),
         ),
       ),
     );

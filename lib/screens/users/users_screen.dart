@@ -24,11 +24,18 @@ class _UsersScreenState extends State<UsersScreen> {
   late Future<List<Map<String, dynamic>>> _employees;
   bool _busy = false;
 
+  bool _canAccess(AuthProvider auth) => auth.isSuperAdmin;
+
   @override
   void initState() {
     super.initState();
-    final accountId = context.read<AuthProvider>().accountId;
-    _employees = _loadEmployees(accountId);
+    final auth = context.read<AuthProvider>();
+    final accountId = auth.accountId;
+    if (_canAccess(auth)) {
+      _employees = _loadEmployees(accountId);
+    } else {
+      _employees = Future.value(const []);
+    }
   }
 
   Future<List<Map<String, dynamic>>> _loadEmployees(String? accountId) async {
@@ -54,16 +61,26 @@ class _UsersScreenState extends State<UsersScreen> {
   }
 
   Future<void> _refresh() async {
-    final accountId = context.read<AuthProvider>().accountId;
+    final auth = context.read<AuthProvider>();
+    if (!_canAccess(auth)) return;
+    final accountId = auth.accountId;
     setState(() => _employees = _loadEmployees(accountId));
     await _employees;
   }
 
   Future<void> _disableEmployee(String uid, bool disabled) async {
+    final auth = context.read<AuthProvider>();
+    if (!_canAccess(auth)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('هذه العملية مخصّصة للسوبر أدمن فقط.')),
+      );
+      return;
+    }
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      final accountId = context.read<AuthProvider>().accountId!;
+      final accountId = auth.accountId!;
       await _adminService.setEmployeeDisabled(
         accountId: accountId,
         userUid: uid,
@@ -86,6 +103,14 @@ class _UsersScreenState extends State<UsersScreen> {
   }
 
   Future<void> _deleteEmployee(String uid) async {
+    final auth = context.read<AuthProvider>();
+    if (!_canAccess(auth)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('هذه العملية مخصّصة للسوبر أدمن فقط.')),
+      );
+      return;
+    }
     if (_busy) return;
     final confirm = await showDialog<bool>(
       context: context,
@@ -106,7 +131,7 @@ class _UsersScreenState extends State<UsersScreen> {
 
     setState(() => _busy = true);
     try {
-      final accountId = context.read<AuthProvider>().accountId!;
+      final accountId = auth.accountId!;
       await _adminService.deleteEmployee(accountId: accountId, userUid: uid);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -126,7 +151,9 @@ class _UsersScreenState extends State<UsersScreen> {
   @override
   Widget build(BuildContext context) {
     final busy = _busy;
-    final accountId = context.watch<AuthProvider>().accountId;
+    final auth = context.watch<AuthProvider>();
+    final accountId = auth.accountId;
+    final canAccess = _canAccess(auth);
 
     return Stack(
       children: [
@@ -153,6 +180,21 @@ class _UsersScreenState extends State<UsersScreen> {
               future: _employees,
               builder: (context, snapshot) {
                 final physics = const AlwaysScrollableScrollPhysics();
+
+                if (!canAccess) {
+                  return ListView(
+                    physics: physics,
+                    children: const [
+                      SizedBox(height: 48),
+                      Center(
+                        child: Text(
+                          'هذه الشاشة مخصّصة للسوبر أدمن فقط.',
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ],
+                  );
+                }
 
                 if (snapshot.connectionState != ConnectionState.done) {
                   return ListView(

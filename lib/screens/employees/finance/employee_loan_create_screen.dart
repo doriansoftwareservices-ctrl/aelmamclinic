@@ -9,6 +9,7 @@ import 'package:aelmamclinic/core/formatters.dart';
 
 import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/services/logging_service.dart';
+import 'finance_access_guard.dart';
 
 class EmployeeLoanCreateScreen extends StatefulWidget {
   final int empId;
@@ -253,9 +254,10 @@ class _EmployeeLoanCreateScreenState extends State<EmployeeLoanCreateScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return Directionality(
-      textDirection: ui.TextDirection.rtl,
-      child: Scaffold(
+    return FinanceAccessGuard(
+      child: Directionality(
+        textDirection: ui.TextDirection.rtl,
+        child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
           title: Row(
@@ -425,6 +427,7 @@ class _EmployeeLoanCreateScreenState extends State<EmployeeLoanCreateScreen> {
                   ),
                 ),
               ),
+        ),
       ),
     );
   }

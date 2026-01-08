@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 /*── TBIAN ─*/
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
+import 'finance_access_guard.dart';
 
 /*── شاشات الوجهات ─*/
 import 'employee_loan_home_screen.dart';
@@ -28,10 +29,11 @@ class EmployeesFinanceHomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
-    return Directionality(
-      textDirection: ui.TextDirection.rtl,
-      child: Scaffold(
-        appBar: AppBar(
+    return FinanceAccessGuard(
+      child: Directionality(
+        textDirection: ui.TextDirection.rtl,
+        child: Scaffold(
+          appBar: AppBar(
           centerTitle: true,
           title: Row(
             mainAxisSize: MainAxisSize.min,

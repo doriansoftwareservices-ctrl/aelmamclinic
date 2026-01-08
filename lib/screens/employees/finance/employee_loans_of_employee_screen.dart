@@ -9,6 +9,7 @@ import 'package:aelmamclinic/core/tbian_ui.dart';
 import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/services/logging_service.dart';
 import 'employee_loan_create_screen.dart';
+import 'finance_access_guard.dart';
 
 class EmployeeLoansOfEmployeeScreen extends StatefulWidget {
   final int empId;
@@ -197,9 +198,10 @@ class _EmployeeLoansOfEmployeeScreenState
     final scheme = Theme.of(context).colorScheme;
     final title = _employeeName.isEmpty ? 'سلف الموظف' : 'سلف $_employeeName';
 
-    return Directionality(
-      textDirection: ui.TextDirection.rtl,
-      child: Scaffold(
+    return FinanceAccessGuard(
+      child: Directionality(
+        textDirection: ui.TextDirection.rtl,
+        child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
           title: Row(
@@ -419,6 +421,7 @@ class _EmployeeLoansOfEmployeeScreenState
                     ),
                   ],
                 ),
+        ),
         ),
       ),
     );

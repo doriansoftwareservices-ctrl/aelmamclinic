@@ -59,9 +59,9 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
 
     final auth = context.read<AuthProvider>();
     final accId = auth.accountId ?? '';
-    final isOwnerOrSuper =
-        auth.isSuperAdmin || auth.featureAllowed(FeatureKeys.auditPermissions);
-    final canView = isOwnerOrSuper;
+    final canManage = auth.isSuperAdmin;
+    final canView =
+        canManage || auth.featureAllowed(FeatureKeys.auditPermissions);
 
     if (!canView) {
       setState(() {
@@ -72,7 +72,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
     }
 
     try {
-      if (!isOwnerOrSuper) {
+      if (!canManage) {
         // موظّف: نقرأ الصلاحيات المؤثرة فقط عبر RPC
         final query = '''
           query MyFeaturePermissions(\$account: uuid!) {
@@ -174,6 +174,14 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
 
   Future<void> _savePermission(String userUid, _FeaturePerm perm) async {
     final auth = context.read<AuthProvider>();
+    if (!auth.isSuperAdmin) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('هذه العملية مخصّصة للسوبر أدمن فقط.')),
+        );
+      }
+      return;
+    }
     final accId = auth.accountId ?? '';
 
     setState(() => _loading = true);
@@ -260,9 +268,9 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
-    final isOwnerOrSuper =
-        auth.isSuperAdmin || auth.featureAllowed(FeatureKeys.auditPermissions);
-    final canView = isOwnerOrSuper;
+    final canManage = auth.isSuperAdmin;
+    final canView =
+        canManage || auth.featureAllowed(FeatureKeys.auditPermissions);
 
     // تحميل أولي عند أول بناء
     if (!_initialLoaded && !_loading && canView) {
@@ -290,7 +298,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
                 ? _buildAccessDenied()
                 : _loading && !_initialLoaded
                     ? const Center(child: CircularProgressIndicator())
-                    : isOwnerOrSuper
+                    : canManage
                         ? _buildOwnerBody()
                         : _buildEmployeeReadonly(),
           ),
@@ -316,7 +324,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
             ),
             const SizedBox(height: 6),
             const Text(
-              'اطلب من المالك أو السوبر أدمن منحك صلاحية "audit.permissions".',
+              'اطلب من السوبر أدمن منحك صلاحية "audit.permissions".',
               textAlign: TextAlign.center,
             ),
           ],

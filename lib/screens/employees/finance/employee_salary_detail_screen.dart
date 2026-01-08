@@ -7,6 +7,7 @@ import 'package:aelmamclinic/core/neumorphism.dart';
 
 import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/services/logging_service.dart';
+import 'finance_access_guard.dart';
 
 class EmployeeSalaryDetailScreen extends StatefulWidget {
   final int empId;
@@ -221,173 +222,176 @@ class _EmployeeSalaryDetailScreenState
     final cs = Theme.of(context).colorScheme;
     final subTitle = 'المستحق لشهر ${widget.month} من سنة ${widget.year}';
 
-    return Directionality(
-      textDirection: ui.TextDirection.rtl,
-      child: Scaffold(
-        appBar: AppBar(
-          centerTitle: true,
-          title: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: const [
-              Icon(Icons.account_balance_wallet_rounded),
-              SizedBox(width: 8),
-              Text('تفاصيل صرف الراتب'),
-            ],
+    return FinanceAccessGuard(
+      child: Directionality(
+        textDirection: ui.TextDirection.rtl,
+        child: Scaffold(
+          appBar: AppBar(
+            centerTitle: true,
+            title: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: const [
+                Icon(Icons.account_balance_wallet_rounded),
+                SizedBox(width: 8),
+                Text('تفاصيل صرف الراتب'),
+              ],
+            ),
           ),
-        ),
-        body: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : SafeArea(
-                child: Padding(
-                  padding: kScreenPadding,
-                  child: ListView(
-                    children: [
-                      // بطاقة رأس: الموظف + الشهر
-                      NeuCard(
-                        padding: const EdgeInsets.all(16),
-                        child: Row(
-                          children: [
-                            Container(
-                              decoration: BoxDecoration(
-                                color: kPrimaryColor.withValues(alpha: .10),
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              padding: const EdgeInsets.all(14),
-                              child: const Icon(
-                                Icons.badge_rounded,
-                                color: kPrimaryColor,
-                                size: 28,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    _employeeName,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w900,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    subTitle,
-                                    style: TextStyle(
-                                      color: cs.onSurface.withValues(alpha: .7),
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-
-                      // شريط إحصاءات سريع (أفقي)
-                      NeuCard(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 12),
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
+          body: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : SafeArea(
+                  child: Padding(
+                    padding: kScreenPadding,
+                    child: ListView(
+                      children: [
+                        // بطاقة رأس: الموظف + الشهر
+                        NeuCard(
+                          padding: const EdgeInsets.all(16),
                           child: Row(
                             children: [
-                              _StatPill(
-                                  label: 'الراتب النهائي',
-                                  value: _fmt(_finalSalary)),
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: kPrimaryColor.withValues(alpha: .10),
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                padding: const EdgeInsets.all(14),
+                                child: const Icon(
+                                  Icons.badge_rounded,
+                                  color: kPrimaryColor,
+                                  size: 28,
+                                ),
+                              ),
                               const SizedBox(width: 12),
-                              _StatPill(
-                                  label: 'مجموع النِسَب',
-                                  value: _fmt(_ratioSum)),
-                              const SizedBox(width: 12),
-                              _StatPill(
-                                  label: 'مدخلات الطبيب',
-                                  value: _fmt(_doctorInput)),
-                              const SizedBox(width: 12),
-                              _StatPill(
-                                  label: 'السلف', value: _fmt(_totalLoans)),
-                              const SizedBox(width: 12),
-                              _StatPill(
-                                  label: 'الخصومات',
-                                  value: _fmt(_totalDiscounts)),
-                              const SizedBox(width: 12),
-                              _StatPill(
-                                  label: 'حصة المركز',
-                                  value: _fmt(_towerShareSum)),
-                              const SizedBox(width: 12),
-                              _StatPill(
-                                label: 'الصافي',
-                                value: _fmt(_netPay),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _employeeName,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      subTitle,
+                                      style: TextStyle(
+                                        color:
+                                            cs.onSurface.withValues(alpha: .7),
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ],
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 12),
+                        const SizedBox(height: 12),
 
-                      // تفاصيل رقمية للقراءة فقط
-                      _InfoRow(
-                        icon: Icons.payments_outlined,
-                        label: 'الراتب النهائي',
-                        value: _fmt(_finalSalary),
-                      ),
-                      const SizedBox(height: 8),
-                      _InfoRow(
-                        icon: Icons.percent_rounded,
-                        label: 'مجموع النسب (أشعة/مختبر)',
-                        value: _fmt(_ratioSum),
-                      ),
-                      const SizedBox(height: 8),
-                      _InfoRow(
-                        icon: Icons.local_hospital_outlined,
-                        label: 'مدخلات الطبيب بعد خصم نسبة المركز',
-                        value: _fmt(_doctorInput),
-                      ),
-                      const SizedBox(height: 8),
-                      _InfoRow(
-                        icon: Icons.request_quote_rounded,
-                        label: 'مجموع السلف',
-                        value: _fmt(_totalLoans),
-                      ),
-                      const SizedBox(height: 8),
-                      _InfoRow(
-                        icon: Icons.receipt_long_rounded,
-                        label: 'مجموع الخصومات',
-                        value: _fmt(_totalDiscounts),
-                      ),
-                      const SizedBox(height: 8),
-                      _InfoRow(
-                        icon: Icons.account_balance_outlined,
-                        label: 'حصة المرفق الطبي (للعرض)',
-                        value: _fmt(_towerShareSum),
-                      ),
-                      const SizedBox(height: 8),
-                      _InfoRow(
-                        icon: Icons.summarize_outlined,
-                        label: 'الصافي',
-                        value: _fmt(_netPay),
-                        emphasize: true,
-                        valueColor: _netPay < 0 ? Colors.red : cs.onSurface,
-                      ),
-
-                      const SizedBox(height: 18),
-
-                      // زر التأكيد
-                      SizedBox(
-                        width: double.infinity,
-                        child: FilledButton.icon(
-                          onPressed: _confirmSalaryPayment,
-                          icon: const Icon(Icons.check_circle_rounded),
-                          label: const Text('تأكيد صرف الراتب'),
+                        // شريط إحصاءات سريع (أفقي)
+                        NeuCard(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 12),
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: [
+                                _StatPill(
+                                    label: 'الراتب النهائي',
+                                    value: _fmt(_finalSalary)),
+                                const SizedBox(width: 12),
+                                _StatPill(
+                                    label: 'مجموع النِسَب',
+                                    value: _fmt(_ratioSum)),
+                                const SizedBox(width: 12),
+                                _StatPill(
+                                    label: 'مدخلات الطبيب',
+                                    value: _fmt(_doctorInput)),
+                                const SizedBox(width: 12),
+                                _StatPill(
+                                    label: 'السلف', value: _fmt(_totalLoans)),
+                                const SizedBox(width: 12),
+                                _StatPill(
+                                    label: 'الخصومات',
+                                    value: _fmt(_totalDiscounts)),
+                                const SizedBox(width: 12),
+                                _StatPill(
+                                    label: 'حصة المركز',
+                                    value: _fmt(_towerShareSum)),
+                                const SizedBox(width: 12),
+                                _StatPill(
+                                  label: 'الصافي',
+                                  value: _fmt(_netPay),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 12),
+
+                        // تفاصيل رقمية للقراءة فقط
+                        _InfoRow(
+                          icon: Icons.payments_outlined,
+                          label: 'الراتب النهائي',
+                          value: _fmt(_finalSalary),
+                        ),
+                        const SizedBox(height: 8),
+                        _InfoRow(
+                          icon: Icons.percent_rounded,
+                          label: 'مجموع النسب (أشعة/مختبر)',
+                          value: _fmt(_ratioSum),
+                        ),
+                        const SizedBox(height: 8),
+                        _InfoRow(
+                          icon: Icons.local_hospital_outlined,
+                          label: 'مدخلات الطبيب بعد خصم نسبة المركز',
+                          value: _fmt(_doctorInput),
+                        ),
+                        const SizedBox(height: 8),
+                        _InfoRow(
+                          icon: Icons.request_quote_rounded,
+                          label: 'مجموع السلف',
+                          value: _fmt(_totalLoans),
+                        ),
+                        const SizedBox(height: 8),
+                        _InfoRow(
+                          icon: Icons.receipt_long_rounded,
+                          label: 'مجموع الخصومات',
+                          value: _fmt(_totalDiscounts),
+                        ),
+                        const SizedBox(height: 8),
+                        _InfoRow(
+                          icon: Icons.account_balance_outlined,
+                          label: 'حصة المرفق الطبي (للعرض)',
+                          value: _fmt(_towerShareSum),
+                        ),
+                        const SizedBox(height: 8),
+                        _InfoRow(
+                          icon: Icons.summarize_outlined,
+                          label: 'الصافي',
+                          value: _fmt(_netPay),
+                          emphasize: true,
+                          valueColor: _netPay < 0 ? Colors.red : cs.onSurface,
+                        ),
+
+                        const SizedBox(height: 18),
+
+                        // زر التأكيد
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                            onPressed: _confirmSalaryPayment,
+                            icon: const Icon(Icons.check_circle_rounded),
+                            label: const Text('تأكيد صرف الراتب'),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
+        ),
       ),
     );
   }

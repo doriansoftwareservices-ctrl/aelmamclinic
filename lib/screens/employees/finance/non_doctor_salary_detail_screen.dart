@@ -8,6 +8,7 @@ import 'package:aelmamclinic/core/neumorphism.dart';
 /*── الخدمات ─*/
 import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/services/logging_service.dart';
+import 'finance_access_guard.dart';
 
 /// ── ثوابت الألوان الموحدة ──
 const Color accentColor = Color(0xFF004A61);
@@ -209,95 +210,97 @@ class _NonDoctorSalaryDetailScreenState
   Widget build(BuildContext context) {
     final subTitle = 'المستحق للشهر ${widget.month} من سنة ${widget.year}';
 
-    return Directionality(
-      textDirection: ui.TextDirection.rtl,
-      child: Scaffold(
-        appBar: AppBar(
-          centerTitle: true,
-          title: const Text(
-            'تفاصيل صرف الراتب (غير الأطباء)',
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-          flexibleSpace: Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [lightAccentColor, accentColor],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
+    return FinanceAccessGuard(
+      child: Directionality(
+        textDirection: ui.TextDirection.rtl,
+        child: Scaffold(
+          appBar: AppBar(
+            centerTitle: true,
+            title: const Text(
+              'تفاصيل صرف الراتب (غير الأطباء)',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            flexibleSpace: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [lightAccentColor, accentColor],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
               ),
             ),
           ),
-        ),
-        body: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : Container(
-                width: double.infinity,
-                height: double.infinity,
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [veryLightBg, Colors.white, veryLightBg],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
+          body: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : Container(
+                  width: double.infinity,
+                  height: double.infinity,
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [veryLightBg, Colors.white, veryLightBg],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                    ),
+                  ),
+                  child: ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      // العنوان
+                      Text('دفع راتب: $_employeeName',
+                          style: const TextStyle(
+                              fontSize: 18, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 6),
+                      Text(subTitle),
+
+                      const SizedBox(height: 16),
+
+                      // بطاقة ملخّص سريعة (Neumorphism)
+                      NeuCard(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 12),
+                        child: Wrap(
+                          spacing: 12,
+                          runSpacing: 10,
+                          children: [
+                            _pill('الراتب النهائي', _fmt(_finalSalary)),
+                            _pill('السلف', _fmt(_totalLoans)),
+                            _pill('الخصومات', _fmt(_totalDiscounts)),
+                            _pill('الصافي', _fmt(_netPay)),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 18),
+
+                      // تفاصيل رقمية قابلة للقراءة فقط
+                      _readOnlyField('الراتب النهائي', _fmt(_finalSalary)),
+                      const SizedBox(height: 12),
+                      _readOnlyField('مجموع السلف', _fmt(_totalLoans)),
+                      const SizedBox(height: 12),
+                      _readOnlyField('مجموع الخصومات', _fmt(_totalDiscounts)),
+                      const SizedBox(height: 12),
+                      _readOnlyField('الصافي', _fmt(_netPay)),
+
+                      const SizedBox(height: 24),
+
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: accentColor,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(25)),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                          ),
+                          onPressed: _confirmSalaryPayment,
+                          child: const Text('تأكيد صرف الراتب',
+                              style: TextStyle(color: Colors.white)),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                child: ListView(
-                  padding: const EdgeInsets.all(16),
-                  children: [
-                    // العنوان
-                    Text('دفع راتب: $_employeeName',
-                        style: const TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 6),
-                    Text(subTitle),
-
-                    const SizedBox(height: 16),
-
-                    // بطاقة ملخّص سريعة (Neumorphism)
-                    NeuCard(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 12),
-                      child: Wrap(
-                        spacing: 12,
-                        runSpacing: 10,
-                        children: [
-                          _pill('الراتب النهائي', _fmt(_finalSalary)),
-                          _pill('السلف', _fmt(_totalLoans)),
-                          _pill('الخصومات', _fmt(_totalDiscounts)),
-                          _pill('الصافي', _fmt(_netPay)),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 18),
-
-                    // تفاصيل رقمية قابلة للقراءة فقط
-                    _readOnlyField('الراتب النهائي', _fmt(_finalSalary)),
-                    const SizedBox(height: 12),
-                    _readOnlyField('مجموع السلف', _fmt(_totalLoans)),
-                    const SizedBox(height: 12),
-                    _readOnlyField('مجموع الخصومات', _fmt(_totalDiscounts)),
-                    const SizedBox(height: 12),
-                    _readOnlyField('الصافي', _fmt(_netPay)),
-
-                    const SizedBox(height: 24),
-
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: accentColor,
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(25)),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                        ),
-                        onPressed: _confirmSalaryPayment,
-                        child: const Text('تأكيد صرف الراتب',
-                            style: TextStyle(color: Colors.white)),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+        ),
       ),
     );
   }

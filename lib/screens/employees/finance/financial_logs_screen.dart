@@ -11,6 +11,7 @@ import 'package:aelmamclinic/core/tbian_ui.dart';
 
 /*── الخدمات ─*/
 import 'package:aelmamclinic/services/logging_service.dart';
+import 'finance_access_guard.dart';
 
 class FinancialLogsScreen extends StatefulWidget {
   const FinancialLogsScreen({super.key});
@@ -358,9 +359,10 @@ class _FinancialLogsScreenState extends State<FinancialLogsScreen> {
   /*──────── واجهة العرض ────────*/
   @override
   Widget build(BuildContext context) {
-    return Directionality(
-      textDirection: ui.TextDirection.rtl,
-      child: Scaffold(
+    return FinanceAccessGuard(
+      child: Directionality(
+        textDirection: ui.TextDirection.rtl,
+        child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
           title: Row(
@@ -482,6 +484,7 @@ class _FinancialLogsScreenState extends State<FinancialLogsScreen> {
               ),
             ),
           ),
+        ),
         ),
       ),
     );

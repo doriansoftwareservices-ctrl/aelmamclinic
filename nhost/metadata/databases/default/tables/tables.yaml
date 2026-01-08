@@ -235,41 +235,64 @@
     - role: me
       permission:
         check:
-          user_uid:
-            _eq: "X-Hasura-User-Id"
-          _exists:
-            _table:
-              schema: public
-              name: account_users
-            _where:
-              account_id:
-                _ceq: "account_id"
-              user_uid:
-                _eq: "X-Hasura-User-Id"
-              disabled:
-                _eq: false
+          _and:
+            - _exists:
+                _table:
+                  schema: public
+                  name: account_users
+                _where:
+                  account_id:
+                    _ceq: "account_id"
+                  user_uid:
+                    _eq: "X-Hasura-User-Id"
+                  disabled:
+                    _eq: false
+            - _or:
+                - user_uid:
+                    _eq: "X-Hasura-User-Id"
+                - _exists:
+                    _table:
+                      schema: public
+                      name: chat_conversations
+                    _where:
+                      id:
+                        _eq: "conversation_id"
+                      created_by:
+                        _eq: "X-Hasura-User-Id"
         columns: "*"
     - role: user
       permission:
         check:
-          user_uid:
-            _eq: "X-Hasura-User-Id"
-          _exists:
-            _table:
-              schema: public
-              name: account_users
-            _where:
-              account_id:
-                _ceq: "account_id"
-              user_uid:
-                _eq: "X-Hasura-User-Id"
-              disabled:
-                _eq: false
+          _and:
+            - _exists:
+                _table:
+                  schema: public
+                  name: account_users
+                _where:
+                  account_id:
+                    _ceq: "account_id"
+                  user_uid:
+                    _eq: "X-Hasura-User-Id"
+                  disabled:
+                    _eq: false
+            - _or:
+                - user_uid:
+                    _eq: "X-Hasura-User-Id"
+                - _exists:
+                    _table:
+                      schema: public
+                      name: chat_conversations
+                    _where:
+                      id:
+                        _eq: "conversation_id"
+                      created_by:
+                        _eq: "X-Hasura-User-Id"
         columns: "*"
     - role: superadmin
       permission:
         check: {}
         columns: "*"
+
   update_permissions:
     - role: me
       permission:
@@ -536,14 +559,21 @@
           _exists:
             _table:
               schema: public
-              name: account_users
+              name: chat_messages
             _where:
+              id:
+                _eq: "message_id"
               account_id:
                 _ceq: "account_id"
-              user_uid:
-                _eq: "X-Hasura-User-Id"
-              disabled:
-                _eq: false
+              _exists:
+                _table:
+                  schema: public
+                  name: chat_participants
+                _where:
+                  conversation_id:
+                    _ceq: "conversation_id"
+                  user_uid:
+                    _eq: "X-Hasura-User-Id"
     - role: user
       permission:
         columns: "*"
@@ -551,14 +581,21 @@
           _exists:
             _table:
               schema: public
-              name: account_users
+              name: chat_messages
             _where:
+              id:
+                _eq: "message_id"
               account_id:
                 _ceq: "account_id"
-              user_uid:
-                _eq: "X-Hasura-User-Id"
-              disabled:
-                _eq: false
+              _exists:
+                _table:
+                  schema: public
+                  name: chat_participants
+                _where:
+                  conversation_id:
+                    _ceq: "conversation_id"
+                  user_uid:
+                    _eq: "X-Hasura-User-Id"
     - role: superadmin
       permission:
         columns: "*"
@@ -570,14 +607,21 @@
           _exists:
             _table:
               schema: public
-              name: account_users
+              name: chat_messages
             _where:
+              id:
+                _eq: "message_id"
               account_id:
                 _ceq: "account_id"
-              user_uid:
-                _eq: "X-Hasura-User-Id"
-              disabled:
-                _eq: false
+              _exists:
+                _table:
+                  schema: public
+                  name: chat_participants
+                _where:
+                  conversation_id:
+                    _ceq: "conversation_id"
+                  user_uid:
+                    _eq: "X-Hasura-User-Id"
         columns: "*"
     - role: user
       permission:
@@ -585,14 +629,21 @@
           _exists:
             _table:
               schema: public
-              name: account_users
+              name: chat_messages
             _where:
+              id:
+                _eq: "message_id"
               account_id:
                 _ceq: "account_id"
-              user_uid:
-                _eq: "X-Hasura-User-Id"
-              disabled:
-                _eq: false
+              _exists:
+                _table:
+                  schema: public
+                  name: chat_participants
+                _where:
+                  conversation_id:
+                    _ceq: "conversation_id"
+                  user_uid:
+                    _eq: "X-Hasura-User-Id"
         columns: "*"
     - role: superadmin
       permission:
@@ -606,26 +657,40 @@
           _exists:
             _table:
               schema: public
-              name: account_users
+              name: chat_messages
             _where:
+              id:
+                _eq: "message_id"
               account_id:
                 _ceq: "account_id"
-              user_uid:
-                _eq: "X-Hasura-User-Id"
-              disabled:
-                _eq: false
+              _exists:
+                _table:
+                  schema: public
+                  name: chat_participants
+                _where:
+                  conversation_id:
+                    _ceq: "conversation_id"
+                  user_uid:
+                    _eq: "X-Hasura-User-Id"
         check:
           _exists:
             _table:
               schema: public
-              name: account_users
+              name: chat_messages
             _where:
+              id:
+                _eq: "message_id"
               account_id:
                 _ceq: "account_id"
-              user_uid:
-                _eq: "X-Hasura-User-Id"
-              disabled:
-                _eq: false
+              _exists:
+                _table:
+                  schema: public
+                  name: chat_participants
+                _where:
+                  conversation_id:
+                    _ceq: "conversation_id"
+                  user_uid:
+                    _eq: "X-Hasura-User-Id"
     - role: user
       permission:
         columns: "*"
@@ -633,26 +698,40 @@
           _exists:
             _table:
               schema: public
-              name: account_users
+              name: chat_messages
             _where:
+              id:
+                _eq: "message_id"
               account_id:
                 _ceq: "account_id"
-              user_uid:
-                _eq: "X-Hasura-User-Id"
-              disabled:
-                _eq: false
+              _exists:
+                _table:
+                  schema: public
+                  name: chat_participants
+                _where:
+                  conversation_id:
+                    _ceq: "conversation_id"
+                  user_uid:
+                    _eq: "X-Hasura-User-Id"
         check:
           _exists:
             _table:
               schema: public
-              name: account_users
+              name: chat_messages
             _where:
+              id:
+                _eq: "message_id"
               account_id:
                 _ceq: "account_id"
-              user_uid:
-                _eq: "X-Hasura-User-Id"
-              disabled:
-                _eq: false
+              _exists:
+                _table:
+                  schema: public
+                  name: chat_participants
+                _where:
+                  conversation_id:
+                    _ceq: "conversation_id"
+                  user_uid:
+                    _eq: "X-Hasura-User-Id"
     - role: superadmin
       permission:
         columns: "*"
@@ -665,28 +744,42 @@
           _exists:
             _table:
               schema: public
-              name: account_users
+              name: chat_messages
             _where:
+              id:
+                _eq: "message_id"
               account_id:
                 _ceq: "account_id"
-              user_uid:
-                _eq: "X-Hasura-User-Id"
-              disabled:
-                _eq: false
+              _exists:
+                _table:
+                  schema: public
+                  name: chat_participants
+                _where:
+                  conversation_id:
+                    _ceq: "conversation_id"
+                  user_uid:
+                    _eq: "X-Hasura-User-Id"
     - role: user
       permission:
         filter:
           _exists:
             _table:
               schema: public
-              name: account_users
+              name: chat_messages
             _where:
+              id:
+                _eq: "message_id"
               account_id:
                 _ceq: "account_id"
-              user_uid:
-                _eq: "X-Hasura-User-Id"
-              disabled:
-                _eq: false
+              _exists:
+                _table:
+                  schema: public
+                  name: chat_participants
+                _where:
+                  conversation_id:
+                    _ceq: "conversation_id"
+                  user_uid:
+                    _eq: "X-Hasura-User-Id"
     - role: superadmin
       permission:
         filter: {}
@@ -1052,6 +1145,133 @@
       permission:
         columns: "*"
         filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        columns: "*"
+    - role: user
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: user
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: user
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: superadmin
+      permission:
+        filter: {}
 
 - table:
     schema: public
@@ -1090,6 +1310,133 @@
     - role: superadmin
       permission:
         columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        columns: "*"
+    - role: user
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: user
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: user
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: superadmin
+      permission:
         filter: {}
 
 - table:
@@ -1130,6 +1477,133 @@
       permission:
         columns: "*"
         filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        columns: "*"
+    - role: user
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: user
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: user
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: superadmin
+      permission:
+        filter: {}
 
 - table:
     schema: public
@@ -1168,6 +1642,133 @@
     - role: superadmin
       permission:
         columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        columns: "*"
+    - role: user
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: user
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: user
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: superadmin
+      permission:
         filter: {}
 
 - table:
@@ -1208,6 +1809,133 @@
       permission:
         columns: "*"
         filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        columns: "*"
+    - role: user
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: user
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: user
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: superadmin
+      permission:
+        filter: {}
 
 - table:
     schema: public
@@ -1246,6 +1974,133 @@
     - role: superadmin
       permission:
         columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        columns: "*"
+    - role: user
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: user
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: user
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: superadmin
+      permission:
         filter: {}
 
 - table:
@@ -1286,6 +2141,133 @@
       permission:
         columns: "*"
         filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        columns: "*"
+    - role: user
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: user
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: user
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: superadmin
+      permission:
+        filter: {}
 
 - table:
     schema: public
@@ -1324,6 +2306,133 @@
     - role: superadmin
       permission:
         columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        columns: "*"
+    - role: user
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: user
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: user
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: superadmin
+      permission:
         filter: {}
 
 - table:
@@ -1364,6 +2473,133 @@
       permission:
         columns: "*"
         filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        columns: "*"
+    - role: user
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: user
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: user
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: superadmin
+      permission:
+        filter: {}
 
 - table:
     schema: public
@@ -1402,6 +2638,133 @@
     - role: superadmin
       permission:
         columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        columns: "*"
+    - role: user
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: user
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: user
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: superadmin
+      permission:
         filter: {}
 
 - table:
@@ -1442,6 +2805,133 @@
       permission:
         columns: "*"
         filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        columns: "*"
+    - role: user
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: user
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: user
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: superadmin
+      permission:
+        filter: {}
 
 - table:
     schema: public
@@ -1481,15 +2971,58 @@
       permission:
         columns: "*"
         filter: {}
-
-- table:
-    schema: public
-    name: employees_loans
-  select_permissions:
+  insert_permissions:
+    - role: me
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        columns: "*"
+    - role: user
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
     - role: me
       permission:
         columns: "*"
         filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        check:
           _exists:
             _table:
               schema: public
@@ -1516,9 +3049,260 @@
                 _eq: "X-Hasura-User-Id"
               disabled:
                 _eq: false
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
     - role: superadmin
       permission:
         columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: user
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: superadmin
+      permission:
+        filter: {}
+
+- table:
+    schema: public
+    name: employees_loans
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
+    - role: user
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
+        columns: "*"
+    - role: user
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
+    - role: user
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
+    - role: user
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
+    - role: superadmin
+      permission:
         filter: {}
 
 - table:
@@ -1540,6 +3324,10 @@
                 _eq: "X-Hasura-User-Id"
               disabled:
                 _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
     - role: user
       permission:
         columns: "*"
@@ -1555,9 +3343,172 @@
                 _eq: "X-Hasura-User-Id"
               disabled:
                 _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
     - role: superadmin
       permission:
         columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
+        columns: "*"
+    - role: user
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
+    - role: user
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
+    - role: user
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
+    - role: superadmin
+      permission:
         filter: {}
 
 - table:
@@ -1579,6 +3530,10 @@
                 _eq: "X-Hasura-User-Id"
               disabled:
                 _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
     - role: user
       permission:
         columns: "*"
@@ -1594,9 +3549,172 @@
                 _eq: "X-Hasura-User-Id"
               disabled:
                 _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
     - role: superadmin
       permission:
         columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
+        columns: "*"
+    - role: user
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
+    - role: user
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
+    - role: user
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
+    - role: superadmin
+      permission:
         filter: {}
 
 - table:
@@ -1637,6 +3755,133 @@
       permission:
         columns: "*"
         filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        columns: "*"
+    - role: user
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: user
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: user
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: superadmin
+      permission:
+        filter: {}
 
 - table:
     schema: public
@@ -1675,6 +3920,133 @@
     - role: superadmin
       permission:
         columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        columns: "*"
+    - role: user
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: user
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: user
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: superadmin
+      permission:
         filter: {}
 
 - table:
@@ -1715,6 +4087,133 @@
       permission:
         columns: "*"
         filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        columns: "*"
+    - role: user
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: user
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: user
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: superadmin
+      permission:
+        filter: {}
 
 - table:
     schema: public
@@ -1753,6 +4252,133 @@
     - role: superadmin
       permission:
         columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        columns: "*"
+    - role: user
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: user
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: user
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: superadmin
+      permission:
         filter: {}
 
 - table:
@@ -1793,15 +4419,58 @@
       permission:
         columns: "*"
         filter: {}
-
-- table:
-    schema: public
-    name: financial_logs
-  select_permissions:
+  insert_permissions:
+    - role: me
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        columns: "*"
+    - role: user
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
     - role: me
       permission:
         columns: "*"
         filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+        check:
           _exists:
             _table:
               schema: public
@@ -1828,9 +4497,260 @@
                 _eq: "X-Hasura-User-Id"
               disabled:
                 _eq: false
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
     - role: superadmin
       permission:
         columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: user
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+    - role: superadmin
+      permission:
+        filter: {}
+
+- table:
+    schema: public
+    name: financial_logs
+  select_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
+    - role: user
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: me
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
+        columns: "*"
+    - role: user
+      permission:
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
+        columns: "*"
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: me
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
+    - role: user
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: me
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
+    - role: user
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              account_id:
+                _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              disabled:
+                _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
+    - role: superadmin
+      permission:
         filter: {}
 
 - table:
@@ -2191,172 +5111,21 @@
         columns: "*"
         filter: {}
   insert_permissions:
-    - role: me
-      permission:
-        check:
-          _exists:
-            _table:
-              schema: public
-              name: account_users
-            _where:
-              user_uid:
-                _eq: "X-Hasura-User-Id"
-              account_id:
-                _ceq: "account_id"
-              disabled:
-                _eq: false
-              role:
-                _in:
-                  - owner
-                  - admin
-                  - superadmin
-        columns: "*"
-    - role: user
-      permission:
-        check:
-          _exists:
-            _table:
-              schema: public
-              name: account_users
-            _where:
-              user_uid:
-                _eq: "X-Hasura-User-Id"
-              account_id:
-                _ceq: "account_id"
-              disabled:
-                _eq: false
-              role:
-                _in:
-                  - owner
-                  - admin
-                  - superadmin
-        columns: "*"
     - role: superadmin
       permission:
         check: {}
         columns: "*"
   update_permissions:
-    - role: me
-      permission:
-        columns: "*"
-        filter:
-          _exists:
-            _table:
-              schema: public
-              name: account_users
-            _where:
-              user_uid:
-                _eq: "X-Hasura-User-Id"
-              account_id:
-                _ceq: "account_id"
-              disabled:
-                _eq: false
-              role:
-                _in:
-                  - owner
-                  - admin
-                  - superadmin
-        check:
-          _exists:
-            _table:
-              schema: public
-              name: account_users
-            _where:
-              user_uid:
-                _eq: "X-Hasura-User-Id"
-              account_id:
-                _ceq: "account_id"
-              disabled:
-                _eq: false
-              role:
-                _in:
-                  - owner
-                  - admin
-                  - superadmin
-    - role: user
-      permission:
-        columns: "*"
-        filter:
-          _exists:
-            _table:
-              schema: public
-              name: account_users
-            _where:
-              user_uid:
-                _eq: "X-Hasura-User-Id"
-              account_id:
-                _ceq: "account_id"
-              disabled:
-                _eq: false
-              role:
-                _in:
-                  - owner
-                  - admin
-                  - superadmin
-        check:
-          _exists:
-            _table:
-              schema: public
-              name: account_users
-            _where:
-              user_uid:
-                _eq: "X-Hasura-User-Id"
-              account_id:
-                _ceq: "account_id"
-              disabled:
-                _eq: false
-              role:
-                _in:
-                  - owner
-                  - admin
-                  - superadmin
     - role: superadmin
       permission:
         columns: "*"
         filter: {}
         check: {}
   delete_permissions:
-    - role: me
-      permission:
-        filter:
-          _exists:
-            _table:
-              schema: public
-              name: account_users
-            _where:
-              user_uid:
-                _eq: "X-Hasura-User-Id"
-              account_id:
-                _ceq: "account_id"
-              disabled:
-                _eq: false
-              role:
-                _in:
-                  - owner
-                  - admin
-                  - superadmin
-    - role: user
-      permission:
-        filter:
-          _exists:
-            _table:
-              schema: public
-              name: account_users
-            _where:
-              user_uid:
-                _eq: "X-Hasura-User-Id"
-              account_id:
-                _ceq: "account_id"
-              disabled:
-                _eq: false
-              role:
-                _in:
-                  - owner
-                  - admin
-                  - superadmin
     - role: superadmin
       permission:
         filter: {}
+
 - table:
     schema: public
     name: accounts
@@ -3721,12 +6490,16 @@
               schema: public
               name: account_users
             _where:
-              user_uid:
-                _eq: "X-Hasura-User-Id"
               account_id:
                 _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
               disabled:
                 _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
     - role: user
       permission:
         columns: "*"
@@ -3736,12 +6509,16 @@
               schema: public
               name: account_users
             _where:
-              user_uid:
-                _eq: "X-Hasura-User-Id"
               account_id:
                 _ceq: "account_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
               disabled:
                 _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
     - role: superadmin
       permission:
         columns: "*"
@@ -3761,6 +6538,7 @@
     - role: superadmin
       permission:
         filter: {}
+
 - table:
     schema: public
     name: account_subscriptions

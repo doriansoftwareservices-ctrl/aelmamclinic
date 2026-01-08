@@ -109,7 +109,7 @@ async function createOrGetUser(email, password) {
     if (!user || !user.id) {
       throw new Error('Auth user not found');
     }
-    return user.id;
+    return { id: user.id, existed: true };
   }
 
   if (!createRes.ok) {
@@ -120,7 +120,21 @@ async function createOrGetUser(email, password) {
   if (!json?.id) {
     throw new Error('Auth create returned no id');
   }
-  return json.id;
+  return { id: json.id, existed: false };
+}
+
+async function deleteUser(userId) {
+  const authUrl = resolveAuthUrl();
+  const adminSecret =
+    process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
+  if (!authUrl || !adminSecret || !userId) return;
+  await fetch(`${authUrl}/admin/users/${userId}`, {
+    method: 'DELETE',
+    headers: {
+      'x-hasura-admin-secret': adminSecret,
+      Authorization: `Bearer ${adminSecret}`,
+    },
+  });
 }
 
 async function callAdminCreateEmployee(
@@ -281,6 +295,7 @@ async function ensureAccountPaid(accountId, authHeader) {
 }
 
 module.exports = async function handler(req, res) {
+  let created = null;
   try {
     const body = await readBody(req);
     const authHeader = req.headers?.authorization;
@@ -304,7 +319,7 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    await createOrGetUser(email, password);
+    created = await createOrGetUser(email, password);
     const result = await callAdminCreateEmployee(
       accountId,
       email,
@@ -313,6 +328,9 @@ module.exports = async function handler(req, res) {
     );
     res.json(result);
   } catch (err) {
+    if (created && created.id && created.existed === false) {
+      await deleteUser(created.id);
+    }
     const code = err?.statusCode ?? 500;
     res.status(code).json({ ok: false, error: err?.message ?? 'Failed' });
   }

@@ -9,6 +9,7 @@ import 'package:aelmamclinic/core/formatters.dart';
 import 'package:aelmamclinic/services/db_service.dart';
 import 'employee_discount_create_screen.dart';
 import 'employee_discounts_of_employee_screen.dart';
+import 'finance_access_guard.dart';
 
 class EmployeeDiscountSelectEmployeeScreen extends StatefulWidget {
   /// true = إنشاء خصم جديد, false = استعراض الخصومات
@@ -148,9 +149,10 @@ class _EmployeeDiscountSelectEmployeeScreenState
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
+    return FinanceAccessGuard(
+      child: Directionality(
+        textDirection: TextDirection.rtl,
+        child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
           title: Row(
@@ -369,6 +371,7 @@ class _EmployeeDiscountSelectEmployeeScreenState
               ],
             ),
           ),
+        ),
         ),
       ),
     );

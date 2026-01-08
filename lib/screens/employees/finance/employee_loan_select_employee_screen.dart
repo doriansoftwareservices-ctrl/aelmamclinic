@@ -9,6 +9,7 @@ import 'package:aelmamclinic/core/tbian_ui.dart';
 import 'package:aelmamclinic/services/db_service.dart';
 import 'employee_loan_create_screen.dart';
 import 'employee_loans_of_employee_screen.dart';
+import 'finance_access_guard.dart';
 
 class EmployeeLoanSelectEmployeeScreen extends StatefulWidget {
   final bool isCreateMode;
@@ -100,9 +101,10 @@ class _EmployeeLoanSelectEmployeeScreenState
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
+    return FinanceAccessGuard(
+      child: Directionality(
+        textDirection: TextDirection.rtl,
+        child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
           title: Row(
@@ -257,6 +259,7 @@ class _EmployeeLoanSelectEmployeeScreenState
               ),
             ],
           ),
+        ),
         ),
       ),
     );

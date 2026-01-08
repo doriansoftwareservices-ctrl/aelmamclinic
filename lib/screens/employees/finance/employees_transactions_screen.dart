@@ -10,6 +10,7 @@ import 'package:aelmamclinic/core/tbian_ui.dart';
 
 /*── خدمات ─*/
 import 'package:aelmamclinic/services/db_service.dart';
+import 'finance_access_guard.dart';
 
 class EmployeesTransactionsScreen extends StatefulWidget {
   const EmployeesTransactionsScreen({super.key});
@@ -170,9 +171,10 @@ class _EmployeesTransactionsScreenState
 
   @override
   Widget build(BuildContext context) {
-    return Directionality(
-      textDirection: ui.TextDirection.rtl,
-      child: Scaffold(
+    return FinanceAccessGuard(
+      child: Directionality(
+        textDirection: ui.TextDirection.rtl,
+        child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
           title: Row(
@@ -296,6 +298,7 @@ class _EmployeesTransactionsScreenState
               ),
             ),
           ),
+        ),
         ),
       ),
     );

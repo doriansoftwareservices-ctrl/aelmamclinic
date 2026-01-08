@@ -12,6 +12,7 @@ import 'package:aelmamclinic/core/tbian_ui.dart';
 /*── خدمات ─*/
 import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/services/logging_service.dart';
+import 'finance_access_guard.dart';
 
 /// ── ثوابت الألوان الموحدة ──
 const Color accentColor = Color(0xFF004A61);
@@ -53,9 +54,10 @@ class _EmployeesFinanceSummaryScreenState
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
-    return Directionality(
-      textDirection: ui.TextDirection.rtl,
-      child: Scaffold(
+    return FinanceAccessGuard(
+      child: Directionality(
+        textDirection: ui.TextDirection.rtl,
+        child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
           title: Row(
@@ -168,6 +170,7 @@ class _EmployeesFinanceSummaryScreenState
               ],
             ),
           ),
+        ),
         ),
       ),
     );

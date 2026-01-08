@@ -124,6 +124,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       }
     });
 
+    final auth = context.read<AuthProvider>();
     _tabController = TabController(length: 3, vsync: this);
     _tabController.addListener(() {
       // حدّث القائمة كلما فتحنا تبويب "موظف جديد" أو "إدارة العيادات"
@@ -131,14 +132,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         _fetchClinics();
       }
     });
-    _fetchClinics();
-    _fetchSubscriptionRequests();
-    _fetchSeatRequests();
-    _pendingPollTimer = Timer.periodic(const Duration(seconds: 30), (_) async {
-      if (_sectionIndex != 2) return;
-      await _fetchSubscriptionRequests();
-      await _fetchSeatRequests();
-    });
+    if (auth.isSuperAdmin) {
+      _fetchClinics();
+      _fetchSubscriptionRequests();
+      _fetchSeatRequests();
+      _pendingPollTimer = Timer.periodic(const Duration(seconds: 30), (_) async {
+        if (_sectionIndex != 2) return;
+        await _fetchSubscriptionRequests();
+        await _fetchSeatRequests();
+      });
+    }
   }
 
   @override
@@ -613,6 +616,32 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final auth = Provider.of<AuthProvider>(context, listen: true);
+    if (!auth.isSuperAdmin) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('لوحة تحكّم المشرف العام'),
+          actions: [
+            TextButton.icon(
+              onPressed: _logout,
+              icon: const Icon(Icons.logout),
+              label: const Text('تسجيل الخروج'),
+            ),
+            const SizedBox(width: 8),
+          ],
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text(
+              'هذه الشاشة مخصّصة للسوبر أدمن فقط.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: scheme.error),
+            ),
+          ),
+        ),
+      );
+    }
 
     return Stack(
       children: [

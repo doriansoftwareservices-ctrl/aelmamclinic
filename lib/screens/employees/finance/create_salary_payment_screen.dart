@@ -10,6 +10,7 @@ import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/services/logging_service.dart';
 import 'employee_salary_detail_screen.dart';
 import 'non_doctor_salary_detail_screen.dart';
+import 'finance_access_guard.dart';
 
 class CreateSalaryPaymentScreen extends StatefulWidget {
   const CreateSalaryPaymentScreen({super.key});
@@ -69,9 +70,10 @@ class _CreateSalaryPaymentScreenState extends State<CreateSalaryPaymentScreen> {
     final paidCount = _paymentStatusMap.entries.where((e) => e.value).length;
     final unpaidCount = totalCount - paidCount;
 
-    return Directionality(
-      textDirection: ui.TextDirection.rtl,
-      child: Scaffold(
+    return FinanceAccessGuard(
+      child: Directionality(
+        textDirection: ui.TextDirection.rtl,
+        child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
           title: Row(
@@ -484,9 +486,10 @@ class _CreateSalaryPaymentScreenState extends State<CreateSalaryPaymentScreen> {
             onSalaryPaid: _handleSalaryPaid,
           ),
         ),
-      );
-    }
+      ),
+    );
   }
+}
 
   Future<int?> _resolveDoctorIdByEmployee(int employeeId) async {
     try {

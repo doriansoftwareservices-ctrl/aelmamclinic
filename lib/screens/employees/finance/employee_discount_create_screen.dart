@@ -9,6 +9,7 @@ import 'package:aelmamclinic/core/formatters.dart';
 
 import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/services/logging_service.dart';
+import 'finance_access_guard.dart';
 
 class EmployeeDiscountCreateScreen extends StatefulWidget {
   final int empId;
@@ -303,9 +304,10 @@ class _EmployeeDiscountCreateScreenState
     final overBudget =
         _parseAmount(_amountCtrl.text) - _theoreticalTotal > 1e-9;
 
-    return Directionality(
-      textDirection: ui.TextDirection.rtl,
-      child: Scaffold(
+    return FinanceAccessGuard(
+      child: Directionality(
+        textDirection: ui.TextDirection.rtl,
+        child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
           title: Row(
@@ -541,6 +543,7 @@ class _EmployeeDiscountCreateScreenState
             style: const TextStyle(fontWeight: FontWeight.w900),
           ),
         ],
+        ),
       ),
     );
   }
