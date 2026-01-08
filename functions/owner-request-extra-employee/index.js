@@ -24,10 +24,13 @@ const readBody = (req) =>
 const resolveAuthUrl = () => {
   const candidates = [
     process.env.NHOST_AUTH_URL,
+    process.env.NHOST_AUTH_ADMIN_URL,
     process.env.NHOST_GRAPHQL_URL,
+    process.env.NHOST_BACKEND_URL,
   ];
   for (const raw of candidates) {
     if (!raw) continue;
+    if (!raw.includes('nhost.run')) continue;
     let url = raw.replace(/\/+$/, '');
     url = url
       .replace('.graphql.', '.auth.')
@@ -39,6 +42,11 @@ const resolveAuthUrl = () => {
       .replace(/\/v1$/i, '');
     url = `${url}/v1`;
     return url;
+  }
+  const subdomain = process.env.NHOST_SUBDOMAIN;
+  const region = process.env.NHOST_REGION;
+  if (subdomain && region) {
+    return `https://${subdomain}.auth.${region}.nhost.run/v1`;
   }
   return null;
 };
