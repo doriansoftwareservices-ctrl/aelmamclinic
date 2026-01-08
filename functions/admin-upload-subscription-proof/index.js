@@ -134,8 +134,8 @@ module.exports = async function handler(req, res) {
     }
     const form = new FormData();
     form.append('bucket-id', bucketId);
-    form.append('file', new Blob([buffer], { type: mimeType }), filename);
-    form.append('metadata', JSON.stringify(meta));
+    form.append('file[]', new Blob([buffer], { type: mimeType }), filename);
+    form.append('metadata[]', JSON.stringify(meta));
 
     const uploadRes = await fetch(`${storageUrl}/files`, {
       method: 'POST',

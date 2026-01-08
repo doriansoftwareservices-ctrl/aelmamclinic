@@ -83,10 +83,10 @@ signin() {
 make_payload() {
   local query="$1"
   local variables_json="${2:-{}}"
-  QUERY="$query" VARS_JSON="$variables_json" python3 - <<'PY'
-import json, os
-query = os.environ.get("QUERY", "")
-vars_raw = os.environ.get("VARS_JSON", "{}")
+  printf '%s' "$variables_json" | python3 - "$query" <<'PY'
+import json, sys
+query = sys.argv[1] if len(sys.argv) > 1 else ""
+vars_raw = sys.stdin.read()
 def parse_vars(raw):
   raw = (raw or "").strip()
   if not raw:
