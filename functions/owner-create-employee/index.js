@@ -69,11 +69,16 @@ const resolveAuthUrl = () => {
   return null;
 };
 
-const expandAuthBases = (authUrl) => {
+const adminUserEndpoints = (authUrl) => {
   if (!authUrl) return [];
-  const noV1 = authUrl.replace(/\/v1$/i, '');
-  const bases = [authUrl, noV1, `${noV1}/v1`];
-  return [...new Set(bases)].filter(Boolean);
+  const raw = authUrl.replace(/\/+$/, '');
+  const root = raw.replace(/\/v1$/i, '');
+  const endpoints = [
+    `${raw}/admin/users`,
+    `${root}/admin/users`,
+    `${root}/v1/admin/users`,
+  ];
+  return [...new Set(endpoints)];
 };
 
 async function createOrGetUser(email, password) {
@@ -93,8 +98,8 @@ async function createOrGetUser(email, password) {
   };
 
   let lastErr = null;
-  for (const base of expandAuthBases(authUrl)) {
-    const createRes = await fetch(`${base}/admin/users`, {
+  for (const endpoint of adminUserEndpoints(authUrl)) {
+    const createRes = await fetch(endpoint, {
       method: 'POST',
       headers: adminHeaders,
       body: JSON.stringify({
@@ -112,7 +117,7 @@ async function createOrGetUser(email, password) {
 
     if (createRes.status === 409) {
       const listRes = await fetch(
-        `${base}/admin/users?email=${encodeURIComponent(email)}`,
+        `${endpoint}?email=${encodeURIComponent(email)}`,
         {
           headers: adminHeaders,
         },
@@ -154,13 +159,17 @@ async function deleteUser(userId) {
   const adminSecret =
     process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
   if (!authUrl || !adminSecret || !userId) return;
-  await fetch(`${authUrl}/admin/users/${userId}`, {
-    method: 'DELETE',
-    headers: {
-      'x-hasura-admin-secret': adminSecret,
-      Authorization: `Bearer ${adminSecret}`,
-    },
-  });
+  const headers = {
+    'x-hasura-admin-secret': adminSecret,
+    Authorization: `Bearer ${adminSecret}`,
+  };
+  for (const endpoint of adminUserEndpoints(authUrl)) {
+    const res = await fetch(`${endpoint}/${userId}`, {
+      method: 'DELETE',
+      headers,
+    });
+    if (res.status !== 404) break;
+  }
 }
 
 async function ensureOwner(authHeader) {

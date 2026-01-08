@@ -69,6 +69,18 @@ const resolveAuthUrl = () => {
   return null;
 };
 
+const adminUserEndpoints = (authUrl) => {
+  if (!authUrl) return [];
+  const raw = authUrl.replace(/\/+$/, '');
+  const root = raw.replace(/\/v1$/i, '');
+  const endpoints = [
+    `${raw}/admin/users`,
+    `${root}/admin/users`,
+    `${root}/v1/admin/users`,
+  ];
+  return [...new Set(endpoints)];
+};
+
 async function createOrGetUser(email, password) {
   const authUrl = resolveAuthUrl();
   const adminSecret =
@@ -79,49 +91,65 @@ async function createOrGetUser(email, password) {
     );
   }
 
-  const base = authUrl;
   const adminHeaders = {
     'Content-Type': 'application/json',
     'x-hasura-admin-secret': adminSecret,
     Authorization: `Bearer ${adminSecret}`,
   };
 
-  const createRes = await fetch(`${base}/admin/users`, {
-    method: 'POST',
-    headers: adminHeaders,
-    body: JSON.stringify({
-      email,
-      password,
-      emailVerified: true,
-      active: true,
-    }),
-  });
+  let lastErr = null;
+  for (const endpoint of adminUserEndpoints(authUrl)) {
+    const createRes = await fetch(endpoint, {
+      method: 'POST',
+      headers: adminHeaders,
+      body: JSON.stringify({
+        email,
+        password,
+        emailVerified: true,
+        active: true,
+      }),
+    });
 
-  if (createRes.status === 409) {
-    const listRes = await fetch(
-      `${base}/admin/users?email=${encodeURIComponent(email)}`,
-      { headers: adminHeaders },
-    );
-    if (!listRes.ok) {
-      throw new Error(`Auth lookup failed: ${listRes.status}`);
+    if (createRes.status === 404) {
+      lastErr = new Error(`Auth create failed: ${createRes.status} 404`);
+      continue;
     }
-    const listJson = await listRes.json();
-    const user = Array.isArray(listJson?.users) ? listJson.users[0] : null;
-    if (!user || !user.id) {
-      throw new Error('Auth user not found');
-    }
-    return { id: user.id, existed: true };
-  }
 
-  if (!createRes.ok) {
-    const txt = await createRes.text();
-    throw new Error(`Auth create failed: ${createRes.status} ${txt}`);
+    if (createRes.status === 409) {
+      const listRes = await fetch(
+        `${endpoint}?email=${encodeURIComponent(email)}`,
+        { headers: adminHeaders },
+      );
+      if (listRes.status === 404) {
+        lastErr = new Error(`Auth lookup failed: ${listRes.status} 404`);
+        continue;
+      }
+      if (!listRes.ok) {
+        const txt = await listRes.text();
+        throw new Error(`Auth lookup failed: ${listRes.status} ${txt}`);
+      }
+      const listJson = await listRes.json();
+      const user = Array.isArray(listJson?.users) ? listJson.users[0] : null;
+      if (!user || !user.id) {
+        throw new Error('Auth user not found');
+      }
+      return { id: user.id, existed: true };
+    }
+
+    if (!createRes.ok) {
+      const txt = await createRes.text();
+      throw new Error(`Auth create failed: ${createRes.status} ${txt}`);
+    }
+    const json = await createRes.json();
+    if (!json?.id) {
+      throw new Error('Auth create returned no id');
+    }
+    return { id: json.id, existed: false };
   }
-  const json = await createRes.json();
-  if (!json?.id) {
-    throw new Error('Auth create returned no id');
+  if (lastErr) {
+    throw lastErr;
   }
-  return { id: json.id, existed: false };
+  throw new Error('Auth create failed');
 }
 
 async function deleteUser(userId) {
@@ -129,13 +157,17 @@ async function deleteUser(userId) {
   const adminSecret =
     process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
   if (!authUrl || !adminSecret || !userId) return;
-  await fetch(`${authUrl}/admin/users/${userId}`, {
-    method: 'DELETE',
-    headers: {
-      'x-hasura-admin-secret': adminSecret,
-      Authorization: `Bearer ${adminSecret}`,
-    },
-  });
+  const headers = {
+    'x-hasura-admin-secret': adminSecret,
+    Authorization: `Bearer ${adminSecret}`,
+  };
+  for (const endpoint of adminUserEndpoints(authUrl)) {
+    const res = await fetch(`${endpoint}/${userId}`, {
+      method: 'DELETE',
+      headers,
+    });
+    if (res.status !== 404) break;
+  }
 }
 
 async function callAdminCreateOwner(
