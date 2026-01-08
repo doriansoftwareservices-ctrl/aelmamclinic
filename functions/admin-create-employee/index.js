@@ -21,6 +21,34 @@ const readBody = (req) =>
     });
   });
 
+const normalizeAuthUrl = (raw) => {
+  if (!raw) return null;
+  if (!raw.includes('nhost.run')) return null;
+  let url = raw.replace(/\/+$/, '');
+  const isServiceUrl =
+    url.includes('.auth.') ||
+    url.includes('.graphql.') ||
+    url.includes('.functions.') ||
+    url.includes('.storage.');
+  if (!isServiceUrl && url.endsWith('.nhost.run')) {
+    const region = process.env.NHOST_REGION;
+    const subdomain = url.split('://')[1]?.split('.nhost.run')[0];
+    if (subdomain && region) {
+      return `https://${subdomain}.auth.${region}.nhost.run/v1`;
+    }
+    return null;
+  }
+  url = url
+    .replace('.graphql.', '.auth.')
+    .replace('.functions.', '.auth.')
+    .replace('.storage.', '.auth.');
+  url = url
+    .replace(/\/v1\/graphql$/i, '')
+    .replace(/\/graphql$/i, '')
+    .replace(/\/v1$/i, '');
+  return `${url}/v1`;
+};
+
 const resolveAuthUrl = () => {
   const candidates = [
     process.env.NHOST_AUTH_URL,
@@ -29,19 +57,8 @@ const resolveAuthUrl = () => {
     process.env.NHOST_BACKEND_URL,
   ];
   for (const raw of candidates) {
-    if (!raw) continue;
-    if (!raw.includes('nhost.run')) continue;
-    let url = raw.replace(/\/+$/, '');
-    url = url
-      .replace('.graphql.', '.auth.')
-      .replace('.functions.', '.auth.')
-      .replace('.storage.', '.auth.');
-    url = url
-      .replace(/\/v1\/graphql$/i, '')
-      .replace(/\/graphql$/i, '')
-      .replace(/\/v1$/i, '');
-    url = `${url}/v1`;
-    return url;
+    const url = normalizeAuthUrl(raw);
+    if (url) return url;
   }
   const subdomain = process.env.NHOST_SUBDOMAIN;
   const region = process.env.NHOST_REGION;
