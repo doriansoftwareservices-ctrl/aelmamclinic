@@ -6647,11 +6647,41 @@
     schema: public
     name: subscription_requests
   select_permissions:
+    - role: user
+      permission:
+        columns: "*"
+        filter:
+          account_id:
+            _in:
+              _select:
+                table:
+                  schema: public
+                  name: user_current_account
+                column: account_id
+                where:
+                  user_uid:
+                    _eq: X-Hasura-User-Id
     - role: superadmin
       permission:
         columns: "*"
         filter: {}
   insert_permissions:
+    - role: user
+      permission:
+        check:
+          account_id:
+            _in:
+              _select:
+                table:
+                  schema: public
+                  name: user_current_account
+                column: account_id
+                where:
+                  user_uid:
+                    _eq: X-Hasura-User-Id
+          user_uid:
+            _eq: X-Hasura-User-Id
+        columns: "*"
     - role: superadmin
       permission:
         check: {}

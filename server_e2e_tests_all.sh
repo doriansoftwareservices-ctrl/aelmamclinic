@@ -211,8 +211,6 @@ proof_payload=$(python3 - <<PY
 import json
 print(json.dumps({
   "filename": "qa-proof.txt",
-  "bucketId": "subscription-proofs",
-  "mimeType": "text/plain",
   "base64": "$proof_data"
 }))
 PY
