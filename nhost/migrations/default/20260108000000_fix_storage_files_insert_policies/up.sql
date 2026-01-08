@@ -29,13 +29,6 @@ BEGIN
     TO public
     WITH CHECK (
       bucket_id = 'subscription-proofs'
-      AND (
-        uploaded_by_user_id = nullif(public.request_uid_text(), '')::uuid
-        OR (
-          uploaded_by_user_id IS NULL
-          AND nullif(public.request_uid_text(), '') IS NOT NULL
-        )
-      )
     );
 END;
 $$;
