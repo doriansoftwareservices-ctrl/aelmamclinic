@@ -83,28 +83,21 @@ signin() {
 make_payload() {
   local query="$1"
   local variables_json="${2:-{}}"
-  printf '%s' "$variables_json" | python3 - "$query" <<'PY'
+  local vars_file
+  vars_file=$(mktemp)
+  printf '%s' "$variables_json" > "$vars_file"
+  python3 - "$query" "$vars_file" <<'PY'
 import json, sys
 query = sys.argv[1] if len(sys.argv) > 1 else ""
-vars_raw = sys.stdin.read()
-def parse_vars(raw):
-  raw = (raw or "").strip()
-  if not raw:
-    return {}
-  try:
-    return json.loads(raw)
-  except Exception:
-    start = raw.find("{")
-    end = raw.rfind("}")
-    if start != -1 and end != -1 and end > start:
-      try:
-        return json.loads(raw[start:end + 1])
-      except Exception:
-        return {}
-    return {}
-variables = parse_vars(vars_raw)
+vars_path = sys.argv[2] if len(sys.argv) > 2 else ""
+raw = ""
+if vars_path:
+  with open(vars_path, "r", encoding="utf-8") as f:
+    raw = f.read().strip()
+variables = json.loads(raw) if raw else {}
 print(json.dumps({"query": query, "variables": variables}))
 PY
+  rm -f "$vars_file"
 }
 
 gql_user() {
