@@ -260,7 +260,7 @@ class _CreateSalaryPaymentScreenState extends State<CreateSalaryPaymentScreen> {
           ),
         ),
       ),
-    );
+    }
   }
 
   /* ===================== واجهة مساعدة ===================== */
@@ -487,8 +487,8 @@ class _CreateSalaryPaymentScreenState extends State<CreateSalaryPaymentScreen> {
             onSalaryPaid: _handleSalaryPaid,
           ),
         ),
-      ),
-    );
+      );
+    }
   }
 
   Future<int?> _resolveDoctorIdByEmployee(int employeeId) async {
