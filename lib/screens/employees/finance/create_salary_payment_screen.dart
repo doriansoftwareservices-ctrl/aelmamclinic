@@ -260,7 +260,7 @@ class _CreateSalaryPaymentScreenState extends State<CreateSalaryPaymentScreen> {
           ),
         ),
       ),
-    }
+    );
   }
 
   /* ===================== واجهة مساعدة ===================== */
