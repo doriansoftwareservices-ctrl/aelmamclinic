@@ -98,11 +98,15 @@ module.exports = async function handler(req, res) {
     const uploader = await ensureUploaderRole(authHeader);
 
     const body = await readBody(req);
-    const filename = `${body.filename ?? ''}`.trim() || 'proof';
-    const base64 = `${body.base64 ?? ''}`.trim();
+    const payload =
+      body && typeof body === 'object' && body.input && typeof body.input === 'object'
+        ? body.input
+        : body;
+    const filename = `${payload?.filename ?? ''}`.trim() || 'proof';
+    const base64 = `${payload?.base64 ?? ''}`.trim();
     const bucketId = 'subscription-proofs';
     const mimeType =
-      `${body.mimeType ?? 'application/octet-stream'}`.trim() ||
+      `${payload?.mimeType ?? 'application/octet-stream'}`.trim() ||
       'application/octet-stream';
 
     if (!base64) {

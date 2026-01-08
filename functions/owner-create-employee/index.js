@@ -42,6 +42,7 @@ const normalizeAuthUrl = (raw) => {
     .replace('.graphql.', '.auth.')
     .replace('.functions.', '.auth.')
     .replace('.storage.', '.auth.');
+  url = url.replace(/\/admin\/?$/i, '').replace(/\/v1\/admin\/?$/i, '/v1');
   url = url
     .replace(/\/v1\/graphql$/i, '')
     .replace(/\/graphql$/i, '')
