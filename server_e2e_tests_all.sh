@@ -362,6 +362,10 @@ EMP1_PASS="QaPass123!"
 EMP2_EMAIL="qa.owner.emp.$TS@elmam.com"
 EMP2_PASS="QaPass123!"
 
+# Clean up existing employee seats for this account to avoid hitting seat limits.
+run_sql "delete from public.account_users where account_id='${account_id}' and role='employee';"
+run_sql "delete from public.profiles where account_id='${account_id}' and role='employee';"
+
 admin_emp=$(curl -sS "$FUNCTIONS_URL/admin-create-employee" \
   -H "Authorization: Bearer $sa_token" \
   -H "Content-Type: application/json" \
