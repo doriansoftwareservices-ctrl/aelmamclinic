@@ -213,6 +213,17 @@
   - role: superadmin
 - function:
     schema: public
+    name: chat_start_dm
+  configuration:
+    exposed_as: mutation
+    custom_name: chat_start_dm
+    session_argument: hasura_session
+  permissions:
+  - role: me
+  - role: user
+  - role: superadmin
+- function:
+    schema: public
     name: my_account_plan
   configuration:
     exposed_as: query

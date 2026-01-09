@@ -149,6 +149,47 @@ class ChatService {
     return result.data ?? <String, dynamic>{};
   }
 
+  Future<ChatConversation?> _tryStartDmRpc(String otherUid) async {
+    const mutation = '''
+      mutation StartDm($other: uuid!) {
+        chat_start_dm(args: {p_other_uid: $other}) {
+          id
+        }
+      }
+    ''';
+    try {
+      final data = await _runMutation(mutation, {'other': otherUid});
+      final rows = data['chat_start_dm'] as List?;
+      final id = rows != null && rows.isNotEmpty
+          ? (rows.first as Map)['id']?.toString()
+          : null;
+      if (id == null || id.isEmpty) return null;
+      const query = '''
+        query ConvById($id: uuid!) {
+          chat_conversations_by_pk(id: $id) {
+            id
+            is_group
+            title
+            account_id
+            created_by
+            created_at
+            updated_at
+            last_msg_at
+            last_msg_snippet
+          }
+        }
+      ''';
+      final convData = await _runQuery(query, {'id': id});
+      final row = convData['chat_conversations_by_pk'];
+      if (row is Map) {
+        return ChatConversation.fromMap(Map<String, dynamic>.from(row));
+      }
+    } catch (_) {
+      return null;
+    }
+    return null;
+  }
+
   Stream<QueryResult> _runSubscription(
     String doc,
     Map<String, dynamic> variables,
@@ -727,6 +768,9 @@ class ChatService {
 
     final existing = await findExistingDMByUids(uidA: uid, uidB: otherUid);
     if (existing != null) return existing;
+
+    final rpcConv = await _tryStartDmRpc(otherUid);
+    if (rpcConv != null) return rpcConv;
 
     String? convAccountId;
     final otherAcc = (targetRow['account_id']?.toString() ?? '').trim();

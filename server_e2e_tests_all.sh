@@ -608,24 +608,27 @@ fi
 
 # ---------- Step 10: Chat participants insert (owner) ----------
 log "Chat participants (owner inserts 2 users)"
-conv_id=$(run_sql "insert into public.chat_conversations(account_id,is_group,title,created_by,created_at,updated_at) values ('${account_id}', false, NULL, '${owner_uid}', now(), now()) returning id;")
-conv_id=$(printf '%s' "$conv_id" | json_get 'result.1.0')
-if [ -n "$conv_id" ] && [ -n "$emp2_uid" ]; then
-  q_chat='mutation InsertParts($rows:[chat_participants_insert_input!]!) { insert_chat_participants(objects:$rows){ affected_rows } }'
+if [ -n "$emp2_uid" ]; then
+  q_chat='mutation StartDm($other: uuid!) { chat_start_dm(args: {p_other_uid: $other}) { id } }'
   vars=$(python3 - <<PY
 import json
-rows=[
-  {"conversation_id":"$conv_id","user_uid":"$owner_uid"},
-  {"conversation_id":"$conv_id","user_uid":"$emp2_uid"}
-]
-print(json.dumps({"rows":rows}))
+print(json.dumps({"other":"$emp2_uid"}))
 PY
 )
-  chat_res=$(gql_user "$owner_token" "$q_chat" "$vars")
-  rows=$(printf '%s' "$chat_res" | json_get 'data.insert_chat_participants.affected_rows')
-  if [ -n "$rows" ] && [ "$rows" != "" ]; then
+  chat_payload=$(make_payload "$q_chat" "$vars")
+  chat_res=$(printf '%s' "$chat_payload" | curl -sS "$GRAPHQL_URL" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $owner_token" \
+    -H "x-hasura-role: user" \
+    -d @-)
+  conv_id=$(printf '%s' "$chat_res" | json_get 'data.chat_start_dm.0.id')
+  if [ -n "$conv_id" ]; then
     step_ok "chat participants insert"
   else
+    echo "CHAT_OWNER_UID=$owner_uid"
+    echo "CHAT_EMP2_UID=$emp2_uid"
+    echo "CHAT_VARS=$vars"
+    echo "CHAT_PAYLOAD=$chat_payload"
     echo "$chat_res"
     step_fail "chat participants insert"
   fi
