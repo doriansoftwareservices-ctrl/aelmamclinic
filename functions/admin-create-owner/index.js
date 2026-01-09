@@ -69,6 +69,77 @@ const resolveAuthUrl = () => {
   return null;
 };
 
+const resolveRunSqlUrl = () => {
+  const raw =
+    process.env.NHOST_GRAPHQL_URL || process.env.NHOST_BACKEND_URL || '';
+  if (!raw || !raw.includes('nhost.run')) return null;
+  let base = raw.replace(/\/+$/, '');
+  base = base.replace('.graphql.', '.hasura.');
+  base = base.replace(/\/v1\/graphql$/i, '').replace(/\/v1$/i, '');
+  return `${base}/v2/query`;
+};
+
+async function runSql(sql) {
+  const url = resolveRunSqlUrl();
+  const adminSecret =
+    process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
+  if (!url || !adminSecret) {
+    throw new Error('Missing HASURA admin secret for SQL');
+  }
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-hasura-admin-secret': adminSecret,
+    },
+    body: JSON.stringify({
+      type: 'run_sql',
+      args: { source: 'default', read_only: true, sql },
+    }),
+  });
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`run_sql failed: ${res.status} ${txt}`);
+  }
+  return res.json();
+}
+
+async function lookupAuthUserId(email) {
+  const sql = `select id from auth.users where lower(email)=lower('${email}') limit 1;`;
+  const json = await runSql(sql);
+  const row = Array.isArray(json?.result) ? json.result[1] : null;
+  return row ? row[0] : null;
+}
+
+async function signUpUser(email, password) {
+  const authUrl = resolveAuthUrl();
+  if (!authUrl) throw new Error('Missing NHOST_AUTH_URL');
+  const res = await fetch(`${authUrl}/signup/email-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+  if (res.status === 409) return null;
+  if (!res.ok) {
+    const txt = await res.text();
+    if (txt.includes('already') || txt.includes('exists')) return null;
+    throw new Error(`Auth signup failed: ${res.status} ${txt}`);
+  }
+  const json = await res.json();
+  return json?.user?.id || json?.session?.user?.id || null;
+}
+
+async function ensureAuthUser(email, password) {
+  let userId = await signUpUser(email, password);
+  if (!userId) {
+    userId = await lookupAuthUserId(email);
+  }
+  if (!userId) {
+    throw new Error('Auth user not found after signup');
+  }
+  return userId;
+}
+
 const adminUserEndpoints = (authUrl) => {
   if (!authUrl) return [];
   const raw = authUrl.replace(/\/+$/, '');
@@ -82,74 +153,8 @@ const adminUserEndpoints = (authUrl) => {
 };
 
 async function createOrGetUser(email, password) {
-  const authUrl = resolveAuthUrl();
-  const adminSecret =
-    process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
-  if (!authUrl || !adminSecret) {
-    throw new Error(
-      'Missing NHOST_AUTH_URL or NHOST_ADMIN_SECRET/HASURA_GRAPHQL_ADMIN_SECRET',
-    );
-  }
-
-  const adminHeaders = {
-    'Content-Type': 'application/json',
-    'x-hasura-admin-secret': adminSecret,
-    Authorization: `Bearer ${adminSecret}`,
-  };
-
-  let lastErr = null;
-  for (const endpoint of adminUserEndpoints(authUrl)) {
-    const createRes = await fetch(endpoint, {
-      method: 'POST',
-      headers: adminHeaders,
-      body: JSON.stringify({
-        email,
-        password,
-        emailVerified: true,
-        active: true,
-      }),
-    });
-
-    if (createRes.status === 404) {
-      lastErr = new Error(`Auth create failed: ${createRes.status} 404`);
-      continue;
-    }
-
-    if (createRes.status === 409) {
-      const listRes = await fetch(
-        `${endpoint}?email=${encodeURIComponent(email)}`,
-        { headers: adminHeaders },
-      );
-      if (listRes.status === 404) {
-        lastErr = new Error(`Auth lookup failed: ${listRes.status} 404`);
-        continue;
-      }
-      if (!listRes.ok) {
-        const txt = await listRes.text();
-        throw new Error(`Auth lookup failed: ${listRes.status} ${txt}`);
-      }
-      const listJson = await listRes.json();
-      const user = Array.isArray(listJson?.users) ? listJson.users[0] : null;
-      if (!user || !user.id) {
-        throw new Error('Auth user not found');
-      }
-      return { id: user.id, existed: true };
-    }
-
-    if (!createRes.ok) {
-      const txt = await createRes.text();
-      throw new Error(`Auth create failed: ${createRes.status} ${txt}`);
-    }
-    const json = await createRes.json();
-    if (!json?.id) {
-      throw new Error('Auth create returned no id');
-    }
-    return { id: json.id, existed: false };
-  }
-  if (lastErr) {
-    throw lastErr;
-  }
-  throw new Error('Auth create failed');
+  const userId = await ensureAuthUser(email, password);
+  return { id: userId, existed: true };
 }
 
 async function deleteUser(userId) {
