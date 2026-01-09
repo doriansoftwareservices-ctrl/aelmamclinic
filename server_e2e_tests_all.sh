@@ -367,6 +367,7 @@ admin_emp=$(curl -sS "$FUNCTIONS_URL/admin-create-employee" \
   -H "Content-Type: application/json" \
   -d "{\"account_id\":\"$account_id\",\"email\":\"$EMP1_EMAIL\",\"password\":\"$EMP1_PASS\"}")
 admin_ok=$(printf '%s' "$admin_emp" | json_get 'ok')
+admin_emp_uid=$(printf '%s' "$admin_emp" | json_get 'user_uid')
 if printf '%s' "$admin_ok" | rg -q '^(true|True|t|1)$'; then
   step_ok "admin-create-employee"
 else
@@ -379,6 +380,7 @@ owner_emp=$(curl -sS "$FUNCTIONS_URL/owner-create-employee" \
   -H "Content-Type: application/json" \
   -d "{\"email\":\"$EMP2_EMAIL\",\"password\":\"$EMP2_PASS\"}")
 owner_ok=$(printf '%s' "$owner_emp" | json_get 'ok')
+owner_emp_uid=$(printf '%s' "$owner_emp" | json_get 'user_uid')
 if printf '%s' "$owner_ok" | rg -q '^(true|True|t|1)$'; then
   step_ok "owner-create-employee"
 else
@@ -391,6 +393,9 @@ log "Employee sign-in"
 emp2_resp=$(signin "$EMP2_EMAIL" "$EMP2_PASS")
 emp2_token=$(printf '%s' "$emp2_resp" | extract_token)
 emp2_uid=$(printf '%s' "$emp2_resp" | extract_user_id)
+if [ -z "$emp2_uid" ] && [ -n "$owner_emp_uid" ]; then
+  emp2_uid="$owner_emp_uid"
+fi
 if [ -n "$emp2_token" ]; then
   step_ok "employee signin"
 else
