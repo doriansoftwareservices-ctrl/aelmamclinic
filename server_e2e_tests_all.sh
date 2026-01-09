@@ -146,8 +146,8 @@ gql_admin() {
 log "Auth sign-in"
 SA_EMAIL="admin.app@elmam.com"
 SA_PASS="aelmam@6069"
-OWNER_EMAIL="test56561@elmam.com"
-OWNER_PASS="test56561"
+OWNER_EMAIL="test89876@elmam.com"
+OWNER_PASS="test89876"
 
 echo "Auth URL: $AUTH_URL"
 echo "GraphQL URL: $GRAPHQL_URL"
@@ -372,6 +372,12 @@ admin_emp=$(curl -sS "$FUNCTIONS_URL/admin-create-employee" \
   -d "{\"account_id\":\"$account_id\",\"email\":\"$EMP1_EMAIL\",\"password\":\"$EMP1_PASS\"}")
 admin_ok=$(printf '%s' "$admin_emp" | json_get 'ok')
 admin_emp_uid=$(printf '%s' "$admin_emp" | json_get 'user_uid')
+if [ -z "$admin_emp_uid" ]; then
+  admin_emp_uid=$(printf '%s' "$admin_emp" | json_get 'user_id')
+fi
+if [ -z "$admin_emp_uid" ]; then
+  admin_emp_uid=$(printf '%s' "$admin_emp" | json_get 'userId')
+fi
 if printf '%s' "$admin_ok" | rg -q '^(true|True|t|1)$'; then
   step_ok "admin-create-employee"
 else
@@ -385,6 +391,12 @@ owner_emp=$(curl -sS "$FUNCTIONS_URL/owner-create-employee" \
   -d "{\"email\":\"$EMP2_EMAIL\",\"password\":\"$EMP2_PASS\"}")
 owner_ok=$(printf '%s' "$owner_emp" | json_get 'ok')
 owner_emp_uid=$(printf '%s' "$owner_emp" | json_get 'user_uid')
+if [ -z "$owner_emp_uid" ]; then
+  owner_emp_uid=$(printf '%s' "$owner_emp" | json_get 'user_id')
+fi
+if [ -z "$owner_emp_uid" ]; then
+  owner_emp_uid=$(printf '%s' "$owner_emp" | json_get 'userId')
+fi
 if printf '%s' "$owner_ok" | rg -q '^(true|True|t|1)$'; then
   step_ok "owner-create-employee"
 else
@@ -399,6 +411,10 @@ emp2_token=$(printf '%s' "$emp2_resp" | extract_token)
 emp2_uid=$(printf '%s' "$emp2_resp" | extract_user_id)
 if [ -z "$emp2_uid" ] && [ -n "$owner_emp_uid" ]; then
   emp2_uid="$owner_emp_uid"
+fi
+if [ -z "$emp2_uid" ]; then
+  emp2_uid=$(run_sql "select id from auth.users where lower(email)=lower('$EMP2_EMAIL') limit 1;")
+  emp2_uid=$(printf '%s' "$emp2_uid" | json_get 'result.1.0')
 fi
 if [ -n "$emp2_token" ]; then
   step_ok "employee signin"
