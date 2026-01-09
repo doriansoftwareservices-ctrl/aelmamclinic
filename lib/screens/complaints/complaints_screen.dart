@@ -27,6 +27,14 @@ class _ComplaintsScreenState extends State<ComplaintsScreen> {
   /*──────────────── تحميل الشكاوى ────────────────*/
   Future<void> _load() async {
     final db = await DBService.instance.database;
+    try {
+      await db.update(
+        'complaints',
+        {'replySeen': 1},
+        where: "status != 'open'",
+      );
+      DBService.instance.emitPassiveChange('complaints');
+    } catch (_) {}
     final rows = await db.query(
       'complaints',
       orderBy: 'createdAt DESC',

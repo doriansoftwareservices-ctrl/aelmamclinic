@@ -1,0 +1,104 @@
+تقرير فحص مشروع aelmamclinic
+
+النطاق
+- functions/
+- nhost/
+- lib/
+- config.json
+- pubspec.yaml
+- لقطة الخادم: server_snapshot_mergrgclboxflnucehgb_20260108_091943
+
+ملخص نموذج الصلاحيات الحالي
+- صلاحية Hasura الافتراضية لمعظم المستخدمين هي "user" (وللسوبر أدمن "superadmin")، بينما أدوار "owner/admin/employee" تُدار داخل بيانات الحساب (account_users.role) وليست كأدوار Hasura فعّالة.
+- لذلك أي حماية حقيقية للمالك/الموظف تعتمد على فلاتر RLS داخل Metadata والدوال (RPC)، وليست على دور Hasura منفصل.
+
+أهم المشكلات والمخاطر
+
+[حرج] جداول أعمال أساسية أصبحت قراءة فقط للمستخدمين (المالك/الموظف)
+- في الـ Metadata لا توجد صلاحيات insert/update/delete لدور user/me على جداول جوهرية، بينما التطبيق يدفع إليها عبر SyncService.
+- النتيجة: إنشاء/تعديل/حذف بيانات المرضى، المواعيد، الموظفين، الأصناف، المشتريات... سيفشل من تطبيق المالك/الموظف.
+- أمثلة جداول متأثرة (قراءة فقط للمستخدمين):
+  accounts, account_users, alert_settings, appointments, audit_logs, clinics,
+  complaints, consumptions, doctors, drugs, employees, employees_loans,
+  employees_salaries, employees_discounts, financial_logs, item_types, items,
+  medical_services, patient_services, patients, prescription_items, prescriptions,
+  purchases, returns, service_doctor_share
+  (قائمة كاملة مشتقة من metadata اللقطة).
+- المراجع:
+  - server_snapshot_mergrgclboxflnucehgb_20260108_091943/hasura_export_metadata.json
+  - lib/services/sync_service.dart#L3334 (توجد عمليات push/pull لهذه الجداول)
+  - nhost/metadata/databases/default/tables/tables.yaml (الصلاحيات)
+
+[حرج] إنشاء محادثة خاصة (DM) سيفشل بسبب صلاحيات chat_participants
+- التطبيق عند إنشاء DM يحاول إدخال مشاركَين (المستخدم الحالي + الطرف الآخر).
+- صلاحية insert على chat_participants تشترط user_uid = X-Hasura-User-Id، أي يسمح بإضافة الذات فقط.
+- النتيجة: إنشاء محادثة خاصة بين مستخدمين سيفشل للملاك/الموظفين.
+- المراجع:
+  - nhost/metadata/databases/default/tables/tables.yaml#L190 (insert_permissions لـ chat_participants)
+  - lib/services/chat_service.dart#L740 (إدراج مشاركَين في DM)
+
+[عالية] تسريب/تلاعب مرفقات الدردشة داخل نفس الحساب
+- صلاحيات chat_attachments تعتمد فقط على كون المستخدم عضوًا في الحساب، وليس مشاركًا في المحادثة/الرسالة.
+- أي موظف داخل الحساب يمكنه قراءة/تعديل/حذف مرفقات تخص محادثات ليس طرفًا فيها إذا عرف message_id.
+- المراجع:
+  - nhost/metadata/databases/default/tables/tables.yaml#L528 (permissions لـ chat_attachments)
+
+[عالية] تجاوز قيود الخطة عبر account_feature_permissions
+- صلاحيات insert/update/delete على account_feature_permissions تسمح للمالك/المدير بالتعديل الكامل على allow_all والميزات.
+- هذا يسمح لمالك الحساب بتفعيل ميزات غير مشمولة بالخطة بدون تدخل سوبر أدمن.
+- المراجع:
+  - nhost/metadata/databases/default/tables/tables.yaml#L2155
+
+[عالية] تعارض بين منطق الخطة (لا Allow-All للمالك) وبين Trigger قديم
+- migration 20260106193000 تُصرّح أن لا يتم منح allow_all تلقائيًا للمالك.
+- لكن Trigger في 20260102153000 ما يزال يمنح allow_all للمالك/المدير عند إدراج account_users.
+- النتيجة: قد يحصل المالك/المدير على صلاحيات كاملة رغم الخطة، خصوصًا عند إضافة حسابات جديدة.
+- المراجع:
+  - nhost/migrations/default/20260106193000_fix_plan_permissions_owner_gating/up.sql#L1
+  - nhost/migrations/default/20260102153000_seed_account_feature_permissions_trigger/up.sql#L1
+
+[متوسطة] إنشاء مستخدمين عبر Edge Functions بدون تنظيف عند فشل العملية
+- admin-create-owner و admin-create-employee ينشئان مستخدم auth قبل استدعاء RPC، لكن لا يتم حذف المستخدم إذا فشل الـ RPC.
+- قد ينتهي الأمر بمستخدمين معزولين في auth.users بدون ربط في الحساب.
+- المراجع:
+  - functions/admin-create-owner/index.js
+  - functions/admin-create-employee/index.js
+
+[متوسطة] رفع إثباتات الاشتراك بصلاحيات إدارية بدون تحقق حسابي
+- admin-upload-subscription-proof يستخدم admin secret لرفع الملفات إلى bucket بدون ربط بالحساب أو الطلب.
+- أي مالك/مدير قادر على رفع ملفات غير مرتبطة بطلبه (سوء استخدام أو إغراق التخزين).
+- المراجع:
+  - functions/admin-upload-subscription-proof/index.js
+
+[متوسطة] self_create_account متاح لدور anonymous في Hasura بينما الدالة نفسها تتطلب Auth
+- في metadata الصلاحية تسمح للـ anonymous باستدعاء الدالة.
+- الدالة نفسها تُرجع "unauthenticated" إذا لم يوجد مستخدم، مما يسبب أخطاء عند الاستخدام بدون جلسة.
+- المراجع:
+  - nhost/metadata/databases/default/functions/functions.yaml
+  - nhost/migrations/default/20260106193000_fix_plan_permissions_owner_gating/up.sql#L57
+
+[متوسطة] اطلاع الموظفين على بيانات مالية/مراجعات حساسة داخل الحساب
+- صلاحيات select على جداول مثل employees_salaries/employees_loans/financial_logs/audit_logs تسمح لأي عضو في الحساب بالقراءة.
+- إذا كانت السياسة المطلوب أن تكون هذه البيانات للملاك/المدير فقط، فالفلتر الحالي غير كافٍ.
+- المراجع:
+  - nhost/metadata/databases/default/tables/tables.yaml (الأقسام الخاصة بالجدوال المذكورة)
+
+[منخفضة] حراسة واجهة الاستخدام غير موحّدة
+- FeatureGate/featureAllowed موجودة لكن الاستخدام محدود في بعض الشاشات فقط؛ شاشات إدارة المستخدمين لا تتحقق من الدور قبل تنفيذ RPC.
+- هذا يؤدي إلى تجربة سيئة للموظفين (ظهور شاشة ثم خطأ صلاحيات من الخادم).
+- المراجع:
+  - lib/core/features.dart
+  - lib/screens/users/users_screen.dart
+
+ملاحظات إضافية متعلقة بالأدوار
+- لا يوجد مسار واضح في الواجهة لترقية موظف إلى "admin" رغم وجود الدور في قاعدة البيانات والتريجرات.
+- معظم وظائف الإدارة تعتمد على التحقق داخل SQL (SECURITY DEFINER)، وهذا جيد، لكن يجب أن ينعكس في الواجهة لمنع محاولات غير مسموحة.
+
+توصيات تنفيذية مختصرة
+1) إعادة بناء صلاحيات Hasura للجداول الأساسية بما يسمح بالكتابة لدور user مع فلاتر RLS صحيحة (أو استخدام RPC بديل لكل كتابة).
+2) تعديل صلاحية chat_participants بحيث تسمح بإضافة عضو آخر عند إنشاء DM (أو نقل إنشاء الـ DM إلى RPC مخصص).
+3) تقييد chat_attachments بالتحقق من أن المستخدم مشارك في المحادثة/الرسالة المرتبطة.
+4) قفل account_feature_permissions عن المالك/المدير (سوبر أدمن فقط) أو فرض تحقق خطة داخل trigger/dB.
+5) إزالة/تحديث Trigger القديم الذي يمنح allow_all للمالك/المدير.
+6) تنظيف مستخدم auth عند فشل عمليات الإنشاء في Edge Functions (أسلوب مشابه للـ owner-create-employee).
+

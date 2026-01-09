@@ -28,8 +28,10 @@ import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/core/nhost_manager.dart';
 import 'package:aelmamclinic/local/chat_local_store.dart';
 import 'package:aelmamclinic/models/chat_models.dart';
+import 'package:aelmamclinic/models/patient.dart';
 import 'package:aelmamclinic/providers/chat_provider.dart';
 import 'package:aelmamclinic/services/chat_service.dart';
+import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/utils/text_direction.dart' as td;
 import 'package:aelmamclinic/widgets/chat/attachment_chip.dart';
 import 'package:aelmamclinic/widgets/chat/message_actions_sheet.dart';
@@ -56,6 +58,14 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   bool _sending = false;
   bool _loadingMore = false;
   Timer? _scrollDebounce;
+
+  // Composer suggestions for doctors (patients/services).
+  int? _doctorIdForSuggestions;
+  _ComposerSuggestionKind? _suggestionKind;
+  String _suggestionQuery = '';
+  bool _loadingSuggestions = false;
+  Timer? _suggestionDebounce;
+  final List<_ComposerSuggestion> _suggestions = [];
 
   // typing محلي لإطفاء الحالة إذا لم يطفئها المزوّد سريعًا.
   Timer? _typingOffTimer;
@@ -95,6 +105,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     _initialUnread = (widget.conversation.unreadCount ?? 0);
     _listCtrl.addListener(_onScroll);
     _bootFromLocal(); // عرض فوري من SQLite
+    _loadDoctorContext();
   }
 
   @override
@@ -124,6 +135,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   void dispose() {
     _typingOffTimer?.cancel();
     _scrollDebounce?.cancel();
+    _suggestionDebounce?.cancel();
     _listCtrl.removeListener(_onScroll);
     _listCtrl.dispose();
     _textCtrl.dispose();
@@ -626,6 +638,278 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     }
   }
 
+  Future<void> _loadDoctorContext() async {
+    final uid = _currentUid;
+    if (uid.isEmpty) return;
+    try {
+      final doctor = await DBService.instance.getDoctorByUserUid(uid);
+      if (!mounted) return;
+      setState(() => _doctorIdForSuggestions = doctor?.id);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _doctorIdForSuggestions = null);
+    }
+  }
+
+  int _findTokenStart(String text, int cursor) {
+    var i = cursor - 1;
+    while (i >= 0) {
+      final ch = text[i];
+      if (ch.trim().isEmpty) break;
+      i--;
+    }
+    return i + 1;
+  }
+
+  void _clearComposerSuggestions() {
+    if (_suggestionKind == null && _suggestions.isEmpty) return;
+    setState(() {
+      _suggestionKind = null;
+      _suggestionQuery = '';
+      _loadingSuggestions = false;
+      _suggestions.clear();
+    });
+  }
+
+  Future<List<_ComposerSuggestion>> _loadPatientSuggestions(
+    String query,
+  ) async {
+    final doctorId = _doctorIdForSuggestions;
+    if (doctorId == null) return const [];
+    final q = query.toLowerCase();
+    final list = await DBService.instance.getAllPatients(doctorId: doctorId);
+    list.sort((a, b) => (b.id ?? 0).compareTo(a.id ?? 0));
+    final results = <_ComposerSuggestion>[];
+    for (final p in list) {
+      final name = (p.name ?? '').trim();
+      final phone = (p.phoneNumber ?? '').trim();
+      if (name.isEmpty && phone.isEmpty) continue;
+      if (q.isNotEmpty) {
+        final hay = '$name $phone'.toLowerCase();
+        if (!hay.contains(q)) continue;
+      }
+      final insertText =
+          phone.isNotEmpty ? '$name - $phone' : name;
+      results.add(_ComposerSuggestion(
+        label: name.isEmpty ? phone : name,
+        subtitle: name.isNotEmpty && phone.isNotEmpty ? phone : null,
+        insertText: insertText,
+        icon: Icons.person,
+      ));
+      if (results.length >= 12) break;
+    }
+    return results;
+  }
+
+  Future<List<_ComposerSuggestion>> _loadServiceSuggestions(
+    String query,
+  ) async {
+    final doctorId = _doctorIdForSuggestions;
+    if (doctorId == null) return const [];
+    final q = query.toLowerCase();
+    final rows =
+        await DBService.instance.getDoctorServiceCatalogWithPercents(doctorId);
+    final results = <_ComposerSuggestion>[];
+    for (final row in rows) {
+      final name = (row['serviceName'] ?? row['name'] ?? '').toString().trim();
+      if (name.isEmpty) continue;
+      if (q.isNotEmpty && !name.toLowerCase().contains(q)) continue;
+      results.add(_ComposerSuggestion(
+        label: name,
+        insertText: '@$name',
+        icon: Icons.medical_services_outlined,
+      ));
+      if (results.length >= 12) break;
+    }
+    return results;
+  }
+
+  void _updateComposerSuggestions() {
+    if (!_focusNode.hasFocus) {
+      _clearComposerSuggestions();
+      return;
+    }
+    final cursor = _textCtrl.selection.baseOffset;
+    if (cursor <= 0) {
+      _clearComposerSuggestions();
+      return;
+    }
+    final text = _textCtrl.text;
+    final start = _findTokenStart(text, cursor);
+    if (start >= cursor) {
+      _clearComposerSuggestions();
+      return;
+    }
+    final token = text.substring(start, cursor);
+    if (token.isEmpty) {
+      _clearComposerSuggestions();
+      return;
+    }
+
+    _ComposerSuggestionKind? kind;
+    String query = '';
+    if (token.startsWith('/')) {
+      kind = _ComposerSuggestionKind.patient;
+      query = token.substring(1);
+    } else if (token.startsWith('@')) {
+      kind = _ComposerSuggestionKind.service;
+      query = token.substring(1);
+    } else {
+      _clearComposerSuggestions();
+      return;
+    }
+
+    if (_doctorIdForSuggestions == null) {
+      _clearComposerSuggestions();
+      return;
+    }
+
+    if (kind == _suggestionKind && query == _suggestionQuery) {
+      return;
+    }
+
+    _suggestionDebounce?.cancel();
+    setState(() {
+      _suggestionKind = kind;
+      _suggestionQuery = query;
+      _loadingSuggestions = true;
+    });
+    _suggestionDebounce = Timer(const Duration(milliseconds: 180), () async {
+      try {
+        final results = kind == _ComposerSuggestionKind.patient
+            ? await _loadPatientSuggestions(query)
+            : await _loadServiceSuggestions(query);
+        if (!mounted) return;
+        setState(() {
+          _suggestions
+            ..clear()
+            ..addAll(results);
+          _loadingSuggestions = false;
+        });
+      } catch (_) {
+        if (!mounted) return;
+        setState(() {
+          _suggestions.clear();
+          _loadingSuggestions = false;
+        });
+      }
+    });
+  }
+
+  void _applySuggestion(_ComposerSuggestion s) {
+    final cursor = _textCtrl.selection.baseOffset;
+    if (cursor < 0) return;
+    final text = _textCtrl.text;
+    final start = _findTokenStart(text, cursor);
+    final insert = '${s.insertText} ';
+    final updated = text.replaceRange(start, cursor, insert);
+    final newOffset = start + insert.length;
+    _textCtrl.value = TextEditingValue(
+      text: updated,
+      selection: TextSelection.collapsed(offset: newOffset),
+    );
+    _clearComposerSuggestions();
+  }
+
+  Widget _buildSuggestionsPanel() {
+    final scheme = Theme.of(context).colorScheme;
+    final title = _suggestionKind == _ComposerSuggestionKind.patient
+        ? 'مرضى الطبيب'
+        : 'خدمات الطبيب';
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: scheme.surface.withValues(alpha: .92),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: scheme.outline.withValues(alpha: .3)),
+        boxShadow: [
+          BoxShadow(
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+            color: Colors.black.withValues(alpha: .06),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              color: scheme.onSurface,
+              fontWeight: FontWeight.w800,
+              fontSize: 12.5,
+            ),
+          ),
+          const SizedBox(height: 6),
+          if (_loadingSuggestions)
+            const Center(child: CircularProgressIndicator(strokeWidth: 2))
+          else if (_suggestions.isEmpty)
+            Text(
+              'لا توجد نتائج مطابقة.',
+              style: TextStyle(
+                color: scheme.onSurface.withValues(alpha: .6),
+                fontSize: 12,
+              ),
+            )
+          else
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 210),
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: _suggestions.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 6),
+                itemBuilder: (_, i) {
+                  final s = _suggestions[i];
+                  return InkWell(
+                    onTap: () => _applySuggestion(s),
+                    borderRadius: BorderRadius.circular(10),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 6),
+                      child: Row(
+                        children: [
+                          Icon(s.icon, size: 18, color: scheme.primary),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  s.label,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                if ((s.subtitle ?? '').trim().isNotEmpty)
+                                  Text(
+                                    s.subtitle!,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color:
+                                          scheme.onSurface.withValues(alpha: .6),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   // ✅ تشغيل/إطفاء "يكتب..." + تمرير للأسفل عند الحاجة
   void _onTextChanged(String _) {
     if (mounted) setState(() {});
@@ -638,6 +922,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     if (_isNearBottom()) {
       _scrollToBottom();
     }
+    _updateComposerSuggestions();
   }
 
   // تهيئة Anchor للغير مقروء مرّة واحدة بعد وصول أول دفعة من المزوّد
@@ -1060,6 +1345,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                   ),
 
                 // ---------- شريط الكتابة + Reply Preview ----------
+                if (_suggestionKind != null)
+                  _buildSuggestionsPanel(),
+
                 if ((_replySnippet ?? '').isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
@@ -1126,6 +1414,22 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 }
 
 /*──────────────────── عناصر تصميم إضافية ───────────────────*/
+
+enum _ComposerSuggestionKind { patient, service }
+
+class _ComposerSuggestion {
+  final String label;
+  final String insertText;
+  final String? subtitle;
+  final IconData icon;
+
+  const _ComposerSuggestion({
+    required this.label,
+    required this.insertText,
+    required this.icon,
+    this.subtitle,
+  });
+}
 
 class _DayDivider extends StatelessWidget {
   final String label;

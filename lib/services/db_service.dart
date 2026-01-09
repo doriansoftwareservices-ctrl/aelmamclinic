@@ -216,7 +216,7 @@ class DBService {
 
     return openDatabase(
       dbPath,
-      version: 31, // ↑ رفع النسخة لتطبيق أعمدة المزامنة + ربط الحسابات
+      version: 32, // ↑ نسخة جديدة لإضافة علامة رد الشكاوى
       onConfigure: (db) async {
         // ✅ على أندرويد: بعض أوامر PRAGMA يجب تنفيذها بـ rawQuery
         await db.rawQuery('PRAGMA foreign_keys = ON');
@@ -833,7 +833,8 @@ class DBService {
         title TEXT NOT NULL,
         description TEXT,
         status TEXT NOT NULL DEFAULT 'open',
-        createdAt TEXT NOT NULL
+        createdAt TEXT NOT NULL,
+        replySeen INTEGER NOT NULL DEFAULT 0
       );
     ''');
 
@@ -1264,7 +1265,8 @@ class DBService {
           title TEXT NOT NULL,
           description TEXT,
           status TEXT NOT NULL DEFAULT 'open',
-          createdAt TEXT NOT NULL
+          createdAt TEXT NOT NULL,
+          replySeen INTEGER NOT NULL DEFAULT 0
         );
       ''');
 
@@ -1312,6 +1314,15 @@ class DBService {
       await _addColumnIfMissing(db, 'doctors', 'userUid', 'TEXT');
       await _addColumnIfMissing(db, 'employees', 'userUid', 'TEXT');
       await _ensureCommonIndexes(db);
+    }
+
+    if (oldVersion < 32) {
+      await _addColumnIfMissing(
+        db,
+        'complaints',
+        'replySeen',
+        'INTEGER NOT NULL DEFAULT 0',
+      );
     }
   }
 

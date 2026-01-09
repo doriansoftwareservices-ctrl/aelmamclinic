@@ -877,6 +877,7 @@ class ChatService {
 
     final members = <({String uid, String email, String accountId})>[];
     for (final e in memberEmails) {
+      if (e.trim().isEmpty) continue;
       final query = '''
         query FindMember(\$email: String!) {
           $_tblAccUsers(
@@ -897,9 +898,6 @@ class ChatService {
       final memberUid = row['user_uid'].toString();
       if (memberUid == uid) continue;
       final memberAccountId = (row['account_id']?.toString() ?? '').trim();
-      if (memberAccountId.isEmpty || memberAccountId != myAcc) {
-        throw 'المستخدم $e ليس ضمن نفس حساب العيادة.';
-      }
       if (!members.any((m) => m.uid == memberUid)) {
         members.add((
           uid: memberUid,
@@ -908,6 +906,32 @@ class ChatService {
         ));
       }
     }
+
+    if (members.isEmpty) {
+      throw 'أضِف عضوًا واحدًا على الأقل.';
+    }
+
+    final totalMembers = members.length + 1;
+    if (totalMembers > 100) {
+      throw 'الحد الأقصى للمجموعة 100 حساب.';
+    }
+
+    bool allSameAccount = myAcc.isNotEmpty;
+    String? accountCandidate = myAcc;
+    for (final m in members) {
+      if (m.accountId.isEmpty) {
+        allSameAccount = false;
+        break;
+      }
+      if (accountCandidate == null) {
+        accountCandidate = m.accountId;
+      } else if (accountCandidate != m.accountId) {
+        allSameAccount = false;
+        break;
+      }
+    }
+    final convAccountId =
+        allSameAccount ? accountCandidate : null;
 
     final convId = _uuidV4();
     final nowIso = DateTime.now().toUtc().toIso8601String();
@@ -933,7 +957,7 @@ class ChatService {
       'objects': [
         {
           'id': convId,
-          'account_id': myAcc,
+          'account_id': convAccountId,
           'is_group': true,
           'title': title.trim(),
           'created_by': uid,
@@ -948,7 +972,7 @@ class ChatService {
         'conversation_id': convId,
         'user_uid': uid,
         'email': (_bestSenderEmail(me.email) ?? '').toLowerCase(),
-        'account_id': myAcc,
+        'account_id': convAccountId,
         'joined_at': nowIso,
       },
     ];
@@ -991,7 +1015,7 @@ class ChatService {
 
     return ChatConversation.fromMap({
       'id': convId,
-      'account_id': myAcc,
+      'account_id': convAccountId,
       'is_group': true,
       'title': title.trim(),
       'created_by': uid,

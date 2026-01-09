@@ -2507,8 +2507,40 @@ class SyncService {
           filtered[updCol] = remoteUpdatedAt;
         }
 
+        String? prevStatus;
+        if (localTable == 'complaints') {
+          try {
+            final rows = await _db.query(
+              'complaints',
+              columns: ['status', 'replySeen'],
+              where: 'id = ?',
+              whereArgs: [resolvedLocalId],
+              limit: 1,
+            );
+            if (rows.isNotEmpty) {
+              prevStatus = rows.first['status']?.toString();
+            }
+          } catch (_) {}
+        }
+
         await _upsertLocalNonDestructive(localTable, filtered,
             id: resolvedLocalId);
+
+        if (localTable == 'complaints') {
+          final newStatus = filtered['status']?.toString();
+          if (newStatus != null && newStatus != 'open') {
+            if (prevStatus == null || prevStatus == 'open') {
+              try {
+                await _db.update(
+                  'complaints',
+                  {'replySeen': 0},
+                  where: 'id = ?',
+                  whereArgs: [resolvedLocalId],
+                );
+              } catch (_) {}
+            }
+          }
+        }
 
         if (remoteUuid != null && remoteUuid.isNotEmpty) {
           final int syncLocal = (rawLocalId is num)

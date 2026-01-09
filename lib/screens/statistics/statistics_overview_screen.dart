@@ -17,6 +17,7 @@ import 'package:aelmamclinic/core/features.dart';
 import 'package:aelmamclinic/models/return_entry.dart';
 import 'package:aelmamclinic/providers/statistics_provider.dart';
 import 'package:aelmamclinic/services/db_service.dart';
+import 'package:aelmamclinic/services/billing_service.dart';
 
 /*── شاشات مختلفة ───────────────────────────────────────────*/
 import 'package:aelmamclinic/screens/backup_restore_screen.dart';
@@ -79,10 +80,16 @@ class StatisticsOverviewScreen extends StatefulWidget {
 class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   final GraphQLClient _gql = NhostGraphqlService.buildClient();
+  final BillingService _billing = BillingService();
 
   // عدّاد المحادثات غير المقروءة + مؤقّت تحديث دوري
   int _unreadChatsCount = 0;
   Timer? _unreadPollTimer;
+  StreamSubscription<String>? _dbChangesSub;
+  bool _hasComplaintReply = false;
+
+  int? _planDaysLeft;
+  bool _planExpirySoon = false;
 
   // حالة الترحيب لأول مرة/مرحبًا بعودتك — تُحتسب مرة واحدة ثم نحدّث التخزين
   late final Future<bool> _firstOpenFuture = _getAndMarkFirstOpenForUser();
@@ -108,11 +115,19 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
     _unreadPollTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       _refreshUnreadChatsCount();
     });
+    _refreshComplaintsBadge();
+    _dbChangesSub = DBService.instance.changes.listen((table) {
+      if (table == 'complaints') {
+        _refreshComplaintsBadge();
+      }
+    });
+    _checkPlanExpiryNotice();
   }
 
   @override
   void dispose() {
     _unreadPollTimer?.cancel();
+    _dbChangesSub?.cancel();
     super.dispose();
   }
 
@@ -234,6 +249,82 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
     } catch (_) {
       // تجاهل بهدوء؛ لا نكسر الواجهة بسبب العدّاد
     }
+  }
+
+  Future<void> _refreshComplaintsBadge() async {
+    try {
+      final db = await DBService.instance.database;
+      final rows = await db.rawQuery(
+        "SELECT COUNT(*) AS c FROM complaints WHERE status != 'open' AND IFNULL(replySeen, 0) = 0",
+      );
+      final count = (rows.first['c'] as int?) ?? 0;
+      if (!mounted) return;
+      setState(() => _hasComplaintReply = count > 0);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _hasComplaintReply = false);
+    }
+  }
+
+  Future<void> _checkPlanExpiryNotice() async {
+    final auth = context.read<AuthProvider>();
+    if (auth.isSuperAdmin) return;
+    if ((auth.role ?? '').toLowerCase() != 'owner') return;
+    try {
+      final details = await _billing.fetchMyPlanDetails();
+      final planCode =
+          (details['plan_code'] ?? 'free').toString().toLowerCase();
+      final endRaw = details['plan_end_at']?.toString();
+      if (!mounted) return;
+      if (planCode == 'free' || endRaw == null || endRaw.isEmpty) {
+        setState(() {
+          _planDaysLeft = null;
+          _planExpirySoon = false;
+        });
+        return;
+      }
+      final endAt = DateTime.tryParse(endRaw)?.toLocal();
+      if (endAt == null) return;
+      final daysLeft = endAt.difference(DateTime.now()).inDays;
+      final show = daysLeft >= 0 && daysLeft <= 7;
+      setState(() {
+        _planDaysLeft = daysLeft;
+        _planExpirySoon = show;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _planExpirySoon = false);
+    }
+  }
+
+  Widget _buildPlanExpiryBanner() {
+    final scheme = Theme.of(context).colorScheme;
+    final daysLeft = _planDaysLeft ?? 0;
+    final msg = daysLeft == 0
+        ? 'تنتهي خطتك اليوم. يُفضّل تجديد الاشتراك.'
+        : 'تنتهي خطتك خلال $daysLeft يوم.';
+    return NeuCard(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Row(
+        children: [
+          Icon(Icons.warning_amber_rounded, color: scheme.error),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              msg,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const MyPlanScreen()),
+            ),
+            child: const Text('تجديد'),
+          ),
+        ],
+      ),
+    );
   }
 
   /*────────────────── عودات اليوم ──────────────────*/
@@ -460,6 +551,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
     VoidCallback? onDenied,
     bool enabled = true,
     bool showProBadge = false,
+    bool showAlertDot = false,
   }) {
     final scheme = Theme.of(context).colorScheme;
     final isRtl = Directionality.of(context) == ui.TextDirection.rtl;
@@ -502,6 +594,16 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
                     ),
+                  ),
+                ),
+              if (showAlertDot)
+                Container(
+                  width: 8,
+                  height: 8,
+                  margin: const EdgeInsets.only(left: 8),
+                  decoration: const BoxDecoration(
+                    color: Colors.red,
+                    shape: BoxShape.circle,
                   ),
                 ),
             ],
@@ -867,6 +969,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
                     _drawerItem(
                       icon: Icons.report_problem_outlined,
                       title: 'الشكاوى والأعطال',
+                      showAlertDot: _hasComplaintReply,
                       onTap: () {
                         Navigator.pop(context);
                         Navigator.push(
@@ -1129,6 +1232,8 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
       onRefresh: () async {
         await stats.refresh();
         _refreshUnreadChatsCount(); // حدّث العدّاد أيضًا عند السحب للتحديث
+        _checkPlanExpiryNotice();
+        _refreshComplaintsBadge();
       },
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -1136,6 +1241,10 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (_planExpirySoon) ...[
+              _buildPlanExpiryBanner(),
+              const SizedBox(height: 10),
+            ],
             /*────────── اختيار فترة الإحصاء ──────────*/
             Row(
               children: [

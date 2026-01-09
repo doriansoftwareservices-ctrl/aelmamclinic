@@ -1,14 +1,14 @@
 # Inventory (Server Snapshot)
 
-- Snapshot: server_snapshot_mergrgclboxflnucehgb_20260107_092314
-- Generated: 2026-01-07T09:23:32.637496
+- Snapshot: server_snapshot_mergrgclboxflnucehgb_20260109_181259
+- Generated: 2026-01-09T18:13:21.996715
 
 ## Counts
 
 - Tracked tables (Hasura metadata): *87*
-- Tracked functions (Hasura metadata): *44*
+- Tracked functions (Hasura metadata): *45*
 - db_objects rows: *93*
-- db_functions rows: *165*
+- db_functions rows: *166*
 - db_policies rows: *154*
 
 ## Tracked tables
@@ -128,6 +128,7 @@
 - public.chat_admin_start_dm
 - public.chat_decline_invitation
 - public.chat_mark_delivered
+- public.chat_start_dm
 - public.create_subscription_request
 - public.debug_auth_context
 - public.delete_employee

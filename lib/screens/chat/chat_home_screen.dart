@@ -25,6 +25,11 @@ class ChatHomeScreen extends StatefulWidget {
   State<ChatHomeScreen> createState() => _ChatHomeScreenState();
 }
 
+enum _NewConversationMode {
+  direct,
+  group,
+}
+
 class _ChatHomeScreenState extends State<ChatHomeScreen> {
   final TextEditingController _searchCtrl = TextEditingController();
   bool _unreadOnly = false;
@@ -385,47 +390,171 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
   }
 
   Future<void> _showNewConversationDialog(BuildContext context) async {
-    final emailCtrl = TextEditingController();
-    final result = await showDialog<String>(
+    final mode = await showDialog<_NewConversationMode>(
       context: context,
       builder: (_) => Directionality(
         textDirection: ui.TextDirection.rtl,
         child: AlertDialog(
           title: const Text('بدء محادثة جديدة'),
-          content: TextField(
-            controller: emailCtrl,
-            keyboardType: TextInputType.emailAddress,
-            decoration: const InputDecoration(
-              hintText: 'أدخل البريد الإلكتروني',
-            ),
-            textDirection: ui.TextDirection.ltr,
-          ),
+          content: const Text('اختر نوع المحادثة'),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
               child: const Text('إلغاء'),
             ),
+            TextButton(
+              onPressed: () =>
+                  Navigator.of(context).pop(_NewConversationMode.direct),
+              child: const Text('محادثة مباشرة'),
+            ),
             FilledButton(
-              onPressed: () => Navigator.of(
-                context,
-              ).pop(emailCtrl.text.trim().toLowerCase()),
-              child: const Text('بدء'),
+              onPressed: () =>
+                  Navigator.of(context).pop(_NewConversationMode.group),
+              child: const Text('مجموعة'),
             ),
           ],
         ),
       ),
     );
 
-    if (result == null || result.isEmpty) {
-      emailCtrl.dispose();
+    if (mode == null) return;
+
+    if (mode == _NewConversationMode.direct) {
+      final emailCtrl = TextEditingController();
+      final result = await showDialog<String>(
+        context: context,
+        builder: (_) => Directionality(
+          textDirection: ui.TextDirection.rtl,
+          child: AlertDialog(
+            title: const Text('بدء محادثة جديدة'),
+            content: TextField(
+              controller: emailCtrl,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(
+                hintText: 'أدخل البريد الإلكتروني',
+              ),
+              textDirection: ui.TextDirection.ltr,
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('إلغاء'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(
+                  context,
+                ).pop(emailCtrl.text.trim().toLowerCase()),
+                child: const Text('بدء'),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      if (result == null || result.isEmpty) {
+        emailCtrl.dispose();
+        return;
+      }
+
+      try {
+        final chat = context.read<ChatProvider>();
+        final conversation = await chat.startDirectByEmail(
+          result,
+        ); // will schedule refresh
+        await chat.openConversation(conversation.id);
+        await chat.markConversationRead(conversation.id);
+        if (!mounted) return;
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => ChatRoomScreen(conversation: conversation),
+          ),
+        );
+        await chat.refreshConversations();
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('تعذر إنشاء المحادثة: $e')));
+      } finally {
+        emailCtrl.dispose();
+      }
+      return;
+    }
+
+    final titleCtrl = TextEditingController();
+    final membersCtrl = TextEditingController();
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (_) => Directionality(
+        textDirection: ui.TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('إنشاء مجموعة جديدة'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: titleCtrl,
+                decoration: const InputDecoration(
+                  hintText: 'اسم المجموعة',
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: membersCtrl,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(
+                  hintText: 'أدخل الإيميلات (مفصولة بفواصل أو أسطر)',
+                ),
+                maxLines: 4,
+                textDirection: ui.TextDirection.ltr,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('إلغاء'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('إنشاء'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result != true) {
+      titleCtrl.dispose();
+      membersCtrl.dispose();
+      return;
+    }
+
+    final title = titleCtrl.text.trim();
+    final rawMembers = membersCtrl.text.trim();
+    final members = rawMembers
+        .split(RegExp(r'[,\n\r;\s]+'))
+        .map((e) => e.trim().toLowerCase())
+        .where((e) => e.isNotEmpty)
+        .toSet()
+        .toList();
+
+    if (title.isEmpty || members.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('يرجى إدخال اسم المجموعة والإيميلات.')),
+      );
+      titleCtrl.dispose();
+      membersCtrl.dispose();
       return;
     }
 
     try {
       final chat = context.read<ChatProvider>();
-      final conversation = await chat.startDirectByEmail(
-        result,
-      ); // will schedule refresh
+      final conversation = await chat.createGroup(
+        title: title,
+        memberEmails: members,
+      );
       await chat.openConversation(conversation.id);
       await chat.markConversationRead(conversation.id);
       if (!mounted) return;
@@ -437,11 +566,12 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
       await chat.refreshConversations();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('تعذر إنشاء المحادثة: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذر إنشاء المجموعة: $e')),
+      );
     } finally {
-      emailCtrl.dispose();
+      titleCtrl.dispose();
+      membersCtrl.dispose();
     }
   }
 }
