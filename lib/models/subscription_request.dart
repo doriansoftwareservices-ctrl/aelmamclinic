@@ -9,6 +9,7 @@ class SubscriptionRequest {
   final String? proofUrl;
   final String? referenceText;
   final String? senderName;
+  final String? clinicName;
   final DateTime? createdAt;
 
   const SubscriptionRequest({
@@ -22,6 +23,7 @@ class SubscriptionRequest {
     this.proofUrl,
     this.referenceText,
     this.senderName,
+    this.clinicName,
     this.createdAt,
   });
 
@@ -37,6 +39,7 @@ class SubscriptionRequest {
       proofUrl: map['proof_url']?.toString(),
       referenceText: map['reference_text']?.toString(),
       senderName: map['sender_name']?.toString(),
+      clinicName: map['clinic_name']?.toString(),
       createdAt: DateTime.tryParse(map['created_at']?.toString() ?? ''),
     );
   }

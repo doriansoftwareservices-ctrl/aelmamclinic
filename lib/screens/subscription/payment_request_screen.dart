@@ -28,6 +28,7 @@ class _PaymentRequestScreenState extends State<PaymentRequestScreen> {
   final BillingService _billing = BillingService();
   final NhostStorageService _storage = NhostStorageService();
 
+  final TextEditingController _clinicNameCtrl = TextEditingController();
   final TextEditingController _referenceCtrl = TextEditingController();
   final TextEditingController _senderCtrl = TextEditingController();
 
@@ -37,6 +38,7 @@ class _PaymentRequestScreenState extends State<PaymentRequestScreen> {
 
   @override
   void dispose() {
+    _clinicNameCtrl.dispose();
     _referenceCtrl.dispose();
     _senderCtrl.dispose();
     _storage.dispose();
@@ -69,6 +71,10 @@ class _PaymentRequestScreenState extends State<PaymentRequestScreen> {
 
   Future<void> _submit() async {
     if (_submitting) return;
+    if (_clinicNameCtrl.text.trim().isEmpty) {
+      setState(() => _error = 'يرجى إدخال اسم العيادة أولًا.');
+      return;
+    }
     if (_proofFile == null) {
       setState(() => _error = 'يرجى إرفاق إثبات الدفع أولًا.');
       return;
@@ -86,6 +92,7 @@ class _PaymentRequestScreenState extends State<PaymentRequestScreen> {
         planCode: widget.plan.code,
         paymentMethodId: widget.method.id,
         proofUrl: proofId,
+        clinicName: _clinicNameCtrl.text.trim(),
         referenceText: _referenceCtrl.text.trim(),
         senderName: _senderCtrl.text.trim(),
       );
@@ -172,6 +179,12 @@ class _PaymentRequestScreenState extends State<PaymentRequestScreen> {
                 ),
               ),
               const SizedBox(height: 12),
+              NeuField(
+                controller: _clinicNameCtrl,
+                labelText: 'اسم العيادة',
+                prefix: const Icon(Icons.local_hospital_outlined),
+              ),
+              const SizedBox(height: 10),
               NeuField(
                 controller: _referenceCtrl,
                 labelText: 'رقم العملية / مرجع التحويل',

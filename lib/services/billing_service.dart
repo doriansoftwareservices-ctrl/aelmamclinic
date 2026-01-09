@@ -103,6 +103,7 @@ class BillingService {
     required String planCode,
     required String paymentMethodId,
     String? proofUrl,
+    String? clinicName,
     String? referenceText,
     String? senderName,
   }) async {
@@ -111,6 +112,7 @@ class BillingService {
         $plan: String!
         $method: uuid!
         $proof: String
+        $clinic: String
         $reference: String
         $sender: String
       ) {
@@ -119,6 +121,7 @@ class BillingService {
             p_plan: $plan
             p_payment_method: $method
             p_proof_url: $proof
+            p_clinic_name: $clinic
             p_reference_text: $reference
             p_sender_name: $sender
           }
@@ -134,6 +137,7 @@ class BillingService {
           'plan': planCode,
           'method': paymentMethodId,
           'proof': proofUrl,
+          'clinic': clinicName,
           'reference': referenceText,
           'sender': senderName,
         },

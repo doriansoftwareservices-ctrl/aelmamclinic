@@ -32,10 +32,39 @@ METADATA_URL="${HASURA_BASE}/v1/metadata"
 
 post_meta () {
   local f="$1"
-  curl -sS "$METADATA_URL" \
-    -H "Content-Type: application/json" \
-    -H "x-hasura-admin-secret: ${HASURA_ADMIN_SECRET}" \
-    -d @"$f"
+  local out="/tmp/hasura_meta_$(basename "$f").out"
+  local code=""
+  local body=""
+  local attempt
+
+  for attempt in 1 2 3 4 5; do
+    code="$(curl -sS --show-error \
+      -o "$out" -w "%{http_code}" \
+      -H "Content-Type: application/json" \
+      -H "x-hasura-admin-secret: ${HASURA_ADMIN_SECRET}" \
+      -d @"$f" \
+      "$METADATA_URL" || true)"
+    body="$(cat "$out" 2>/dev/null || true)"
+    if [ "$code" = "200" ] && [ -n "$body" ]; then
+      break
+    fi
+    sleep 2
+  done
+
+  if [ -z "$body" ]; then
+    echo "Empty response (HTTP $code) for $(basename "$f")" >&2
+    return 1
+  fi
+  if [ "$code" != "200" ]; then
+    echo "HTTP $code for $(basename "$f")" >&2
+    echo "$body" >&2
+    return 1
+  fi
+  if printf '%s' "$body" | head -c 1 | grep -q '[{[]'; then
+    printf '%s' "$body" | python3 -m json.tool
+  else
+    printf '%s' "$body"
+  fi
 }
 
 tmpdir=$(mktemp -d)
@@ -98,16 +127,18 @@ cat > "$tmpdir/subscription_requests_user_insert.json" <<'JSON'
     "role": "user",
     "permission": {
       "check": {
-        "account_id": {
-          "_in": {
-            "_select": {
-              "column": "account_id",
-              "table": { "schema": "public", "name": "user_current_account" },
-              "where": { "user_uid": { "_eq": "X-Hasura-User-Id" } }
+        "_and": [
+          { "user_uid": { "_eq": "X-Hasura-User-Id" } },
+          {
+            "_exists": {
+              "_table": { "schema": "public", "name": "user_current_account" },
+              "_where": {
+                "account_id": { "_ceq": "account_id" },
+                "user_uid": { "_eq": "X-Hasura-User-Id" }
+              }
             }
           }
-        },
-        "user_uid": { "_eq": "X-Hasura-User-Id" }
+        ]
       },
       "columns": [
         "account_id",
@@ -118,6 +149,7 @@ cat > "$tmpdir/subscription_requests_user_insert.json" <<'JSON'
         "proof_url",
         "reference_text",
         "sender_name",
+        "clinic_name",
         "status",
         "note"
       ]
@@ -144,6 +176,7 @@ cat > "$tmpdir/subscription_requests_user_select.json" <<'JSON'
         "proof_url",
         "reference_text",
         "sender_name",
+        "clinic_name",
         "status",
         "note",
         "created_at",
@@ -152,13 +185,11 @@ cat > "$tmpdir/subscription_requests_user_select.json" <<'JSON'
         "reviewed_at"
       ],
       "filter": {
-        "account_id": {
-          "_in": {
-            "_select": {
-              "column": "account_id",
-              "table": { "schema": "public", "name": "user_current_account" },
-              "where": { "user_uid": { "_eq": "X-Hasura-User-Id" } }
-            }
+        "_exists": {
+          "_table": { "schema": "public", "name": "user_current_account" },
+          "_where": {
+            "account_id": { "_ceq": "account_id" },
+            "user_uid": { "_eq": "X-Hasura-User-Id" }
           }
         }
       },
@@ -281,23 +312,24 @@ cat > "$tmpdir/chat_participants_me_insert.json" <<'JSON'
 JSON
 
 echo "== Drop inconsistent metadata =="
-post_meta "$tmpdir/drop_inconsistent.json" | python3 -m json.tool
+post_meta "$tmpdir/drop_inconsistent.json" || true
 
 echo "== Drop old permissions (ignore if missing) =="
-post_meta "$tmpdir/drop_subscription_requests_user_insert.json" | python3 -m json.tool || true
-post_meta "$tmpdir/drop_subscription_requests_user_select.json" | python3 -m json.tool || true
-post_meta "$tmpdir/drop_chat_participants_user_insert.json" | python3 -m json.tool || true
-post_meta "$tmpdir/drop_chat_participants_me_insert.json" | python3 -m json.tool || true
+post_meta "$tmpdir/drop_subscription_requests_user_insert.json" || true
+post_meta "$tmpdir/drop_subscription_requests_user_select.json" || true
+post_meta "$tmpdir/drop_chat_participants_user_insert.json" || true
+post_meta "$tmpdir/drop_chat_participants_me_insert.json" || true
 
 echo "== Apply subscription_requests permissions =="
-post_meta "$tmpdir/subscription_requests_user_insert.json" | python3 -m json.tool
-post_meta "$tmpdir/subscription_requests_user_select.json" | python3 -m json.tool
+post_meta "$tmpdir/subscription_requests_user_insert.json"
+post_meta "$tmpdir/subscription_requests_user_select.json"
 
 echo "== Apply chat_participants insert permissions =="
-post_meta "$tmpdir/chat_participants_user_insert.json" | python3 -m json.tool
-post_meta "$tmpdir/chat_participants_me_insert.json" | python3 -m json.tool
+post_meta "$tmpdir/chat_participants_user_insert.json"
+post_meta "$tmpdir/chat_participants_me_insert.json"
 
 echo "== Reload metadata =="
-echo '{"type":"reload_metadata","args":{}}' | post_meta /dev/stdin | python3 -m json.tool
+echo '{"type":"reload_metadata","args":{}}' > "$tmpdir/reload.json"
+post_meta "$tmpdir/reload.json" || true
 
 echo "Done."

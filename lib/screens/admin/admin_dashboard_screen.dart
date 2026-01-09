@@ -936,6 +936,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       children: _subscriptionRequests.map((req) {
         final ref = (req.referenceText ?? '').trim();
         final sender = (req.senderName ?? '').trim();
+        final clinic = (req.clinicName ?? '').trim();
         return NeuCard(
           margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
           padding: const EdgeInsets.all(12),
@@ -946,6 +947,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             subtitle: Text(
               [
                 'الحساب: ${req.accountId}',
+                if (clinic.isNotEmpty) 'العيادة: $clinic',
                 'الحالة: ${req.status}',
                 if (ref.isNotEmpty) 'المرجع: $ref',
                 if (sender.isNotEmpty) 'الاسم المحوّل: $sender',

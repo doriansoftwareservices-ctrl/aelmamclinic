@@ -6697,6 +6697,7 @@
           - proof_url
           - reference_text
           - sender_name
+          - clinic_name
           - status
           - note
           - created_at
@@ -6704,16 +6705,15 @@
           - reviewed_by
           - reviewed_at
         filter:
-          account_id:
-            _in:
-              _select:
-                table:
-                  schema: public
-                  name: user_current_account
-                column: account_id
-                where:
-                  user_uid:
-                    _eq: X-Hasura-User-Id
+          _exists:
+            _table:
+              schema: public
+              name: user_current_account
+            _where:
+              account_id:
+                _ceq: account_id
+              user_uid:
+                _eq: X-Hasura-User-Id
     - role: superadmin
       permission:
         columns: "*"
@@ -6722,18 +6722,18 @@
     - role: user
       permission:
         check:
-          account_id:
-            _in:
-              _select:
-                table:
+          _and:
+            - user_uid:
+                _eq: X-Hasura-User-Id
+            - _exists:
+                _table:
                   schema: public
                   name: user_current_account
-                column: account_id
-                where:
+                _where:
+                  account_id:
+                    _ceq: account_id
                   user_uid:
                     _eq: X-Hasura-User-Id
-          user_uid:
-            _eq: X-Hasura-User-Id
         columns:
           - account_id
           - user_uid
@@ -6743,6 +6743,7 @@
           - proof_url
           - reference_text
           - sender_name
+          - clinic_name
           - status
           - note
     - role: superadmin

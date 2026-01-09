@@ -59,7 +59,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
 
     final auth = context.read<AuthProvider>();
     final accId = auth.accountId ?? '';
-    final canManage = auth.isSuperAdmin;
+    final canManage = auth.isOwnerOrAdmin;
     final canView =
         canManage || auth.featureAllowed(FeatureKeys.auditPermissions);
 
@@ -174,10 +174,11 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
 
   Future<void> _savePermission(String userUid, _FeaturePerm perm) async {
     final auth = context.read<AuthProvider>();
-    if (!auth.isSuperAdmin) {
+    if (!auth.isOwnerOrAdmin) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('هذه العملية مخصّصة للسوبر أدمن فقط.')),
+          const SnackBar(
+              content: Text('هذه العملية مخصّصة للمالك أو السوبر أدمن فقط.')),
         );
       }
       return;

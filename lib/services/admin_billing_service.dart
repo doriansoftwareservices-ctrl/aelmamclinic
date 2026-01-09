@@ -28,6 +28,7 @@ class AdminBillingService {
           proof_url
           reference_text
           sender_name
+          clinic_name
           created_at
         }
       }
