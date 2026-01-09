@@ -217,7 +217,6 @@
   configuration:
     exposed_as: mutation
     custom_name: chat_start_dm
-    session_argument: hasura_session
   permissions:
   - role: me
   - role: user

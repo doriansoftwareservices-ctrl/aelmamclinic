@@ -17,7 +17,15 @@
   select_permissions:
     - role: me
       permission:
-        columns: "*"
+        columns:
+          - account_id
+          - conversation_id
+          - user_uid
+          - email
+          - nickname
+          - role
+          - joined_at
+          - muted
         filter:
           _or:
             - user_uid:
@@ -35,7 +43,15 @@
                     _eq: false
     - role: user
       permission:
-        columns: "*"
+        columns:
+          - account_id
+          - conversation_id
+          - user_uid
+          - email
+          - nickname
+          - role
+          - joined_at
+          - muted
         filter:
           _or:
             - user_uid:
@@ -262,7 +278,15 @@
                         _ceq: "conversation_id"
                       created_by:
                         _eq: "X-Hasura-User-Id"
-        columns: "*"
+        columns:
+          - account_id
+          - conversation_id
+          - user_uid
+          - email
+          - nickname
+          - role
+          - joined_at
+          - muted
     - role: user
       permission:
         check:
@@ -293,7 +317,15 @@
                         _ceq: "conversation_id"
                       created_by:
                         _eq: "X-Hasura-User-Id"
-        columns: "*"
+        columns:
+          - account_id
+          - conversation_id
+          - user_uid
+          - email
+          - nickname
+          - role
+          - joined_at
+          - muted
     - role: superadmin
       permission:
         check: {}
@@ -6655,7 +6687,20 @@
   select_permissions:
     - role: user
       permission:
-        columns: "*"
+        columns:
+          - id
+          - account_id
+          - user_uid
+          - plan_code
+          - payment_method_id
+          - amount
+          - proof_url
+          - status
+          - note
+          - created_at
+          - updated_at
+          - reviewed_by
+          - reviewed_at
         filter:
           account_id:
             _in:
@@ -6687,7 +6732,15 @@
                     _eq: X-Hasura-User-Id
           user_uid:
             _eq: X-Hasura-User-Id
-        columns: "*"
+        columns:
+          - account_id
+          - user_uid
+          - plan_code
+          - payment_method_id
+          - amount
+          - proof_url
+          - status
+          - note
     - role: superadmin
       permission:
         check: {}
