@@ -236,17 +236,20 @@
       permission:
         check:
           _and:
-            - _exists:
-                _table:
-                  schema: public
-                  name: account_users
-                _where:
-                  account_id:
-                    _ceq: "account_id"
-                  user_uid:
-                    _eq: "X-Hasura-User-Id"
-                  disabled:
-                    _eq: false
+            - _or:
+                - account_id:
+                    _is_null: true
+                - _exists:
+                    _table:
+                      schema: public
+                      name: account_users
+                    _where:
+                      account_id:
+                        _ceq: "account_id"
+                      user_uid:
+                        _eq: "X-Hasura-User-Id"
+                      disabled:
+                        _eq: false
             - _or:
                 - user_uid:
                     _eq: "X-Hasura-User-Id"
@@ -264,17 +267,20 @@
       permission:
         check:
           _and:
-            - _exists:
-                _table:
-                  schema: public
-                  name: account_users
-                _where:
-                  account_id:
-                    _ceq: "account_id"
-                  user_uid:
-                    _eq: "X-Hasura-User-Id"
-                  disabled:
-                    _eq: false
+            - _or:
+                - account_id:
+                    _is_null: true
+                - _exists:
+                    _table:
+                      schema: public
+                      name: account_users
+                    _where:
+                      account_id:
+                        _ceq: "account_id"
+                      user_uid:
+                        _eq: "X-Hasura-User-Id"
+                      disabled:
+                        _eq: false
             - _or:
                 - user_uid:
                     _eq: "X-Hasura-User-Id"
