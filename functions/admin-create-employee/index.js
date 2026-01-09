@@ -239,7 +239,14 @@ async function callAdminCreateEmployee(
     }
     const json = await res.json();
     if (json.errors?.length) {
-      throw new Error(json.errors.map((e) => e.message).join(' | '));
+      const details = json.errors.map((e) =>
+        JSON.stringify({
+          message: e.message,
+          internal: e.extensions?.internal,
+          path: e.path,
+        }),
+      );
+      throw new Error(details.join(' | '));
     }
     const rows = json.data?.admin_create_employee_full;
     if (Array.isArray(rows) && rows.length > 0) {
@@ -263,6 +270,7 @@ async function callAdminCreateEmployee(
       return run({
         ...baseHeaders,
         'x-hasura-admin-secret': adminSecret,
+        'x-hasura-role': 'service_role',
       });
     }
   };
