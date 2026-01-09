@@ -367,7 +367,7 @@ admin_emp=$(curl -sS "$FUNCTIONS_URL/admin-create-employee" \
   -H "Content-Type: application/json" \
   -d "{\"account_id\":\"$account_id\",\"email\":\"$EMP1_EMAIL\",\"password\":\"$EMP1_PASS\"}")
 admin_ok=$(printf '%s' "$admin_emp" | json_get 'ok')
-if [ "$admin_ok" = "true" ]; then
+if printf '%s' "$admin_ok" | rg -q '^(true|True|t|1)$'; then
   step_ok "admin-create-employee"
 else
   echo "$admin_emp"
@@ -379,7 +379,7 @@ owner_emp=$(curl -sS "$FUNCTIONS_URL/owner-create-employee" \
   -H "Content-Type: application/json" \
   -d "{\"email\":\"$EMP2_EMAIL\",\"password\":\"$EMP2_PASS\"}")
 owner_ok=$(printf '%s' "$owner_emp" | json_get 'ok')
-if [ "$owner_ok" = "true" ]; then
+if printf '%s' "$owner_ok" | rg -q '^(true|True|t|1)$'; then
   step_ok "owner-create-employee"
 else
   echo "$owner_emp"

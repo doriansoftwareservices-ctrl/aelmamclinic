@@ -157,11 +157,42 @@ const adminUserEndpoints = (authUrl) => {
   return [...new Set(endpoints)];
 };
 
+const decodeJwtPayload = (authHeader) => {
+  if (!authHeader) return null;
+  const raw = authHeader.startsWith('Bearer ')
+    ? authHeader.slice('Bearer '.length).trim()
+    : authHeader.trim();
+  const parts = raw.split('.');
+  if (parts.length < 2) return null;
+  const payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+  const pad = payload.length % 4 ? '='.repeat(4 - (payload.length % 4)) : '';
+  try {
+    return JSON.parse(Buffer.from(payload + pad, 'base64').toString('utf8'));
+  } catch (_) {
+    return null;
+  }
+};
+
+const extractUserIdFromAuth = (authHeader) => {
+  const payload = decodeJwtPayload(authHeader) || {};
+  const claims =
+    payload['https://hasura.io/jwt/claims'] ||
+    payload['https://hasura.io/jwt/claims'.toString()] ||
+    {};
+  return (
+    claims['x-hasura-user-id'] ||
+    payload['x-hasura-user-id'] ||
+    payload.sub ||
+    ''
+  );
+};
+
 async function callAdminCreateEmployee(
   accountId,
   email,
   password,
   authHeader,
+  superUserId,
 ) {
   const gqlUrl = process.env.NHOST_GRAPHQL_URL;
   const adminSecret =
@@ -189,6 +220,13 @@ async function callAdminCreateEmployee(
     query,
     variables: { account: accountId, email, password },
   };
+  const baseHeaders = {
+    'Content-Type': 'application/json',
+    'x-hasura-role': 'superadmin',
+  };
+  if (superUserId) {
+    baseHeaders['x-hasura-user-id'] = superUserId;
+  }
   const run = async (headers) => {
     const res = await fetch(gqlUrl, {
       method: 'POST',
@@ -215,16 +253,15 @@ async function callAdminCreateEmployee(
   const attempt = async () => {
     try {
       return await run({
-        'Content-Type': 'application/json',
+        ...baseHeaders,
         Authorization: authHeader,
-        'x-hasura-role': 'superadmin',
       });
     } catch (err) {
       if (!adminSecret) {
         throw err;
       }
       return run({
-        'Content-Type': 'application/json',
+        ...baseHeaders,
         'x-hasura-admin-secret': adminSecret,
       });
     }
@@ -338,6 +375,7 @@ module.exports = async function handler(req, res) {
     const accountId = `${body.account_id ?? ''}`.trim();
     const email = `${body.email ?? ''}`.trim().toLowerCase();
     const password = `${body.password ?? ''}`;
+    const superUserId = extractUserIdFromAuth(authHeader);
 
     if (!accountId || !email || !password) {
       res.status(400).json({ ok: false, error: 'Missing fields' });
@@ -356,6 +394,7 @@ module.exports = async function handler(req, res) {
       email,
       password,
       authHeader,
+      superUserId,
     );
     res.json(result);
   } catch (err) {
