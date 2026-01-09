@@ -69,6 +69,82 @@ const resolveAuthUrl = () => {
   return null;
 };
 
+const resolveRunSqlUrl = () => {
+  const raw =
+    process.env.NHOST_GRAPHQL_URL || process.env.NHOST_BACKEND_URL || '';
+  if (!raw || !raw.includes('nhost.run')) return null;
+  let base = raw.replace(/\/+$/, '');
+  base = base.replace('.graphql.', '.hasura.');
+  base = base.replace(/\/v1\/graphql$/i, '').replace(/\/v1$/i, '');
+  return `${base}/v2/query`;
+};
+
+async function runSql(sql) {
+  const url = resolveRunSqlUrl();
+  const adminSecret =
+    process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
+  if (!url || !adminSecret) {
+    throw new Error('Missing HASURA admin secret for SQL');
+  }
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-hasura-admin-secret': adminSecret,
+    },
+    body: JSON.stringify({
+      type: 'run_sql',
+      args: { source: 'default', read_only: true, sql },
+    }),
+  });
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`run_sql failed: ${res.status} ${txt}`);
+  }
+  return res.json();
+}
+
+async function lookupAuthUserId(email) {
+  const sql = `select id from auth.users where lower(email)=lower('${email}') limit 1;`;
+  const json = await runSql(sql);
+  const row = Array.isArray(json?.result) ? json.result[1] : null;
+  return row ? row[0] : null;
+}
+
+async function signUpUser(email, password) {
+  const authUrl = resolveAuthUrl();
+  if (!authUrl) throw new Error('Missing NHOST_AUTH_URL');
+  const res = await fetch(`${authUrl}/signup/email-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+  if (res.status === 409) return null;
+  if (!res.ok) {
+    const txt = await res.text();
+    if (txt.includes('already') || txt.includes('exists')) return null;
+    throw new Error(`Auth signup failed: ${res.status} ${txt}`);
+  }
+  const json = await res.json();
+  return json?.user?.id || json?.session?.user?.id || null;
+}
+
+async function ensureAuthUser(email, password) {
+  let userId = await signUpUser(email, password);
+  if (!userId) {
+    userId = await lookupAuthUserId(email);
+  }
+  if (userId) return userId;
+
+  // Auth can be eventually consistent; retry lookup briefly.
+  for (let i = 0; i < 6; i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    userId = await lookupAuthUserId(email);
+    if (userId) return userId;
+  }
+  throw new Error('Auth user not found after signup');
+}
+
 const adminUserEndpoints = (authUrl) => {
   if (!authUrl) return [];
   const raw = authUrl.replace(/\/+$/, '');
@@ -223,31 +299,43 @@ async function callOwnerCreateEmployee(authHeader, email, password) {
       }
     }
   `;
-  const res = await fetch(gqlUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: authHeader,
-    },
-    body: JSON.stringify({ query, variables: { email, password } }),
-  });
-  if (!res.ok) {
-    const txt = await res.text();
-    throw new Error(`GraphQL failed: ${res.status} ${txt}`);
+  const attempt = async () => {
+    const res = await fetch(gqlUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: authHeader,
+      },
+      body: JSON.stringify({ query, variables: { email, password } }),
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`GraphQL failed: ${res.status} ${txt}`);
+    }
+    const json = await res.json();
+    if (json.errors?.length) {
+      throw new Error(json.errors.map((e) => e.message).join(' | '));
+    }
+    const rows = json.data?.owner_create_employee_within_limit;
+    const row = Array.isArray(rows) && rows.length > 0 ? rows[0] : rows;
+    if (!row || row.ok !== true) {
+      const msg = row?.error || 'Failed';
+      const err = new Error(msg);
+      err.statusCode = 400;
+      throw err;
+    }
+    return row;
+  };
+
+  try {
+    return await attempt();
+  } catch (err) {
+    if (!`${err?.message ?? ''}`.includes('auth user not found')) {
+      throw err;
+    }
   }
-  const json = await res.json();
-  if (json.errors?.length) {
-    throw new Error(json.errors.map((e) => e.message).join(' | '));
-  }
-  const rows = json.data?.owner_create_employee_within_limit;
-  const row = Array.isArray(rows) && rows.length > 0 ? rows[0] : rows;
-  if (!row || row.ok !== true) {
-    const msg = row?.error || 'Failed';
-    const err = new Error(msg);
-    err.statusCode = 400;
-    throw err;
-  }
-  return row;
+  await new Promise((resolve) => setTimeout(resolve, 700));
+  return attempt();
 }
 
 module.exports = async function handler(req, res) {
@@ -267,6 +355,7 @@ module.exports = async function handler(req, res) {
       return;
     }
 
+    await ensureAuthUser(email, password);
     const result = await callOwnerCreateEmployee(authHeader, email, password);
     res.json(result);
   } catch (err) {
