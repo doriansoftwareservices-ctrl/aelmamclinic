@@ -34,6 +34,7 @@ import 'services/notification_service.dart';
 import 'services/chat_realtime_notifier.dart';
 import 'services/db_service.dart';
 import 'widgets/activation_listener.dart';
+import 'widgets/auth_guard_listener.dart';
 
 /*──────── شاشات ────────*/
 import 'screens/activation_screen.dart';
@@ -401,9 +402,11 @@ class MyApp extends StatelessWidget {
       themeMode: themeProvider.themeMode,
       builder: (ctx, child) {
         return ActivationListener(
-          child: Directionality(
-            textDirection: TextDirection.rtl,
-            child: child!,
+          child: AuthGuardListener(
+            child: Directionality(
+              textDirection: TextDirection.rtl,
+              child: child!,
+            ),
           ),
         );
       },

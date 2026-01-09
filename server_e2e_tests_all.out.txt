@@ -1,0 +1,67 @@
+
+== Auth sign-in ==
+Auth URL: https://mergrgclboxflnucehgb.auth.ap-southeast-1.nhost.run/v1
+GraphQL URL: https://mergrgclboxflnucehgb.graphql.ap-southeast-1.nhost.run/v1
+Functions URL: https://mergrgclboxflnucehgb.functions.ap-southeast-1.nhost.run/v1
+SA_TOKEN_LEN=489
+OK: superadmin signin
+OWNER_TOKEN_LEN=472
+OK: owner signin
+
+== Verify superadmin ==
+true
+OK: fn_is_super_admin_gql
+
+== Owner profile/account ==
+OK: owner account_id e5affed8-e945-4ecd-a44e-098625720502
+
+== Upload subscription proof ==
+OK: proof uploaded 76782f49-9606-4cf4-9f1c-7b50c4035b4d
+
+== Subscription request ==
+REQ_PAYLOAD_BUILT={"query": "mutation CreateReq($plan: String!, $payment: uuid!, $proof: String) { create_subscription_request(args: { p_plan: $plan, p_payment_method: $payment, p_proof_url: $proof }) { id } }", "variables": {"plan": "month", "payment": "", "proof": "76782f49-9606-4cf4-9f1c-7b50c4035b4d"}}
+REQ_PAYLOAD={"query": "mutation CreateReq($plan: String!, $payment: uuid!, $proof: String) { create_subscription_request(args: { p_plan: $plan, p_payment_method: $payment, p_proof_url: $proof }) { id } }", "variables": {"plan": "month", "payment": "", "proof": "76782f49-9606-4cf4-9f1c-7b50c4035b4d"}}
+REQ_VARS={"plan": "month", "payment": "", "proof": "76782f49-9606-4cf4-9f1c-7b50c4035b4d"}
+{"errors":[{"message":"invalid input syntax for type uuid: \"\"","extensions":{"path":"$","code":"data-exception"}}]}
+FAIL: subscription request
+
+== Approve subscription ==
+FAIL: subscription approve (no request)
+
+== Create employees ==
+{"error":"invalid \"x-hasura-admin-secret\"/\"x-hasura-access-key\"","path":"$","code":"access-denied"}{"error":"invalid \"x-hasura-admin-secret\"/\"x-hasura-access-key\"","path":"$","code":"access-denied"}OK: admin-create-employee
+OK: owner-create-employee
+
+== Employee sign-in ==
+OK: employee signin
+
+== Owner inserts: employees/patients/financial logs ==
+EMP_PAYLOAD={"query": "mutation I($obj:employees_insert_input!) { insert_employees_one(object:$obj) { id } }", "variables": {"obj": {}}}
+EMP_MUT=mutation I($obj:employees_insert_input!) { insert_employees_one(object:$obj) { id } }
+EMP_VARS={"obj": {}}
+{"errors":[{"message":"Not-NULL violation. null value in column \"account_id\" of relation \"employees\" violates not-null constraint","extensions":{"path":"$.selectionSet.insert_employees_one.args.object","code":"constraint-violation"}}]}
+FAIL: insert employees
+PAT_PAYLOAD={"query": "mutation I($obj:patients_insert_input!) { insert_patients_one(object:$obj) { id } }", "variables": {"obj": {}}}
+PAT_MUT=mutation I($obj:patients_insert_input!) { insert_patients_one(object:$obj) { id } }
+PAT_VARS={"obj": {}}
+{"errors":[{"message":"Not-NULL violation. null value in column \"account_id\" of relation \"patients\" violates not-null constraint","extensions":{"path":"$.selectionSet.insert_patients_one.args.object","code":"constraint-violation"}}]}
+FAIL: insert patients
+FIN_PAYLOAD={"query": "mutation I($obj:financial_logs_insert_input!) { insert_financial_logs_one(object:$obj) { id } }", "variables": {"obj": {}}}
+FIN_MUT=mutation I($obj:financial_logs_insert_input!) { insert_financial_logs_one(object:$obj) { id } }
+FIN_VARS={"obj": {}}
+{"errors":[{"message":"Not-NULL violation. null value in column \"account_id\" of relation \"financial_logs\" violates not-null constraint","extensions":{"path":"$.selectionSet.insert_financial_logs_one.args.object","code":"constraint-violation"}}]}
+FAIL: insert financial_logs
+FAIL: insert employees_salaries (no employee)
+
+== Chat participants (owner inserts 2 users) ==
+OK: chat participants insert
+
+== Complaints insert ==
+COMP_PAYLOAD={"query": "mutation I($obj:complaints_insert_input!) { insert_complaints_one(object:$obj) { id } }", "variables": {"obj": {}}}
+COMP_MUT=mutation I($obj:complaints_insert_input!) { insert_complaints_one(object:$obj) { id } }
+COMP_VARS={"obj": {}}
+{"errors":[{"message":"Not-NULL violation. null value in column \"account_id\" of relation \"complaints\" violates not-null constraint","extensions":{"path":"$.selectionSet.insert_complaints_one.args.object","code":"constraint-violation"}}]}
+FAIL: insert complaints
+
+== Summary ==
+PASS=9 FAIL=7

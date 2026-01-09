@@ -1,14 +1,14 @@
 # Inventory (Server Snapshot)
 
-- Snapshot: server_snapshot_mergrgclboxflnucehgb_20260109_181259
-- Generated: 2026-01-09T18:13:21.996715
+- Snapshot: server_snapshot_mergrgclboxflnucehgb_20260109_194938
+- Generated: 2026-01-09T19:50:06.263531
 
 ## Counts
 
 - Tracked tables (Hasura metadata): *87*
 - Tracked functions (Hasura metadata): *45*
 - db_objects rows: *93*
-- db_functions rows: *166*
+- db_functions rows: *167*
 - db_policies rows: *154*
 
 ## Tracked tables

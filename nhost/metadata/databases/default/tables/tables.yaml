@@ -6695,6 +6695,8 @@
           - payment_method_id
           - amount
           - proof_url
+          - reference_text
+          - sender_name
           - status
           - note
           - created_at
@@ -6739,6 +6741,8 @@
           - payment_method_id
           - amount
           - proof_url
+          - reference_text
+          - sender_name
           - status
           - note
     - role: superadmin

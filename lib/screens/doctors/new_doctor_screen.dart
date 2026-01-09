@@ -72,6 +72,13 @@ class _NewDoctorScreenState extends State<NewDoctorScreen> {
 
   Future<void> _saveDoctor() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_selectedEmployeeId == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('يرجى اختيار الموظف المرتبط بالطبيب أولًا.')),
+      );
+      return;
+    }
 
     final newDoctor = Doctor(
       employeeId: _selectedEmployeeId,

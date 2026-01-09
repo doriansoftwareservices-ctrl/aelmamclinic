@@ -72,11 +72,31 @@ extract_user_id() {
 
 run_sql() {
   local sql="$1"
-  printf '%s' "{\"type\":\"run_sql\",\"args\":{\"source\":\"default\",\"read_only\":false,\"sql\":\"$sql\"}}" \
+  local resp
+  resp=$(printf '%s' "{\"type\":\"run_sql\",\"args\":{\"source\":\"default\",\"read_only\":false,\"sql\":\"$sql\"}}" \
     | curl -sS "$RUNSQL_URL" \
       -H 'Content-Type: application/json' \
       -H "x-hasura-admin-secret: $HASURA_ADMIN_SECRET" \
-      -d @-
+      -d @-)
+  printf '%s' "$resp" | python3 - <<'PY'
+import json,sys
+raw=sys.stdin.read().strip()
+try:
+  data=json.loads(raw) if raw else {}
+except Exception:
+  data={}
+if isinstance(data,dict) and data.get("error"):
+  err=str(data.get("error"))
+  sys.stderr.write(f"RUNSQL_ERROR: {err}\n")
+  if "invalid" in err and "admin-secret" in err:
+    sys.exit(2)
+PY
+  local rc=$?
+  if [ "$rc" -eq 2 ]; then
+    echo "RUNSQL aborted بسبب admin secret غير صالح." >&2
+    exit 1
+  fi
+  printf '%s' "$resp"
 }
 
 signin() {
@@ -212,6 +232,9 @@ if [ -n "$account_id" ]; then
   step_ok "owner account_id $account_id"
 else
   step_fail "owner account_id"
+  log "Abort"
+  echo "PASS=$PASS FAIL=$FAIL"
+  exit 1
 fi
 
 # ---------- Step 4: Upload subscription proof (function) ----------
@@ -308,6 +331,18 @@ log "Subscription request"
 plan_code="month"
 payment_id=$(run_sql "select id from public.payment_methods where is_active=true order by name limit 1")
 payment_id=$(printf '%s' "$payment_id" | json_get 'result.1.0')
+if [ -z "$payment_id" ]; then
+  run_sql "insert into public.payment_methods (name, bank_account, is_active) values ('QA Method','QA-ACCOUNT',true) on conflict do nothing;"
+  payment_id=$(run_sql "select id from public.payment_methods where is_active=true order by name limit 1")
+  payment_id=$(printf '%s' "$payment_id" | json_get 'result.1.0')
+fi
+if [ -z "$payment_id" ]; then
+  echo "Missing payment method id." >&2
+  step_fail "payment method lookup"
+  log "Abort"
+  echo "PASS=$PASS FAIL=$FAIL"
+  exit 1
+fi
 amount=$(run_sql "select price_usd from public.subscription_plans where code='$plan_code' limit 1")
 amount=$(printf '%s' "$amount" | json_get 'result.1.0')
 
@@ -453,14 +488,46 @@ def gql_admin(q, vars):
         data=payload,
         headers={"Content-Type": "application/json", "x-hasura-admin-secret": admin_secret},
     )
-    with urllib.request.urlopen(req) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(req) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except Exception as exc:
+        return {"errors": [{"message": str(exc)}]}
 
 def build_obj():
     type_name = f"{table}_insert_input"
     q = "query T($t:String!){__type(name:$t){inputFields{name type{kind name ofType{kind name ofType{kind name}}}}}}"
     data = gql_admin(q, {"t": type_name})
     fields = (data.get('data') or {}).get('__type', {}).get('inputFields') or []
+    if data.get("errors") or not fields:
+        fallback = {
+            "employees": {
+                "account_id": account_id,
+                "name": "qa-employee",
+                "is_doctor": False,
+            },
+            "patients": {
+                "account_id": account_id,
+                "name": "qa-patient",
+                "phone_number": "000000",
+                "paid_amount": 0,
+                "remaining": 0,
+            },
+            "financial_logs": {
+                "account_id": account_id,
+                "transaction_type": "qa",
+                "amount": 1,
+            },
+            "complaints": {
+                "account_id": account_id,
+                "user_uid": user_uid,
+                "message": "qa complaint",
+                "status": "open",
+            },
+        }
+        base = fallback.get(table, {})
+        base.update(extra)
+        return base
     obj = {}
     def is_non_null(t):
         return t.get('kind') == 'NON_NULL'

@@ -390,13 +390,13 @@ class _LoginScreenState extends State<LoginScreen> {
       case AuthSessionStatus.success:
         return null;
       case AuthSessionStatus.disabled:
-        return 'حسابك مجمد. نرجو التواصل مع خدمة العملاء.';
+        return 'قم بمراجعة الإدارة.';
       case AuthSessionStatus.accountFrozen:
         return 'تم تجميد حساب العيادة. تواصل مع الإدارة لاستعادة الوصول.';
       case AuthSessionStatus.noAccount:
-        return 'لم يتم ربط هذا المستخدم بأي عيادة بعد. اطلب من الإدارة إكمال الإعداد.';
+        return 'للأسف تم اقصائك من الإدارة للمرفق الصحي';
       case AuthSessionStatus.planUpgradeRequired:
-        return 'الخطة الحالية للعيادة هي "FREE" لصلاحيات اكبر يجب ترقية الخطة';
+        return 'ناسف فالخطة الحالية للمرفق الصحي هي FREE يجب تجديد الاشتراك';
       case AuthSessionStatus.signedOut:
         return 'انتهت الجلسة أثناء التحقق من الحساب. حاول تسجيل الدخول مجددًا.';
       case AuthSessionStatus.networkError:
