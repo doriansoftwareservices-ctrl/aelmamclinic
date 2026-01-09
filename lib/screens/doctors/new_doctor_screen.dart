@@ -24,6 +24,7 @@ class _NewDoctorScreenState extends State<NewDoctorScreen> {
   final _phoneCtrl = TextEditingController();
 
   int? _selectedEmployeeId;
+  String? _selectedEmployeeUserUid;
 
   TimeOfDay? _startTime;
   TimeOfDay? _endTime;
@@ -59,6 +60,9 @@ class _NewDoctorScreenState extends State<NewDoctorScreen> {
     if (selectedEmployee != null) {
       setState(() {
         _selectedEmployeeId = selectedEmployee['id'] as int?;
+        _selectedEmployeeUserUid =
+            (selectedEmployee['userUid'] ?? selectedEmployee['user_uid'])
+                ?.toString();
         _doctorNameCtrl.text = selectedEmployee['name'] ?? '';
         _specializationCtrl.text = selectedEmployee['jobTitle'] ?? '';
         _phoneCtrl.text = selectedEmployee['phoneNumber'] ?? '';
@@ -71,6 +75,7 @@ class _NewDoctorScreenState extends State<NewDoctorScreen> {
 
     final newDoctor = Doctor(
       employeeId: _selectedEmployeeId,
+      userUid: _selectedEmployeeUserUid,
       name: _doctorNameCtrl.text.trim(),
       specialization: _specializationCtrl.text.trim(),
       phoneNumber: _phoneCtrl.text.trim(),

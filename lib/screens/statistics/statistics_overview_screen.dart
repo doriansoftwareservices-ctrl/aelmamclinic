@@ -49,6 +49,7 @@ import 'package:aelmamclinic/screens/audit/permissions_screen.dart';
 
 /*── شاشة الدردشة ─*/
 import 'package:aelmamclinic/screens/chat/chat_home_screen.dart';
+import 'package:aelmamclinic/screens/complaints/complaints_screen.dart';
 import 'package:aelmamclinic/screens/subscription/my_plan_screen.dart';
 
 /*── لتسجيل الخروج ─*/
@@ -58,7 +59,14 @@ import 'package:aelmamclinic/screens/admin/admin_dashboard_screen.dart';
 /// غيّر هذا الثابت حسب المطلوب:
 /// true  → إخفاء العناصر غير المسموح بها.
 /// false → إظهارها لكن تعطيل التفاعل مع تنبيه المستخدم.
-const bool kHideDeniedTabs = false;
+const bool kHideDeniedTabs = true;
+
+const Set<String> kFreePlanFeatures = {
+  FeatureKeys.dashboard,
+  FeatureKeys.patientNew,
+  FeatureKeys.patientsList,
+  FeatureKeys.employees,
+};
 
 class StatisticsOverviewScreen extends StatefulWidget {
   const StatisticsOverviewScreen({super.key});
@@ -562,7 +570,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
       requireDelete: requireDelete,
     );
 
-    if (!allowed && kHideDeniedTabs) {
+    if (!allowed && kHideDeniedTabs && auth.permissionsLoaded) {
       return const SizedBox.shrink(); // إخفاء التبويب
     }
 
@@ -587,6 +595,14 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
   }) {
     // السوبر أدمن يرى الكل، والباقي عبر permissions/feature matrix
     bool allowed = auth.isSuperAdmin || auth.featureAllowed(featureKey);
+
+    final isFree = auth.planCode == 'free' && !auth.isSuperAdmin;
+    if (isFree && !kFreePlanFeatures.contains(featureKey)) {
+      allowed = false;
+    } else if (isFree && !auth.permissionsLoaded) {
+      // أظهر ميزات الخطة المجانية حتى تحميل الصلاحيات لتجنب إخفاء القائمة مؤقتًا.
+      allowed = kFreePlanFeatures.contains(featureKey);
+    }
 
     // تطبيق CRUD إذا طُلب (لمالك/سوبر نتجاوز، للموظف نطبّق)
     if (allowed && !auth.isSuperAdmin) {
@@ -845,6 +861,18 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
                           context,
                           MaterialPageRoute(
                               builder: (_) => const ChatHomeScreen()),
+                        );
+                      },
+                    ),
+                    _drawerItem(
+                      icon: Icons.report_problem_outlined,
+                      title: 'الشكاوى والأعطال',
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const ComplaintsScreen()),
                         );
                       },
                     ),
