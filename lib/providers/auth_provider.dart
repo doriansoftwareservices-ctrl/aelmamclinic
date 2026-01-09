@@ -20,6 +20,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:aelmamclinic/core/features.dart'; // FeatureKeys.chat
 import 'package:aelmamclinic/core/auth_role_state.dart';
 import 'package:aelmamclinic/models/account_policy.dart';
+import 'package:aelmamclinic/models/feature_permissions.dart';
 import 'package:aelmamclinic/services/nhost_auth_service.dart';
 import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/services/device_id_service.dart';
@@ -858,12 +859,23 @@ class AuthProvider extends ChangeNotifier {
     _autoCreateAttempted = false;
   }
 
+  FeaturePermissions _defaultPermissionsForRole() {
+    final r = role?.toLowerCase();
+    if (r == 'employee' || r == 'admin') {
+      return FeaturePermissions.defaultsAllowAll();
+    }
+    return FeaturePermissions.defaultsDenyAll();
+  }
+
   /// يجلب صلاحيات الميزات + CRUD للحساب الحالي ويخزّنها محليًا
   Future<void> _refreshFeaturePermissions() async {
     final accId = accountId;
     if (accId == null || accId.isEmpty) return;
     try {
-      final perms = await _auth.fetchMyFeaturePermissions(accountId: accId);
+      final perms = await _auth.fetchMyFeaturePermissions(
+        accountId: accId,
+        fallback: _defaultPermissionsForRole(),
+      );
       _allowAllFeatures = perms.allowAll;
       _allowedFeatures = perms.allowedFeatures;
       _canCreate = perms.canCreate;

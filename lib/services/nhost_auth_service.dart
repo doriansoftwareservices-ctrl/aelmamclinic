@@ -572,7 +572,7 @@ class NhostAuthService {
       );
       final rows = _rowsFromData(data, 'my_feature_permissions');
       if (rows.isEmpty) {
-        return FeaturePermissions.defaultsDenyAll();
+        return fallback ?? FeaturePermissions.defaultsDenyAll();
       }
       return FeaturePermissions.fromRpcPayload(rows.first);
     } catch (e, st) {

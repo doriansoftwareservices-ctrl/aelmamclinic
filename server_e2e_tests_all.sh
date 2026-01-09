@@ -608,7 +608,7 @@ fi
 
 # ---------- Step 10: Chat participants insert (owner) ----------
 log "Chat participants (owner inserts 2 users)"
-conv_id=$(run_sql "insert into public.chat_conversations default values returning id;")
+conv_id=$(run_sql "insert into public.chat_conversations(account_id,is_group,title,created_by,created_at,updated_at) values ('${account_id}', false, NULL, '${owner_uid}', now(), now()) returning id;")
 conv_id=$(printf '%s' "$conv_id" | json_get 'result.1.0')
 if [ -n "$conv_id" ] && [ -n "$emp2_uid" ]; then
   q_chat='mutation InsertParts($rows:[chat_participants_insert_input!]!) { insert_chat_participants(objects:$rows){ affected_rows } }'
