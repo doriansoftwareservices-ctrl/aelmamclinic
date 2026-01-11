@@ -119,3 +119,8 @@ linux/flutter/ephemeral/
 
 .secrets
 .env.local
+
+# local junk
+windows/.cache/
+server_snapshot_*/
+*.tar.gz
