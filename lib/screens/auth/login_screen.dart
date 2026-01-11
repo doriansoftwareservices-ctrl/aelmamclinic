@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:nhost_dart/nhost_dart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:aelmamclinic/models/clinic_profile.dart';
 import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:aelmamclinic/core/nhost_manager.dart';
 
@@ -116,8 +117,10 @@ class _LoginScreenState extends State<LoginScreen> {
         (!authProv.isSuperAdmin && (authProv.accountId ?? '').isEmpty)) {
       final result = await authProv.refreshAndValidateCurrentUser();
       if (!mounted) return;
+
       if (!result.isSuccess) {
         var allowContinue = false;
+
         if (result.status == AuthSessionStatus.planUpgradeRequired) {
           final role = authProv.role?.toLowerCase();
           if (role == 'owner' || role == 'admin') {
@@ -128,6 +131,7 @@ class _LoginScreenState extends State<LoginScreen> {
         } else if (result.status == AuthSessionStatus.noAccount) {
           await authProv.signOut();
         }
+
         if (!allowContinue) {
           final message = _messageForStatus(result.status);
           if (message != null) {
@@ -207,29 +211,34 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
 
       if (result.status == AuthSessionStatus.noAccount) {
-        final clinicName = await _askClinicName();
-        if (clinicName == null || clinicName.trim().isEmpty) {
+        final clinicProfile = await _askClinicProfile();
+        if (clinicProfile == null) {
           await auth.signOut();
           setState(() => _error = 'اسم العيادة مطلوب لإكمال إنشاء الحساب.');
           return;
         }
-        auth.setPendingClinicName(clinicName);
+
+        auth.setPendingClinicProfile(clinicProfile);
         try {
-          await auth.selfCreateAccount(clinicName.trim());
+          await auth.selfCreateAccount(clinicProfile);
         } catch (e) {
           await auth.signOut();
           setState(() => _error = 'تعذّر إنشاء الحساب: $e');
           return;
         }
+
         final recheck = await auth.refreshAndValidateCurrentUser();
         if (!mounted) return;
+
         if (!recheck.isSuccess) {
           if (recheck.status == AuthSessionStatus.noAccount ||
               recheck.status == AuthSessionStatus.planUpgradeRequired) {
             await auth.signOut();
           }
-          setState(() => _error = _messageForStatus(recheck.status) ??
-              'تعذّر التحقق من الحساب. حاول مرة أخرى.');
+          setState(
+            () => _error = _messageForStatus(recheck.status) ??
+                'تعذّر التحقق من الحساب. حاول مرة أخرى.',
+          );
           return;
         }
       }
@@ -238,7 +247,7 @@ class _LoginScreenState extends State<LoginScreen> {
         if (result.status == AuthSessionStatus.planUpgradeRequired) {
           final role = auth.role?.toLowerCase();
           if (role == 'owner' || role == 'admin') {
-            // Treat as success for owners/admins; they can upgrade from داخل التطبيق.
+            // owners/admins can continue and upgrade inside the app.
           } else {
             await auth.signOut();
             final message = _messageForStatus(result.status) ??
@@ -248,14 +257,12 @@ class _LoginScreenState extends State<LoginScreen> {
           }
         } else if (result.status == AuthSessionStatus.noAccount) {
           await auth.signOut();
-          final message =
-              _messageForStatus(result.status) ??
+          final message = _messageForStatus(result.status) ??
               'تعذّر التحقق من الحساب. حاول مرة أخرى.';
           setState(() => _error = message);
           return;
         } else {
-          final message =
-              _messageForStatus(result.status) ??
+          final message = _messageForStatus(result.status) ??
               'تعذّر التحقق من الحساب. حاول مرة أخرى.';
           setState(() => _error = message);
           return;
@@ -300,7 +307,7 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    final clinicName = await _askClinicName();
+    final clinicProfile = await _askClinicProfile();
 
     setState(() {
       _loading = true;
@@ -308,8 +315,9 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      auth.setPendingClinicName(clinicName);
+      auth.setPendingClinicProfile(clinicProfile);
       auth.allowAutoCreateAccountOnce();
+
       var signUpResp = await auth.signUp(email, pass);
       if (signUpResp.session == null) {
         // بعض البيئات لا تُرجع session مباشرةً؛ جرّب تسجيل الدخول فورًا.
@@ -324,19 +332,23 @@ class _LoginScreenState extends State<LoginScreen> {
           return;
         }
       }
+
       await _persistRememberedCredentials(email: email, password: pass);
-      if (clinicName != null && clinicName.trim().isNotEmpty) {
-        await auth.selfCreateAccount(clinicName.trim());
+
+      if (clinicProfile != null) {
+        await auth.selfCreateAccount(clinicProfile);
       } else {
         setState(() => _error = 'اسم العيادة مطلوب لإكمال إنشاء الحساب.');
         return;
       }
+
       final result = await auth.refreshAndValidateCurrentUser();
       if (!mounted) return;
       if (!result.isSuccess) {
         setState(() => _error = _messageForStatus(result.status));
         return;
       }
+
       await auth.bootstrapSync(
         pull: true,
         realtime: true,
@@ -344,6 +356,7 @@ class _LoginScreenState extends State<LoginScreen> {
         debounce: const Duration(seconds: 1),
       );
       _bootstrappedOnce = true;
+
       await _checkAndRouteIfSignedIn(force: true);
     } catch (e) {
       if (!mounted) return;
@@ -355,17 +368,87 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Future<String?> _askClinicName() async {
-    final controller = TextEditingController();
-    final result = await showDialog<String>(
+  Future<ClinicProfileInput?> _askClinicProfile() async {
+    final arStep = await _askClinicProfileStep(
+      title: 'بيانات المرفق الصحي (عربي)',
+      nameLabel: 'اسم المرفق الصحي',
+      cityLabel: 'المدينة',
+      streetLabel: 'الشارع',
+      nearLabel: 'بجوار',
+      phoneLabel: 'رقم الهاتف',
+      prefillPhone: null,
+    );
+    if (arStep == null) return null;
+
+    final enStep = await _askClinicProfileStep(
+      title: 'Clinic Info (English)',
+      nameLabel: 'Clinic name',
+      cityLabel: 'City',
+      streetLabel: 'Street',
+      nearLabel: 'Near',
+      phoneLabel: 'Phone',
+      prefillPhone: arStep.phone,
+    );
+    if (enStep == null) return null;
+
+    return ClinicProfileInput(
+      nameAr: arStep.name,
+      cityAr: arStep.city,
+      streetAr: arStep.street,
+      nearAr: arStep.near,
+      nameEn: enStep.name,
+      cityEn: enStep.city,
+      streetEn: enStep.street,
+      nearEn: enStep.near,
+      phone: arStep.phone,
+    );
+  }
+
+  Future<_ClinicProfileStep?> _askClinicProfileStep({
+    required String title,
+    required String nameLabel,
+    required String cityLabel,
+    required String streetLabel,
+    required String nearLabel,
+    required String phoneLabel,
+    String? prefillPhone,
+  }) async {
+    final nameCtrl = TextEditingController();
+    final cityCtrl = TextEditingController();
+    final streetCtrl = TextEditingController();
+    final nearCtrl = TextEditingController();
+    final phoneCtrl = TextEditingController(text: prefillPhone ?? '');
+
+    final result = await showDialog<_ClinicProfileStep>(
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          title: const Text('اسم العيادة'),
-          content: TextField(
-            controller: controller,
-            decoration: const InputDecoration(
-              hintText: 'أدخل اسم العيادة',
+          title: Text(title),
+          content: SingleChildScrollView(
+            child: Column(
+              children: [
+                TextField(
+                  controller: nameCtrl,
+                  decoration: InputDecoration(labelText: nameLabel),
+                ),
+                TextField(
+                  controller: cityCtrl,
+                  decoration: InputDecoration(labelText: cityLabel),
+                ),
+                TextField(
+                  controller: streetCtrl,
+                  decoration: InputDecoration(labelText: streetLabel),
+                ),
+                TextField(
+                  controller: nearCtrl,
+                  decoration: InputDecoration(labelText: nearLabel),
+                ),
+                TextField(
+                  controller: phoneCtrl,
+                  decoration: InputDecoration(labelText: phoneLabel),
+                  keyboardType: TextInputType.phone,
+                ),
+              ],
             ),
           ),
           actions: [
@@ -374,14 +457,47 @@ class _LoginScreenState extends State<LoginScreen> {
               child: const Text('إلغاء'),
             ),
             FilledButton(
-              onPressed: () => Navigator.of(ctx).pop(controller.text),
+              onPressed: () {
+                final name = nameCtrl.text.trim();
+                final city = cityCtrl.text.trim();
+                final street = streetCtrl.text.trim();
+                final near = nearCtrl.text.trim();
+                final phone = phoneCtrl.text.trim();
+
+                if (name.isEmpty ||
+                    city.isEmpty ||
+                    street.isEmpty ||
+                    near.isEmpty ||
+                    phone.isEmpty) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(content: Text('يرجى تعبئة جميع الحقول.')),
+                  );
+                  return;
+                }
+
+                Navigator.of(ctx).pop(
+                  _ClinicProfileStep(
+                    name: name,
+                    city: city,
+                    street: street,
+                    near: near,
+                    phone: phone,
+                  ),
+                );
+              },
               child: const Text('متابعة'),
             ),
           ],
         );
       },
     );
-    controller.dispose();
+
+    nameCtrl.dispose();
+    cityCtrl.dispose();
+    streetCtrl.dispose();
+    nearCtrl.dispose();
+    phoneCtrl.dispose();
+
     return result;
   }
 
@@ -593,4 +709,21 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
   }
+}
+
+/// ✅ لازم يكون Top-level (خارج أي كلاس) لأن Dart يمنع تعريف كلاس داخل كلاس.
+class _ClinicProfileStep {
+  final String name;
+  final String city;
+  final String street;
+  final String near;
+  final String phone;
+
+  const _ClinicProfileStep({
+    required this.name,
+    required this.city,
+    required this.street,
+    required this.near,
+    required this.phone,
+  });
 }
