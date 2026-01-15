@@ -6762,6 +6762,62 @@
         filter: {}
 - table:
     schema: public
+    name: user_current_account
+  select_permissions:
+    - role: user
+      permission:
+        columns:
+          - user_uid
+          - account_id
+          - created_at
+          - updated_at
+        filter:
+          user_uid:
+            _eq: X-Hasura-User-Id
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: user
+      permission:
+        check:
+          user_uid:
+            _eq: X-Hasura-User-Id
+        columns:
+          - user_uid
+          - account_id
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: user
+      permission:
+        columns:
+          - account_id
+        filter:
+          user_uid:
+            _eq: X-Hasura-User-Id
+        check:
+          user_uid:
+            _eq: X-Hasura-User-Id
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: user
+      permission:
+        filter:
+          user_uid:
+            _eq: X-Hasura-User-Id
+    - role: superadmin
+      permission:
+        filter: {}
+- table:
+    schema: public
     name: employee_seat_requests
   select_permissions:
     - role: me

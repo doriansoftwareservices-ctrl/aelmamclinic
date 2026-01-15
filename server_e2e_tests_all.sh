@@ -410,6 +410,12 @@ PY
   if [ -z "$sign_url" ]; then
     sign_url=$(printf '%s' "$sign_resp" | json_get 'presigned_url')
   fi
+  if [ -z "$sign_url" ]; then
+    sign_url=$(printf '%s' "$sign_resp" | json_get 'dataUrl')
+  fi
+  if [ -z "$sign_url" ]; then
+    sign_url=$(printf '%s' "$sign_resp" | json_get 'data_url')
+  fi
   if [ -n "$sign_url" ]; then
     step_ok "admin sign proof"
   else
@@ -496,6 +502,7 @@ else
   echo "$stats"
   echo "DEBUG: admin_payment_stats function presence"
   run_sql "select proname from pg_proc where proname in ('admin_payment_stats','admin_payment_stats_by_plan','admin_payment_stats_by_day','admin_payment_stats_by_month') order by proname;"
+  run_sql "select to_regclass('public.subscription_payments') as subscription_payments, to_regclass('public.v_payment_stats') as v_payment_stats;"
   step_fail "admin_payment_stats"
 fi
 
@@ -506,6 +513,7 @@ if printf '%s' "$stats_plan" | rg -q '"admin_payment_stats_by_plan"'; then
 else
   echo "$stats_plan"
   run_sql "select proname from pg_proc where proname in ('admin_payment_stats_by_plan') order by proname;"
+  run_sql "select to_regclass('public.v_payment_stats_by_plan') as v_payment_stats_by_plan;"
   step_fail "admin_payment_stats_by_plan"
 fi
 
@@ -516,6 +524,7 @@ if printf '%s' "$stats_day" | rg -q '"admin_payment_stats_by_day"'; then
 else
   echo "$stats_day"
   run_sql "select proname from pg_proc where proname in ('admin_payment_stats_by_day') order by proname;"
+  run_sql "select to_regclass('public.v_payment_stats_by_day') as v_payment_stats_by_day;"
   step_fail "admin_payment_stats_by_day"
 fi
 
@@ -526,6 +535,7 @@ if printf '%s' "$stats_month" | rg -q '"admin_payment_stats_by_month"'; then
 else
   echo "$stats_month"
   run_sql "select proname from pg_proc where proname in ('admin_payment_stats_by_month') order by proname;"
+  run_sql "select to_regclass('public.v_payment_stats_by_month') as v_payment_stats_by_month;"
   step_fail "admin_payment_stats_by_month"
 fi
 
@@ -889,6 +899,7 @@ else
   run_sql "select proname from pg_proc where proname in ('admin_reply_complaint') order by proname;"
   run_sql "select to_regclass('public.user_current_account') as user_current_account;"
   run_sql "select column_name from information_schema.columns where table_schema='public' and table_name='chat_participants' order by ordinal_position;"
+  run_sql "select column_name from information_schema.columns where table_schema='public' and table_name='complaints' order by ordinal_position;"
   meta_payload='{"type":"get_inconsistent_metadata","args":{}}'
   meta_resp=$(printf '%s' "$meta_payload" | curl -sS "$HASURA_BASE/v1/metadata" \
     -H "Content-Type: application/json" \
