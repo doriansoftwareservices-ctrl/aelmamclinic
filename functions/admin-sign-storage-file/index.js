@@ -151,34 +151,57 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    let signRes = await fetch(`${storageUrl}/files/${fileId}/presigned`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-hasura-admin-secret': adminSecret,
+    const signAttempts = [
+      {
+        method: 'POST',
+        url: `${storageUrl}/files/${fileId}/presigned`,
+        body: JSON.stringify({ expiresIn }),
       },
-      body: JSON.stringify({ expiresIn }),
-    });
-    if (signRes.status === 404) {
-      signRes = await fetch(`${storageUrl}/files/${fileId}/presigned`, {
+      {
         method: 'GET',
+        url: `${storageUrl}/files/${fileId}/presigned`,
+      },
+      {
+        method: 'POST',
+        url: `${storageUrl}/files/${fileId}/presigned-url`,
+        body: JSON.stringify({ expiresIn }),
+      },
+      {
+        method: 'GET',
+        url: `${storageUrl}/files/${fileId}/presigned-url?expiresIn=${expiresIn}`,
+      },
+    ];
+
+    let signRes;
+    let payload;
+    let lastText = '';
+    for (const attempt of signAttempts) {
+      signRes = await fetch(attempt.url, {
+        method: attempt.method,
         headers: {
+          'Content-Type': 'application/json',
           'x-hasura-admin-secret': adminSecret,
         },
+        body: attempt.body,
       });
+      lastText = await signRes.text();
+      try {
+        payload = JSON.parse(lastText);
+      } catch (_) {
+        payload = lastText;
+      }
+      if (signRes.ok) break;
     }
-    const text = await signRes.text();
-    let payload = text;
-    try {
-      payload = JSON.parse(text);
-    } catch (_) {}
-    if (!signRes.ok) {
-      res.status(signRes.status).json({
+
+    if (!signRes || !signRes.ok) {
+      res.status(signRes?.status || 500).json({
         ok: false,
         error: payload?.error ?? payload ?? 'Sign failed',
+        hint: 'presigned lookup failed',
       });
       return;
     }
+
     res.status(signRes.status).json(payload);
   } catch (err) {
     const code = err?.statusCode ?? 500;

@@ -453,6 +453,7 @@ else
   echo "$req_resp"
   echo "DEBUG: functions existence for subscription request"
   run_sql "select proname from pg_proc where proname in ('request_email_text','create_subscription_request') order by proname;"
+  run_sql "select column_name from information_schema.columns where table_schema='public' and table_name='subscription_requests' order by ordinal_position;"
   step_fail "subscription request"
 fi
 
@@ -873,6 +874,8 @@ else
   echo "$reply_res"
   echo "DEBUG: admin_reply_complaint presence + metadata consistency"
   run_sql "select proname from pg_proc where proname in ('admin_reply_complaint') order by proname;"
+  run_sql "select to_regclass('public.user_current_account') as user_current_account;"
+  run_sql "select column_name from information_schema.columns where table_schema='public' and table_name='chat_participants' order by ordinal_position;"
   meta_payload='{"type":"get_inconsistent_metadata","args":{}}'
   meta_resp=$(printf '%s' "$meta_payload" | curl -sS "$HASURA_BASE/v1/metadata" \
     -H "Content-Type: application/json" \
