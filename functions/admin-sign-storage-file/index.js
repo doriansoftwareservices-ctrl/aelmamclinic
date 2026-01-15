@@ -112,9 +112,10 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    const metaRes = await fetch(`${storageUrl}/files/${fileId}`, {
+    const metaRes = await fetch(`${storageUrl}/files/${fileId}/metadata`, {
       headers: {
         'x-hasura-admin-secret': adminSecret,
+        Accept: 'application/json',
       },
     });
     if (!metaRes.ok) {

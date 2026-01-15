@@ -12,6 +12,19 @@ if [ ! -f "$CONFIG_JSON" ]; then
   exit 1
 fi
 
+if [ -z "${HASURA_ADMIN_SECRET:-}" ] && [ -f "/mnt/c/Users/zidan/AndroidStudioProjects/aelmamclinic/.secrets" ]; then
+  HASURA_ADMIN_SECRET=$(python3 - <<'PY'
+import re
+path="/mnt/c/Users/zidan/AndroidStudioProjects/aelmamclinic/.secrets"
+with open(path, "r", encoding="utf-8") as f:
+    raw=f.read()
+match=re.search(r"HASURA_GRAPHQL_ADMIN_SECRET\\s*=\\s*['\\\"]([^'\\\"]+)['\\\"]", raw)
+print(match.group(1) if match else "")
+PY
+)
+  export HASURA_ADMIN_SECRET
+fi
+
 if [ -z "${HASURA_ADMIN_SECRET:-}" ]; then
   echo "Set HASURA_ADMIN_SECRET first." >&2
   exit 1
@@ -166,8 +179,8 @@ gql_admin() {
 log "Auth sign-in"
 SA_EMAIL="admin.app@elmam.com"
 SA_PASS="aelmam@6069"
-OWNER_EMAIL="test89876@elmam.com"
-OWNER_PASS="test89876"
+OWNER_EMAIL="hhfjyt546374@elmam.com"
+OWNER_PASS="hhfjyt546374"
 
 echo "Auth URL: $AUTH_URL"
 echo "GraphQL URL: $GRAPHQL_URL"
@@ -195,8 +208,12 @@ if [ -z "$owner_token" ]; then
   owner_token=$(printf '%s' "$owner_resp" | extract_token)
   owner_uid=$(printf '%s' "$owner_resp" | extract_user_id)
   echo "OWNER_TOKEN_LEN_RETRY=${#owner_token}"
-  [ -z "$owner_token" ] && echo "$owner_resp"
-  step_fail "owner signin"
+  if [ -z "$owner_token" ]; then
+    echo "$owner_resp"
+    step_fail "owner signin"
+  else
+    step_ok "owner signin (retry)"
+  fi
 else
   step_ok "owner signin"
 fi
@@ -205,6 +222,11 @@ if [ -z "$sa_token" ] || [ -z "$owner_token" ]; then
   log "Abort"
   echo "PASS=$PASS FAIL=$FAIL"
   exit 1
+fi
+
+if [ -z "$owner_uid" ]; then
+  owner_uid=$(run_sql "select id from auth.users where lower(email)=lower('$OWNER_EMAIL') limit 1;")
+  owner_uid=$(printf '%s' "$owner_uid" | json_get 'result.1.0')
 fi
 
 # ---------- Step 2: Verify superadmin role ----------
@@ -217,6 +239,33 @@ then
 else
   echo "$res_super"
   step_fail "fn_is_super_admin_gql"
+fi
+
+# ---------- Step 2b: Superadmin DM owner ----------
+log "Superadmin DM owner"
+if [ -n "$owner_uid" ]; then
+  q_sa_dm='mutation StartDm($other: uuid!) { chat_start_dm(args: {p_other_uid: $other}) { id } }'
+  vars=$(python3 - <<PY
+import json
+print(json.dumps({"other":"$owner_uid"}))
+PY
+)
+  dm_payload=$(make_payload "$q_sa_dm" "$vars")
+  dm_res=$(printf '%s' "$dm_payload" | curl -sS "$GRAPHQL_URL" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $sa_token" \
+    -H "x-hasura-role: superadmin" \
+    -d @-)
+  dm_id=$(printf '%s' "$dm_res" | json_get 'data.chat_start_dm.0.id')
+  if [ -n "$dm_id" ]; then
+    step_ok "superadmin chat_start_dm ($dm_id)"
+  else
+    echo "DM_VARS=$vars"
+    echo "$dm_res"
+    step_fail "superadmin chat_start_dm"
+  fi
+else
+  step_fail "superadmin chat_start_dm (missing owner uid)"
 fi
 
 # ---------- Step 3: Owner profile / account id ----------
@@ -326,6 +375,38 @@ PY
   fi
 fi
 
+# ---------- Step 4b: Superadmin signed URL for proof ----------
+log "Admin sign proof"
+if [ -n "$proof_id" ]; then
+  sign_payload=$(python3 - <<PY
+import json
+print(json.dumps({"fileId":"$proof_id","expiresIn":900}))
+PY
+)
+  sign_resp=$(printf '%s' "$sign_payload" | curl -sS "$FUNCTIONS_URL/admin-sign-storage-file" \
+    -H "Authorization: Bearer $sa_token" \
+    -H "Content-Type: application/json" \
+    -d @-)
+  sign_url=$(printf '%s' "$sign_resp" | json_get 'url')
+  if [ -z "$sign_url" ]; then
+    sign_url=$(printf '%s' "$sign_resp" | json_get 'signedUrl')
+  fi
+  if [ -z "$sign_url" ]; then
+    sign_url=$(printf '%s' "$sign_resp" | json_get 'presignedUrl')
+  fi
+  if [ -z "$sign_url" ]; then
+    sign_url=$(printf '%s' "$sign_resp" | json_get 'presigned_url')
+  fi
+  if [ -n "$sign_url" ]; then
+    step_ok "admin sign proof"
+  else
+    echo "$sign_resp"
+    step_fail "admin sign proof"
+  fi
+else
+  step_fail "admin sign proof (no proof id)"
+fi
+
 # ---------- Step 5: Create subscription request (owner) ----------
 log "Subscription request"
 plan_code="month"
@@ -387,6 +468,44 @@ if [ -n "$request_id" ]; then
   fi
 else
   step_fail "subscription approve (no request)"
+fi
+
+# ---------- Step 6b: Admin payment stats ----------
+log "Admin payment stats"
+q_stats='query { admin_payment_stats { payment_method_id payment_method_name total_amount payments_count } }'
+stats=$(gql_role "$sa_token" "superadmin" "$q_stats")
+if printf '%s' "$stats" | rg -q '"admin_payment_stats"'; then
+  step_ok "admin_payment_stats"
+else
+  echo "$stats"
+  step_fail "admin_payment_stats"
+fi
+
+q_stats_plan='query { admin_payment_stats_by_plan { plan_code total_amount payments_count } }'
+stats_plan=$(gql_role "$sa_token" "superadmin" "$q_stats_plan")
+if printf '%s' "$stats_plan" | rg -q '"admin_payment_stats_by_plan"'; then
+  step_ok "admin_payment_stats_by_plan"
+else
+  echo "$stats_plan"
+  step_fail "admin_payment_stats_by_plan"
+fi
+
+q_stats_day='query { admin_payment_stats_by_day { day total_amount payments_count } }'
+stats_day=$(gql_role "$sa_token" "superadmin" "$q_stats_day")
+if printf '%s' "$stats_day" | rg -q '"admin_payment_stats_by_day"'; then
+  step_ok "admin_payment_stats_by_day"
+else
+  echo "$stats_day"
+  step_fail "admin_payment_stats_by_day"
+fi
+
+q_stats_month='query { admin_payment_stats_by_month { month total_amount payments_count } }'
+stats_month=$(gql_role "$sa_token" "superadmin" "$q_stats_month")
+if printf '%s' "$stats_month" | rg -q '"admin_payment_stats_by_month"'; then
+  step_ok "admin_payment_stats_by_month"
+else
+  echo "$stats_month"
+  step_fail "admin_payment_stats_by_month"
 fi
 
 # ---------- Step 7: Create employees ----------
@@ -723,6 +842,32 @@ else
   echo "COMP_VARS=$comp_vars"
   echo "$comp_res"
   step_fail "insert complaints"
+fi
+
+# ---------- Step 12: Superadmin reply to complaint ----------
+log "Admin reply complaint"
+if [ -n "$comp_id" ]; then
+  q_reply='mutation Reply($id: uuid!, $reply: String!, $status: String) { admin_reply_complaint(args: {p_id: $id, p_reply: $reply, p_status: $status}) { ok error } }'
+  vars=$(python3 - <<PY
+import json
+print(json.dumps({"id":"$comp_id","reply":"qa reply","status":"closed"}))
+PY
+)
+  reply_payload=$(make_payload "$q_reply" "$vars")
+  reply_res=$(printf '%s' "$reply_payload" | curl -sS "$GRAPHQL_URL" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $sa_token" \
+    -H "x-hasura-role: superadmin" \
+    -d @-)
+  reply_ok=$(printf '%s' "$reply_res" | json_get 'data.admin_reply_complaint.0.ok')
+  if printf '%s' "$reply_ok" | rg -q '^(true|True|t|1)$'; then
+    step_ok "admin_reply_complaint"
+  else
+    echo "$reply_res"
+    step_fail "admin_reply_complaint"
+  fi
+else
+  step_fail "admin_reply_complaint (no complaint)"
 fi
 
 # ---------- Summary ----------
