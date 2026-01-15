@@ -75,6 +75,10 @@ json_get() {
   python3 -c $'import json,sys,re\npath=sys.argv[1]\nraw=sys.stdin.read()\nraw=re.sub(r\"HTTP_CODE:.*\",\"\",raw,flags=re.S).strip()\ndata=None\ntry:\n  data=json.loads(raw) if raw else None\nexcept Exception:\n  data=None\ncur=data\nif cur is None:\n  print(\"\")\n  sys.exit(0)\nfor key in path.split(\".\"):\n  if not key:\n    continue\n  if isinstance(cur,list):\n    try:\n      idx=int(key)\n      cur=cur[idx]\n    except Exception:\n      print(\"\")\n      sys.exit(0)\n  elif isinstance(cur,dict):\n    cur=cur.get(key)\n  else:\n    print(\"\")\n    sys.exit(0)\nprint(cur if cur is not None else \"\")' "$1"
 }
 
+is_json() {
+  python3 -c $'import json,sys,re\nraw=sys.stdin.read()\nraw=re.sub(r\"HTTP_CODE:.*\",\"\",raw,flags=re.S).strip()\ntry:\n  json.loads(raw) if raw else None\n  print(\"ok\")\nexcept Exception:\n  print(\"\")' 
+}
+
 extract_token() {
   python3 -c $'import json,sys,re\nraw=sys.stdin.read()\nraw=re.sub(r\"HTTP_CODE:.*\",\"\",raw,flags=re.S).strip()\ndata=None\ntry:\n  data=json.loads(raw) if raw else None\nexcept Exception:\n  data=None\ntoken=\"\"\nif data:\n  s=data.get(\"session\") or {}\n  token=s.get(\"accessToken\") or s.get(\"access_token\") or data.get(\"accessToken\") or data.get(\"access_token\") or \"\"\nif not token:\n  m=re.search(r\"\\\"accessToken\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"\", raw)\n  token=m.group(1) if m else \"\"\nprint(token)'
 }
@@ -150,12 +154,36 @@ gql_role() {
   local role="$2"
   local query="$3"
   local variables_json="${4:-{}}"
-  make_payload "$query" "$variables_json" \
-    | curl -sS "$GRAPHQL_URL" \
-      -H "Content-Type: application/json" \
-      -H "Authorization: Bearer $token" \
-      -H "x-hasura-role: $role" \
-      -d @-
+  local attempt=1
+  local max=4
+  local resp=""
+  while [ "$attempt" -le "$max" ]; do
+    resp=$(make_payload "$query" "$variables_json" \
+      | curl -sS -w '\nHTTP_CODE:%{http_code}\n' "$GRAPHQL_URL" \
+        -H "Content-Type: application/json" \
+        -H "Authorization: Bearer $token" \
+        -H "x-hasura-role: $role" \
+        -d @-)
+    local code
+    code=$(printf '%s' "$resp" | rg -o 'HTTP_CODE:[0-9]+' | rg -o '[0-9]+' | head -n1)
+    local json_ok
+    json_ok=$(printf '%s' "$resp" | is_json)
+    if [ "$code" = "200" ] && [ -n "$json_ok" ]; then
+      break
+    fi
+    if printf '%s' "$resp" | rg -qi '<html>|temporarily unavailable|nginx'; then
+      sleep $((attempt * 2))
+      attempt=$((attempt + 1))
+      continue
+    fi
+    if [ "$code" = "502" ] || [ "$code" = "503" ] || [ "$code" = "504" ]; then
+      sleep $((attempt * 2))
+      attempt=$((attempt + 1))
+      continue
+    fi
+    break
+  done
+  printf '%s' "$resp" | sed '/^HTTP_CODE:/d'
 }
 
 gql_user() {
@@ -168,11 +196,35 @@ gql_user() {
 gql_admin() {
   local query="$1"
   local variables_json="${2:-{}}"
-  make_payload "$query" "$variables_json" \
-    | curl -sS "$GRAPHQL_URL" \
-      -H "Content-Type: application/json" \
-      -H "x-hasura-admin-secret: $HASURA_ADMIN_SECRET" \
-      -d @-
+  local attempt=1
+  local max=4
+  local resp=""
+  while [ "$attempt" -le "$max" ]; do
+    resp=$(make_payload "$query" "$variables_json" \
+      | curl -sS -w '\nHTTP_CODE:%{http_code}\n' "$GRAPHQL_URL" \
+        -H "Content-Type: application/json" \
+        -H "x-hasura-admin-secret: $HASURA_ADMIN_SECRET" \
+        -d @-)
+    local code
+    code=$(printf '%s' "$resp" | rg -o 'HTTP_CODE:[0-9]+' | rg -o '[0-9]+' | head -n1)
+    local json_ok
+    json_ok=$(printf '%s' "$resp" | is_json)
+    if [ "$code" = "200" ] && [ -n "$json_ok" ]; then
+      break
+    fi
+    if printf '%s' "$resp" | rg -qi '<html>|temporarily unavailable|nginx'; then
+      sleep $((attempt * 2))
+      attempt=$((attempt + 1))
+      continue
+    fi
+    if [ "$code" = "502" ] || [ "$code" = "503" ] || [ "$code" = "504" ]; then
+      sleep $((attempt * 2))
+      attempt=$((attempt + 1))
+      continue
+    fi
+    break
+  done
+  printf '%s' "$resp" | sed '/^HTTP_CODE:/d'
 }
 
 # ---------- Step 1: Sign in superadmin/owner ----------
@@ -246,9 +298,14 @@ fi
 log "Verify superadmin"
 q_super='query { fn_is_super_admin_gql { is_super_admin } }'
 res_super=$(gql_user "$sa_token" "$q_super")
-if printf '%s' "$res_super" | python3 -c 'import json,sys; j=json.load(sys.stdin); rows=j.get("data",{}).get("fn_is_super_admin_gql") or []; print("true" if rows and rows[0].get("is_super_admin") is True else "")'
-then
-  step_ok "fn_is_super_admin_gql"
+if [ -n "$(printf '%s' "$res_super" | is_json)" ]; then
+  if printf '%s' "$res_super" | python3 -c 'import json,sys; j=json.load(sys.stdin); rows=j.get("data",{}).get("fn_is_super_admin_gql") or []; print("true" if rows and rows[0].get("is_super_admin") is True else "")'
+  then
+    step_ok "fn_is_super_admin_gql"
+  else
+    echo "$res_super"
+    step_fail "fn_is_super_admin_gql"
+  fi
 else
   echo "$res_super"
   step_fail "fn_is_super_admin_gql"
