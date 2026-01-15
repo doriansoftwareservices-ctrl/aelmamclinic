@@ -1,7 +1,10 @@
 import 'package:graphql_flutter/graphql_flutter.dart';
 
+import 'package:aelmamclinic/core/active_account_store.dart';
+import 'package:aelmamclinic/core/nhost_manager.dart';
 import 'package:aelmamclinic/models/payment_method.dart';
 import 'package:aelmamclinic/models/subscription_plan.dart';
+import 'package:aelmamclinic/services/clinic_profile_service.dart';
 import 'package:aelmamclinic/services/nhost_graphql_service.dart';
 
 class BillingService {
@@ -107,6 +110,14 @@ class BillingService {
     String? referenceText,
     String? senderName,
   }) async {
+    if (clinicName == null || clinicName.trim().isEmpty) {
+      try {
+        final profile = await ClinicProfileService.loadActiveOrFallback();
+        if (profile.nameAr.trim().isNotEmpty) {
+          clinicName = profile.nameAr.trim();
+        }
+      } catch (_) {}
+    }
     const mutation = r'''
       mutation CreateRequest(
         $plan: String!
@@ -145,11 +156,99 @@ class BillingService {
       ),
     );
     if (res.hasException) {
-      throw res.exception!;
+      final ex = res.exception!;
+      final msg = ex.graphqlErrors.map((e) => e.message).join(' | ');
+      final lowered = msg.toLowerCase();
+      if (lowered.contains('database query error') ||
+          lowered.contains('unexpected')) {
+        final fallbackId = await _fallbackInsertSubscriptionRequest(
+          planCode: planCode,
+          paymentMethodId: paymentMethodId,
+          proofUrl: proofUrl,
+          clinicName: clinicName,
+          referenceText: referenceText,
+          senderName: senderName,
+        );
+        if (fallbackId.isNotEmpty) return fallbackId;
+      }
+      throw ex;
     }
     final rows =
         (res.data?['create_subscription_request'] as List?) ?? const [];
     if (rows.isEmpty) return '';
     return (rows.first as Map)['id']?.toString() ?? '';
+  }
+
+  Future<double?> _fetchPlanPrice(String planCode) async {
+    const query = r'''
+      query PlanPrice($code: String!) {
+        subscription_plans(where: {code: {_eq: $code}}, limit: 1) {
+          price_usd
+        }
+      }
+    ''';
+    final res = await _gql.query(
+      QueryOptions(
+        document: gql(query),
+        variables: {'code': planCode},
+        fetchPolicy: FetchPolicy.noCache,
+      ),
+    );
+    if (res.hasException) return null;
+    final rows = (res.data?['subscription_plans'] as List?) ?? const [];
+    if (rows.isEmpty) return null;
+    final v = (rows.first as Map)['price_usd'];
+    return v is num ? v.toDouble() : double.tryParse(v.toString());
+  }
+
+  Future<String> _fallbackInsertSubscriptionRequest({
+    required String planCode,
+    required String paymentMethodId,
+    String? proofUrl,
+    String? clinicName,
+    String? referenceText,
+    String? senderName,
+  }) async {
+    final user = NhostManager.client.auth.currentUser;
+    final userUid = user?.id ?? '';
+    if (userUid.isEmpty) return '';
+
+    final accountId =
+        (user?.metadata?['account_id']?.toString() ?? '').trim();
+    final activeAccount =
+        accountId.isNotEmpty ? accountId : (await ActiveAccountStore.readAccountId() ?? '');
+    if (activeAccount.trim().isEmpty) return '';
+
+    final amount = await _fetchPlanPrice(planCode);
+    const mutation = r'''
+      mutation InsertSubReq($obj: subscription_requests_insert_input!) {
+        insert_subscription_requests_one(object: $obj) {
+          id
+        }
+      }
+    ''';
+    final res = await _gql.mutate(
+      MutationOptions(
+        document: gql(mutation),
+        variables: {
+          'obj': {
+            'account_id': activeAccount,
+            'user_uid': userUid,
+            'plan_code': planCode,
+            'payment_method_id': paymentMethodId,
+            'amount': amount,
+            'proof_url': proofUrl,
+            'reference_text': referenceText,
+            'sender_name': senderName,
+            'clinic_name': clinicName,
+            'status': 'pending',
+          }
+        },
+        fetchPolicy: FetchPolicy.noCache,
+      ),
+    );
+    if (res.hasException) return '';
+    final row = res.data?['insert_subscription_requests_one'] as Map?;
+    return row?['id']?.toString() ?? '';
   }
 }

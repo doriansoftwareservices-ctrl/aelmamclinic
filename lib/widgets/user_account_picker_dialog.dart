@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'package:aelmamclinic/providers/auth_provider.dart';
-import 'package:aelmamclinic/services/nhost_admin_service.dart';
+import 'package:aelmamclinic/services/nhost_employee_accounts_service.dart';
 
 /// نتيجة اختيار حساب مستخدم.
 class UserAccountSelection {
@@ -34,7 +34,8 @@ class UserAccountPickerDialog extends StatefulWidget {
 }
 
 class _UserAccountPickerDialogState extends State<UserAccountPickerDialog> {
-  final NhostAdminService _adminService = NhostAdminService();
+  final NhostEmployeeAccountsService _accountsService =
+      NhostEmployeeAccountsService();
   final TextEditingController _searchCtrl = TextEditingController();
 
   final List<UserAccountSelection> _all = <UserAccountSelection>[];
@@ -111,7 +112,7 @@ class _UserAccountPickerDialogState extends State<UserAccountPickerDialog> {
   Future<List<UserAccountSelection>> _fetchAccounts(String accountId) async {
     final items = <UserAccountSelection>[];
     final summaries =
-        await _adminService.listAccountUsersWithEmail(accountId: accountId);
+        await _accountsService.listEmployees(accountId: accountId);
     for (final s in summaries) {
       if (s.userUid.isEmpty) continue;
       items.add(

@@ -163,7 +163,6 @@ class AuthProvider extends ChangeNotifier {
   bool _permissionsLoaded = false;
   String? _permissionsError;
   bool _autoCreateAttempted = false;
-  String? _pendingClinicName;
   ClinicProfileInput? _pendingClinicProfile;
   bool _allowAutoCreateAccount = false;
 
@@ -349,13 +348,16 @@ class AuthProvider extends ChangeNotifier {
     return _auth.selfCreateAccount(profile: profile);
   }
 
+  Future<void> updateClinicProfile(ClinicProfileInput profile) {
+    return _auth.updateClinicProfile(profile: profile);
+  }
+
   Future<void> signOut() async {
     await _auth.signOut(); // يوقف المزامنة/الحراسة داخليًا
 
     currentUser = null;
     _resetPermissionsInMemory();
     _autoCreateAttempted = false;
-    _pendingClinicName = null;
     _pendingClinicProfile = null;
 
     final sp = await SharedPreferences.getInstance();
@@ -418,6 +420,7 @@ class AuthProvider extends ChangeNotifier {
 
     // تحديث الصلاحيات للحساب الجديد
     await _refreshFeaturePermissions();
+    await _refreshClinicProfileCache();
 
     // إعادة Bootstrap للمزامنة على الحساب الجديد
     unawaited(_auth.bootstrapSyncForCurrentUser(
@@ -746,7 +749,6 @@ class AuthProvider extends ChangeNotifier {
           );
           return result;
         }
-
         if (result == AuthAccountGuardResult.noAccount) {
           if (!_allowAutoCreateAccount) {
             _authDiagWarn(
@@ -760,36 +762,29 @@ class AuthProvider extends ChangeNotifier {
             return result;
           }
 
-          // ✅ التعديل الأساسي: auto-create يتطلب ClinicProfileInput وليس String
           if (!_autoCreateAttempted) {
             _autoCreateAttempted = true;
             _allowAutoCreateAccount = false;
-
-            final profile = _takePendingClinicProfile();
-            if (profile == null) {
-              // لا ننشئ حسابًا ببيانات ناقصة.
+            final pendingProfile = _pendingClinicProfile;
+            if (pendingProfile == null) {
               _authDiagWarn(
                 '_ensureActiveAccountOrSignOut:autoCreate:skipped',
-                context: {'reason': 'missing pending clinic profile'},
+                context: {'reason': 'missing clinic profile'},
                 stackTrace: st,
               );
-              currentUser!['disabled'] = false;
-              currentUser!['accountId'] = null;
-              await _persistUser();
-              return result;
+            } else {
+              _authDiagWarn(
+                '_ensureActiveAccountOrSignOut:autoCreate:attempt',
+                context: {'seed': pendingProfile.nameAr},
+                stackTrace: st,
+              );
             }
-
-            _authDiagWarn(
-              '_ensureActiveAccountOrSignOut:autoCreate:attempt',
-              context: {
-                'nameAr': profile.nameAr,
-                'nameEn': profile.nameEn,
-              },
-              stackTrace: st,
-            );
-
             try {
-              await selfCreateAccount(profile);
+              if (pendingProfile == null) {
+                return result;
+              }
+              await selfCreateAccount(pendingProfile);
+              _pendingClinicProfile = null;
               final aa = await _auth.resolveActiveAccountOrThrow();
               currentUser ??= {};
               currentUser!['accountId'] = aa.id;
@@ -813,7 +808,6 @@ class AuthProvider extends ChangeNotifier {
               );
             }
           }
-
           // Keep session for onboarding (self_create_account flow).
           currentUser!['disabled'] = false;
           currentUser!['accountId'] = null;
@@ -827,7 +821,6 @@ class AuthProvider extends ChangeNotifier {
           );
           return result;
         }
-
         if (result == AuthAccountGuardResult.planUpgradeRequired) {
           currentUser!['disabled'] = false;
           await _persistUser();
@@ -838,7 +831,6 @@ class AuthProvider extends ChangeNotifier {
           );
           return result;
         }
-
         currentUser!['disabled'] = true;
         await _persistUser();
         _authDiagError(
@@ -861,37 +853,6 @@ class AuthProvider extends ChangeNotifier {
       'uid': uid,
     });
     return AuthAccountGuardResult.unknown;
-  }
-
-  /// إرجاع اسم افتراضي (للاستخدامات الثانوية فقط). لا تستهلك pending profile.
-  String _seedClinicName() {
-    final pendingProfile = _pendingClinicProfile;
-    if (pendingProfile != null && pendingProfile.nameAr.trim().isNotEmpty) {
-      return pendingProfile.nameAr.trim();
-    }
-    final pending = (_pendingClinicName ?? '').trim();
-    if (pending.isNotEmpty) {
-      return pending;
-    }
-    final addr = (email ?? '').trim();
-    if (addr.isEmpty) return 'عيادة جديدة';
-    final handle = addr.split('@').first;
-    return handle.isEmpty ? 'عيادة جديدة' : 'عيادة $handle';
-  }
-
-  /// يستهلك pending clinic profile مرة واحدة (لا نريد تكرار auto-create).
-  ClinicProfileInput? _takePendingClinicProfile() {
-    final p = _pendingClinicProfile;
-    _pendingClinicProfile = null;
-    if (p == null) return null;
-    // حماية بسيطة: إن كان الاسم العربي فارغًا لا نعتبره صالحًا
-    if (p.nameAr.trim().isEmpty) return null;
-    return p;
-  }
-
-  void setPendingClinicName(String? name) {
-    final trimmed = (name ?? '').trim();
-    _pendingClinicName = trimmed.isEmpty ? null : trimmed;
   }
 
   void setPendingClinicProfile(ClinicProfileInput? profile) {

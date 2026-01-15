@@ -25,6 +25,16 @@ class ClinicProfile {
 
   String get addressAr => _joinParts([cityAr, streetAr, nearAr]);
   String get addressEn => _joinParts([cityEn, streetEn, nearEn]);
+  bool get isComplete =>
+      nameAr.trim().isNotEmpty &&
+      cityAr.trim().isNotEmpty &&
+      streetAr.trim().isNotEmpty &&
+      nearAr.trim().isNotEmpty &&
+      nameEn.trim().isNotEmpty &&
+      cityEn.trim().isNotEmpty &&
+      streetEn.trim().isNotEmpty &&
+      nearEn.trim().isNotEmpty &&
+      phone.trim().isNotEmpty;
 
   String _joinParts(List<String> parts) {
     return parts.where((p) => p.trim().isNotEmpty).join(' - ');

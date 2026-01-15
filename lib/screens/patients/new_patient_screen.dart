@@ -855,6 +855,17 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
       for (final u in _invUsages) {
         final itemId = u['itemId'] as int;
         final qty = u['quantity'] as int;
+        double amount = 0.0;
+        final itemRows = await db.query(
+          'items',
+          columns: ['price'],
+          where: 'id = ?',
+          whereArgs: [itemId],
+          limit: 1,
+        );
+        if (itemRows.isNotEmpty) {
+          amount = ((itemRows.first['price'] as num?)?.toDouble() ?? 0.0) * qty;
+        }
         await DBService.instance.insertConsumption(
           Consumption(
             id: null,
@@ -862,6 +873,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
             itemId: itemId.toString(),
             quantity: qty,
             date: regDT,
+            amount: amount,
           ),
         );
         await db.rawUpdate(

@@ -230,6 +230,63 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     return result;
   }
 
+  Future<Map<String, String?>?> _askComplaintReply({
+    required String title,
+  }) async {
+    final replyCtrl = TextEditingController();
+    String status = 'in_progress';
+    final result = await showDialog<Map<String, String?>>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: replyCtrl,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                hintText: 'اكتب رد الإدارة هنا',
+              ),
+            ),
+            const SizedBox(height: 10),
+            DropdownButtonFormField<String>(
+              value: status,
+              decoration: const InputDecoration(
+                labelText: 'تحديث الحالة',
+              ),
+              items: const [
+                DropdownMenuItem(value: 'open', child: Text('مفتوحة')),
+                DropdownMenuItem(
+                    value: 'in_progress', child: Text('قيد المعالجة')),
+                DropdownMenuItem(value: 'closed', child: Text('مغلقة')),
+              ],
+              onChanged: (value) {
+                if (value == null) return;
+                status = value;
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(null),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop({
+              'reply': replyCtrl.text.trim(),
+              'status': status,
+            }),
+            child: const Text('إرسال الرد'),
+          ),
+        ],
+      ),
+    );
+    replyCtrl.dispose();
+    return result;
+  }
+
   Future<void> _openProof(SubscriptionRequest req) async {
     final proofId = req.proofUrl ?? '';
     if (proofId.isEmpty) {
@@ -535,10 +592,35 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         setState(() => _createStaffPlanError = null);
       }
     } catch (e) {
-      _snack('خطأ في الإنشاء: $e');
+      if (!mounted) return;
+      setState(() => _createStaffPlanError = _mapCreateStaffError(e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  String _mapCreateStaffError(Object error) {
+    final msg = error.toString().toLowerCase();
+    if (msg.contains('plan is free')) {
+      return 'خطة العيادة FREE: لا يمكن إضافة موظفين حتى تتم الترقية.';
+    }
+    if (msg.contains('seat_payment_required') ||
+        msg.contains('seat payment')) {
+      return 'تجاوزت الحد المجاني. يرجى اعتماد طلب مقعد إضافي لهذا الموظف.';
+    }
+    if (msg.contains('forbidden')) {
+      return 'لا تملك صلاحية تنفيذ هذه العملية.';
+    }
+    if (msg.contains('account not found')) {
+      return 'تعذّر العثور على حساب العيادة.';
+    }
+    if (msg.contains('email is required') || msg.contains('missing fields')) {
+      return 'يرجى إدخال البريد وكلمة المرور.';
+    }
+    if (msg.contains('auth user not found')) {
+      return 'تعذّر إنشاء المستخدم في المصادقة، حاول مرة أخرى.';
+    }
+    return 'تعذّر إنشاء الموظف: $error';
   }
 
   Future<void> _toggleFreeze(Clinic clinic) async {
@@ -1210,19 +1292,44 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     }
     return ListView(
       children: _complaints.map((c) {
+        final reply = c.replyMessage?.trim() ?? '';
         return NeuCard(
           margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
           padding: const EdgeInsets.all(12),
           child: ListTile(
             title: Text(c.subject ?? 'شكوى'),
-            subtitle: Text('${c.message}\nالحالة: ${c.status}'),
+            subtitle: Text(
+              reply.isEmpty
+                  ? '${c.message}\nالحالة: ${c.status}'
+                  : '${c.message}\nالحالة: ${c.status}\nرد الإدارة: $reply',
+            ),
             trailing: PopupMenuButton<String>(
               onSelected: (v) async {
+                if (v == 'reply') {
+                  final result = await _askComplaintReply(
+                    title: 'رد على الشكوى',
+                  );
+                  final replyText = result?['reply']?.trim() ?? '';
+                  if (replyText.isEmpty) return;
+                  await _billingService.replyToComplaint(
+                    id: c.id,
+                    replyMessage: replyText,
+                    status: result?['status'],
+                  );
+                  await _fetchComplaints();
+                  return;
+                }
                 await _billingService.updateComplaintStatus(
-                    id: c.id, status: v);
+                  id: c.id,
+                  status: v,
+                );
                 await _fetchComplaints();
               },
               itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: 'reply',
+                  child: Text('رد على الشكوى'),
+                ),
                 PopupMenuItem(value: 'open', child: Text('مفتوحة')),
                 PopupMenuItem(
                     value: 'in_progress', child: Text('قيد المعالجة')),

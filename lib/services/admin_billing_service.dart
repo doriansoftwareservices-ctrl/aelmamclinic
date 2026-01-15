@@ -203,6 +203,9 @@ class AdminBillingService {
           status
           subject
           message
+          reply_message
+          replied_at
+          replied_by
           created_at
         }
       }
@@ -235,6 +238,36 @@ class AdminBillingService {
       ),
     );
     if (res.hasException) throw res.exception!;
+  }
+
+  Future<void> replyToComplaint({
+    required String id,
+    required String replyMessage,
+    String? status,
+  }) async {
+    const mutation = r'''
+      mutation ReplyComplaint($id: uuid!, $reply: String!, $status: String) {
+        admin_reply_complaint(args: {p_id: $id, p_reply: $reply, p_status: $status}) {
+          ok
+          error
+        }
+      }
+    ''';
+    final res = await _gql.mutate(
+      MutationOptions(
+        document: gql(mutation),
+        variables: {'id': id, 'reply': replyMessage, 'status': status},
+        fetchPolicy: FetchPolicy.noCache,
+      ),
+    );
+    if (res.hasException) throw res.exception!;
+    final rows =
+        (res.data?['admin_reply_complaint'] as List?) ?? const [];
+    final ok = rows.isNotEmpty ? (rows.first as Map)['ok'] : null;
+    if (ok != true) {
+      final err = rows.isNotEmpty ? (rows.first as Map)['error'] : null;
+      throw Exception(err ?? 'reply_failed');
+    }
   }
 
   Future<List<PaymentStat>> fetchPaymentStats() async {

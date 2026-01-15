@@ -28,6 +28,7 @@ import 'package:aelmamclinic/models/return_entry.dart';
 import 'package:aelmamclinic/models/consumption.dart';
 import 'package:aelmamclinic/models/appointment.dart';
 import 'package:aelmamclinic/models/doctor.dart';
+import 'package:aelmamclinic/models/clinic_profile.dart';
 import 'package:aelmamclinic/models/employee.dart';
 import 'package:aelmamclinic/models/item_type.dart';
 import 'package:aelmamclinic/models/item.dart';
@@ -216,7 +217,7 @@ class DBService {
 
     return openDatabase(
       dbPath,
-      version: 32, // ↑ نسخة جديدة لإضافة علامة رد الشكاوى
+      version: 33, // ↑ نسخة جديدة لدعم ردود الشكاوى
       onConfigure: (db) async {
         // ✅ على أندرويد: بعض أوامر PRAGMA يجب تنفيذها بـ rawQuery
         await db.rawQuery('PRAGMA foreign_keys = ON');
@@ -603,8 +604,8 @@ class DBService {
 
   Future<void> _ensureSyncFkMappingTable(Database db) async {
     await db.execute('''
-      CREATE TABLE IF NOT EXISTS sync_fk_mapping (
-        table_name TEXT NOT NULL,
+  CREATE TABLE IF NOT EXISTS sync_fk_mapping (
+    table_name TEXT NOT NULL,
         local_id INTEGER NOT NULL,
         remote_id TEXT NOT NULL,
         remote_device_id TEXT,
@@ -616,7 +617,49 @@ class DBService {
     await db.execute('''
       CREATE UNIQUE INDEX IF NOT EXISTS idx_sync_fk_mapping_table_remote
       ON sync_fk_mapping(table_name, remote_id)
+  ''');
+  }
+
+  Future<void> _ensureClinicProfileTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS clinic_profile (
+        account_id TEXT PRIMARY KEY,
+        name_ar TEXT,
+        city_ar TEXT,
+        street_ar TEXT,
+        near_ar TEXT,
+        name_en TEXT,
+        city_en TEXT,
+        street_en TEXT,
+        near_en TEXT,
+        phone TEXT,
+        updated_at TEXT
+      )
     ''');
+  }
+
+  Future<void> saveClinicProfile(ClinicProfile profile) async {
+    final db = await database;
+    final data = profile.toMap();
+    data['updated_at'] = DateTime.now().toIso8601String();
+    await db.insert(
+      'clinic_profile',
+      data,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<ClinicProfile?> getClinicProfile(String accountId) async {
+    if (accountId.trim().isEmpty) return null;
+    final db = await database;
+    final rows = await db.query(
+      'clinic_profile',
+      where: 'account_id = ?',
+      whereArgs: [accountId.trim()],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return ClinicProfile.fromMap(rows.first);
   }
 
   /// فهارس مشتركة للأداء (JOIN/WHERE شائعة)
@@ -726,6 +769,7 @@ class DBService {
 
   Future<void> _postOpenChecks(Database db) async {
     await db.rawQuery('PRAGMA foreign_keys = ON');
+    await _ensureClinicProfileTable(db);
     await _ensureAlertSettingsColumns(db);
     await _ensureSoftDeleteColumns(db);
     await _ensureSyncMetaColumns(db); // ← snake_case (متوافق مع parity v3)
@@ -736,6 +780,7 @@ class DBService {
   /*──────────────── إنشاء الجداول ───────────────*/
   Future<void> _onCreate(Database db, int version) async {
     await _ensureSyncFkMappingTable(db);
+    await _ensureClinicProfileTable(db);
     await db.execute('''
   CREATE TABLE patients (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -830,10 +875,16 @@ class DBService {
     await db.execute('''
       CREATE TABLE complaints (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT NOT NULL,
+        title TEXT,
         description TEXT,
+        subject TEXT,
+        message TEXT,
         status TEXT NOT NULL DEFAULT 'open',
         createdAt TEXT NOT NULL,
+        updatedAt TEXT,
+        replyMessage TEXT,
+        repliedAt TEXT,
+        repliedBy TEXT,
         replySeen INTEGER NOT NULL DEFAULT 0
       );
     ''');
@@ -1262,10 +1313,16 @@ class DBService {
       await db.execute('''
         CREATE TABLE IF NOT EXISTS complaints (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
-          title TEXT NOT NULL,
+          title TEXT,
           description TEXT,
+          subject TEXT,
+          message TEXT,
           status TEXT NOT NULL DEFAULT 'open',
           createdAt TEXT NOT NULL,
+          updatedAt TEXT,
+          replyMessage TEXT,
+          repliedAt TEXT,
+          repliedBy TEXT,
           replySeen INTEGER NOT NULL DEFAULT 0
         );
       ''');
@@ -1323,6 +1380,25 @@ class DBService {
         'replySeen',
         'INTEGER NOT NULL DEFAULT 0',
       );
+    }
+
+    if (oldVersion < 33) {
+      await _addColumnIfMissing(db, 'complaints', 'subject', 'TEXT');
+      await _addColumnIfMissing(db, 'complaints', 'message', 'TEXT');
+      await _addColumnIfMissing(db, 'complaints', 'replyMessage', 'TEXT');
+      await _addColumnIfMissing(db, 'complaints', 'repliedAt', 'TEXT');
+      await _addColumnIfMissing(db, 'complaints', 'repliedBy', 'TEXT');
+      await _addColumnIfMissing(db, 'complaints', 'updatedAt', 'TEXT');
+      await _addColumnIfMissing(db, 'complaints', 'title', 'TEXT');
+      await _addColumnIfMissing(db, 'complaints', 'description', 'TEXT');
+      try {
+        await db.rawUpdate(
+          "UPDATE complaints SET subject = COALESCE(subject, title)",
+        );
+        await db.rawUpdate(
+          "UPDATE complaints SET message = COALESCE(message, description)",
+        );
+      } catch (_) {}
     }
   }
 
@@ -1735,18 +1811,43 @@ class DBService {
   //=============================== الاستهلاك ===============================
   Future<int> insertConsumption(Consumption c) async {
     final db = await database;
-    final id = await db.insert('consumptions', c.toMap());
+    var amount = c.amount;
+    if ((amount == 0 || amount.isNaN) && (c.itemId ?? '').isNotEmpty) {
+      final itemRows = await db.query(
+        'items',
+        columns: ['price'],
+        where: 'id = ?',
+        whereArgs: [c.itemId],
+        limit: 1,
+      );
+      if (itemRows.isNotEmpty) {
+        final price = (itemRows.first['price'] as num?)?.toDouble() ?? 0.0;
+        amount = price * c.quantity;
+      }
+    }
+    final id = await db.insert('consumptions', {
+      ...c.toMap(),
+      'amount': amount,
+    });
     await _markChanged('consumptions');
     return id;
   }
 
   Future<List<Consumption>> getAllConsumption() async {
     final db = await database;
-    final res = await db.query(
-      'consumptions',
-      where: 'ifnull(isDeleted,0)=0',
-      orderBy: 'date DESC',
-    );
+    final res = await db.rawQuery('''
+      SELECT 
+        c.*,
+        CASE 
+          WHEN (c.amount IS NULL OR c.amount = 0) 
+            THEN COALESCE(i.price, 0) * COALESCE(c.quantity, 0)
+          ELSE c.amount
+        END AS amount
+      FROM consumptions c
+      LEFT JOIN items i ON i.id = c.itemId
+      WHERE ifnull(c.isDeleted,0)=0
+      ORDER BY c.date DESC
+    ''');
     return res.map((row) => Consumption.fromMap(row)).toList();
   }
 
@@ -2085,16 +2186,8 @@ class DBService {
         ms.cost,
         sds.sharePercentage       AS doctorPercentRaw,
         sds.towerSharePercentage  AS clinicPercentRaw,
-        CASE 
-          WHEN ms.serviceType IN ('doctor','doctorGeneral','طبيب')
-            THEN (100.0 - COALESCE(sds.towerSharePercentage, 0))
-          ELSE COALESCE(sds.sharePercentage, 0)
-        END AS doctorPercentComputed,
-        CASE 
-          WHEN ms.serviceType IN ('doctor','doctorGeneral','طبيب')
-            THEN COALESCE(sds.towerSharePercentage, 0)
-          ELSE (100.0 - COALESCE(sds.sharePercentage, 0))
-        END AS clinicPercentComputed
+        COALESCE(sds.sharePercentage, 0)      AS doctorPercentComputed,
+        COALESCE(sds.towerSharePercentage, 0) AS clinicPercentComputed
       FROM service_doctor_share sds
       JOIN medical_services ms ON ms.id = sds.serviceId
       WHERE sds.doctorId = ?
@@ -2120,31 +2213,15 @@ class DBService {
         ms.cost,
         sds.sharePercentage      AS doctorPercentRaw,
         sds.towerSharePercentage AS clinicPercentRaw,
-        CASE 
-          WHEN ms.serviceType IN ('doctor','doctorGeneral','طبيب')
-            THEN (100.0 - COALESCE(sds.towerSharePercentage, 0))
-          ELSE COALESCE(sds.sharePercentage, 0)
-        END AS doctorPercentComputed,
-        CASE 
-          WHEN ms.serviceType IN ('doctor','doctorGeneral','طبيب')
-            THEN COALESCE(sds.towerSharePercentage, 0)
-          ELSE (100.0 - COALESCE(sds.sharePercentage, 0))
-        END AS clinicPercentComputed,
+        COALESCE(sds.sharePercentage, 0)      AS doctorPercentComputed,
+        COALESCE(sds.towerSharePercentage, 0) AS clinicPercentComputed,
         COUNT(ps.id)                      AS times,
         COALESCE(SUM(ps.serviceCost), 0)  AS totalRevenue,
         COALESCE(SUM(
-          ps.serviceCost * CASE 
-            WHEN ms.serviceType IN ('doctor','doctorGeneral','طبيب')
-              THEN (1.0 - COALESCE(sds.towerSharePercentage, 0)/100.0)
-            ELSE (COALESCE(sds.sharePercentage, 0)/100.0)
-          END
+          ps.serviceCost * (COALESCE(sds.sharePercentage, 0)/100.0)
         ), 0) AS doctorTotalAmount,
         COALESCE(SUM(
-          ps.serviceCost * CASE 
-            WHEN ms.serviceType IN ('doctor','doctorGeneral','طبيب')
-              THEN (COALESCE(sds.towerSharePercentage, 0)/100.0)
-            ELSE (1.0 - COALESCE(sds.sharePercentage, 0)/100.0)
-          END
+          ps.serviceCost * (COALESCE(sds.towerSharePercentage, 0)/100.0)
         ), 0) AS clinicTotalAmount
       FROM service_doctor_share sds
       JOIN medical_services ms ON ms.id = sds.serviceId
@@ -2186,15 +2263,10 @@ class DBService {
       return {'doctor': 0.0, 'clinic': 0.0};
     }
     final r = rows.first;
-    final String st = (r['serviceType'] ?? '').toString();
     final double shareP = (r['shareP'] as num).toDouble();
     final double towerP = (r['towerP'] as num).toDouble();
 
-    if (st == 'doctor' || st == 'doctorGeneral' || st == 'طبيب') {
-      return {'doctor': (100.0 - towerP), 'clinic': towerP};
-    } else {
-      return {'doctor': shareP, 'clinic': (100.0 - shareP)};
-    }
+    return {'doctor': shareP, 'clinic': towerP};
   }
 
   //=============================== إدارة الموظفين ===============================
@@ -2526,10 +2598,17 @@ class DBService {
   Future<double> getSumConsumptionBetween(DateTime from, DateTime to) async {
     final db = await database;
     final res = await db.rawQuery('''
-        SELECT SUM(amount) as total
-        FROM consumptions
-        WHERE date BETWEEN ? AND ?
-          AND ifnull(isDeleted,0)=0
+        SELECT COALESCE(SUM(
+          CASE 
+            WHEN (c.amount IS NULL OR c.amount = 0)
+              THEN COALESCE(i.price, 0) * COALESCE(c.quantity, 0)
+            ELSE c.amount
+          END
+        ), 0) as total
+        FROM consumptions c
+        LEFT JOIN items i ON i.id = c.itemId
+        WHERE c.date BETWEEN ? AND ?
+          AND ifnull(c.isDeleted,0)=0
       ''', [from.toIso8601String(), to.toIso8601String()]);
     return res.first['total'] == null
         ? 0.0
@@ -2728,6 +2807,78 @@ class DBService {
         AND (ps.serviceId IS NULL OR ifnull(ms.isDeleted,0)=0)
     ''', [from.toIso8601String(), to.toIso8601String()]);
     return (res.first['total'] as num?)?.toDouble() ?? 0.0;
+  }
+
+  Future<Map<String, double>> getDoctorShareByDateBetween(
+      DateTime from, DateTime to) async {
+    final db = await database;
+    final rows = await db.rawQuery('''
+      SELECT 
+        date(p.registerDate) AS dayKey,
+        COALESCE(SUM(
+          ps.serviceCost * (COALESCE(sds.sharePercentage, 0) / 100.0)
+        ), 0) AS total
+      FROM ${PatientService.table} ps
+      JOIN patients p ON p.id = ps.patientId
+      JOIN medical_services ms ON ms.id = ps.serviceId
+      LEFT JOIN service_doctor_share sds
+        ON sds.serviceId = ps.serviceId
+       AND sds.doctorId = p.doctorId
+       AND ifnull(sds.isDeleted,0)=0
+      WHERE p.registerDate BETWEEN ? AND ?
+        AND ms.serviceType IN ('radiology','lab','الأشعة','المختبر')
+        AND ifnull(ps.isDeleted,0)=0
+        AND ifnull(p.isDeleted,0)=0
+        AND ifnull(ms.isDeleted,0)=0
+      GROUP BY date(p.registerDate)
+      ORDER BY dayKey ASC
+    ''', [from.toIso8601String(), to.toIso8601String()]);
+    final out = <String, double>{};
+    for (final row in rows) {
+      final key = row['dayKey']?.toString() ?? '';
+      if (key.isEmpty) continue;
+      out[key] = (row['total'] as num?)?.toDouble() ?? 0.0;
+    }
+    return out;
+  }
+
+  Future<Map<String, double>> getDoctorInputByDateBetween(
+      DateTime from, DateTime to) async {
+    final db = await database;
+    final rows = await db.rawQuery('''
+      SELECT 
+        date(p.registerDate) AS dayKey,
+        COALESCE(SUM(
+          CASE
+            WHEN ps.serviceId IS NULL THEN ps.serviceCost
+            WHEN ms.serviceType IN ('doctor','doctorGeneral','طبيب')
+                 AND sds.doctorId = p.doctorId
+              THEN ps.serviceCost * (COALESCE(sds.sharePercentage, 0) / 100.0)
+            ELSE 0
+          END
+        ), 0) AS total
+      FROM ${PatientService.table} ps
+      JOIN patients p ON p.id = ps.patientId
+      LEFT JOIN medical_services ms ON ms.id = ps.serviceId
+      LEFT JOIN service_doctor_share sds
+        ON sds.serviceId = ps.serviceId
+       AND sds.doctorId = p.doctorId
+       AND ifnull(sds.isDeleted,0)=0
+      WHERE p.registerDate BETWEEN ? AND ?
+        AND (ps.serviceId IS NULL OR ms.serviceType IN ('doctor','doctorGeneral','طبيب'))
+        AND ifnull(ps.isDeleted,0)=0
+        AND ifnull(p.isDeleted,0)=0
+        AND (ps.serviceId IS NULL OR ifnull(ms.isDeleted,0)=0)
+      GROUP BY date(p.registerDate)
+      ORDER BY dayKey ASC
+    ''', [from.toIso8601String(), to.toIso8601String()]);
+    final out = <String, double>{};
+    for (final row in rows) {
+      final key = row['dayKey']?.toString() ?? '';
+      if (key.isEmpty) continue;
+      out[key] = (row['total'] as num?)?.toDouble() ?? 0.0;
+    }
+    return out;
   }
 
   Future<int> insertConsumptionType(String type) async {

@@ -150,7 +150,7 @@ class ChatService {
   }
 
   Future<ChatConversation?> _tryStartDmRpc(String otherUid) async {
-    const mutation = '''
+    const mutation = r'''
       mutation StartDm($other: uuid!) {
         chat_start_dm(args: {p_other_uid: $other}) {
           id
@@ -164,7 +164,7 @@ class ChatService {
           ? (rows.first as Map)['id']?.toString()
           : null;
       if (id == null || id.isEmpty) return null;
-      const query = '''
+      const query = r'''
         query ConvById($id: uuid!) {
           chat_conversations_by_pk(id: $id) {
             id

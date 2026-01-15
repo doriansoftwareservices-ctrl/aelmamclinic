@@ -44,6 +44,14 @@
   - role: superadmin
 - function:
     schema: public
+    name: admin_reply_complaint
+  configuration:
+    exposed_as: mutation
+    custom_name: admin_reply_complaint
+  permissions:
+  - role: superadmin
+- function:
+    schema: public
     name: admin_create_owner_full
   configuration:
     exposed_as: mutation
@@ -266,6 +274,16 @@
   configuration:
     exposed_as: mutation
     custom_name: self_create_account
+  permissions:
+  - role: me
+  - role: user
+  - role: superadmin
+- function:
+    schema: public
+    name: update_clinic_profile
+  configuration:
+    exposed_as: mutation
+    custom_name: update_clinic_profile
   permissions:
   - role: me
   - role: user

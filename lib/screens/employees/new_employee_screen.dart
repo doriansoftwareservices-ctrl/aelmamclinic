@@ -11,7 +11,7 @@ import 'package:aelmamclinic/core/formatters.dart';
 import 'package:aelmamclinic/models/account_user_summary.dart';
 import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:aelmamclinic/services/db_service.dart';
-import 'package:aelmamclinic/services/nhost_admin_service.dart';
+import 'package:aelmamclinic/services/nhost_employee_accounts_service.dart';
 import 'package:aelmamclinic/widgets/user_account_picker_dialog.dart';
 
 class NewEmployeeScreen extends StatefulWidget {
@@ -36,7 +36,8 @@ class _NewEmployeeScreenState extends State<NewEmployeeScreen> {
   bool _isDoctor = false;
   bool _saving = false;
   bool _loadingAccounts = false;
-  final NhostAdminService _adminService = NhostAdminService();
+  final NhostEmployeeAccountsService _accountsService =
+      NhostEmployeeAccountsService();
   List<AccountUserSummary> _availableAccounts = const [];
   AccountUserSummary? _selectedAccount;
   String? _selectedUserUid;
@@ -174,13 +175,18 @@ class _NewEmployeeScreenState extends State<NewEmployeeScreen> {
     }
     setState(() => _loadingAccounts = true);
     try {
-      final accounts = await _adminService.listAccountUsersWithEmail(
-        accountId: accountId,
-        includeDisabled: false,
-      );
+      final accounts =
+          await _accountsService.listEmployees(accountId: accountId);
       final linkedEmployees = await DBService.instance.getEmployeeUserUids();
-      final filtered =
-          accounts.where((a) => !linkedEmployees.contains(a.userUid)).toList();
+      final filtered = accounts
+          .where((a) => !a.disabled)
+          .where((a) => !linkedEmployees.contains(a.userUid))
+          .map((a) => AccountUserSummary(
+                userUid: a.userUid,
+                email: a.email,
+                disabled: a.disabled,
+              ))
+          .toList();
       if (!mounted) return;
       setState(() {
         _availableAccounts = filtered;

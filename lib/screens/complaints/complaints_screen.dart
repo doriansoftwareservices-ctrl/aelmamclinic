@@ -31,7 +31,8 @@ class _ComplaintsScreenState extends State<ComplaintsScreen> {
       await db.update(
         'complaints',
         {'replySeen': 1},
-        where: "status != 'open'",
+        where:
+            "(IFNULL(replyMessage, '') != '' OR IFNULL(reply_message, '') != '')",
       );
       DBService.instance.emitPassiveChange('complaints');
     } catch (_) {}
@@ -44,8 +45,12 @@ class _ComplaintsScreenState extends State<ComplaintsScreen> {
 
   /*──────────────── إضافة / تعديل شكوى ───────────*/
   Future<void> _openDialog({Map<String, dynamic>? initial}) async {
-    final titleCtrl = TextEditingController(text: initial?['title'] ?? '');
-    final descCtrl = TextEditingController(text: initial?['description'] ?? '');
+    final titleCtrl = TextEditingController(
+      text: (initial?['subject'] ?? initial?['title'] ?? '').toString(),
+    );
+    final descCtrl = TextEditingController(
+      text: (initial?['message'] ?? initial?['description'] ?? '').toString(),
+    );
     final formKey = GlobalKey<FormState>();
 
     final ok = await showDialog<bool>(
@@ -103,6 +108,8 @@ class _ComplaintsScreenState extends State<ComplaintsScreen> {
       await db.insert('complaints', {
         'title': titleCtrl.text.trim(),
         'description': descCtrl.text.trim(),
+        'subject': titleCtrl.text.trim(),
+        'message': descCtrl.text.trim(),
         'status': 'open',
         'createdAt': nowIso,
       });
@@ -112,6 +119,8 @@ class _ComplaintsScreenState extends State<ComplaintsScreen> {
         {
           'title': titleCtrl.text.trim(),
           'description': descCtrl.text.trim(),
+          'subject': titleCtrl.text.trim(),
+          'message': descCtrl.text.trim(),
         },
         where: 'id = ?',
         whereArgs: [initial['id']],
@@ -277,6 +286,12 @@ class _ComplaintsScreenState extends State<ComplaintsScreen> {
                             final dateStr = DateFormat('yyyy-MM-dd').format(
                                 DateTime.parse(c['createdAt'] as String));
                             final isClosed = c['status'] == 'closed';
+                            final replyText =
+                                ((c['replyMessage'] ?? c['reply_message']) ??
+                                        '')
+                                    .toString()
+                                    .trim();
+                            final hasReply = replyText.isNotEmpty;
 
                             return NeuCard(
                               padding: const EdgeInsets.symmetric(
@@ -292,7 +307,8 @@ class _ComplaintsScreenState extends State<ComplaintsScreen> {
                                       isClosed ? Colors.green : Colors.orange,
                                 ),
                                 title: Text(
-                                  c['title'] as String,
+                                  (c['subject'] ?? c['title'] ?? 'شكوى')
+                                      .toString(),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
@@ -301,11 +317,14 @@ class _ComplaintsScreenState extends State<ComplaintsScreen> {
                                 subtitle: Padding(
                                   padding: const EdgeInsets.only(top: 4),
                                   child: Text(
-                                    '$dateStr • الحالة:',
+                                    hasReply
+                                        ? '$dateStr • يوجد رد'
+                                        : '$dateStr • الحالة:',
                                     style: const TextStyle(
                                         fontWeight: FontWeight.w600),
                                   ),
                                 ),
+                                isThreeLine: hasReply,
                                 trailing: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
@@ -316,6 +335,33 @@ class _ComplaintsScreenState extends State<ComplaintsScreen> {
                                         switch (v) {
                                           case 'toggle':
                                             _toggleStatus(c);
+                                            break;
+                                          case 'viewReply':
+                                            final replyText =
+                                                (c['replyMessage'] ??
+                                                        c['reply_message'])
+                                                    ?.toString()
+                                                    .trim();
+                                            if (replyText == null ||
+                                                replyText.isEmpty) {
+                                              return;
+                                            }
+                                            showDialog<void>(
+                                              context: context,
+                                              builder: (ctx) => AlertDialog(
+                                                title:
+                                                    const Text('رد الإدارة'),
+                                                content: Text(replyText),
+                                                actions: [
+                                                  TextButton(
+                                                    onPressed: () =>
+                                                        Navigator.of(ctx)
+                                                            .pop(),
+                                                    child: const Text('إغلاق'),
+                                                  ),
+                                                ],
+                                              ),
+                                            );
                                             break;
                                           case 'edit':
                                             _openDialog(initial: c);
@@ -341,6 +387,18 @@ class _ComplaintsScreenState extends State<ComplaintsScreen> {
                                             ),
                                           ),
                                         ),
+                                        if (hasReply)
+                                          PopupMenuItem(
+                                            value: 'viewReply',
+                                            child: ListTile(
+                                              leading:
+                                                  const Icon(Icons.reply_all),
+                                              title: const Text('عرض الرد',
+                                                  style: TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.w700)),
+                                            ),
+                                          ),
                                         const PopupMenuItem(
                                           value: 'edit',
                                           child: ListTile(
@@ -366,6 +424,24 @@ class _ComplaintsScreenState extends State<ComplaintsScreen> {
                                     ),
                                   ],
                                 ),
+                                onTap: hasReply
+                                    ? () {
+                                        showDialog<void>(
+                                          context: context,
+                                          builder: (ctx) => AlertDialog(
+                                            title: const Text('رد الإدارة'),
+                                            content: Text(replyText),
+                                            actions: [
+                                              TextButton(
+                                                onPressed: () =>
+                                                    Navigator.of(ctx).pop(),
+                                                child: const Text('إغلاق'),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      }
+                                    : null,
                               ),
                             );
                           },

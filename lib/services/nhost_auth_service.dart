@@ -1,4 +1,3 @@
-// lib/services/nhost_auth_service.dart
 import 'dart:async';
 import 'dart:developer' as dev;
 
@@ -26,16 +25,8 @@ class NhostAuthService {
       : _client = client ?? NhostManager.client,
         _gqlOverride = gql {
     _authUnsub = _client.auth.addAuthStateChangedCallback((state) {
-      // تحديث GraphQL client عند تغيّر الجلسة
       NhostGraphqlService.refreshClient(client: _client);
-
-      // بثّ الحالة (بحذر)
-      try {
-        if (!_authStateController.isClosed) {
-          _authStateController.add(state);
-        }
-      } catch (_) {}
-
+      _authStateController.add(state);
       if (state == AuthenticationState.signedOut) {
         unawaited(_disposeSync());
       }
@@ -44,10 +35,8 @@ class NhostAuthService {
 
   final NhostClient _client;
   final GraphQLClient? _gqlOverride;
-
   final StreamController<AuthenticationState> _authStateController =
-      StreamController<AuthenticationState>.broadcast();
-
+      StreamController.broadcast();
   UnsubscribeDelegate? _authUnsub;
 
   SyncService? _sync;
@@ -121,7 +110,6 @@ class NhostAuthService {
 
   Future<void> dispose() async {
     _authUnsub?.call();
-    _authUnsub = null;
     await _disposeSync();
     await _authStateController.close();
   }
@@ -204,7 +192,6 @@ class NhostAuthService {
         }
       }
     ''';
-
     final vars = <String, dynamic>{
       'name_ar': profile.nameAr.trim(),
       'city_ar': profile.cityAr.trim(),
@@ -216,7 +203,6 @@ class NhostAuthService {
       'near_en': profile.nearEn.trim(),
       'phone': profile.phone.trim(),
     };
-
     final data = await _runMutation(mutation, vars);
     final rows = _rowsFromData(data, 'self_create_account');
     return rows.isEmpty ? '' : (rows.first['id']?.toString() ?? '');
@@ -226,11 +212,10 @@ class NhostAuthService {
     required String accountId,
   }) async {
     if (accountId.trim().isEmpty) return null;
-
     final data = await _runQuery(
-      '''
-      query ClinicProfile(\$id: uuid!) {
-        accounts(where: {id: {_eq: \$id}}, limit: 1) {
+      r'''
+      query ClinicProfile($id: uuid!) {
+        accounts(where: {id: {_eq: $id}}, limit: 1) {
           id
           name
           clinic_name_en
@@ -246,9 +231,61 @@ class NhostAuthService {
       ''',
       {'id': accountId},
     );
-
     final rows = _rowsFromData(data, 'accounts');
     return rows.isEmpty ? null : rows.first;
+  }
+
+  Future<void> updateClinicProfile({
+    required ClinicProfileInput profile,
+  }) async {
+    const mutation = r'''
+      mutation UpdateClinicProfile(
+        $name_ar: String!
+        $city_ar: String!
+        $street_ar: String!
+        $near_ar: String!
+        $name_en: String!
+        $city_en: String!
+        $street_en: String!
+        $near_en: String!
+        $phone: String!
+      ) {
+        update_clinic_profile(
+          args: {
+            p_clinic_name: $name_ar
+            p_city_ar: $city_ar
+            p_street_ar: $street_ar
+            p_near_ar: $near_ar
+            p_clinic_name_en: $name_en
+            p_city_en: $city_en
+            p_street_en: $street_en
+            p_near_en: $near_en
+            p_phone: $phone
+          }
+        ) {
+          ok
+          error
+        }
+      }
+    ''';
+    final vars = <String, dynamic>{
+      'name_ar': profile.nameAr.trim(),
+      'city_ar': profile.cityAr.trim(),
+      'street_ar': profile.streetAr.trim(),
+      'near_ar': profile.nearAr.trim(),
+      'name_en': profile.nameEn.trim(),
+      'city_en': profile.cityEn.trim(),
+      'street_en': profile.streetEn.trim(),
+      'near_en': profile.nearEn.trim(),
+      'phone': profile.phone.trim(),
+    };
+    final data = await _runMutation(mutation, vars);
+    final rows = _rowsFromData(data, 'update_clinic_profile');
+    final ok = rows.isNotEmpty ? rows.first['ok'] == true : false;
+    if (!ok) {
+      final err = rows.isNotEmpty ? rows.first['error']?.toString() : null;
+      throw Exception(err ?? 'update_clinic_profile failed');
+    }
   }
 
   List<Map<String, dynamic>> _rowsFromData(
@@ -355,8 +392,8 @@ class NhostAuthService {
     final message = _formatOperationException(ex);
     final lower = message.toLowerCase();
     return lower.contains('not found in type') ||
-        (lower.contains('field') && lower.contains('not found')) ||
-        (lower.contains('does not exist') && lower.contains('relation'));
+        lower.contains('field') && lower.contains('not found') ||
+        lower.contains('does not exist') && lower.contains('relation');
   }
 
   String _formatOperationException(OperationException ex) {
@@ -396,7 +433,6 @@ class NhostAuthService {
   Future<void> syncCurrentAccount(String? accountId) async {
     final trimmed = accountId?.trim() ?? '';
     if (trimmed.isEmpty) return;
-
     const mutation = r'''
       mutation SetCurrentAccount($account: uuid!) {
         set_current_account(args: {p_account: $account}) {
@@ -404,7 +440,6 @@ class NhostAuthService {
         }
       }
     ''';
-
     try {
       await _runMutation(mutation, {'account': trimmed});
     } catch (_) {
@@ -455,7 +490,6 @@ class NhostAuthService {
     } catch (_) {}
 
     final isSuper = await _resolveSuperAdminFlag(fallbackEmail: user.email);
-
     String? planCode;
     try {
       planCode = await fetchMyPlanCode() ?? 'free';
@@ -596,7 +630,6 @@ class NhostAuthService {
     try {
       planCode = await fetchMyPlanCode() ?? 'free';
     } catch (_) {}
-
     final roleLower = role.toLowerCase();
     if (roleResolved &&
         planCode == 'free' &&
@@ -738,20 +771,10 @@ class NhostAuthService {
   Future<void> _disposeSync() async {
     final sync = _sync;
     if (sync == null) return;
-
     _sync = null;
-    _boundAccountId = null;
-
-    // فكّ الربط بين DBService و pushFor
     DBService.instance.onLocalChange = null;
-
     try {
       await sync.stopRealtime();
-    } catch (_) {}
-
-    // ✅ مهم: SyncService عندك يملك dispose() فعلياً
-    try {
-      await sync.dispose();
     } catch (_) {}
   }
 

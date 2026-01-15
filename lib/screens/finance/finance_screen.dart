@@ -223,7 +223,13 @@ class _EmployeesFinanceSummaryScreenState
       }
     }
 
-    final net = collectedVal - salariesVal - consumptionVal;
+    final net = collectedVal -
+        salariesVal -
+        consumptionVal -
+        loansVal -
+        discountsVal -
+        ratiosVal -
+        inputsVal;
 
     LoggingService().logTransaction(
       transactionType: "FinanceSummary",

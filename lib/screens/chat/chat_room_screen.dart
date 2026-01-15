@@ -28,7 +28,6 @@ import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/core/nhost_manager.dart';
 import 'package:aelmamclinic/local/chat_local_store.dart';
 import 'package:aelmamclinic/models/chat_models.dart';
-import 'package:aelmamclinic/models/patient.dart';
 import 'package:aelmamclinic/providers/chat_provider.dart';
 import 'package:aelmamclinic/services/chat_service.dart';
 import 'package:aelmamclinic/services/db_service.dart';
@@ -681,8 +680,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     list.sort((a, b) => (b.id ?? 0).compareTo(a.id ?? 0));
     final results = <_ComposerSuggestion>[];
     for (final p in list) {
-      final name = (p.name ?? '').trim();
-      final phone = (p.phoneNumber ?? '').trim();
+      final name = p.name.trim();
+      final phone = p.phoneNumber.trim();
       if (name.isEmpty && phone.isEmpty) continue;
       if (q.isNotEmpty) {
         final hay = '$name $phone'.toLowerCase();

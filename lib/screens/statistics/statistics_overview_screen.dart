@@ -51,6 +51,7 @@ import 'package:aelmamclinic/screens/audit/permissions_screen.dart';
 /*── شاشة الدردشة ─*/
 import 'package:aelmamclinic/screens/chat/chat_home_screen.dart';
 import 'package:aelmamclinic/screens/complaints/complaints_screen.dart';
+import 'package:aelmamclinic/screens/clinic/clinic_profile_screen.dart';
 import 'package:aelmamclinic/screens/subscription/my_plan_screen.dart';
 
 /*── لتسجيل الخروج ─*/
@@ -255,7 +256,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
     try {
       final db = await DBService.instance.database;
       final rows = await db.rawQuery(
-        "SELECT COUNT(*) AS c FROM complaints WHERE status != 'open' AND IFNULL(replySeen, 0) = 0",
+        "SELECT COUNT(*) AS c FROM complaints WHERE (IFNULL(replyMessage, '') != '' OR IFNULL(reply_message, '') != '') AND IFNULL(replySeen, 0) = 0",
       );
       final count = (rows.first['c'] as int?) ?? 0;
       if (!mounted) return;
@@ -363,9 +364,23 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
   void _handleDeniedAccess() {
     final auth = context.read<AuthProvider>();
     final isFree = auth.planCode == 'free' && !auth.isSuperAdmin;
-    final isOwner = auth.role?.toLowerCase() == 'owner';
+    final role = auth.role?.toLowerCase();
+    final canUpgrade = role == 'owner' || role == 'admin';
     _showNotAllowedSnack();
-    if (!isFree || !isOwner) return;
+    if (!isFree || !canUpgrade) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const MyPlanScreen()),
+    );
+  }
+
+  void _openMyPlanFromDrawer() {
+    final auth = context.read<AuthProvider>();
+    final isFree = auth.planCode == 'free' && !auth.isSuperAdmin;
+    final role = auth.role?.toLowerCase();
+    final canUpgrade = role == 'owner' || role == 'admin';
+    _showNotAllowedSnack();
+    if (!isFree || !canUpgrade) return;
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const MyPlanScreen()),
@@ -671,19 +686,16 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
       requireUpdate: requireUpdate,
       requireDelete: requireDelete,
     );
-
-    if (!allowed && kHideDeniedTabs && auth.permissionsLoaded) {
-      return const SizedBox.shrink(); // إخفاء التبويب
-    }
-
+    final isFreePlan = auth.planCode == 'free' && !auth.isSuperAdmin;
     final showProBadge =
-        !allowed && !auth.isSuperAdmin && auth.planCode == 'free';
+        isFreePlan && !kFreePlanFeatures.contains(featureKey);
 
     return _drawerItem(
       icon: icon,
       title: title,
       enabled: allowed,
       onTap: onTap,
+      onDenied: _openMyPlanFromDrawer,
       showProBadge: showProBadge,
     );
   }
@@ -729,13 +741,6 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
 
     // استمع لتغيّرات AuthProvider كي تنعكس الصلاحيات مباشرة
     final auth = Provider.of<AuthProvider>(context);
-    final canManageAccounts = _isFeatureAllowed(auth, FeatureKeys.accounts);
-    final canManagePermissions =
-        _isFeatureAllowed(auth, FeatureKeys.auditPermissions);
-    final canViewAuditLogs = _isFeatureAllowed(auth, FeatureKeys.auditLogs);
-    final showAdminSection =
-        canManageAccounts || canManagePermissions || canViewAuditLogs;
-
     return Directionality(
       textDirection: ui.TextDirection.rtl,
       child: Drawer(
@@ -775,6 +780,27 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
                         );
                       },
                     ),
+                    _drawerItem(
+                      icon: Icons.local_hospital_outlined,
+                      title: 'بيانات المرفق الصحي',
+                      enabled: auth.isOwnerOrAdmin,
+                      onDenied: () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content:
+                                Text('هذه الميزة متاحة للمالك أو المدير فقط.'),
+                          ),
+                        );
+                      },
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const ClinicProfileScreen()),
+                        );
+                      },
+                    ),
 
                     // المرضى
                     _featureDrawerItem(
@@ -806,18 +832,6 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
                       },
                     ),
 
-                    // العودات
-                    _featureDrawerItem(
-                      auth: auth,
-                      featureKey: FeatureKeys.returns,
-                      icon: Icons.assignment_return_outlined,
-                      title: 'العودات',
-                      onTap: () {
-                        Navigator.pop(context);
-                        _showReturnsMenu(context);
-                      },
-                    ),
-
                     // الموظفون
                     _featureDrawerItem(
                       auth: auth,
@@ -834,35 +848,26 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
                       },
                     ),
 
+                    // العودات (ضمن شؤون الموظفين)
+                    _featureDrawerItem(
+                      auth: auth,
+                      featureKey: FeatureKeys.returns,
+                      icon: Icons.assignment_return_outlined,
+                      title: 'العودات',
+                      onTap: () {
+                        Navigator.pop(context);
+                        _showReturnsMenu(context);
+                      },
+                    ),
+
                     // حسابات الموظفين (PRO)
                     _drawerItem(
                       icon: Icons.badge_rounded,
                       title: 'حسابات الموظفين',
                       enabled: _canManageEmployeeAccounts(auth),
-                      showProBadge:
-                          !auth.isSuperAdmin && auth.planCode == 'free',
+                      showProBadge: !auth.isSuperAdmin && !auth.isPro,
                       onDenied: () {
-                        final isFree =
-                            auth.planCode == 'free' && !auth.isSuperAdmin;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              isFree
-                                  ? 'قم برفع خطة اشتراكك لإضافة حسابات موظفين'
-                                  : 'ليس لديك صلاحية لإدارة حسابات الموظفين',
-                            ),
-                            behavior: SnackBarBehavior.floating,
-                            duration: const Duration(seconds: 2),
-                          ),
-                        );
-                        if (isFree && auth.role?.toLowerCase() == 'owner') {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const MyPlanScreen(),
-                            ),
-                          );
-                        }
+                        _openMyPlanFromDrawer();
                       },
                       onTap: () {
                         Navigator.pop(context);
@@ -966,20 +971,6 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
                         );
                       },
                     ),
-                    _drawerItem(
-                      icon: Icons.report_problem_outlined,
-                      title: 'الشكاوى والأعطال',
-                      showAlertDot: _hasComplaintReply,
-                      onTap: () {
-                        Navigator.pop(context);
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => const ComplaintsScreen()),
-                        );
-                      },
-                    ),
-
                     // النسخ الاحتياطي
                     _featureDrawerItem(
                       auth: auth,
@@ -997,53 +988,64 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
                     ),
 
                     // ـــ قسم الإداري: يظهر فقط إذا وُجدت صلاحيات لأي من المفاتيح الإدارية
-                    if (showAdminSection) ...[
-                      const SizedBox(height: 8),
-                      Divider(color: scheme.outline.withValues(alpha: .3)),
-                      const SizedBox(height: 6),
-                      _featureDrawerItem(
-                        auth: auth,
-                        featureKey: FeatureKeys.accounts,
-                        icon: Icons.supervisor_account_rounded,
-                        title: 'الحسابات',
-                        onTap: () {
-                          Navigator.pop(context);
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) => const UsersScreen()),
-                          );
-                        },
-                      ),
-                      _featureDrawerItem(
-                        auth: auth,
-                        featureKey: FeatureKeys.auditPermissions,
-                        icon: Icons.tune_rounded,
-                        title: 'الصلاحيات',
-                        onTap: () {
-                          Navigator.pop(context);
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) => const PermissionsScreen()),
-                          );
-                        },
-                      ),
-                      _featureDrawerItem(
-                        auth: auth,
-                        featureKey: FeatureKeys.auditLogs,
-                        icon: Icons.receipt_long_rounded,
-                        title: 'السجلات',
-                        onTap: () {
-                          Navigator.pop(context);
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) => const AuditLogsScreen()),
-                          );
-                        },
-                      ),
-                    ],
+                    const SizedBox(height: 8),
+                    Divider(color: scheme.outline.withValues(alpha: .3)),
+                    const SizedBox(height: 6),
+                    _featureDrawerItem(
+                      auth: auth,
+                      featureKey: FeatureKeys.accounts,
+                      icon: Icons.supervisor_account_rounded,
+                      title: 'الحسابات',
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const UsersScreen()),
+                        );
+                      },
+                    ),
+                    _featureDrawerItem(
+                      auth: auth,
+                      featureKey: FeatureKeys.auditPermissions,
+                      icon: Icons.tune_rounded,
+                      title: 'الصلاحيات',
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const PermissionsScreen()),
+                        );
+                      },
+                    ),
+                    _featureDrawerItem(
+                      auth: auth,
+                      featureKey: FeatureKeys.auditLogs,
+                      icon: Icons.receipt_long_rounded,
+                      title: 'السجلات',
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const AuditLogsScreen()),
+                        );
+                      },
+                    ),
+
+                    _drawerItem(
+                      icon: Icons.report_problem_outlined,
+                      title: 'الشكاوى والأعطال',
+                      showAlertDot: _hasComplaintReply,
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const ComplaintsScreen()),
+                        );
+                      },
+                    ),
                   ],
                 ),
               ),

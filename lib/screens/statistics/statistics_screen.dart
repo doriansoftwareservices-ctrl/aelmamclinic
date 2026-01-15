@@ -17,7 +17,9 @@ import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/core/tbian_ui.dart';
 
+import 'package:aelmamclinic/models/clinic_profile.dart';
 import 'package:aelmamclinic/services/db_service.dart';
+import 'package:aelmamclinic/services/clinic_profile_service.dart';
 import 'package:aelmamclinic/services/save_file_service.dart';
 import 'package:aelmamclinic/models/patient.dart';
 import 'package:aelmamclinic/models/consumption.dart';
@@ -49,11 +51,69 @@ class _PdfUtils {
     String title, {
     String? subtitle,
     pw.ImageProvider? logo,
+    ClinicProfile? clinic,
   }) {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.stretch,
       children: [
-        pw.Row(
+        if (clinic != null)
+          pw.Row(
+            children: [
+              pw.Expanded(
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(clinic.nameAr,
+                        style: pw.TextStyle(
+                            fontSize: 14, fontWeight: pw.FontWeight.bold)),
+                    pw.Text(clinic.addressAr,
+                        style: pw.TextStyle(
+                            fontSize: 9, color: PdfColors.grey700)),
+                    pw.Text('هاتف: ${clinic.phone}',
+                        style: pw.TextStyle(
+                            fontSize: 9, color: PdfColors.grey700)),
+                  ],
+                ),
+              ),
+              pw.Container(
+                width: 48,
+                height: 48,
+                decoration: pw.BoxDecoration(
+                  borderRadius: pw.BorderRadius.circular(12),
+                  color: PdfColor.fromHex('#E8F1FB'),
+                ),
+                child: logo == null
+                    ? pw.Center(
+                        child: pw.Text(
+                          'A',
+                          style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                        ),
+                      )
+                    : pw.Padding(
+                        padding: const pw.EdgeInsets.all(6),
+                        child: pw.Image(logo, fit: pw.BoxFit.contain),
+                      ),
+              ),
+              pw.Expanded(
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.end,
+                  children: [
+                    pw.Text(clinic.nameEn,
+                        style: pw.TextStyle(
+                            fontSize: 14, fontWeight: pw.FontWeight.bold)),
+                    pw.Text(clinic.addressEn,
+                        style: pw.TextStyle(
+                            fontSize: 9, color: PdfColors.grey700)),
+                    pw.Text('Tel: ${clinic.phone}',
+                        style: pw.TextStyle(
+                            fontSize: 9, color: PdfColors.grey700)),
+                  ],
+                ),
+              ),
+            ],
+          )
+        else
+          pw.Row(
           children: [
             pw.Container(
               width: 48,
@@ -90,8 +150,23 @@ class _PdfUtils {
                 ],
               ),
             ),
-          ],
-        ),
+            ],
+          ),
+        if (clinic != null)
+          pw.Column(
+            children: [
+              pw.SizedBox(height: 6),
+              pw.Text(title,
+                  textAlign: pw.TextAlign.center,
+                  style: pw.TextStyle(
+                      fontSize: 12, fontWeight: pw.FontWeight.bold)),
+              if (subtitle != null)
+                pw.Text(subtitle,
+                    textAlign: pw.TextAlign.center,
+                    style: pw.TextStyle(
+                        fontSize: 10, color: PdfColors.grey700)),
+            ],
+          ),
         pw.SizedBox(height: 8),
         pw.Divider(color: PdfColors.grey300, thickness: .8),
         pw.SizedBox(height: 8),
@@ -521,7 +596,7 @@ class _IncomeByDateWidgetState extends State<_IncomeByDateWidget> {
     _applyFilters();
   }
 
-  void _applyFilters() {
+  Future<void> _applyFilters() async {
     Iterable<Patient> filtered = _patients;
     if (_startDate != null) {
       filtered = filtered.where((p) => p.registerDate
@@ -576,6 +651,7 @@ class _IncomeByDateWidgetState extends State<_IncomeByDateWidget> {
 
   Future<pw.Document> _buildPdf() async {
     final (base, bold) = await _PdfUtils._loadFonts();
+    final clinic = await ClinicProfileService.loadActiveOrFallback();
     final logoBytes =
         (await rootBundle.load('assets/images/logo2.png')).buffer.asUint8List();
     final logo = pw.MemoryImage(logoBytes);
@@ -591,7 +667,9 @@ class _IncomeByDateWidgetState extends State<_IncomeByDateWidget> {
         pageTheme: _PdfUtils._pageTheme(base, bold),
         build: (_) => [
           _PdfUtils.header('تقرير الدخل بالتاريخ',
-              subtitle: _subtitleRange(_startDate, _endDate), logo: logo),
+              subtitle: _subtitleRange(_startDate, _endDate),
+              logo: logo,
+              clinic: clinic),
           pw.SizedBox(height: 6),
           pw.Text('الإجمالي: ${_total.toStringAsFixed(2)}',
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
@@ -772,7 +850,7 @@ class _ConsumptionByDateWidgetState extends State<_ConsumptionByDateWidget> {
     _applyFilters();
   }
 
-  void _applyFilters() {
+  Future<void> _applyFilters() async {
     Iterable<Consumption> filtered = _all;
     if (_startDate != null) {
       filtered = filtered.where(
@@ -827,6 +905,7 @@ class _ConsumptionByDateWidgetState extends State<_ConsumptionByDateWidget> {
 
   Future<pw.Document> _buildPdf() async {
     final (base, bold) = await _PdfUtils._loadFonts();
+    final clinic = await ClinicProfileService.loadActiveOrFallback();
     final logoBytes =
         (await rootBundle.load('assets/images/logo2.png')).buffer.asUint8List();
     final logo = pw.MemoryImage(logoBytes);
@@ -842,7 +921,9 @@ class _ConsumptionByDateWidgetState extends State<_ConsumptionByDateWidget> {
         pageTheme: _PdfUtils._pageTheme(base, bold),
         build: (_) => [
           _PdfUtils.header('تقرير الاستهلاك بالتاريخ',
-              subtitle: _subtitleRange(_startDate, _endDate), logo: logo),
+              subtitle: _subtitleRange(_startDate, _endDate),
+              logo: logo,
+              clinic: clinic),
           pw.SizedBox(height: 6),
           pw.Text('الإجمالي: ${_total.toStringAsFixed(2)}',
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
@@ -1019,7 +1100,7 @@ class _IncomeByDoctorWidgetState extends State<_IncomeByDoctorWidget> {
     _applyFilters();
   }
 
-  void _applyFilters() {
+  Future<void> _applyFilters() async {
     Iterable<Patient> filtered = _patients;
     if (_startDate != null) {
       filtered = filtered.where((p) => p.registerDate
@@ -1076,6 +1157,7 @@ class _IncomeByDoctorWidgetState extends State<_IncomeByDoctorWidget> {
 
   Future<pw.Document> _buildPdf() async {
     final (base, bold) = await _PdfUtils._loadFonts();
+    final clinic = await ClinicProfileService.loadActiveOrFallback();
     final logoBytes =
         (await rootBundle.load('assets/images/logo2.png')).buffer.asUint8List();
     final logo = pw.MemoryImage(logoBytes);
@@ -1091,7 +1173,9 @@ class _IncomeByDoctorWidgetState extends State<_IncomeByDoctorWidget> {
         pageTheme: _PdfUtils._pageTheme(base, bold),
         build: (_) => [
           _PdfUtils.header('تقرير الدخل حسب الطبيب',
-              subtitle: _subtitleRange(_startDate, _endDate), logo: logo),
+              subtitle: _subtitleRange(_startDate, _endDate),
+              logo: logo,
+              clinic: clinic),
           pw.SizedBox(height: 6),
           pw.Text('الإجمالي: ${_total.toStringAsFixed(2)}',
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
@@ -1267,7 +1351,7 @@ class _ConsumptionTypeWidgetState extends State<_ConsumptionTypeWidget> {
     _applyFilters();
   }
 
-  void _applyFilters() {
+  Future<void> _applyFilters() async {
     Iterable<Consumption> filtered = _all;
     if (_startDate != null) {
       filtered = filtered.where(
@@ -1321,6 +1405,7 @@ class _ConsumptionTypeWidgetState extends State<_ConsumptionTypeWidget> {
 
   Future<pw.Document> _buildPdf() async {
     final (base, bold) = await _PdfUtils._loadFonts();
+    final clinic = await ClinicProfileService.loadActiveOrFallback();
     final logoBytes =
         (await rootBundle.load('assets/images/logo2.png')).buffer.asUint8List();
     final logo = pw.MemoryImage(logoBytes);
@@ -1336,7 +1421,9 @@ class _ConsumptionTypeWidgetState extends State<_ConsumptionTypeWidget> {
         pageTheme: _PdfUtils._pageTheme(base, bold),
         build: (_) => [
           _PdfUtils.header('تقرير نوعية الاستهلاك',
-              subtitle: _subtitleRange(_startDate, _endDate), logo: logo),
+              subtitle: _subtitleRange(_startDate, _endDate),
+              logo: logo,
+              clinic: clinic),
           pw.SizedBox(height: 6),
           pw.Text('الإجمالي: ${_total.toStringAsFixed(2)}',
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
@@ -1499,7 +1586,6 @@ class _DoctorShareByDateWidget extends StatefulWidget {
 class _DoctorShareByDateWidgetState extends State<_DoctorShareByDateWidget> {
   DateTime? _startDate;
   DateTime? _endDate;
-  List<Patient> _all = [];
   Map<String, double> _shareByDate = {};
 
   @override
@@ -1509,27 +1595,20 @@ class _DoctorShareByDateWidgetState extends State<_DoctorShareByDateWidget> {
   }
 
   Future<void> _load() async {
-    _all = await DBService.instance.getAllPatients();
+    _shareByDate = await DBService.instance.getDoctorShareByDateBetween(
+      DateTime(2000),
+      DateTime(2100),
+    );
     _applyFilters();
   }
 
-  void _applyFilters() {
-    Iterable<Patient> filtered = _all;
-    if (_startDate != null) {
-      filtered = filtered.where((p) => p.registerDate
-          .isAfter(_startDate!.subtract(const Duration(days: 1))));
-    }
-    if (_endDate != null) {
-      filtered = filtered.where((p) =>
-          p.registerDate.isBefore(_endDate!.add(const Duration(days: 1))));
-    }
-    final df = DateFormat('yyyy-MM-dd');
-    final m = <String, double>{};
-    for (final p in filtered) {
-      final k = df.format(p.registerDate);
-      m[k] = (m[k] ?? 0) + p.doctorShare;
-    }
-    setState(() => _shareByDate = m);
+  Future<void> _applyFilters() async {
+    final from = _startDate ?? DateTime(2000);
+    final to = _endDate ?? DateTime(2100);
+    DBService.instance.getDoctorShareByDateBetween(from, to).then((map) {
+      if (!mounted) return;
+      setState(() => _shareByDate = map);
+    });
   }
 
   Future<void> _pickStart() async {
@@ -1568,6 +1647,7 @@ class _DoctorShareByDateWidgetState extends State<_DoctorShareByDateWidget> {
 
   Future<pw.Document> _buildPdf() async {
     final (base, bold) = await _PdfUtils._loadFonts();
+    final clinic = await ClinicProfileService.loadActiveOrFallback();
     final logoBytes =
         (await rootBundle.load('assets/images/logo2.png')).buffer.asUint8List();
     final logo = pw.MemoryImage(logoBytes);
@@ -1583,7 +1663,9 @@ class _DoctorShareByDateWidgetState extends State<_DoctorShareByDateWidget> {
         pageTheme: _PdfUtils._pageTheme(base, bold),
         build: (_) => [
           _PdfUtils.header('تقرير حصة الأطباء بالتاريخ',
-              subtitle: _subtitleRange(_startDate, _endDate), logo: logo),
+              subtitle: _subtitleRange(_startDate, _endDate),
+              logo: logo,
+              clinic: clinic),
           pw.SizedBox(height: 6),
           pw.Text('الإجمالي: ${_total.toStringAsFixed(2)}',
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
@@ -1724,10 +1806,10 @@ class _NetProfitWidgetState extends State<_NetProfitWidget> {
     _patients = await DBService.instance.getAllPatients();
     _cons = await DBService.instance.getAllConsumption();
     _discounts = await DBService.instance.getAllEmployeeDiscounts();
-    _applyFilters();
+    await _applyFilters();
   }
 
-  void _applyFilters() {
+  Future<void> _applyFilters() async {
     final from = _startDate ?? DateTime(2000);
     final to = _endDate ?? DateTime(2100);
 
@@ -1740,7 +1822,6 @@ class _NetProfitWidgetState extends State<_NetProfitWidget> {
         p.registerDate.isBefore(to.add(const Duration(days: 1))))) {
       final k = df.format(p.registerDate);
       income[k] = (income[k] ?? 0) + p.paidAmount;
-      share[k] = (share[k] ?? 0) + p.doctorShare;
     }
 
     final cons = <String, double>{};
@@ -1766,17 +1847,28 @@ class _NetProfitWidgetState extends State<_NetProfitWidget> {
       disc[k] = (disc[k] ?? 0) + amt;
     }
 
+    final shareMap =
+        await DBService.instance.getDoctorShareByDateBetween(from, to);
+    final inputMap =
+        await DBService.instance.getDoctorInputByDateBetween(from, to);
+
+    share.addAll(shareMap);
     final days = <String>{}
       ..addAll(income.keys)
       ..addAll(cons.keys)
       ..addAll(disc.keys)
-      ..addAll(share.keys);
+      ..addAll(share.keys)
+      ..addAll(inputMap.keys);
 
     final net = <String, double>{};
     for (final k in days) {
-      net[k] =
-          (income[k] ?? 0) - (cons[k] ?? 0) - (disc[k] ?? 0) - (share[k] ?? 0);
+      net[k] = (income[k] ?? 0) -
+          (cons[k] ?? 0) -
+          (disc[k] ?? 0) -
+          (share[k] ?? 0) -
+          (inputMap[k] ?? 0);
     }
+    if (!mounted) return;
     setState(() => _netByDate = net);
   }
 
@@ -1790,7 +1882,7 @@ class _NetProfitWidgetState extends State<_NetProfitWidget> {
     );
     if (d != null) {
       setState(() => _startDate = d);
-      _applyFilters();
+      await _applyFilters();
     }
   }
 
@@ -1804,7 +1896,7 @@ class _NetProfitWidgetState extends State<_NetProfitWidget> {
     );
     if (d != null) {
       setState(() => _endDate = d);
-      _applyFilters();
+      await _applyFilters();
     }
   }
 
@@ -1816,6 +1908,7 @@ class _NetProfitWidgetState extends State<_NetProfitWidget> {
 
   Future<pw.Document> _buildPdf() async {
     final (base, bold) = await _PdfUtils._loadFonts();
+    final clinic = await ClinicProfileService.loadActiveOrFallback();
     final logoBytes =
         (await rootBundle.load('assets/images/logo2.png')).buffer.asUint8List();
     final logo = pw.MemoryImage(logoBytes);
@@ -1831,7 +1924,9 @@ class _NetProfitWidgetState extends State<_NetProfitWidget> {
         pageTheme: _PdfUtils._pageTheme(base, bold),
         build: (_) => [
           _PdfUtils.header('تقرير صافي الأرباح بالتاريخ',
-              subtitle: _subtitleRange(_startDate, _endDate), logo: logo),
+              subtitle: _subtitleRange(_startDate, _endDate),
+              logo: logo,
+              clinic: clinic),
           pw.SizedBox(height: 6),
           pw.Text('مجموع صافي الأيام: ${_total.toStringAsFixed(2)}',
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),

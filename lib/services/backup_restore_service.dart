@@ -333,7 +333,7 @@ class BackupRestoreService {
       await mergeTable('drugs', ['name']);
       await mergeTable('prescriptions', ['patientId', 'recordDate']);
       await mergeTable('prescription_items', ['prescriptionId', 'drugId']);
-      await mergeTable('complaints', ['createdAt', 'title']);
+      await mergeTable('complaints', ['createdAt', 'subject']);
 
       // دمج المجلدات
       await _mergeSubDir(tempBackupDir, dbDir, 'attachments');

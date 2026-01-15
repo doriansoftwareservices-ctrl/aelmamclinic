@@ -5,6 +5,9 @@ class Complaint {
   final String status;
   final String message;
   final String? subject;
+  final String? replyMessage;
+  final DateTime? repliedAt;
+  final String? repliedBy;
   final DateTime? createdAt;
 
   const Complaint({
@@ -14,6 +17,9 @@ class Complaint {
     required this.status,
     required this.message,
     this.subject,
+    this.replyMessage,
+    this.repliedAt,
+    this.repliedBy,
     this.createdAt,
   });
 
@@ -25,6 +31,9 @@ class Complaint {
       status: (map['status'] ?? '').toString(),
       message: (map['message'] ?? '').toString(),
       subject: map['subject']?.toString(),
+      replyMessage: map['reply_message']?.toString(),
+      repliedAt: DateTime.tryParse(map['replied_at']?.toString() ?? ''),
+      repliedBy: map['replied_by']?.toString(),
       createdAt: DateTime.tryParse(map['created_at']?.toString() ?? ''),
     );
   }

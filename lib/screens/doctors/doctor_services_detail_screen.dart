@@ -98,12 +98,39 @@ class _DoctorServicesDetailScreenState
   }
 
   Future<void> _saveShare() async {
-    final shareVal = double.tryParse(_shareCtrl.text) ?? 0.0;
-    final towerVal = double.tryParse(_towerShareCtrl.text) ?? 0.0;
+    var shareVal = double.tryParse(_shareCtrl.text) ?? 0.0;
+    var towerVal = double.tryParse(_towerShareCtrl.text) ?? 0.0;
 
     if (shareVal < 0 || towerVal < 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('النسب يجب أن تكون موجبة')),
+      );
+      return;
+    }
+    if (shareVal > 100 || towerVal > 100) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('النسب يجب أن تكون بين 0 و 100')),
+      );
+      return;
+    }
+    final bothEmpty = shareVal == 0 && towerVal == 0;
+    if (bothEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('يرجى إدخال نسبة الطبيب أو المركز')),
+      );
+      return;
+    }
+
+    if (shareVal == 0 && towerVal > 0) {
+      shareVal = 100.0 - towerVal;
+    } else if (towerVal == 0 && shareVal > 0) {
+      towerVal = 100.0 - shareVal;
+    }
+
+    final sum = (shareVal + towerVal);
+    if ((sum - 100.0).abs() > 0.01) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('مجموع نسبة الطبيب والمركز يجب أن يساوي 100%')),
       );
       return;
     }

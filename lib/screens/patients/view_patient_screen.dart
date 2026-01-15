@@ -19,6 +19,7 @@ import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/models/patient.dart';
 import 'package:aelmamclinic/models/patient_service.dart';
 import 'package:aelmamclinic/models/attachment.dart';
+import 'package:aelmamclinic/services/clinic_profile_service.dart';
 import 'package:aelmamclinic/services/db_service.dart';
 
 class ViewPatientScreen extends StatefulWidget {
@@ -219,6 +220,7 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
 
     final attachments = await _attachmentsFuture;
 
+    final clinic = await ClinicProfileService.loadActiveOrFallback();
     final pdf = pw.Document();
 
     final baseText =
@@ -273,15 +275,15 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
                     child: pw.Column(
                       crossAxisAlignment: pw.CrossAxisAlignment.start,
                       children: [
-                        pw.Text('مركز إلمام الطبي',
+                        pw.Text(clinic.nameAr,
                             style: pw.TextStyle(
                                 font: cairoBold,
                                 fontSize: 14,
                                 color: PdfColors.blueGrey)),
-                        pw.Text('العنوان1 - العنوان2 - العنوان3',
+                        pw.Text(clinic.addressAr,
                             style:
                                 pw.TextStyle(font: cairoRegular, fontSize: 9)),
-                        pw.Text('الهاتف: 12345678',
+                        pw.Text('الهاتف: ${clinic.phone}',
                             style:
                                 pw.TextStyle(font: cairoRegular, fontSize: 9)),
                       ],
@@ -305,15 +307,15 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
                     child: pw.Column(
                       crossAxisAlignment: pw.CrossAxisAlignment.end,
                       children: [
-                        pw.Text('Elmam Health Center',
+                        pw.Text(clinic.nameEn,
                             style: pw.TextStyle(
                                 font: cairoBold,
                                 fontSize: 14,
                                 color: PdfColors.blueGrey)),
-                        pw.Text('Address1 – Address2 - Address3',
+                        pw.Text(clinic.addressEn,
                             style:
                                 pw.TextStyle(font: cairoRegular, fontSize: 9)),
-                        pw.Text('Tel: 12345678',
+                        pw.Text('Tel: ${clinic.phone}',
                             style:
                                 pw.TextStyle(font: cairoRegular, fontSize: 9)),
                       ],
@@ -335,7 +337,7 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
                 top: pw.BorderSide(width: 0.6, color: PdfColors.grey300)),
           ),
           child: pw.Text(
-            'مركز إلمام الطبي - العنوان1 - العنوان2 - العنوان3 "هاتف : 12345678  •  Page ${ctx.pageNumber}/${ctx.pagesCount}',
+            '${clinic.nameAr} - ${clinic.addressAr} "هاتف : ${clinic.phone}  •  Page ${ctx.pageNumber}/${ctx.pagesCount}',
             style: pw.TextStyle(
                 font: cairoRegular, fontSize: 9, color: PdfColors.blueGrey),
             textAlign: pw.TextAlign.center,

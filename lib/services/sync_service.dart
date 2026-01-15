@@ -254,7 +254,17 @@ class SyncService {
       'days',
       'times_per_day'
     },
-    'complaints': {'title', 'description', 'status', 'created_at'},
+    'complaints': {
+      'subject',
+      'message',
+      'status',
+      'reply_message',
+      'replied_at',
+      'replied_by',
+      'handled_by',
+      'handled_at',
+      'created_at'
+    },
     'appointments': {'patient_id', 'appointment_time', 'status', 'notes'},
     'doctors': {
       'employee_id',
@@ -1178,7 +1188,7 @@ class SyncService {
     args.add(remoteLocalId);
 
     if (devCol != null) {
-      clauses.add('IFNULL($devCol,"")=?');
+      clauses.add("IFNULL($devCol,'')=?");
       args.add(deviceId);
     }
 
@@ -1568,7 +1578,7 @@ class SyncService {
         rows = await _db.query(
           table,
           columns: const ['id'],
-          where: 'IFNULL($locCol,0)=? AND IFNULL($devCol,"")=?',
+          where: "IFNULL($locCol,0)=? AND IFNULL($devCol,'')=?",
           whereArgs: [candidate, myDeviceId],
           limit: 1,
         );
@@ -2492,6 +2502,12 @@ class SyncService {
           remoteRowSnake: raw,
           allowedCols: allowedCols,
         );
+        if (localTable == 'service_doctor_share') {
+          if (filtered['serviceId'] == null) filtered.remove('serviceId');
+          if (filtered['doctorId'] == null) filtered.remove('doctorId');
+          if (filtered['service_id'] == null) filtered.remove('service_id');
+          if (filtered['doctor_id'] == null) filtered.remove('doctor_id');
+        }
 
         final accCol = _col(allowedCols, 'accountId', 'account_id');
         final devCol = _col(allowedCols, 'deviceId', 'device_id');
@@ -2507,18 +2523,19 @@ class SyncService {
           filtered[updCol] = remoteUpdatedAt;
         }
 
-        String? prevStatus;
+        String? prevReply;
         if (localTable == 'complaints') {
           try {
             final rows = await _db.query(
               'complaints',
-              columns: ['status', 'replySeen'],
+              columns: ['replyMessage', 'reply_message', 'replySeen'],
               where: 'id = ?',
               whereArgs: [resolvedLocalId],
               limit: 1,
             );
             if (rows.isNotEmpty) {
-              prevStatus = rows.first['status']?.toString();
+              prevReply = rows.first['replyMessage']?.toString();
+              prevReply ??= rows.first['reply_message']?.toString();
             }
           } catch (_) {}
         }
@@ -2527,18 +2544,19 @@ class SyncService {
             id: resolvedLocalId);
 
         if (localTable == 'complaints') {
-          final newStatus = filtered['status']?.toString();
-          if (newStatus != null && newStatus != 'open') {
-            if (prevStatus == null || prevStatus == 'open') {
-              try {
-                await _db.update(
-                  'complaints',
-                  {'replySeen': 0},
-                  where: 'id = ?',
-                  whereArgs: [resolvedLocalId],
-                );
-              } catch (_) {}
-            }
+          final newReply = filtered['replyMessage']?.toString() ??
+              filtered['reply_message']?.toString();
+          final hadReply = (prevReply ?? '').trim().isNotEmpty;
+          final hasReply = (newReply ?? '').trim().isNotEmpty;
+          if (hasReply && !hadReply) {
+            try {
+              await _db.update(
+                'complaints',
+                {'replySeen': 0},
+                where: 'id = ?',
+                whereArgs: [resolvedLocalId],
+              );
+            } catch (_) {}
           }
         }
 
@@ -3012,6 +3030,12 @@ class SyncService {
       remoteRowSnake: raw,
       allowedCols: allowedCols,
     );
+    if (localTable == 'service_doctor_share') {
+      if (filtered['serviceId'] == null) filtered.remove('serviceId');
+      if (filtered['doctorId'] == null) filtered.remove('doctorId');
+      if (filtered['service_id'] == null) filtered.remove('service_id');
+      if (filtered['doctor_id'] == null) filtered.remove('doctor_id');
+    }
 
     if (fkParentTables != null) {
       for (final entry in fkParentTables.entries) {

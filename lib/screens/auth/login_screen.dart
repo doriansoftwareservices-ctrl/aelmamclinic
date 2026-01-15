@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:aelmamclinic/models/clinic_profile.dart';
 import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:aelmamclinic/core/nhost_manager.dart';
+import 'package:aelmamclinic/services/clinic_profile_service.dart';
 
 // تصميم TBIAN
 import 'package:aelmamclinic/core/theme.dart';
@@ -117,10 +118,8 @@ class _LoginScreenState extends State<LoginScreen> {
         (!authProv.isSuperAdmin && (authProv.accountId ?? '').isEmpty)) {
       final result = await authProv.refreshAndValidateCurrentUser();
       if (!mounted) return;
-
       if (!result.isSuccess) {
         var allowContinue = false;
-
         if (result.status == AuthSessionStatus.planUpgradeRequired) {
           final role = authProv.role?.toLowerCase();
           if (role == 'owner' || role == 'admin') {
@@ -131,7 +130,6 @@ class _LoginScreenState extends State<LoginScreen> {
         } else if (result.status == AuthSessionStatus.noAccount) {
           await authProv.signOut();
         }
-
         if (!allowContinue) {
           final message = _messageForStatus(result.status);
           if (message != null) {
@@ -152,6 +150,9 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     if (!_bootstrappedOnce) {
+      if (!isSuper) {
+        await _ensureClinicProfileComplete(authProv);
+      }
       await authProv.bootstrapSync(
         pull: false,
         realtime: true,
@@ -217,7 +218,6 @@ class _LoginScreenState extends State<LoginScreen> {
           setState(() => _error = 'اسم العيادة مطلوب لإكمال إنشاء الحساب.');
           return;
         }
-
         auth.setPendingClinicProfile(clinicProfile);
         try {
           await auth.selfCreateAccount(clinicProfile);
@@ -226,19 +226,15 @@ class _LoginScreenState extends State<LoginScreen> {
           setState(() => _error = 'تعذّر إنشاء الحساب: $e');
           return;
         }
-
         final recheck = await auth.refreshAndValidateCurrentUser();
         if (!mounted) return;
-
         if (!recheck.isSuccess) {
           if (recheck.status == AuthSessionStatus.noAccount ||
               recheck.status == AuthSessionStatus.planUpgradeRequired) {
             await auth.signOut();
           }
-          setState(
-            () => _error = _messageForStatus(recheck.status) ??
-                'تعذّر التحقق من الحساب. حاول مرة أخرى.',
-          );
+          setState(() => _error = _messageForStatus(recheck.status) ??
+              'تعذّر التحقق من الحساب. حاول مرة أخرى.');
           return;
         }
       }
@@ -247,7 +243,7 @@ class _LoginScreenState extends State<LoginScreen> {
         if (result.status == AuthSessionStatus.planUpgradeRequired) {
           final role = auth.role?.toLowerCase();
           if (role == 'owner' || role == 'admin') {
-            // owners/admins can continue and upgrade inside the app.
+            // Treat as success for owners/admins; they can upgrade from داخل التطبيق.
           } else {
             await auth.signOut();
             final message = _messageForStatus(result.status) ??
@@ -257,17 +253,21 @@ class _LoginScreenState extends State<LoginScreen> {
           }
         } else if (result.status == AuthSessionStatus.noAccount) {
           await auth.signOut();
-          final message = _messageForStatus(result.status) ??
+          final message =
+              _messageForStatus(result.status) ??
               'تعذّر التحقق من الحساب. حاول مرة أخرى.';
           setState(() => _error = message);
           return;
         } else {
-          final message = _messageForStatus(result.status) ??
+          final message =
+              _messageForStatus(result.status) ??
               'تعذّر التحقق من الحساب. حاول مرة أخرى.';
           setState(() => _error = message);
           return;
         }
       }
+
+      await _ensureClinicProfileComplete(auth);
 
       // ✅ بعد نجاح التحقق، نفّذ سحبًا أوليًا + Realtime
       if (auth.isLoggedIn) {
@@ -317,7 +317,6 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       auth.setPendingClinicProfile(clinicProfile);
       auth.allowAutoCreateAccountOnce();
-
       var signUpResp = await auth.signUp(email, pass);
       if (signUpResp.session == null) {
         // بعض البيئات لا تُرجع session مباشرةً؛ جرّب تسجيل الدخول فورًا.
@@ -332,23 +331,19 @@ class _LoginScreenState extends State<LoginScreen> {
           return;
         }
       }
-
       await _persistRememberedCredentials(email: email, password: pass);
-
       if (clinicProfile != null) {
         await auth.selfCreateAccount(clinicProfile);
       } else {
         setState(() => _error = 'اسم العيادة مطلوب لإكمال إنشاء الحساب.');
         return;
       }
-
       final result = await auth.refreshAndValidateCurrentUser();
       if (!mounted) return;
       if (!result.isSuccess) {
         setState(() => _error = _messageForStatus(result.status));
         return;
       }
-
       await auth.bootstrapSync(
         pull: true,
         realtime: true,
@@ -356,7 +351,6 @@ class _LoginScreenState extends State<LoginScreen> {
         debounce: const Duration(seconds: 1),
       );
       _bootstrappedOnce = true;
-
       await _checkAndRouteIfSignedIn(force: true);
     } catch (e) {
       if (!mounted) return;
@@ -402,6 +396,20 @@ class _LoginScreenState extends State<LoginScreen> {
       nearEn: enStep.near,
       phone: arStep.phone,
     );
+  }
+
+  Future<void> _ensureClinicProfileComplete(AuthProvider auth) async {
+    if (!mounted) return;
+    try {
+      if (auth.isSuperAdmin) return;
+      if ((auth.accountId ?? '').trim().isEmpty) return;
+      final complete = await ClinicProfileService.isProfileComplete();
+      if (complete) return;
+      final profile = await _askClinicProfile();
+      if (profile == null) return;
+      await auth.updateClinicProfile(profile);
+      await auth.refreshAndValidateCurrentUser();
+    } catch (_) {}
   }
 
   Future<_ClinicProfileStep?> _askClinicProfileStep({
@@ -463,7 +471,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 final street = streetCtrl.text.trim();
                 final near = nearCtrl.text.trim();
                 final phone = phoneCtrl.text.trim();
-
                 if (name.isEmpty ||
                     city.isEmpty ||
                     street.isEmpty ||
@@ -474,16 +481,13 @@ class _LoginScreenState extends State<LoginScreen> {
                   );
                   return;
                 }
-
-                Navigator.of(ctx).pop(
-                  _ClinicProfileStep(
-                    name: name,
-                    city: city,
-                    street: street,
-                    near: near,
-                    phone: phone,
-                  ),
-                );
+                Navigator.of(ctx).pop(_ClinicProfileStep(
+                  name: name,
+                  city: city,
+                  street: street,
+                  near: near,
+                  phone: phone,
+                ));
               },
               child: const Text('متابعة'),
             ),
@@ -497,7 +501,6 @@ class _LoginScreenState extends State<LoginScreen> {
     streetCtrl.dispose();
     nearCtrl.dispose();
     phoneCtrl.dispose();
-
     return result;
   }
 
@@ -711,7 +714,6 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-/// ✅ لازم يكون Top-level (خارج أي كلاس) لأن Dart يمنع تعريف كلاس داخل كلاس.
 class _ClinicProfileStep {
   final String name;
   final String city;

@@ -979,12 +979,26 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
         touchedItems = true;
       }
       for (final u in _newUsages) {
+        double amount = 0.0;
+        final itemRows = await db.query(
+          'items',
+          columns: ['price'],
+          where: 'id = ?',
+          whereArgs: [u['itemId']],
+          limit: 1,
+        );
+        if (itemRows.isNotEmpty) {
+          amount =
+              ((itemRows.first['price'] as num?)?.toDouble() ?? 0.0) *
+                  (u['quantity'] as int);
+        }
         await DBService.instance.insertConsumption(Consumption(
           id: null,
           patientId: widget.patient.id.toString(),
           itemId: u['itemId'].toString(),
           quantity: u['quantity'],
           date: regDT,
+          amount: amount,
         ));
         await db.rawUpdate(
           'UPDATE items SET stock = stock - ? WHERE id = ?',

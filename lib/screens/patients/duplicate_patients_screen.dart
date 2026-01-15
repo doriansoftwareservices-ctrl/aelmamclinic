@@ -13,6 +13,7 @@ import 'package:aelmamclinic/core/formatters.dart';
 
 import 'package:aelmamclinic/models/patient.dart';
 import 'package:aelmamclinic/models/patient_service.dart';
+import 'package:aelmamclinic/services/clinic_profile_service.dart';
 import 'package:aelmamclinic/services/db_service.dart';
 import 'view_patient_screen.dart';
 import 'edit_patient_screen.dart';
@@ -238,6 +239,7 @@ class _DuplicatePatientsScreenState extends State<DuplicatePatientsScreen> {
 
     final fontData = await rootBundle.load('assets/fonts/Cairo-Regular.ttf');
     final cairo = pw.Font.ttf(fontData.buffer.asByteData());
+    final clinic = await ClinicProfileService.loadActiveOrFallback();
     final logoData =
         (await rootBundle.load('assets/images/logo2.png')).buffer.asUint8List();
 
@@ -279,15 +281,15 @@ class _DuplicatePatientsScreenState extends State<DuplicatePatientsScreen> {
                     child: pw.Column(
                       crossAxisAlignment: pw.CrossAxisAlignment.start,
                       children: [
-                        pw.Text('مركز إلمام الطبي',
+                        pw.Text(clinic.nameAr,
                             style: pw.TextStyle(
                                 font: cairo,
                                 fontSize: 18,
                                 fontWeight: pw.FontWeight.bold,
                                 color: PdfColors.blueGrey)),
-                        pw.Text('العنوان1 - العنوان2 - العنوان3',
+                        pw.Text(clinic.addressAr,
                             style: pw.TextStyle(font: cairo, fontSize: 10)),
-                        pw.Text('الهاتف: 12345678',
+                        pw.Text('الهاتف: ${clinic.phone}',
                             style: pw.TextStyle(font: cairo, fontSize: 10)),
                       ],
                     ),
@@ -303,15 +305,15 @@ class _DuplicatePatientsScreenState extends State<DuplicatePatientsScreen> {
                     child: pw.Column(
                       crossAxisAlignment: pw.CrossAxisAlignment.end,
                       children: [
-                        pw.Text('Elmam Health Center',
+                        pw.Text(clinic.nameEn,
                             style: pw.TextStyle(
                                 font: cairo,
                                 fontSize: 18,
                                 fontWeight: pw.FontWeight.bold,
                                 color: PdfColors.blueGrey)),
-                        pw.Text('Address1 – Address2 - Address3',
+                        pw.Text(clinic.addressEn,
                             style: pw.TextStyle(font: cairo, fontSize: 10)),
-                        pw.Text('Tel: 12345678',
+                        pw.Text('Tel: ${clinic.phone}',
                             style: pw.TextStyle(font: cairo, fontSize: 10)),
                       ],
                     ),
@@ -360,7 +362,7 @@ class _DuplicatePatientsScreenState extends State<DuplicatePatientsScreen> {
               pw.SizedBox(height: 8),
               pw.Center(
                 child: pw.Text(
-                    'مركز إلمام الطبي - العنوان1 - العنوان2 - العنوان3 "هاتف : 12345678',
+                    '${clinic.nameAr} - ${clinic.addressAr} "هاتف : ${clinic.phone}',
                     style: pw.TextStyle(
                         font: cairo, fontSize: 10, color: PdfColors.blueGrey)),
               ),

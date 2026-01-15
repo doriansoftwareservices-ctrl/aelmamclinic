@@ -8,6 +8,7 @@ import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/models/payment_method.dart';
 import 'package:aelmamclinic/models/subscription_plan.dart';
 import 'package:aelmamclinic/services/billing_service.dart';
+import 'package:aelmamclinic/services/clinic_profile_service.dart';
 import 'package:aelmamclinic/services/nhost_storage_service.dart';
 
 class PaymentRequestScreen extends StatefulWidget {
@@ -35,6 +36,23 @@ class _PaymentRequestScreenState extends State<PaymentRequestScreen> {
   File? _proofFile;
   bool _submitting = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _prefillClinicName();
+  }
+
+  Future<void> _prefillClinicName() async {
+    try {
+      final profile = await ClinicProfileService.loadActiveOrFallback();
+      if (!mounted) return;
+      if (_clinicNameCtrl.text.trim().isEmpty &&
+          profile.nameAr.trim().isNotEmpty) {
+        _clinicNameCtrl.text = profile.nameAr.trim();
+      }
+    } catch (_) {}
+  }
 
   @override
   void dispose() {
@@ -100,12 +118,32 @@ class _PaymentRequestScreenState extends State<PaymentRequestScreen> {
       Navigator.of(context).pop(true);
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = 'تعذّر إرسال الطلب: $e');
+      setState(() => _error = _mapSubmitError(e));
     } finally {
       if (mounted) {
         setState(() => _submitting = false);
       }
     }
+  }
+
+  String _mapSubmitError(Object error) {
+    final msg = error.toString().toLowerCase();
+    if (msg.contains('forbidden')) {
+      return 'لا تملك صلاحية إرسال طلب الترقية.';
+    }
+    if (msg.contains('plan not found') || msg.contains('invalid plan')) {
+      return 'الخطة غير متاحة حالياً.';
+    }
+    if (msg.contains('payment_method is required')) {
+      return 'يرجى اختيار وسيلة الدفع.';
+    }
+    if (msg.contains('account not found')) {
+      return 'تعذّر تحديد حساب المرفق الصحي.';
+    }
+    if (msg.contains('not authenticated')) {
+      return 'يرجى تسجيل الدخول مرة أخرى.';
+    }
+    return 'تعذّر إرسال الطلب: $error';
   }
 
   @override
