@@ -266,7 +266,9 @@ class NhostStorageService {
     final signed = res['url'] ??
         res['signedUrl'] ??
         res['presignedUrl'] ??
-        res['presigned_url'];
+        res['presigned_url'] ??
+        res['dataUrl'] ??
+        res['data_url'];
     final value = signed?.toString() ?? '';
     return value.isEmpty ? null : value;
   }

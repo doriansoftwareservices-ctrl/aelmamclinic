@@ -1,5 +1,6 @@
 // lib/screens/admin/admin_dashboard_screen.dart
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:aelmamclinic/core/theme.dart';
@@ -298,10 +299,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       _snack('تعذر جلب رابط الإثبات.');
       return;
     }
-    _showProofDialog(
-      title: 'إثبات الدفع',
-      url: signed,
-    );
+    final dataBytes = _decodeDataUrl(signed);
+    if (dataBytes != null) {
+      _showProofDialogBytes(title: 'إثبات الدفع', bytes: dataBytes);
+    } else {
+      _showProofDialog(
+        title: 'إثبات الدفع',
+        url: signed,
+      );
+    }
   }
 
   Future<void> _openSeatProof(String fileId) async {
@@ -314,10 +320,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       _snack('تعذر جلب رابط الوصل.');
       return;
     }
-    _showProofDialog(
-      title: 'وصل الدفع',
-      url: signed,
-    );
+    final dataBytes = _decodeDataUrl(signed);
+    if (dataBytes != null) {
+      _showProofDialogBytes(title: 'وصل الدفع', bytes: dataBytes);
+    } else {
+      _showProofDialog(
+        title: 'وصل الدفع',
+        url: signed,
+      );
+    }
   }
 
   void _showProofDialog({
@@ -360,6 +371,45 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
               }
             },
             child: const Text('فتح في المتصفح'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Uint8List? _decodeDataUrl(String value) {
+    if (!value.startsWith('data:')) return null;
+    final parts = value.split(',');
+    if (parts.length < 2) return null;
+    try {
+      return base64Decode(parts.sublist(1).join(','));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _showProofDialogBytes({
+    required String title,
+    required Uint8List bytes,
+  }) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: SizedBox(
+          width: 520,
+          height: 520,
+          child: InteractiveViewer(
+            child: Image.memory(
+              bytes,
+              fit: BoxFit.contain,
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('إغلاق'),
           ),
         ],
       ),

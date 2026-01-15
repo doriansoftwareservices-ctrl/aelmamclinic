@@ -186,6 +186,19 @@ echo "Auth URL: $AUTH_URL"
 echo "GraphQL URL: $GRAPHQL_URL"
 echo "Functions URL: $FUNCTIONS_URL"
 
+log "Reload Hasura metadata"
+meta_reload='{"type":"reload_metadata","args":{"reload_remote_schemas":true,"reload_sources":true}}'
+meta_reload_resp=$(printf '%s' "$meta_reload" | curl -sS "$HASURA_BASE/v1/metadata" \
+  -H "Content-Type: application/json" \
+  -H "x-hasura-admin-secret: $HASURA_ADMIN_SECRET" \
+  -d @-)
+if printf '%s' "$meta_reload_resp" | rg -q 'success'; then
+  step_ok "metadata reload"
+else
+  echo "$meta_reload_resp"
+  step_fail "metadata reload"
+fi
+
 sa_resp=$(signin "$SA_EMAIL" "$SA_PASS")
 sa_token=$(printf '%s' "$sa_resp" | extract_token)
 echo "SA_TOKEN_LEN=${#sa_token}"

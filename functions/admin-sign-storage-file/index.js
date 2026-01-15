@@ -194,10 +194,27 @@ module.exports = async function handler(req, res) {
     }
 
     if (!signRes || !signRes.ok) {
-      res.status(signRes?.status || 500).json({
-        ok: false,
-        error: payload?.error ?? payload ?? 'Sign failed',
-        hint: 'presigned lookup failed',
+      // Fallback: stream the file with admin secret and return base64.
+      const rawRes = await fetch(`${storageUrl}/files/${fileId}`, {
+        headers: {
+          'x-hasura-admin-secret': adminSecret,
+        },
+      });
+      if (!rawRes.ok) {
+        res.status(signRes?.status || rawRes.status || 500).json({
+          ok: false,
+          error: payload?.error ?? payload ?? 'Sign failed',
+          hint: 'presigned lookup failed',
+        });
+        return;
+      }
+      const contentType =
+        rawRes.headers.get('content-type') || 'application/octet-stream';
+      const buffer = Buffer.from(await rawRes.arrayBuffer());
+      const base64 = buffer.toString('base64');
+      res.status(200).json({
+        dataUrl: `data:${contentType};base64,${base64}`,
+        contentType,
       });
       return;
     }
