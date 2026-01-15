@@ -151,7 +151,7 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    const signRes = await fetch(`${storageUrl}/files/${fileId}/presigned`, {
+    let signRes = await fetch(`${storageUrl}/files/${fileId}/presigned`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -159,6 +159,14 @@ module.exports = async function handler(req, res) {
       },
       body: JSON.stringify({ expiresIn }),
     });
+    if (signRes.status === 404) {
+      signRes = await fetch(`${storageUrl}/files/${fileId}/presigned`, {
+        method: 'GET',
+        headers: {
+          'x-hasura-admin-secret': adminSecret,
+        },
+      });
+    }
     const text = await signRes.text();
     let payload = text;
     try {
