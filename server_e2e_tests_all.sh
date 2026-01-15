@@ -79,6 +79,72 @@ is_json() {
   python3 -c $'import json,sys,re\nraw=sys.stdin.read()\nraw=re.sub(r\"HTTP_CODE:.*\",\"\",raw,flags=re.S).strip()\ntry:\n  json.loads(raw) if raw else None\n  print(\"ok\")\nexcept Exception:\n  print(\"\")' 
 }
 
+metadata_call() {
+  local payload="$1"
+  local attempt=1
+  local max=4
+  local resp=""
+  while [ "$attempt" -le "$max" ]; do
+    resp=$(printf '%s' "$payload" | curl -sS -w '\nHTTP_CODE:%{http_code}\n' "$HASURA_BASE/v1/metadata" \
+      -H "Content-Type: application/json" \
+      -H "x-hasura-admin-secret: $HASURA_ADMIN_SECRET" \
+      -d @-)
+    local code
+    code=$(printf '%s' "$resp" | rg -o 'HTTP_CODE:[0-9]+' | rg -o '[0-9]+' | head -n1)
+    local json_ok
+    json_ok=$(printf '%s' "$resp" | is_json)
+    if [ "$code" = "200" ] && [ -n "$json_ok" ]; then
+      break
+    fi
+    if printf '%s' "$resp" | rg -qi '<html>|temporarily unavailable|nginx'; then
+      sleep $((attempt * 2))
+      attempt=$((attempt + 1))
+      continue
+    fi
+    if [ "$code" = "502" ] || [ "$code" = "503" ] || [ "$code" = "504" ]; then
+      sleep $((attempt * 2))
+      attempt=$((attempt + 1))
+      continue
+    fi
+    break
+  done
+  printf '%s' "$resp" | sed '/^HTTP_CODE:/d'
+}
+
+graphql_healthcheck() {
+  local attempt=1
+  local max=4
+  local resp=""
+  while [ "$attempt" -le "$max" ]; do
+    resp=$(make_payload 'query { __typename }' '{}' \
+      | curl -sS -w '\nHTTP_CODE:%{http_code}\n' "$GRAPHQL_URL" \
+        -H "Content-Type: application/json" \
+        -H "x-hasura-admin-secret: $HASURA_ADMIN_SECRET" \
+        -d @-)
+    local code
+    code=$(printf '%s' "$resp" | rg -o 'HTTP_CODE:[0-9]+' | rg -o '[0-9]+' | head -n1)
+    local json_ok
+    json_ok=$(printf '%s' "$resp" | is_json)
+    if [ "$code" = "200" ] && [ -n "$json_ok" ]; then
+      printf '%s' "$resp" | sed '/^HTTP_CODE:/d'
+      return 0
+    fi
+    if printf '%s' "$resp" | rg -qi '<html>|temporarily unavailable|nginx'; then
+      sleep $((attempt * 2))
+      attempt=$((attempt + 1))
+      continue
+    fi
+    if [ "$code" = "502" ] || [ "$code" = "503" ] || [ "$code" = "504" ]; then
+      sleep $((attempt * 2))
+      attempt=$((attempt + 1))
+      continue
+    fi
+    break
+  done
+  printf '%s' "$resp" | sed '/^HTTP_CODE:/d'
+  return 1
+}
+
 extract_token() {
   python3 -c $'import json,sys,re\nraw=sys.stdin.read()\nraw=re.sub(r\"HTTP_CODE:.*\",\"\",raw,flags=re.S).strip()\ndata=None\ntry:\n  data=json.loads(raw) if raw else None\nexcept Exception:\n  data=None\ntoken=\"\"\nif data:\n  s=data.get(\"session\") or {}\n  token=s.get(\"accessToken\") or s.get(\"access_token\") or data.get(\"accessToken\") or data.get(\"access_token\") or \"\"\nif not token:\n  m=re.search(r\"\\\"accessToken\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"\", raw)\n  token=m.group(1) if m else \"\"\nprint(token)'
 }
@@ -240,15 +306,19 @@ echo "Functions URL: $FUNCTIONS_URL"
 
 log "Reload Hasura metadata"
 meta_reload='{"type":"reload_metadata","args":{"reload_remote_schemas":true,"reload_sources":true}}'
-meta_reload_resp=$(printf '%s' "$meta_reload" | curl -sS "$HASURA_BASE/v1/metadata" \
-  -H "Content-Type: application/json" \
-  -H "x-hasura-admin-secret: $HASURA_ADMIN_SECRET" \
-  -d @-)
+meta_reload_resp=$(metadata_call "$meta_reload")
 if printf '%s' "$meta_reload_resp" | rg -q 'success'; then
   step_ok "metadata reload"
 else
   echo "$meta_reload_resp"
   step_fail "metadata reload"
+fi
+
+log "GraphQL healthcheck"
+if graphql_healthcheck >/dev/null; then
+  step_ok "graphql healthcheck"
+else
+  step_fail "graphql healthcheck"
 fi
 
 sa_resp=$(signin "$SA_EMAIL" "$SA_PASS")
