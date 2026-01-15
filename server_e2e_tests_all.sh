@@ -451,6 +451,8 @@ else
   echo "REQ_PAYLOAD=$req_payload"
   echo "REQ_VARS=$vars"
   echo "$req_resp"
+  echo "DEBUG: functions existence for subscription request"
+  run_sql "select proname from pg_proc where proname in ('request_email_text','create_subscription_request') order by proname;"
   step_fail "subscription request"
 fi
 
@@ -478,6 +480,8 @@ if printf '%s' "$stats" | rg -q '"admin_payment_stats"'; then
   step_ok "admin_payment_stats"
 else
   echo "$stats"
+  echo "DEBUG: admin_payment_stats function presence"
+  run_sql "select proname from pg_proc where proname in ('admin_payment_stats','admin_payment_stats_by_plan','admin_payment_stats_by_day','admin_payment_stats_by_month') order by proname;"
   step_fail "admin_payment_stats"
 fi
 
@@ -487,6 +491,7 @@ if printf '%s' "$stats_plan" | rg -q '"admin_payment_stats_by_plan"'; then
   step_ok "admin_payment_stats_by_plan"
 else
   echo "$stats_plan"
+  run_sql "select proname from pg_proc where proname in ('admin_payment_stats_by_plan') order by proname;"
   step_fail "admin_payment_stats_by_plan"
 fi
 
@@ -496,6 +501,7 @@ if printf '%s' "$stats_day" | rg -q '"admin_payment_stats_by_day"'; then
   step_ok "admin_payment_stats_by_day"
 else
   echo "$stats_day"
+  run_sql "select proname from pg_proc where proname in ('admin_payment_stats_by_day') order by proname;"
   step_fail "admin_payment_stats_by_day"
 fi
 
@@ -505,6 +511,7 @@ if printf '%s' "$stats_month" | rg -q '"admin_payment_stats_by_month"'; then
   step_ok "admin_payment_stats_by_month"
 else
   echo "$stats_month"
+  run_sql "select proname from pg_proc where proname in ('admin_payment_stats_by_month') order by proname;"
   step_fail "admin_payment_stats_by_month"
 fi
 
@@ -860,12 +867,20 @@ PY
     -H "x-hasura-role: superadmin" \
     -d @-)
   reply_ok=$(printf '%s' "$reply_res" | json_get 'data.admin_reply_complaint.0.ok')
-  if printf '%s' "$reply_ok" | rg -q '^(true|True|t|1)$'; then
-    step_ok "admin_reply_complaint"
-  else
-    echo "$reply_res"
-    step_fail "admin_reply_complaint"
-  fi
+if printf '%s' "$reply_ok" | rg -q '^(true|True|t|1)$'; then
+  step_ok "admin_reply_complaint"
+else
+  echo "$reply_res"
+  echo "DEBUG: admin_reply_complaint presence + metadata consistency"
+  run_sql "select proname from pg_proc where proname in ('admin_reply_complaint') order by proname;"
+  meta_payload='{"type":"get_inconsistent_metadata","args":{}}'
+  meta_resp=$(printf '%s' "$meta_payload" | curl -sS "$HASURA_BASE/v1/metadata" \
+    -H "Content-Type: application/json" \
+    -H "x-hasura-admin-secret: $HASURA_ADMIN_SECRET" \
+    -d @-)
+  echo "$meta_resp"
+  step_fail "admin_reply_complaint"
+fi
 else
   step_fail "admin_reply_complaint (no complaint)"
 fi

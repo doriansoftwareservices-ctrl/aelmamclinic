@@ -112,20 +112,40 @@ module.exports = async function handler(req, res) {
       return;
     }
 
+    let meta = null;
     const metaRes = await fetch(`${storageUrl}/files/${fileId}/metadata`, {
       headers: {
         'x-hasura-admin-secret': adminSecret,
         Accept: 'application/json',
       },
     });
-    if (!metaRes.ok) {
+    if (metaRes.ok) {
+      try {
+        meta = await metaRes.json();
+      } catch (_) {
+        meta = null;
+      }
+    } else if (metaRes.status !== 404) {
       const txt = await metaRes.text();
       res
         .status(metaRes.status)
         .json({ ok: false, error: txt || 'Metadata lookup failed' });
       return;
+    } else {
+      const rawRes = await fetch(`${storageUrl}/files/${fileId}`, {
+        headers: {
+          'x-hasura-admin-secret': adminSecret,
+          Accept: 'application/json',
+        },
+      });
+      if (rawRes.ok) {
+        try {
+          meta = await rawRes.json();
+        } catch (_) {
+          meta = null;
+        }
+      }
     }
-    const meta = await metaRes.json();
     if (meta?.bucketId && meta.bucketId !== 'subscription-proofs') {
       res.status(403).json({ ok: false, error: 'Bucket not allowed' });
       return;
