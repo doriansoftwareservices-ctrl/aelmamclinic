@@ -61,7 +61,13 @@ class AdminBillingService {
         fetchPolicy: FetchPolicy.noCache,
       ),
     );
-    if (res.hasException) throw res.exception!;
+    if (res.hasException) {
+      final errors = res.exception?.graphqlErrors ?? const [];
+      final msg = errors.isEmpty
+          ? res.exception.toString()
+          : errors.map((e) => e.message).join(' | ');
+      throw Exception(msg);
+    }
     final rows =
         (res.data?['admin_approve_subscription_request'] as List?) ?? const [];
     final ok = rows.isEmpty ? null : (rows.first as Map)['ok'];
@@ -87,7 +93,13 @@ class AdminBillingService {
         fetchPolicy: FetchPolicy.noCache,
       ),
     );
-    if (res.hasException) throw res.exception!;
+    if (res.hasException) {
+      final errors = res.exception?.graphqlErrors ?? const [];
+      final msg = errors.isEmpty
+          ? res.exception.toString()
+          : errors.map((e) => e.message).join(' | ');
+      throw Exception(msg);
+    }
     final rows =
         (res.data?['admin_reject_subscription_request'] as List?) ?? const [];
     final ok = rows.isEmpty ? null : (rows.first as Map)['ok'];

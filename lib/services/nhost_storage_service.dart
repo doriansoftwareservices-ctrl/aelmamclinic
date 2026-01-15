@@ -228,14 +228,7 @@ class NhostStorageService {
   }) async {
     final ttl = expiresInSeconds ?? AppConstants.storageSignedUrlTTLSeconds;
     try {
-      final url = _api.storageUri('files/$fileId/presigned');
-      final res = await _api.postJson(url, {'expiresIn': ttl});
-      final signed = res['url'] ??
-          res['signedUrl'] ??
-          res['presignedUrl'] ??
-          res['presigned_url'];
-      final value = signed?.toString() ?? '';
-      return value.isEmpty ? null : value;
+      return await _createSignedUrlViaStorage(fileId, ttl);
     } catch (e) {
       if (_shouldRetryWithFunction(e)) {
         try {
@@ -246,6 +239,36 @@ class NhostStorageService {
       }
       return null;
     }
+  }
+
+  Future<String?> createAdminSignedUrl(
+    String fileId, {
+    int? expiresInSeconds,
+  }) async {
+    final ttl = expiresInSeconds ?? AppConstants.storageSignedUrlTTLSeconds;
+    try {
+      return await _createSignedUrlViaFunction(fileId, ttl);
+    } catch (_) {
+      try {
+        return await _createSignedUrlViaStorage(fileId, ttl);
+      } catch (_) {
+        return null;
+      }
+    }
+  }
+
+  Future<String?> _createSignedUrlViaStorage(
+    String fileId,
+    int ttl,
+  ) async {
+    final url = _api.storageUri('files/$fileId/presigned');
+    final res = await _api.postJson(url, {'expiresIn': ttl});
+    final signed = res['url'] ??
+        res['signedUrl'] ??
+        res['presignedUrl'] ??
+        res['presigned_url'];
+    final value = signed?.toString() ?? '';
+    return value.isEmpty ? null : value;
   }
 
   Future<String?> _createSignedUrlViaFunction(

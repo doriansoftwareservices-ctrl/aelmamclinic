@@ -293,14 +293,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       _snack('لا يوجد إثبات دفع لهذا الطلب.');
       return;
     }
-    final signed = await _storageService.createSignedUrl(proofId);
-    final url = signed ?? _storageService.publicFileUrl(proofId);
-    final uri = Uri.tryParse(url);
-    if (uri == null) {
-      _snack('رابط الإثبات غير صالح.');
+    final signed = await _storageService.createAdminSignedUrl(proofId);
+    if (signed == null || signed.trim().isEmpty) {
+      _snack('تعذر جلب رابط الإثبات.');
       return;
     }
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
+    _showProofDialog(
+      title: 'إثبات الدفع',
+      url: signed,
+    );
   }
 
   Future<void> _openSeatProof(String fileId) async {
@@ -308,14 +309,61 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       _snack('لا يوجد وصل مرفق.');
       return;
     }
-    final signed = await _storageService.createSignedUrl(fileId);
-    final url = signed ?? _storageService.publicFileUrl(fileId);
-    final uri = Uri.tryParse(url);
-    if (uri == null) {
-      _snack('رابط الوصل غير صالح.');
+    final signed = await _storageService.createAdminSignedUrl(fileId);
+    if (signed == null || signed.trim().isEmpty) {
+      _snack('تعذر جلب رابط الوصل.');
       return;
     }
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
+    _showProofDialog(
+      title: 'وصل الدفع',
+      url: signed,
+    );
+  }
+
+  void _showProofDialog({
+    required String title,
+    required String url,
+  }) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: SizedBox(
+          width: 520,
+          height: 520,
+          child: InteractiveViewer(
+            child: Image.network(
+              url,
+              fit: BoxFit.contain,
+              loadingBuilder: (context, child, progress) {
+                if (progress == null) return child;
+                return const Center(child: CircularProgressIndicator());
+              },
+              errorBuilder: (context, error, stackTrace) {
+                return const Center(
+                  child: Text('تعذر عرض الصورة.'),
+                );
+              },
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('إغلاق'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final uri = Uri.tryParse(url);
+              if (uri != null) {
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              }
+            },
+            child: const Text('فتح في المتصفح'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showProvisioningOutcome({
@@ -1050,12 +1098,18 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                         onPressed: () async {
                           final note =
                               await _askDecisionNote('ملاحظة الاعتماد');
-                          await _billingService.approveRequest(
-                            req.id,
-                            note: note,
-                          );
-                          await _fetchSubscriptionRequests();
-                          await _fetchPaymentStats();
+                          try {
+                            await _billingService.approveRequest(
+                              req.id,
+                              note: note,
+                            );
+                            await _fetchSubscriptionRequests();
+                            await _fetchPaymentStats();
+                          } catch (e) {
+                            final msg =
+                                e.toString().replaceFirst('Exception: ', '');
+                            _snack('تعذر اعتماد الطلب: $msg');
+                          }
                         },
                       ),
                       const SizedBox(width: 6),
@@ -1064,11 +1118,17 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                         icon: const Icon(Icons.cancel_outlined),
                         onPressed: () async {
                           final note = await _askDecisionNote('سبب الرفض');
-                          await _billingService.rejectRequest(
-                            req.id,
-                            note: note,
-                          );
-                          await _fetchSubscriptionRequests();
+                          try {
+                            await _billingService.rejectRequest(
+                              req.id,
+                              note: note,
+                            );
+                            await _fetchSubscriptionRequests();
+                          } catch (e) {
+                            final msg =
+                                e.toString().replaceFirst('Exception: ', '');
+                            _snack('تعذر رفض الطلب: $msg');
+                          }
                         },
                       ),
                     ],
