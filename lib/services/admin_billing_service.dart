@@ -1,5 +1,6 @@
 import 'package:graphql_flutter/graphql_flutter.dart';
 
+import 'package:aelmamclinic/core/nhost_manager.dart';
 import 'package:aelmamclinic/models/complaint.dart';
 import 'package:aelmamclinic/models/payment_method.dart';
 import 'package:aelmamclinic/models/payment_plan_stat.dart';
@@ -272,7 +273,22 @@ class AdminBillingService {
         fetchPolicy: FetchPolicy.noCache,
       ),
     );
-    if (res.hasException) throw res.exception!;
+    if (res.hasException) {
+      final msg = res.exception?.graphqlErrors
+              .map((e) => e.message)
+              .join(' | ') ??
+          res.exception.toString();
+      if (msg.contains('admin_reply_complaint') &&
+          msg.contains('not found')) {
+        await _fallbackReplyComplaint(
+          id: id,
+          replyMessage: replyMessage,
+          status: status,
+        );
+        return;
+      }
+      throw res.exception!;
+    }
     final rows =
         (res.data?['admin_reply_complaint'] as List?) ?? const [];
     final ok = rows.isNotEmpty ? (rows.first as Map)['ok'] : null;
@@ -280,6 +296,52 @@ class AdminBillingService {
       final err = rows.isNotEmpty ? (rows.first as Map)['error'] : null;
       throw Exception(err ?? 'reply_failed');
     }
+  }
+
+  Future<void> _fallbackReplyComplaint({
+    required String id,
+    required String replyMessage,
+    String? status,
+  }) async {
+    const mutation = r'''
+      mutation ReplyFallback(
+        $id: uuid!
+        $reply: String!
+        $status: String
+        $repliedAt: timestamptz!
+        $repliedBy: uuid
+      ) {
+        update_complaints_by_pk(
+          pk_columns: {id: $id}
+          _set: {
+            reply_message: $reply
+            replied_at: $repliedAt
+            replied_by: $repliedBy
+            handled_at: $repliedAt
+            handled_by: $repliedBy
+            status: $status
+          }
+        ) {
+          id
+        }
+      }
+    ''';
+    final nowIso = DateTime.now().toUtc().toIso8601String();
+    final uid = NhostManager.client.auth.currentUser?.id;
+    final res = await _gql.mutate(
+      MutationOptions(
+        document: gql(mutation),
+        variables: {
+          'id': id,
+          'reply': replyMessage,
+          'status': status,
+          'repliedAt': nowIso,
+          'repliedBy': uid,
+        },
+        fetchPolicy: FetchPolicy.noCache,
+      ),
+    );
+    if (res.hasException) throw res.exception!;
   }
 
   Future<List<PaymentStat>> fetchPaymentStats() async {
