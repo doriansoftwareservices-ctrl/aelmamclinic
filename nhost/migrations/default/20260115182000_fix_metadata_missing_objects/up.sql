@@ -97,6 +97,7 @@ BEGIN
 END$$;
 
 -- Recreate admin_reply_complaint with v_rpc_result return type for Hasura tracking.
+DROP FUNCTION IF EXISTS public.admin_reply_complaint(uuid, text, text);
 CREATE OR REPLACE FUNCTION public.admin_reply_complaint(
   p_id uuid,
   p_reply text,
@@ -149,6 +150,17 @@ REVOKE ALL ON FUNCTION public.admin_reply_complaint(uuid, text, text) FROM PUBLI
 GRANT EXECUTE ON FUNCTION public.admin_reply_complaint(uuid, text, text) TO public;
 
 -- Recreate update_clinic_profile with v_rpc_result return type for Hasura tracking.
+DROP FUNCTION IF EXISTS public.update_clinic_profile(
+  text,
+  text,
+  text,
+  text,
+  text,
+  text,
+  text,
+  text,
+  text
+);
 CREATE OR REPLACE FUNCTION public.update_clinic_profile(
   p_clinic_name text,
   p_city_ar text,
