@@ -11,7 +11,27 @@ CREATE OR REPLACE VIEW public.v_bool_result AS
 SELECT NULL::boolean AS account_is_paid
 WHERE false;
 
--- 2) account_is_paid_gql → SETOF v_bool_result (wrapper for GraphQL)
+-- 2) account_is_paid fallback (ensures wrapper can compile on fresh DBs)
+CREATE OR REPLACE FUNCTION public.account_is_paid(p_account uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.account_subscriptions s
+    WHERE s.account_id = p_account
+      AND s.status = 'active'
+      AND (s.end_at IS NULL OR s.end_at > now())
+      AND COALESCE(s.plan_code, 'free') <> 'free'
+  );
+$$;
+REVOKE ALL ON FUNCTION public.account_is_paid(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.account_is_paid(uuid) TO PUBLIC;
+
+-- 3) account_is_paid_gql → SETOF v_bool_result (wrapper for GraphQL)
 CREATE OR REPLACE FUNCTION public.account_is_paid_gql(p_account uuid)
 RETURNS SETOF public.v_bool_result
 LANGUAGE sql
@@ -24,7 +44,7 @@ $$;
 REVOKE ALL ON FUNCTION public.account_is_paid_gql(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.account_is_paid_gql(uuid) TO PUBLIC;
 
--- 3) self_create_account → SETOF v_uuid_result (keep hardening logic)
+-- 4) self_create_account → SETOF v_uuid_result (keep hardening logic)
 DROP FUNCTION IF EXISTS public.self_create_account(text);
 CREATE OR REPLACE FUNCTION public.self_create_account(p_clinic_name text)
 RETURNS SETOF public.v_uuid_result
