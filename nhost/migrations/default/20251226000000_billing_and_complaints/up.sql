@@ -358,6 +358,7 @@ REVOKE ALL ON FUNCTION public.apply_plan_permissions(uuid, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.apply_plan_permissions(uuid, text) TO public;
 
 -- 12) User flow: create account for current user (owner, free plan)
+DROP FUNCTION IF EXISTS public.self_create_account(text);
 CREATE OR REPLACE FUNCTION public.self_create_account(p_clinic_name text)
 RETURNS uuid
 LANGUAGE plpgsql
