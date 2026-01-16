@@ -11,6 +11,14 @@ DROP FUNCTION IF EXISTS public.create_subscription_request(
   text
 );
 
+DROP FUNCTION IF EXISTS public.create_subscription_request(
+  text,
+  uuid,
+  text,
+  text,
+  text
+);
+
 CREATE OR REPLACE FUNCTION public.create_subscription_request(
   p_plan text,
   p_payment_method uuid,
