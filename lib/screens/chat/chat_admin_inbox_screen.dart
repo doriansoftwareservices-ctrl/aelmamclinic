@@ -96,6 +96,9 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
       QueryOptions(
         document: gql(doc),
         variables: variables,
+        context: Context.fromList(const [
+          HttpLinkHeaders(headers: {'x-hasura-role': 'superadmin'}),
+        ]),
         fetchPolicy: FetchPolicy.noCache,
       ),
     );
@@ -113,6 +116,9 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
       MutationOptions(
         document: gql(doc),
         variables: variables,
+        context: Context.fromList(const [
+          HttpLinkHeaders(headers: {'x-hasura-role': 'superadmin'}),
+        ]),
         fetchPolicy: FetchPolicy.noCache,
       ),
     );
