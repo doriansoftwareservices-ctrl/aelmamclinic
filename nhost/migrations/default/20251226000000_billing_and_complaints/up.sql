@@ -500,6 +500,7 @@ REVOKE ALL ON FUNCTION public.create_subscription_request(text, uuid, numeric, t
 GRANT EXECUTE ON FUNCTION public.create_subscription_request(text, uuid, numeric, text) TO public;
 
 -- 14) Admin: approve request + activate subscription
+DROP FUNCTION IF EXISTS public.admin_approve_subscription_request(uuid, text);
 CREATE OR REPLACE FUNCTION public.admin_approve_subscription_request(
   p_request uuid,
   p_note text DEFAULT NULL
@@ -583,6 +584,7 @@ REVOKE ALL ON FUNCTION public.admin_approve_subscription_request(uuid, text) FRO
 GRANT EXECUTE ON FUNCTION public.admin_approve_subscription_request(uuid, text) TO public;
 
 -- 15) Admin: change plan directly (monthly/annual/free)
+DROP FUNCTION IF EXISTS public.admin_set_account_plan(uuid, text, text);
 CREATE OR REPLACE FUNCTION public.admin_set_account_plan(
   p_account uuid,
   p_plan text,
