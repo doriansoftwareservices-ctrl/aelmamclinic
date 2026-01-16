@@ -25,7 +25,7 @@ path = '$["https://hasura.io/jwt/claims"]["x-hasura-default-role"]'
 claim = 'x-hasura-allowed-roles'
 path = '$["https://hasura.io/jwt/claims"]["x-hasura-allowed-roles"]'
 [hasura.settings]
-corsDomain = ['https://mergrgclboxflnucehgb.nhost.run', 'http://localhost:3000']
+corsDomain = ['https://whfimjipnqbzjlyigbou.nhost.run', 'http://localhost:3000']
 devMode = false
 enableAllowList = false
 enableConsole = true
