@@ -11,7 +11,13 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
   WITH acc AS (
-    SELECT public.my_account_id() AS account_id
+    SELECT (
+      SELECT account_id
+      FROM public.my_account_id(
+        coalesce(current_setting('request.jwt.claims', true), '{}')::json
+      )
+      LIMIT 1
+    ) AS account_id
   ),
   active_sub AS (
     SELECT s.plan_code, s.end_at
