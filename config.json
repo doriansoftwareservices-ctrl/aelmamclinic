@@ -1,0 +1,8 @@
+{
+  "nhostSubdomain": "whfimjipnqbzjlyigbou",
+  "nhostRegion": "ap-southeast-1",
+  "nhostGraphqlUrl": "https://whfimjipnqbzjlyigbou.graphql.ap-southeast-1.nhost.run/v1",
+  "nhostAuthUrl":    "https://whfimjipnqbzjlyigbou.auth.ap-southeast-1.nhost.run/v1",
+  "nhostStorageUrl": "https://whfimjipnqbzjlyigbou.storage.ap-southeast-1.nhost.run/v1",
+  "nhostFunctionsUrl":"https://whfimjipnqbzjlyigbou.functions.ap-southeast-1.nhost.run/v1"
+}
