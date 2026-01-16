@@ -2,6 +2,7 @@ BEGIN;
 
 -- Trackable RPC wrapper returning v_uuid_result for Hasura.
 DROP FUNCTION IF EXISTS public.my_account_id_rpc();
+DROP FUNCTION IF EXISTS public.my_account_id_rpc(json);
 
 CREATE OR REPLACE FUNCTION public.my_account_id_rpc(hasura_session json)
 RETURNS SETOF public.v_uuid_result
