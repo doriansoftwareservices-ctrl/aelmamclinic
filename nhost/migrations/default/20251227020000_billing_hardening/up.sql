@@ -349,6 +349,7 @@ REVOKE ALL ON FUNCTION public.admin_set_account_plan(uuid, text, text) FROM PUBL
 GRANT EXECUTE ON FUNCTION public.admin_set_account_plan(uuid, text, text) TO public;
 
 -- 9) Scheduled expiry (uses grace_days)
+DROP FUNCTION IF EXISTS public.expire_account_subscriptions(boolean);
 CREATE OR REPLACE FUNCTION public.expire_account_subscriptions(
   p_dry_run boolean DEFAULT false
 )
