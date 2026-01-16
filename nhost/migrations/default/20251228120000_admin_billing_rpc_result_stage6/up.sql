@@ -1,5 +1,7 @@
 -- Ensure admin billing RPCs return table-backed results for GraphQL tracking.
 
+DROP FUNCTION IF EXISTS public.admin_approve_subscription_request(uuid, text);
+
 CREATE OR REPLACE FUNCTION public.admin_approve_subscription_request(
   p_request uuid,
   p_note text DEFAULT NULL
@@ -100,6 +102,8 @@ $$;
 REVOKE ALL ON FUNCTION public.admin_approve_subscription_request(uuid, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.admin_approve_subscription_request(uuid, text) TO public;
 
+DROP FUNCTION IF EXISTS public.admin_reject_subscription_request(uuid, text);
+
 CREATE OR REPLACE FUNCTION public.admin_reject_subscription_request(
   p_request uuid,
   p_note text DEFAULT NULL
@@ -158,6 +162,8 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.admin_reject_subscription_request(uuid, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.admin_reject_subscription_request(uuid, text) TO public;
+
+DROP FUNCTION IF EXISTS public.admin_set_account_plan(uuid, text, text);
 
 CREATE OR REPLACE FUNCTION public.admin_set_account_plan(
   p_account uuid,
