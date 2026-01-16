@@ -233,6 +233,7 @@ REVOKE ALL ON FUNCTION public.admin_approve_subscription_request(uuid, text) FRO
 GRANT EXECUTE ON FUNCTION public.admin_approve_subscription_request(uuid, text) TO public;
 
 -- 7) Admin: reject request + audit log
+DROP FUNCTION IF EXISTS public.admin_reject_subscription_request(uuid, text);
 CREATE OR REPLACE FUNCTION public.admin_reject_subscription_request(
   p_request uuid,
   p_note text DEFAULT NULL
