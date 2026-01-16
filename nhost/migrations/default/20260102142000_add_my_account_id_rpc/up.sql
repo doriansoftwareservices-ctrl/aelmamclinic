@@ -11,11 +11,12 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  SELECT (
-    SELECT account_id
-    FROM public.my_account_id(hasura_session)
-    LIMIT 1
-  ) AS id
+  SELECT au.account_id AS id
+  FROM public.account_users au
+  WHERE au.user_uid = nullif(hasura_session->>'x-hasura-user-id','')::uuid
+    AND coalesce(au.disabled, false) = false
+  ORDER BY au.created_at DESC
+  LIMIT 1
 $$;
 
 REVOKE ALL ON FUNCTION public.my_account_id_rpc(json) FROM PUBLIC;
