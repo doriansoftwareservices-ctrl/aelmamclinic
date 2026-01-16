@@ -2,6 +2,8 @@
 
 BEGIN;
 
+DROP FUNCTION IF EXISTS public.self_create_account(text);
+
 CREATE OR REPLACE FUNCTION public.self_create_account(p_clinic_name text)
 RETURNS uuid
 LANGUAGE plpgsql
