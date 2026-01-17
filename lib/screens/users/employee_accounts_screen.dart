@@ -59,8 +59,9 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
 
   Future<void> _refresh() async {
     final accountId = context.read<AuthProvider>().accountId;
+    final next = _loadEmployees(accountId);
     setState(() {
-      _employees = _loadEmployees(accountId);
+      _employees = next;
     });
     await _employees;
     await _refreshSeatRequests();
@@ -69,7 +70,9 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
   Future<void> _refreshSeatRequests() async {
     final uid = context.read<AuthProvider>().uid;
     if (uid == null || uid.isEmpty) return;
-    setState(() => _loadingRequests = true);
+    setState(() {
+      _loadingRequests = true;
+    });
     try {
       final rows = await _seatService.fetchMySeatRequests(requesterUid: uid);
       if (!mounted) return;
@@ -97,7 +100,9 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
       }
     } catch (_) {
       if (!mounted) return;
-      setState(() => _loadingRequests = false);
+      setState(() {
+        _loadingRequests = false;
+      });
     }
   }
 
