@@ -1,13 +1,49 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SUBDOMAIN="${1:-mergrgclboxflnucehgb}"
-REGION="${2:-ap-southeast-1}"
+SUBDOMAIN="${1:-}"
+REGION="${2:-}"
 
 need(){ command -v "$1" >/dev/null 2>&1 || { echo "Missing dependency: $1" >&2; exit 2; }; }
 need nhost; need curl; need python3; need awk
 
-: "${HASURA_ADMIN_SECRET:?ERROR: HASURA_ADMIN_SECRET is empty (export it before running).}"
+if [[ -z "${SUBDOMAIN}" || -z "${REGION}" ]]; then
+  if [[ -f config.json ]]; then
+    read -r SUBDOMAIN REGION < <(
+      python3 - <<'PY'
+import json
+with open("config.json", "r", encoding="utf-8") as f:
+    cfg = json.load(f)
+print(cfg.get("subdomain",""), cfg.get("region",""))
+PY
+    )
+  elif [[ -f .nhost/project.json ]]; then
+    read -r SUBDOMAIN REGION < <(
+      python3 - <<'PY'
+import json
+with open(".nhost/project.json", "r", encoding="utf-8") as f:
+    cfg = json.load(f)
+print(cfg.get("subdomain",""), cfg.get("region",""))
+PY
+    )
+  fi
+fi
+
+if [[ -z "${SUBDOMAIN}" || -z "${REGION}" ]]; then
+  echo "ERROR: Missing subdomain/region. Provide args or ensure config.json/.nhost/project.json exists." >&2
+  exit 2
+fi
+
+if [[ -z "${HASURA_GRAPHQL_ADMIN_SECRET:-}" && -n "${HASURA_ADMIN_SECRET:-}" ]]; then
+  HASURA_GRAPHQL_ADMIN_SECRET="${HASURA_ADMIN_SECRET}"
+fi
+
+if [[ -z "${HASURA_GRAPHQL_ADMIN_SECRET:-}" ]]; then
+  read -r -s -p "Paste HASURA_GRAPHQL_ADMIN_SECRET for ${SUBDOMAIN}: " HASURA_GRAPHQL_ADMIN_SECRET
+  echo
+fi
+
+: "${HASURA_GRAPHQL_ADMIN_SECRET:?ERROR: HASURA_GRAPHQL_ADMIN_SECRET is empty.}"
 
 HASURA_BASE="https://${SUBDOMAIN}.hasura.${REGION}.nhost.run"
 META_URL="${HASURA_BASE}/v1/metadata"
@@ -29,7 +65,7 @@ curl_json_to_file() {
   hdr="$(mktemp)"; body="$(mktemp)"
   if ! curl -sS -D "$hdr" -o "$body" \
       -H "Content-Type: application/json" \
-      -H "x-hasura-admin-secret: ${HASURA_ADMIN_SECRET}" \
+      -H "x-hasura-admin-secret: ${HASURA_GRAPHQL_ADMIN_SECRET}" \
       -d "$payload" \
       "$url"; then
     cat "$body" > "$out" 2>/dev/null || true

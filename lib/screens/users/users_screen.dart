@@ -24,7 +24,12 @@ class _UsersScreenState extends State<UsersScreen> {
   late Future<List<Map<String, dynamic>>> _employees;
   bool _busy = false;
 
-  bool _canAccess(AuthProvider auth) => auth.isSuperAdmin;
+  bool _isOwnerOrAdmin(AuthProvider auth) {
+    final role = auth.role?.toLowerCase();
+    return role == 'owner' || role == 'admin';
+  }
+
+  bool _canAccess(AuthProvider auth) => auth.isSuperAdmin || _isOwnerOrAdmin(auth);
 
   @override
   void initState() {
@@ -32,21 +37,29 @@ class _UsersScreenState extends State<UsersScreen> {
     final auth = context.read<AuthProvider>();
     final accountId = auth.accountId;
     if (_canAccess(auth)) {
-      _employees = _loadEmployees(accountId);
+      _employees = _loadEmployees(
+        accountId,
+        requireSuperAdmin: auth.isSuperAdmin,
+      );
     } else {
       _employees = Future.value(const []);
     }
   }
 
-  Future<List<Map<String, dynamic>>> _loadEmployees(String? accountId) async {
+  Future<List<Map<String, dynamic>>> _loadEmployees(
+    String? accountId, {
+    required bool requireSuperAdmin,
+  }) async {
     if (accountId == null || accountId.isEmpty) {
       dev.log('UsersScreen: no accountId found; returning empty list.');
       return [];
     }
 
     try {
-      final summaries =
-          await _adminService.listAccountUsersWithEmail(accountId: accountId);
+      final summaries = await _adminService.listAccountUsersWithEmail(
+        accountId: accountId,
+        requireSuperAdmin: requireSuperAdmin,
+      );
       return summaries
           .map((AccountUserSummary s) => {
                 'uid': s.userUid,
@@ -64,7 +77,10 @@ class _UsersScreenState extends State<UsersScreen> {
     final auth = context.read<AuthProvider>();
     if (!_canAccess(auth)) return;
     final accountId = auth.accountId;
-    setState(() => _employees = _loadEmployees(accountId));
+    setState(() => _employees = _loadEmployees(
+          accountId,
+          requireSuperAdmin: auth.isSuperAdmin,
+        ));
     await _employees;
   }
 
@@ -73,7 +89,8 @@ class _UsersScreenState extends State<UsersScreen> {
     if (!_canAccess(auth)) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('هذه العملية مخصّصة للسوبر أدمن فقط.')),
+        const SnackBar(
+            content: Text('هذه العملية مخصّصة للمالك/المدير أو السوبر أدمن فقط.')),
       );
       return;
     }
@@ -85,6 +102,7 @@ class _UsersScreenState extends State<UsersScreen> {
         accountId: accountId,
         userUid: uid,
         disabled: disabled,
+        requireSuperAdmin: auth.isSuperAdmin,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -107,7 +125,8 @@ class _UsersScreenState extends State<UsersScreen> {
     if (!_canAccess(auth)) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('هذه العملية مخصّصة للسوبر أدمن فقط.')),
+        const SnackBar(
+            content: Text('هذه العملية مخصّصة للمالك/المدير أو السوبر أدمن فقط.')),
       );
       return;
     }
@@ -132,7 +151,11 @@ class _UsersScreenState extends State<UsersScreen> {
     setState(() => _busy = true);
     try {
       final accountId = auth.accountId!;
-      await _adminService.deleteEmployee(accountId: accountId, userUid: uid);
+      await _adminService.deleteEmployee(
+        accountId: accountId,
+        userUid: uid,
+        requireSuperAdmin: auth.isSuperAdmin,
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('تم حذف الحساب')),
@@ -188,7 +211,7 @@ class _UsersScreenState extends State<UsersScreen> {
                       SizedBox(height: 48),
                       Center(
                         child: Text(
-                          'هذه الشاشة مخصّصة للسوبر أدمن فقط.',
+                          'هذه الشاشة مخصّصة للمالك/المدير أو السوبر أدمن فقط.',
                           textAlign: TextAlign.center,
                         ),
                       ),
