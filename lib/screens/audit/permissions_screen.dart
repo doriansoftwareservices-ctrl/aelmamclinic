@@ -204,49 +204,40 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
         });
         _byUser.remove(userUid);
       } else {
-        final update = '''
-          mutation UpdatePerm(\$account: uuid!, \$uid: uuid!, \$set: account_feature_permissions_set_input!) {
-            update_account_feature_permissions(
-              where: {account_id: {_eq: \$account}, user_uid: {_eq: \$uid}},
-              _set: \$set
+        final upsert = '''
+          mutation UpsertPerm(
+            \$object: account_feature_permissions_insert_input!,
+            \$update: [account_feature_permissions_update_column!]!
+          ) {
+            insert_account_feature_permissions_one(
+              object: \$object,
+              on_conflict: {
+                constraint: account_feature_permissions_uix,
+                update_columns: \$update
+              }
             ) {
-              affected_rows
+              id
             }
           }
         ''';
-        final updateRes = await _runMutation(update, {
-          'account': accId,
-          'uid': userUid,
-          'set': {
+        await _runMutation(upsert, {
+          'object': {
+            'account_id': accId,
+            'user_uid': userUid,
             'allow_all': perm.allowAll,
             'allowed_features': perm.allowedFeatures,
             'can_create': perm.canCreate,
             'can_update': perm.canUpdate,
             'can_delete': perm.canDelete,
           },
+          'update': [
+            'allow_all',
+            'allowed_features',
+            'can_create',
+            'can_update',
+            'can_delete',
+          ],
         });
-        final affected = (updateRes['update_account_feature_permissions']
-            as Map?)?['affected_rows'] as int?;
-        if (affected == null || affected == 0) {
-          final insert = '''
-            mutation InsertPerm(\$object: account_feature_permissions_insert_input!) {
-              insert_account_feature_permissions_one(object: \$object) {
-                id
-              }
-            }
-          ''';
-          await _runMutation(insert, {
-            'object': {
-              'account_id': accId,
-              'user_uid': userUid,
-              'allow_all': perm.allowAll,
-              'allowed_features': perm.allowedFeatures,
-              'can_create': perm.canCreate,
-              'can_update': perm.canUpdate,
-              'can_delete': perm.canDelete,
-            }
-          });
-        }
         _byUser[userUid] = perm.copyWith(userUid: userUid);
       }
 
