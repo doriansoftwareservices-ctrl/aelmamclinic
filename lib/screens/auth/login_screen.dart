@@ -693,6 +693,8 @@ class _LoginScreenState extends State<LoginScreen> {
                           child: NeuButton.primary(
                             label: 'تسجيل الدخول',
                             icon: Icons.login_rounded,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.max,
                             padding: const EdgeInsets.symmetric(
                               horizontal: 20,
                               vertical: 16,
@@ -706,6 +708,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: NeuButton.flat(
                       label: 'إنشاء حساب جديد',
                       icon: Icons.person_add_alt_1_rounded,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.max,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 20,
                         vertical: 14,

@@ -125,6 +125,8 @@ class NeuButton extends StatelessWidget {
   final double radius;
   final double depth;
   final EdgeInsetsGeometry padding;
+  final MainAxisAlignment mainAxisAlignment;
+  final MainAxisSize mainAxisSize;
 
   const NeuButton.primary({
     super.key,
@@ -134,6 +136,8 @@ class NeuButton extends StatelessWidget {
     this.radius = kRadius,
     this.depth = 6,
     this.padding = const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+    this.mainAxisAlignment = MainAxisAlignment.start,
+    this.mainAxisSize = MainAxisSize.min,
   }) : filled = true;
 
   const NeuButton.flat({
@@ -144,6 +148,8 @@ class NeuButton extends StatelessWidget {
     this.radius = kRadius,
     this.depth = 6,
     this.padding = const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+    this.mainAxisAlignment = MainAxisAlignment.start,
+    this.mainAxisSize = MainAxisSize.min,
   }) : filled = false;
 
   @override
@@ -182,7 +188,8 @@ class NeuButton extends StatelessWidget {
               child: Padding(
                 padding: padding,
                 child: Row(
-                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: mainAxisAlignment,
+                  mainAxisSize: mainAxisSize,
                   textDirection: TextDirection.ltr,
                   children: [
                     if (icon != null) ...[
