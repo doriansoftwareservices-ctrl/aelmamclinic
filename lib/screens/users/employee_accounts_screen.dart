@@ -59,7 +59,9 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
 
   Future<void> _refresh() async {
     final accountId = context.read<AuthProvider>().accountId;
-    setState(() => _employees = _loadEmployees(accountId));
+    setState(() {
+      _employees = _loadEmployees(accountId);
+    });
     await _employees;
     await _refreshSeatRequests();
   }
