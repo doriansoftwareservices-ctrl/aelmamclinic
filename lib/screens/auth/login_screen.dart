@@ -678,29 +678,38 @@ class _LoginScreenState extends State<LoginScreen> {
 
                   const SizedBox(height: 6),
 
-                  // زر الدخول
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: _loading
-                        ? const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 6),
-                            child: SizedBox(
-                              height: 44,
-                              width: 44,
-                              child: CircularProgressIndicator(strokeWidth: 3),
-                            ),
-                          )
-                        : NeuButton.primary(
-                            label: 'دخول',
+                  // زر تسجيل الدخول
+                  _loading
+                      ? const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8),
+                          child: SizedBox(
+                            height: 46,
+                            width: 46,
+                            child: CircularProgressIndicator(strokeWidth: 3),
+                          ),
+                        )
+                      : SizedBox(
+                          width: double.infinity,
+                          child: NeuButton.primary(
+                            label: 'تسجيل الدخول',
                             icon: Icons.login_rounded,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 16,
+                            ),
                             onPressed: () => _submit(auth),
                           ),
-                  ),
-                  const SizedBox(height: 8),
-                  Align(
-                    alignment: Alignment.centerRight,
+                        ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
                     child: NeuButton.flat(
                       label: 'إنشاء حساب جديد',
+                      icon: Icons.person_add_alt_1_rounded,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 14,
+                      ),
                       onPressed: _loading ? null : () => _signUp(auth),
                     ),
                   ),
