@@ -269,7 +269,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
-    final canManage = auth.isSuperAdmin;
+    final canManage = auth.isOwnerOrAdmin;
     final canView =
         canManage || auth.featureAllowed(FeatureKeys.auditPermissions);
 
