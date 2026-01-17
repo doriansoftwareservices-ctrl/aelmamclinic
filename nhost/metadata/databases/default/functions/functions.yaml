@@ -235,6 +235,7 @@
   configuration:
     exposed_as: query
     custom_name: my_account_plan
+    session_argument: hasura_session
   permissions:
   - role: me
   - role: user
