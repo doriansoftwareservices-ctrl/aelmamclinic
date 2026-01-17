@@ -72,6 +72,7 @@
   configuration:
     exposed_as: query
     custom_name: list_employees_with_email
+    session_argument: hasura_session
   permissions:
   - role: me
   - role: user
