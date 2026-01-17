@@ -5401,17 +5401,117 @@
         columns: "*"
         filter: {}
   insert_permissions:
+    - role: user
+      permission:
+        check:
+          _and:
+            - _exists:
+                _table:
+                  schema: public
+                  name: account_users
+                _where:
+                  user_uid:
+                    _eq: "X-Hasura-User-Id"
+                  account_id:
+                    _ceq: "account_id"
+                  disabled:
+                    _eq: false
+                  role:
+                    _in:
+                      - owner
+                      - admin
+                      - superadmin
+            - _exists:
+                _table:
+                  schema: public
+                  name: account_users
+                _where:
+                  user_uid:
+                    _ceq: "user_uid"
+                  account_id:
+                    _ceq: "account_id"
+                  disabled:
+                    _eq: false
+        columns:
+          - account_id
+          - user_uid
+          - allow_all
+          - allowed_features
+          - can_create
+          - can_update
+          - can_delete
     - role: superadmin
       permission:
         check: {}
         columns: "*"
   update_permissions:
+    - role: user
+      permission:
+        columns:
+          - allow_all
+          - allowed_features
+          - can_create
+          - can_update
+          - can_delete
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              account_id:
+                _ceq: "account_id"
+              disabled:
+                _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
+                  - superadmin
+        check:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              account_id:
+                _ceq: "account_id"
+              disabled:
+                _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
+                  - superadmin
     - role: superadmin
       permission:
         columns: "*"
         filter: {}
         check: {}
   delete_permissions:
+    - role: user
+      permission:
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: account_users
+            _where:
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+              account_id:
+                _ceq: "account_id"
+              disabled:
+                _eq: false
+              role:
+                _in:
+                  - owner
+                  - admin
+                  - superadmin
     - role: superadmin
       permission:
         filter: {}
