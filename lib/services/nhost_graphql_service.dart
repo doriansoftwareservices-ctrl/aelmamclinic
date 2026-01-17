@@ -62,7 +62,6 @@ class NhostGraphqlService {
           headers: {
             ...headers,
             ...existing,
-            'x-hasura-role': 'superadmin',
           },
         );
       });
