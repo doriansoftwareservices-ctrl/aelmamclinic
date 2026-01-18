@@ -182,14 +182,12 @@
           _exists:
             _table:
               schema: public
-              name: account_users
+              name: chat_participants
             _where:
-              account_id:
-                _ceq: "account_id"
+              conversation_id:
+                _ceq: "id"
               user_uid:
                 _eq: "X-Hasura-User-Id"
-              disabled:
-                _eq: false
     - role: user
       permission:
         columns: "*"
@@ -197,14 +195,12 @@
           _exists:
             _table:
               schema: public
-              name: account_users
+              name: chat_participants
             _where:
-              account_id:
-                _ceq: "account_id"
+              conversation_id:
+                _ceq: "id"
               user_uid:
                 _eq: "X-Hasura-User-Id"
-              disabled:
-                _eq: false
     - role: superadmin
       permission:
         columns: "*"
@@ -215,34 +211,40 @@
         check:
           created_by:
             _eq: "X-Hasura-User-Id"
-          _exists:
-            _table:
-              schema: public
-              name: account_users
-            _where:
-              account_id:
-                _ceq: "account_id"
-              user_uid:
-                _eq: "X-Hasura-User-Id"
-              disabled:
-                _eq: false
+          _or:
+            - account_id:
+                _is_null: true
+            - _exists:
+                _table:
+                  schema: public
+                  name: account_users
+                _where:
+                  account_id:
+                    _ceq: "account_id"
+                  user_uid:
+                    _eq: "X-Hasura-User-Id"
+                  disabled:
+                    _eq: false
         columns: "*"
     - role: user
       permission:
         check:
           created_by:
             _eq: "X-Hasura-User-Id"
-          _exists:
-            _table:
-              schema: public
-              name: account_users
-            _where:
-              account_id:
-                _ceq: "account_id"
-              user_uid:
-                _eq: "X-Hasura-User-Id"
-              disabled:
-                _eq: false
+          _or:
+            - account_id:
+                _is_null: true
+            - _exists:
+                _table:
+                  schema: public
+                  name: account_users
+                _where:
+                  account_id:
+                    _ceq: "account_id"
+                  user_uid:
+                    _eq: "X-Hasura-User-Id"
+                  disabled:
+                    _eq: false
         columns: "*"
     - role: superadmin
       permission:
