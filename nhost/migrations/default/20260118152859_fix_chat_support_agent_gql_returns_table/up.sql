@@ -1,5 +1,8 @@
 -- Wrappers MUST return TABLE(...) so Hasura can track them
 
+DROP FUNCTION IF EXISTS public.chat_support_agent_gql();
+DROP FUNCTION IF EXISTS public.chat_set_support_agent_gql(uuid, text);
+
 CREATE OR REPLACE FUNCTION public.chat_support_agent_gql()
 RETURNS TABLE(user_uid uuid, display_name text)
 LANGUAGE sql
