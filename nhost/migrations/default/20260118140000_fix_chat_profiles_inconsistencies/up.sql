@@ -71,20 +71,7 @@ END $$;
 DO $$
 BEGIN
   IF to_regclass('public.chat_conversations') IS NOT NULL THEN
-    IF NOT EXISTS (
-      SELECT 1
-      FROM pg_index i
-      JOIN pg_class c ON c.oid = i.indrelid
-      WHERE c.relname = 'chat_conversations'
-        AND i.indisunique
-        AND i.indkey = ARRAY[
-          (SELECT attnum
-             FROM pg_attribute
-            WHERE attrelid = c.oid AND attname = 'id')
-        ]
-    ) THEN
-      EXECUTE 'CREATE UNIQUE INDEX IF NOT EXISTS chat_conversations_id_key ON public.chat_conversations(id)';
-    END IF;
+    EXECUTE 'CREATE UNIQUE INDEX IF NOT EXISTS chat_conversations_id_key ON public.chat_conversations(id)';
   END IF;
 END $$;
 
