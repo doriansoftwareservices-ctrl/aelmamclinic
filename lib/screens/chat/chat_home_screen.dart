@@ -47,19 +47,48 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
     super.dispose();
   }
 
-  void _ensureBootstrap() {
+  Future<void> _ensureBootstrap() async {
     final chat = context.read<ChatProvider>();
     if (chat.ready || chat.busy) return;
     final auth = context.read<AuthProvider>();
-    chat.bootstrap(
+    await chat.bootstrap(
       accountId: auth.accountId,
       role: auth.role,
       isSuperAdmin: auth.isSuperAdmin,
     );
+    if (!mounted) return;
+    final isOwner = auth.role?.toLowerCase() == 'owner';
+    if (isOwner) {
+      await chat.ensureSupportConversation();
+      await chat.refreshConversations();
+    }
   }
 
   Future<void> _refresh() async {
     await context.read<ChatProvider>().refreshConversations();
+  }
+
+  Future<void> _openSupportChat() async {
+    final auth = context.read<AuthProvider>();
+    final isOwner = auth.role?.toLowerCase() == 'owner';
+    if (!isOwner) return;
+    final chat = context.read<ChatProvider>();
+    await chat.ensureSupportConversation(force: true);
+    final convId = chat.supportConversationId;
+    if (convId == null || !mounted) return;
+    final conv = chat.conversationById(convId);
+    if (conv == null) {
+      await chat.refreshConversations();
+    }
+    final resolved = chat.conversationById(convId);
+    if (resolved == null || !mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ChatRoomScreen(conversation: resolved),
+      ),
+    );
+    if (!mounted) return;
+    await chat.refreshConversations();
   }
 
   @override
@@ -83,6 +112,14 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
         final bTime = b.lastMsgAt ?? b.updatedAt ?? b.createdAt;
         return bTime.compareTo(aTime);
       });
+    final supportId = chat.supportConversationId;
+    if (supportId != null) {
+      final idx = filtered.indexWhere((c) => c.id == supportId);
+      if (idx > 0) {
+        final item = filtered.removeAt(idx);
+        filtered.insert(0, item);
+      }
+    }
 
     final isBusy = chat.busy && !chat.ready;
 
@@ -92,6 +129,12 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
         appBar: AppBar(
           title: const Text('المحادثات'),
           actions: [
+            if (context.read<AuthProvider>().role?.toLowerCase() == 'owner')
+              IconButton(
+                tooltip: 'خدمة العملاء',
+                onPressed: _openSupportChat,
+                icon: const Icon(Icons.support_agent_rounded),
+              ),
             IconButton(
               tooltip: 'تحديث',
               onPressed: chat.busy ? null : _refresh,
@@ -195,6 +238,8 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
                           final displayTitle = chat.displayTitleOf(
                             conversation.id,
                           );
+                          final isSupport =
+                              chat.isSupportConversation(conversation.id);
                           final snippet = conversation.lastMsgSnippet ?? '';
                           final typing = chat.typingUids(conversation.id);
                           final subtitleOverride = typing.isNotEmpty
@@ -205,7 +250,11 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
 
                           return ConversationTile(
                             conversation: conversation,
-                            titleOverride: displayTitle,
+                            titleOverride:
+                                isSupport ? chat.supportDisplayName : displayTitle,
+                            leadingIcon: isSupport
+                                ? Icons.support_agent_rounded
+                                : null,
                             subtitleOverride: subtitleOverride,
                             subtitleIsTyping: typing.isNotEmpty,
                             unreadCount: conversation.unreadCount ?? 0,

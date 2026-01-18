@@ -190,6 +190,49 @@ class ChatService {
     return null;
   }
 
+  Future<Map<String, String>?> fetchSupportAgent() async {
+    const query = r'''
+      query SupportAgent {
+        chat_support_agent {
+          user_uid
+          display_name
+        }
+      }
+    ''';
+    final data = await _runQuery(query, const {});
+    final rows = data['chat_support_agent'] as List?;
+    if (rows == null || rows.isEmpty) return null;
+    final row = rows.first as Map;
+    final uid = row['user_uid']?.toString() ?? '';
+    if (uid.isEmpty) return null;
+    final name = row['display_name']?.toString().trim();
+    return {
+      'user_uid': uid,
+      'display_name': (name == null || name.isEmpty) ? 'خدمة العملاء' : name,
+    };
+  }
+
+  Future<ChatConversation> startDMWithUid(String otherUid) async {
+    final uid = currentUserId;
+    if (uid == null || uid.isEmpty) {
+      throw 'لا يوجد مستخدم مسجّل الدخول.';
+    }
+    if (otherUid.isEmpty) {
+      throw 'لا يوجد مستخدم هدف.';
+    }
+    if (otherUid == uid) {
+      throw 'لا يمكنك مراسلة نفسك.';
+    }
+
+    final existing = await findExistingDMByUids(uidA: uid, uidB: otherUid);
+    if (existing != null) return existing;
+
+    final rpcConv = await _tryStartDmRpc(otherUid);
+    if (rpcConv != null) return rpcConv;
+
+    throw 'تعذّر إنشاء محادثة الدعم. حاول لاحقًا.';
+  }
+
   Stream<QueryResult> _runSubscription(
     String doc,
     Map<String, dynamic> variables,
@@ -761,7 +804,9 @@ class ChatService {
     final otherEmail = (targetRow['email']?.toString() ?? email).toLowerCase();
 
     final targetRole = (targetRow['role']?.toString() ?? '').toLowerCase();
-    if (targetRole == 'superadmin' && myRole != 'superadmin') {
+    if (targetRole == 'superadmin' &&
+        myRole != 'superadmin' &&
+        myRole != 'owner') {
       throw 'غير مسموح للموظفين مراسلة السوبر أدمن مباشرة.';
     }
     if (otherUid == uid) throw 'لا يمكنك مراسلة نفسك.';

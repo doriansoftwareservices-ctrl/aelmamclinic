@@ -32,11 +32,15 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
   final GraphQLClient _gql = NhostGraphqlService.buildClient();
 
   final _searchCtrl = TextEditingController();
+  final _supportNameCtrl = TextEditingController(text: 'خدمة العملاء');
   bool _loading = true;
   bool _refreshing = false;
   bool _unreadOnly = false;
 
   List<_AdminItem> _items = [];
+  List<_SupportCandidate> _supportCandidates = [];
+  String? _supportAgentUid;
+  bool _supportLoading = false;
 
   bool _providerListenerAttached = false;
   Timer? _providerDebounce;
@@ -50,6 +54,7 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
   @override
   void dispose() {
     _searchCtrl.dispose();
+    _supportNameCtrl.dispose();
     _providerDebounce?.cancel();
     try {
       if (_providerListenerAttached) {
@@ -74,6 +79,7 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
     }
 
     await _fetchInbox();
+    await _loadSupportAgents();
     if (!mounted) return;
     setState(() => _loading = false);
 
@@ -327,6 +333,92 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
     }
   }
 
+  Future<void> _loadSupportAgents() async {
+    setState(() => _supportLoading = true);
+    try {
+      const agentQuery = r'''
+        query SupportAgent {
+          chat_support_agent {
+            user_uid
+            display_name
+          }
+        }
+      ''';
+      const superQuery = r'''
+        query SuperAdmins {
+          super_admins(order_by: {created_at: desc}) {
+            user_uid
+            email
+          }
+        }
+      ''';
+      final agentData = await _runQuery(agentQuery, const {});
+      final agentRows = _rowsFromData(agentData, 'chat_support_agent');
+      if (agentRows.isNotEmpty) {
+        final row = agentRows.first;
+        _supportAgentUid = row['user_uid']?.toString();
+        final display = row['display_name']?.toString().trim() ?? '';
+        if (display.isNotEmpty) {
+          _supportNameCtrl.text = display;
+        }
+      }
+
+      final superData = await _runQuery(superQuery, const {});
+      _supportCandidates = _rowsFromData(superData, 'super_admins')
+          .map((r) => _SupportCandidate(
+                uid: r['user_uid']?.toString() ?? '',
+                email: r['email']?.toString() ?? '',
+              ))
+          .where((c) => c.uid.isNotEmpty)
+          .toList();
+      if (_supportAgentUid == null && _supportCandidates.isNotEmpty) {
+        _supportAgentUid = _supportCandidates.first.uid;
+      }
+    } catch (e) {
+      _snack('تعذّر تحميل قائمة الدعم: $e');
+    } finally {
+      if (mounted) setState(() => _supportLoading = false);
+    }
+  }
+
+  Future<void> _setSupportAgent() async {
+    final uid = _supportAgentUid ?? '';
+    if (uid.isEmpty) {
+      _snack('يرجى اختيار سوبر أدمن.');
+      return;
+    }
+    setState(() => _supportLoading = true);
+    try {
+      const mutation = r'''
+        mutation SetSupportAgent($uid: uuid!, $name: String!) {
+          chat_set_support_agent(args: {p_user_uid: $uid, p_display_name: $name}) {
+            user_uid
+            display_name
+          }
+        }
+      ''';
+      final data = await _runMutation(mutation, {
+        'uid': uid,
+        'name': _supportNameCtrl.text.trim().isEmpty
+            ? 'خدمة العملاء'
+            : _supportNameCtrl.text.trim(),
+      });
+      final rows = _rowsFromData(data, 'chat_set_support_agent');
+      if (rows.isNotEmpty) {
+        _supportAgentUid = rows.first['user_uid']?.toString();
+        final display = rows.first['display_name']?.toString() ?? '';
+        if (display.trim().isNotEmpty) {
+          _supportNameCtrl.text = display.trim();
+        }
+      }
+      _snack('تم تفعيل خدمة العملاء.');
+    } catch (e) {
+      _snack('تعذّر تعيين خدمة العملاء: $e');
+    } finally {
+      if (mounted) setState(() => _supportLoading = false);
+    }
+  }
+
   // ✅ بدء DM عبر RPC تتجاوز RLS بأمان
   Future<void> _startOwnerDM() async {
     final me = NhostManager.client.auth.currentUser;
@@ -467,6 +559,81 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
         body: SafeArea(
           child: Column(
             children: [
+              if (_supportCandidates.isNotEmpty || _supportLoading)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
+                  child: NeuCard(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.support_agent_rounded),
+                            const SizedBox(width: 8),
+                            const Expanded(
+                              child: Text(
+                                'تعيين خدمة العملاء',
+                                style: TextStyle(fontWeight: FontWeight.w800),
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: 'تحديث القائمة',
+                              onPressed:
+                                  _supportLoading ? null : _loadSupportAgents,
+                              icon: const Icon(Icons.refresh_rounded),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        DropdownButtonFormField<String>(
+                          value: _supportAgentUid,
+                          decoration: const InputDecoration(
+                            labelText: 'حساب خدمة العملاء',
+                            border: OutlineInputBorder(),
+                          ),
+                          items: _supportCandidates
+                              .map(
+                                (c) => DropdownMenuItem(
+                                  value: c.uid,
+                                  child: Text(c.email),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: _supportLoading
+                              ? null
+                              : (value) =>
+                                  setState(() => _supportAgentUid = value),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: _supportNameCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'الاسم الظاهر للملاك',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: SizedBox(
+                            width: 180,
+                            child: NeuButton.primary(
+                              label: _supportLoading
+                                  ? 'جارٍ الحفظ...'
+                                  : 'حفظ خدمة العملاء',
+                              icon: Icons.check_rounded,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.max,
+                              onPressed:
+                                  _supportLoading ? null : _setSupportAgent,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
                 child: Row(
@@ -604,6 +771,12 @@ class _AdminItem {
     required this.lastSnippet,
     required this.hasUnread,
   });
+}
+
+class _SupportCandidate {
+  final String uid;
+  final String email;
+  const _SupportCandidate({required this.uid, required this.email});
 }
 
 class _UserRef {

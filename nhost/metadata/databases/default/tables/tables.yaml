@@ -918,6 +918,46 @@
 
 - table:
     schema: public
+    name: chat_support_agents
+  select_permissions:
+    - role: me
+      permission:
+        columns:
+          - user_uid
+          - display_name
+        filter:
+          is_active:
+            _eq: true
+    - role: user
+      permission:
+        columns:
+          - user_uid
+          - display_name
+        filter:
+          is_active:
+            _eq: true
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+  insert_permissions:
+    - role: superadmin
+      permission:
+        check: {}
+        columns: "*"
+  update_permissions:
+    - role: superadmin
+      permission:
+        columns: "*"
+        filter: {}
+        check: {}
+  delete_permissions:
+    - role: superadmin
+      permission:
+        filter: {}
+
+- table:
+    schema: public
     name: chat_reactions
   select_permissions:
     - role: me
@@ -7290,9 +7330,7 @@
           - account_id
           - id
           - user_uid
-        filter:
-          user_uid:
-            _eq: "X-Hasura-User-Id"
+        filter: {}
 
 - table:
     schema: public

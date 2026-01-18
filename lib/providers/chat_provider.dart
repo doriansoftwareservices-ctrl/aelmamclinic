@@ -76,6 +76,16 @@ class ChatProvider extends ChangeNotifier {
   String displayTitleOf(String conversationId) =>
       _displayTitleByConv[conversationId] ?? 'محادثة';
 
+  String? _supportConversationId;
+  String? _supportAgentUid;
+  String _supportDisplayName = 'خدمة العملاء';
+  bool _supportReady = false;
+
+  String? get supportConversationId => _supportConversationId;
+  String get supportDisplayName => _supportDisplayName;
+  bool isSupportConversation(String conversationId) =>
+      _supportConversationId == conversationId;
+
   final Map<String, List<CM.ChatMessage>> _messagesByConv = {};
   List<CM.ChatMessage> messagesOf(String conversationId) =>
       List.unmodifiable(_messagesByConv[conversationId] ?? const []);
@@ -217,6 +227,38 @@ class ChatProvider extends ChangeNotifier {
       }
     } finally {
       busy = false;
+      _safeNotify();
+    }
+  }
+
+  Future<void> ensureSupportConversation({bool force = false}) async {
+    if (_disposed) return;
+    if (_supportReady && !force) return;
+
+    try {
+      final agent = await _chat.fetchSupportAgent();
+      if (agent == null) {
+        _supportReady = true;
+        return;
+      }
+
+      final uid = agent['user_uid'] ?? '';
+      final name = agent['display_name'] ?? 'خدمة العملاء';
+      if (uid.isEmpty) {
+        _supportReady = true;
+        return;
+      }
+
+      _supportAgentUid = uid;
+      _supportDisplayName = name;
+
+      final conv = await _chat.startDMWithUid(uid);
+      _supportConversationId = conv.id;
+      _displayTitleByConv[conv.id] = name;
+    } catch (e, st) {
+      _rpcWarn('ensureSupportConversation failed', e, st);
+    } finally {
+      _supportReady = true;
       _safeNotify();
     }
   }
@@ -488,6 +530,9 @@ class ChatProvider extends ChangeNotifier {
                   ? other.email!
                   : 'بدون بريد');
         }
+      }
+      if (_supportConversationId != null) {
+        tmpDisplay[_supportConversationId!] = _supportDisplayName;
       }
 
       final lastReadByConv = <String, DateTime?>{};

@@ -61,6 +61,9 @@ class ConversationTile extends StatelessWidget {
   /// حالة الاتصال للطرف الآخر في DM (نقطة خضراء).
   final bool? isOnline;
 
+  /// أيقونة مخصّصة بدل الافتراضية (مثلاً خدمة العملاء).
+  final IconData? leadingIcon;
+
   /// إظهار سهم تنقل
   final bool showChevron;
 
@@ -81,6 +84,7 @@ class ConversationTile extends StatelessWidget {
     this.unreadCount = 0,
     this.isMuted = false,
     this.isOnline,
+    this.leadingIcon,
     this.showChevron = false,
     this.maxSubtitleChars = 64,
     this.onTap,
@@ -134,6 +138,7 @@ class ConversationTile extends StatelessWidget {
             leading: _buildLeadingAvatar(
               type: conversation.type,
               isOnline: isOnline,
+              leadingIcon: leadingIcon,
             ),
             title: Row(
               children: [
@@ -205,12 +210,15 @@ class ConversationTile extends StatelessWidget {
   Widget _buildLeadingAvatar({
     required ChatConversationType type,
     bool? isOnline,
+    IconData? leadingIcon,
   }) {
     final isGroup = type == ChatConversationType.group;
     final isAnnouncement = type == ChatConversationType.announcement;
 
     IconData icon;
-    if (isGroup) {
+    if (leadingIcon != null) {
+      icon = leadingIcon;
+    } else if (isGroup) {
       icon = Icons.forum_rounded;
     } else if (isAnnouncement) {
       icon = Icons.campaign_rounded;

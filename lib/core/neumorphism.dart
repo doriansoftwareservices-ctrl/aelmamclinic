@@ -121,6 +121,8 @@ class NeuButton extends StatelessWidget {
   final String label;
   final VoidCallback? onPressed;
   final IconData? icon;
+  final Widget? leading;
+  final Widget? trailing;
   final bool filled;
   final double radius;
   final double depth;
@@ -133,6 +135,8 @@ class NeuButton extends StatelessWidget {
     required this.label,
     this.onPressed,
     this.icon,
+    this.leading,
+    this.trailing,
     this.radius = kRadius,
     this.depth = 6,
     this.padding = const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
@@ -145,6 +149,8 @@ class NeuButton extends StatelessWidget {
     required this.label,
     this.onPressed,
     this.icon,
+    this.leading,
+    this.trailing,
     this.radius = kRadius,
     this.depth = 6,
     this.padding = const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
@@ -192,7 +198,10 @@ class NeuButton extends StatelessWidget {
                   mainAxisSize: mainAxisSize,
                   textDirection: TextDirection.ltr,
                   children: [
-                    if (icon != null) ...[
+                    if (leading != null) ...[
+                      leading!,
+                      const SizedBox(width: 10),
+                    ] else if (icon != null) ...[
                       Icon(icon, color: txt, size: 20),
                       const SizedBox(width: 10),
                     ],
@@ -205,6 +214,10 @@ class NeuButton extends StatelessWidget {
                         fontSize: 15,
                       ),
                     ),
+                    if (trailing != null) ...[
+                      const SizedBox(width: 10),
+                      trailing!,
+                    ],
                   ],
                 ),
               ),

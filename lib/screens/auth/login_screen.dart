@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:nhost_dart/nhost_dart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'package:aelmamclinic/models/clinic_profile.dart';
 import 'package:aelmamclinic/providers/auth_provider.dart';
@@ -43,6 +44,27 @@ class _LoginScreenState extends State<LoginScreen> {
   static const _rememberMeKey = 'auth.remember_me';
   static const _rememberEmailKey = 'auth.remember_email';
   static const _rememberPassKey = 'auth.remember_pass';
+
+  Future<void> _callNumber(String number) async {
+    final uri = Uri.parse('tel:$number');
+    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر فتح تطبيق الاتصال.')),
+      );
+    }
+  }
+
+  Future<void> _openWhatsApp(String number) async {
+    final clean = number.replaceAll('+', '');
+    final uri = Uri.parse('https://wa.me/$clean');
+    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر فتح واتساب.')),
+      );
+    }
+  }
 
   @override
   void initState() {
@@ -679,29 +701,34 @@ class _LoginScreenState extends State<LoginScreen> {
                   const SizedBox(height: 6),
 
                   // زر تسجيل الدخول
-                  _loading
-                      ? const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 8),
-                          child: SizedBox(
-                            height: 46,
-                            width: 46,
-                            child: CircularProgressIndicator(strokeWidth: 3),
-                          ),
-                        )
-                      : SizedBox(
-                          width: double.infinity,
-                          child: NeuButton.primary(
-                            label: 'تسجيل الدخول',
-                            icon: Icons.login_rounded,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            mainAxisSize: MainAxisSize.max,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 20,
-                              vertical: 16,
+                  SizedBox(
+                    width: double.infinity,
+                    child: NeuButton.primary(
+                      label: 'تسجيل الدخول',
+                      leading: _loading
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.4,
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : const Icon(
+                              Icons.login_rounded,
+                              color: Colors.white,
+                              size: 20,
                             ),
-                            onPressed: () => _submit(auth),
-                          ),
-                        ),
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.max,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 16,
+                      ),
+                      onPressed: _loading ? null : () => _submit(auth),
+                    ),
+                  ),
                   const SizedBox(height: 10),
                   SizedBox(
                     width: double.infinity,
@@ -717,12 +744,88 @@ class _LoginScreenState extends State<LoginScreen> {
                       onPressed: _loading ? null : () => _signUp(auth),
                     ),
                   ),
+                  const SizedBox(height: 12),
+                  NeuCard(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'تواصل معنا',
+                          style: TextStyle(
+                            color: scheme.primary,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        _ContactRow(
+                          label: '+967780696069',
+                          onCall: () => _callNumber('+967780696069'),
+                          onWhatsApp: () => _openWhatsApp('+967780696069'),
+                        ),
+                        const SizedBox(height: 8),
+                        _ContactRow(
+                          label: '+967730696069',
+                          onCall: () => _callNumber('+967730696069'),
+                          onWhatsApp: () => _openWhatsApp('+967730696069'),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
           ),
         ),
       ),
+    );
+  }
+}
+
+class _ContactRow extends StatelessWidget {
+  final String label;
+  final VoidCallback onCall;
+  final VoidCallback onWhatsApp;
+
+  const _ContactRow({
+    required this.label,
+    required this.onCall,
+    required this.onWhatsApp,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            textAlign: TextAlign.left,
+            style: TextStyle(
+              color: scheme.onSurface.withValues(alpha: 0.9),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        NeuButton.flat(
+          label: 'اتصال',
+          icon: Icons.phone_rounded,
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          onPressed: onCall,
+        ),
+        const SizedBox(width: 8),
+        NeuButton.flat(
+          label: 'واتساب',
+          icon: Icons.chat_rounded,
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          onPressed: onWhatsApp,
+        ),
+      ],
     );
   }
 }
