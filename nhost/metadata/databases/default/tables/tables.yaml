@@ -166,6 +166,14 @@
 - table:
     schema: public
     name: chat_conversations
+  array_relationships:
+    - name: chat_participants
+      using:
+        foreign_key_constraint_on:
+          column: conversation_id
+          table:
+            schema: public
+            name: chat_participants
   select_permissions:
     - role: me
       permission:

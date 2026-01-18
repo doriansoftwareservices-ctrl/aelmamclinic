@@ -889,7 +889,7 @@ class AuthProvider extends ChangeNotifier {
 
   FeaturePermissions _defaultPermissionsForRole() {
     final r = role?.toLowerCase();
-    if (r == 'employee' || r == 'admin') {
+    if (r == 'owner' || r == 'admin') {
       return FeaturePermissions.defaultsAllowAll();
     }
     return FeaturePermissions.defaultsDenyAll();
