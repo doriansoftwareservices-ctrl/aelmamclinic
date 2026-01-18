@@ -457,6 +457,14 @@
 - table:
     schema: public
     name: chat_messages
+  array_relationships:
+    - name: chat_attachments
+      using:
+        foreign_key_constraint_on:
+          column: message_id
+          table:
+            schema: public
+            name: chat_attachments
   select_permissions:
     - role: me
       permission:
