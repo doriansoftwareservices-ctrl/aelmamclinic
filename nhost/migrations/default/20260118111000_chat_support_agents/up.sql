@@ -23,7 +23,7 @@ DROP POLICY IF EXISTS chat_support_agents_select_public ON public.chat_support_a
 CREATE POLICY chat_support_agents_select_public
   ON public.chat_support_agents
   FOR SELECT
-  TO me, user
+  TO me, "user"
   USING (is_active = true);
 
 DROP POLICY IF EXISTS chat_support_agents_superadmin_all ON public.chat_support_agents;
