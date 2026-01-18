@@ -438,6 +438,32 @@
 
 - table:
     schema: public
+    name: chat_support_agent_gql_result
+  select_permissions:
+    - role: user
+      permission:
+        columns:
+          - user_uid
+          - display_name
+        filter: {}
+        allow_aggregations: false
+    - role: me
+      permission:
+        columns:
+          - user_uid
+          - display_name
+        filter: {}
+        allow_aggregations: false
+    - role: superadmin
+      permission:
+        columns:
+          - user_uid
+          - display_name
+        filter: {}
+        allow_aggregations: false
+
+- table:
+    schema: public
     name: chat_messages
   array_relationships:
     - name: chat_attachments
