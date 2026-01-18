@@ -179,28 +179,16 @@
       permission:
         columns: "*"
         filter:
-          _exists:
-            _table:
-              schema: public
-              name: chat_participants
-            _where:
-              conversation_id:
-                _ceq: "id"
-              user_uid:
-                _eq: "X-Hasura-User-Id"
+          chat_participants:
+            user_uid:
+              _eq: "X-Hasura-User-Id"
     - role: user
       permission:
         columns: "*"
         filter:
-          _exists:
-            _table:
-              schema: public
-              name: chat_participants
-            _where:
-              conversation_id:
-                _ceq: "id"
-              user_uid:
-                _eq: "X-Hasura-User-Id"
+          chat_participants:
+            user_uid:
+              _eq: "X-Hasura-User-Id"
     - role: superadmin
       permission:
         columns: "*"
@@ -292,6 +280,10 @@
 - table:
     schema: public
     name: chat_participants
+  object_relationships:
+    - name: chat_conversation
+      using:
+        foreign_key_constraint_on: conversation_id
   select_permissions:
     - role: me
       permission:
@@ -355,15 +347,9 @@
             - _or:
                 - user_uid:
                     _eq: "X-Hasura-User-Id"
-                - _exists:
-                    _table:
-                      schema: public
-                      name: chat_conversations
-                    _where:
-                      id:
-                        _ceq: "conversation_id"
-                      created_by:
-                        _eq: "X-Hasura-User-Id"
+                - chat_conversation:
+                    created_by:
+                      _eq: "X-Hasura-User-Id"
         columns:
           - account_id
           - conversation_id
@@ -394,15 +380,9 @@
             - _or:
                 - user_uid:
                     _eq: "X-Hasura-User-Id"
-                - _exists:
-                    _table:
-                      schema: public
-                      name: chat_conversations
-                    _where:
-                      id:
-                        _ceq: "conversation_id"
-                      created_by:
-                        _eq: "X-Hasura-User-Id"
+                - chat_conversation:
+                    created_by:
+                      _eq: "X-Hasura-User-Id"
         columns:
           - account_id
           - conversation_id
@@ -5292,37 +5272,8 @@
     - role: user
       permission:
         check:
-          _and:
-            - _exists:
-                _table:
-                  schema: public
-                  name: account_users
-                _where:
-                  user_uid:
-                    _eq: "X-Hasura-User-Id"
-                  account_id:
-                    _ceq: "account_id"
-                  disabled:
-                    _eq: false
-                  role:
-                    _in:
-                      - owner
-                      - admin
-                      - superadmin
-            - _or:
-                - id:
-                    _eq: "X-Hasura-User-Id"
-                - _exists:
-                    _table:
-                      schema: public
-                      name: account_users
-                    _where:
-                      user_uid:
-                        _ceq: "id"
-                      account_id:
-                        _ceq: "account_id"
-                      disabled:
-                        _eq: false
+          id:
+            _eq: "X-Hasura-User-Id"
         columns:
           - id
           - account_id
