@@ -473,6 +473,13 @@
           table:
             schema: public
             name: chat_attachments
+    - name: chat_delivery_receipts
+      using:
+        foreign_key_constraint_on:
+          column: message_id
+          table:
+            schema: public
+            name: chat_delivery_receipts
   select_permissions:
     - role: me
       permission:
