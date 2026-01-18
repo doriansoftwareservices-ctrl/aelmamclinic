@@ -232,24 +232,6 @@
   - role: superadmin
 - function:
     schema: public
-    name: chat_support_agent
-  configuration:
-    exposed_as: query
-    custom_name: chat_support_agent
-  permissions:
-  - role: me
-  - role: user
-  - role: superadmin
-- function:
-    schema: public
-    name: chat_set_support_agent
-  configuration:
-    exposed_as: mutation
-    custom_name: chat_set_support_agent
-  permissions:
-  - role: superadmin
-- function:
-    schema: public
     name: my_account_plan
   configuration:
     exposed_as: query
@@ -446,3 +428,9 @@
   permissions:
   - role: user
   - role: superadmin
+- function:
+    schema: public
+    name: chat_support_agent_gql
+- function:
+    schema: public
+    name: chat_set_support_agent_gql
