@@ -271,7 +271,35 @@ class ChatService {
     return null;
   }
 
-  static const String _messageSelectFields = '''
+  bool _messageSchemaChecked = false;
+  bool _includeChatAttachments = true;
+  bool _includeDeliveryReceipts = true;
+
+  String _messageSelectFields() {
+    final attBlock = _includeChatAttachments
+        ? '''
+    chat_attachments {
+      id
+      message_id
+      bucket
+      path
+      mime_type
+      size_bytes
+      width
+      height
+      created_at
+    }
+    '''
+        : '';
+    final receiptBlock = _includeDeliveryReceipts
+        ? '''
+    chat_delivery_receipts {
+      user_uid
+      delivered_at
+    }
+    '''
+        : '';
+    return '''
     id
     conversation_id
     sender_uid
@@ -291,22 +319,81 @@ class ChatService {
     device_id
     local_id
     attachments
-    chat_attachments {
-      id
-      message_id
-      bucket
-      path
-      mime_type
-      size_bytes
-      width
-      height
-      created_at
-    }
-    chat_delivery_receipts {
-      user_uid
-      delivered_at
-    }
+    $attBlock
+    $receiptBlock
   ''';
+  }
+
+  Future<void> _ensureMessageSchemaSupport() async {
+    if (_messageSchemaChecked) return;
+    _messageSchemaChecked = true;
+    try {
+      const query = '''
+        query MessageSchemaFields {
+          __type(name: "chat_messages") {
+            fields { name }
+          }
+        }
+      ''';
+      final data = await _runQuery(query, const <String, dynamic>{});
+      final fields = ((data['__type']?['fields'] as List?) ?? const [])
+          .map((e) => (e as Map)['name']?.toString() ?? '')
+          .where((e) => e.isNotEmpty)
+          .toSet();
+      _includeChatAttachments = fields.contains('chat_attachments');
+      _includeDeliveryReceipts = fields.contains('chat_delivery_receipts');
+    } catch (_) {
+      // keep defaults
+    }
+  }
+
+  bool _updateMessageFieldSupport(OperationException error) {
+    var changed = false;
+    for (final err in error.graphqlErrors) {
+      final msg = err.message;
+      if (_includeChatAttachments &&
+          msg.contains("field 'chat_attachments' not found in type: 'chat_messages'")) {
+        _includeChatAttachments = false;
+        changed = true;
+      }
+      if (_includeDeliveryReceipts &&
+          msg.contains("field 'chat_delivery_receipts' not found in type: 'chat_messages'")) {
+        _includeDeliveryReceipts = false;
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
+  Future<Map<String, dynamic>> _runMessageQuery(
+    String Function(String fields) build,
+    Map<String, dynamic> variables,
+  ) async {
+    await _ensureMessageSchemaSupport();
+    try {
+      return await _runQuery(build(_messageSelectFields()), variables);
+    } on OperationException catch (e) {
+      if (_updateMessageFieldSupport(e)) {
+        return await _runQuery(build(_messageSelectFields()), variables);
+      }
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>> _runMessageMutation(
+    String Function(String fields) build,
+    Map<String, dynamic> variables,
+  ) async {
+    await _ensureMessageSchemaSupport();
+    try {
+      return await _runMutation(build(_messageSelectFields()), variables);
+    } on OperationException catch (e) {
+      if (_updateMessageFieldSupport(e)) {
+        return await _runMutation(build(_messageSelectFields()), variables);
+      }
+      rethrow;
+    }
+  }
 
   Future<ChatMessage> _messageFromRow(Map<String, dynamic> row) async {
     final copy = Map<String, dynamic>.from(row);
@@ -330,6 +417,57 @@ class ChatService {
       list.add(await _messageFromRow(row));
     }
     return list;
+  }
+
+  Future<List<Map<String, dynamic>>> _hydrateMessageAttachments(
+    List<Map<String, dynamic>> rows,
+  ) async {
+    if (_includeChatAttachments || rows.isEmpty) return rows;
+
+    final ids = rows
+        .map((row) => row['id']?.toString() ?? '')
+        .where((id) => id.isNotEmpty)
+        .toList();
+    if (ids.isEmpty) return rows;
+
+    try {
+      final query = '''
+        query MessageAttachments(\$ids: [uuid!]!) {
+          $_tblAtts(where: {message_id: {_in: \$ids}}) {
+            id
+            message_id
+            bucket
+            path
+            mime_type
+            size_bytes
+            width
+            height
+            created_at
+          }
+        }
+      ''';
+      final data = await _runQuery(query, {'ids': ids});
+      final attRows = _rowsFromData(data, _tblAtts);
+      if (attRows.isEmpty) return rows;
+
+      final byMessage = <String, List<Map<String, dynamic>>>{};
+      for (final att in attRows) {
+        final mid = att['message_id']?.toString();
+        if (mid == null || mid.isEmpty) continue;
+        byMessage.putIfAbsent(mid, () => <Map<String, dynamic>>[]).add(att);
+      }
+
+      for (final row in rows) {
+        final mid = row['id']?.toString();
+        if (mid != null && byMessage.containsKey(mid)) {
+          row['chat_attachments'] = byMessage[mid];
+        }
+      }
+    } catch (_) {
+      // ignore attachment hydration failures
+    }
+
+    return rows;
   }
 
   Future<String> _uploadToStorage({
@@ -634,22 +772,21 @@ class ChatService {
     if (accountId != null) {
       vars['accountId'] = accountId;
     }
-    final query = '''
-      query FindMessageByTriplet(\$cid: uuid!, \$deviceId: String!, \$localId: bigint!$accountVar) {
-        $_tblMsgs(
-          where: {
-            conversation_id: {_eq: \$cid},
-            device_id: {_eq: \$deviceId},
-            local_id: {_eq: \$localId}$accountFilter
-          },
-          limit: 1
-        ) {
-          $_messageSelectFields
-        }
-      }
-    ''';
     try {
-      final data = await _runQuery(query, vars);
+      final data = await _runMessageQuery((fields) => '''
+        query FindMessageByTriplet(\$cid: uuid!, \$deviceId: String!, \$localId: bigint!$accountVar) {
+          $_tblMsgs(
+            where: {
+              conversation_id: {_eq: \$cid},
+              device_id: {_eq: \$deviceId},
+              local_id: {_eq: \$localId}$accountFilter
+            },
+            limit: 1
+          ) {
+            $fields
+          }
+        }
+      ''', vars);
       final rows = _rowsFromData(data, _tblMsgs);
       return rows.isEmpty ? null : rows.first;
     } catch (_) {
@@ -1141,22 +1278,21 @@ class ChatService {
     required String conversationId,
     int limit = 40,
   }) async {
-    final query = '''
+    final data = await _runMessageQuery((fields) => '''
       query FetchMessages(\$cid: uuid!, \$limit: Int!) {
         $_tblMsgs(
           where: {conversation_id: {_eq: \$cid}, deleted: {_neq: true}},
           order_by: {created_at: asc},
           limit: \$limit
         ) {
-          $_messageSelectFields
+          $fields
         }
       }
-    ''';
-    final data = await _runQuery(query, {
+    ''', {
       'cid': conversationId,
       'limit': limit,
     });
-    final rows = _rowsFromData(data, _tblMsgs);
+    final rows = await _hydrateMessageAttachments(_rowsFromData(data, _tblMsgs));
     final list = await _messagesFromRows(rows);
     unawaited(_markDeliveredFor(list));
     return list;
@@ -1167,7 +1303,7 @@ class ChatService {
     required DateTime beforeCreatedAt,
     int limit = 40,
   }) async {
-    final query = '''
+    final data = await _runMessageQuery((fields) => '''
       query FetchOlderMessages(\$cid: uuid!, \$before: timestamptz!, \$limit: Int!) {
         $_tblMsgs(
           where: {
@@ -1178,16 +1314,15 @@ class ChatService {
           order_by: {created_at: asc},
           limit: \$limit
         ) {
-          $_messageSelectFields
+          $fields
         }
       }
-    ''';
-    final data = await _runQuery(query, {
+    ''', {
       'cid': conversationId,
       'before': beforeCreatedAt.toUtc().toIso8601String(),
       'limit': limit,
     });
-    final rows = _rowsFromData(data, _tblMsgs);
+    final rows = await _hydrateMessageAttachments(_rowsFromData(data, _tblMsgs));
     final list = await _messagesFromRows(rows);
     unawaited(_markDeliveredFor(list));
     return list;
@@ -1364,36 +1499,38 @@ class ChatService {
     _roomCtrls[conversationId] = c;
 
     unawaited(() async {
+      await _ensureMessageSchemaSupport();
       final seed = await fetchMessages(
         conversationId: conversationId,
         limit: 80,
       );
       if (!c.isClosed) c.add(_sortedAsc(seed));
-    }());
-
-    final query = '''
-      subscription RoomMessages(\$cid: uuid!) {
-        $_tblMsgs(
-          where: {conversation_id: {_eq: \$cid}, deleted: {_neq: true}},
-          order_by: {created_at: asc}
-        ) {
-          $_messageSelectFields
+      final query = '''
+        subscription RoomMessages(\$cid: uuid!) {
+          $_tblMsgs(
+            where: {conversation_id: {_eq: \$cid}, deleted: {_neq: true}},
+            order_by: {created_at: asc}
+          ) {
+            ${_messageSelectFields()}
+          }
         }
-      }
-    ''';
+      ''';
 
-    final sub = _runSubscription(query, {'cid': conversationId}).listen(
-      (result) async {
-        if (result.hasException) return;
-        final data = result.data ?? const <String, dynamic>{};
-        final rows = _rowsFromData(data, _tblMsgs);
-        final list = await _messagesFromRows(rows);
-        if (!c.isClosed) c.add(_sortedAsc(list));
-        unawaited(_markDeliveredFor(list));
-      },
-    );
+      final sub = _runSubscription(query, {'cid': conversationId}).listen(
+        (result) async {
+          if (result.hasException) return;
+          final data = result.data ?? const <String, dynamic>{};
+          final rows = await _hydrateMessageAttachments(
+            _rowsFromData(data, _tblMsgs),
+          );
+          final list = await _messagesFromRows(rows);
+          if (!c.isClosed) c.add(_sortedAsc(list));
+          unawaited(_markDeliveredFor(list));
+        },
+      );
 
-    _roomSubs[conversationId] = sub;
+      _roomSubs[conversationId] = sub;
+    }());
 
     c.onCancel = () async {
       _roomCtrls.remove(conversationId);
@@ -1485,16 +1622,15 @@ class ChatService {
         'mentions': mentionsEmails,
     };
 
-    final mutation = '''
-      mutation InsertMessage(\$object: ${_tblMsgs}_insert_input!) {
-        insert_${_tblMsgs}_one(object: \$object) {
-          $_messageSelectFields
-        }
-      }
-    ''';
     Map<String, dynamic>? row;
     try {
-      final data = await _runMutation(mutation, {'object': payload});
+      final data = await _runMessageMutation((fields) => '''
+        mutation InsertMessage(\$object: ${_tblMsgs}_insert_input!) {
+          insert_${_tblMsgs}_one(object: \$object) {
+            $fields
+          }
+        }
+      ''', {'object': payload});
       row = _rowFromData(data, 'insert_${_tblMsgs}_one');
     } catch (_) {
       final existing = await _findMessageByTriplet(
@@ -1699,16 +1835,15 @@ class ChatService {
           'mentions': mentionsEmails,
       };
 
-      final mutation = '''
-        mutation InsertImageMessage(\$object: ${_tblMsgs}_insert_input!) {
-          insert_${_tblMsgs}_one(object: \$object) {
-            $_messageSelectFields
-          }
-        }
-      ''';
       Map<String, dynamic>? row;
       try {
-        final data = await _runMutation(mutation, {'object': payload});
+        final data = await _runMessageMutation((fields) => '''
+          mutation InsertImageMessage(\$object: ${_tblMsgs}_insert_input!) {
+            insert_${_tblMsgs}_one(object: \$object) {
+              $fields
+            }
+          }
+        ''', {'object': payload});
         row = _rowFromData(data, 'insert_${_tblMsgs}_one');
       } catch (_) {
         final existing = await _findMessageByTriplet(
@@ -1939,7 +2074,7 @@ class ChatService {
 
     final esc = _escapeIlike(q);
     final pattern = '%$esc%';
-    final queryDoc = '''
+    final data = await _runMessageQuery((fields) => '''
       query SearchMessages(\$cid: uuid!, \$pattern: String!, \$limit: Int!) {
         $_tblMsgs(
           where: {
@@ -1953,16 +2088,15 @@ class ChatService {
           order_by: {created_at: asc},
           limit: \$limit
         ) {
-          $_messageSelectFields
+          $fields
         }
       }
-    ''';
-    final data = await _runQuery(queryDoc, {
+    ''', {
       'cid': conversationId,
       'pattern': pattern,
       'limit': limit,
     });
-    final rows = _rowsFromData(data, _tblMsgs);
+    final rows = await _hydrateMessageAttachments(_rowsFromData(data, _tblMsgs));
     return await _messagesFromRows(rows);
   }
 
