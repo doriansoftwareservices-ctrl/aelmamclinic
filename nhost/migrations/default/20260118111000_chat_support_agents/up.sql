@@ -23,16 +23,22 @@ DROP POLICY IF EXISTS chat_support_agents_select_public ON public.chat_support_a
 CREATE POLICY chat_support_agents_select_public
   ON public.chat_support_agents
   FOR SELECT
-  TO "user"
-  USING (is_active = true);
+  TO PUBLIC
+  USING (
+    is_active = true
+    AND COALESCE(
+      (current_setting('hasura.user', true)::jsonb ->> 'x-hasura-role'),
+      ''
+    ) IN ('user', 'me', 'superadmin')
+  );
 
 DROP POLICY IF EXISTS chat_support_agents_superadmin_all ON public.chat_support_agents;
 CREATE POLICY chat_support_agents_superadmin_all
   ON public.chat_support_agents
   FOR ALL
-  TO superadmin
-  USING (true)
-  WITH CHECK (true);
+  TO PUBLIC
+  USING (public.fn_is_super_admin())
+  WITH CHECK (public.fn_is_super_admin());
 
 CREATE OR REPLACE FUNCTION public.chat_support_agent()
 RETURNS TABLE(user_uid uuid, display_name text)
