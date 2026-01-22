@@ -52,6 +52,8 @@ BEGIN
   $sql$;
 
   -- INSERT: allow participants to upload into chat-attachments bucket
+  -- NOTE: uploaded_by_user_id can be null at INSERT time in Nhost Storage,
+  -- so do not require it here.
   EXECUTE $sql$
     DROP POLICY IF EXISTS chat_attachments_files_insert ON storage.files;
     CREATE POLICY chat_attachments_files_insert
@@ -60,7 +62,53 @@ BEGIN
     TO PUBLIC
     WITH CHECK (
       bucket_id = 'chat-attachments'
-      AND uploaded_by_user_id = nullif(public.request_uid_text(), '')::uuid
+      AND (
+        public.fn_is_super_admin() = true
+        OR EXISTS (
+          SELECT 1
+          FROM public.chat_participants p
+          WHERE p.user_uid::text = public.request_uid_text()::text
+            AND coalesce(p.is_deleted, false) = false
+            AND p.conversation_id = (
+              CASE
+                WHEN split_part(storage.files.name, '/', 2) ~* '^[0-9a-f-]{36}$'
+                  THEN split_part(storage.files.name, '/', 2)::uuid
+                ELSE NULL
+              END
+            )
+        )
+      )
+    );
+  $sql$;
+
+  -- UPDATE: allow storage to finalize upload metadata for participants
+  EXECUTE $sql$
+    DROP POLICY IF EXISTS chat_attachments_files_update ON storage.files;
+    CREATE POLICY chat_attachments_files_update
+    ON storage.files
+    FOR UPDATE
+    TO PUBLIC
+    USING (
+      bucket_id = 'chat-attachments'
+      AND (
+        public.fn_is_super_admin() = true
+        OR EXISTS (
+          SELECT 1
+          FROM public.chat_participants p
+          WHERE p.user_uid::text = public.request_uid_text()::text
+            AND coalesce(p.is_deleted, false) = false
+            AND p.conversation_id = (
+              CASE
+                WHEN split_part(storage.files.name, '/', 2) ~* '^[0-9a-f-]{36}$'
+                  THEN split_part(storage.files.name, '/', 2)::uuid
+                ELSE NULL
+              END
+            )
+        )
+      )
+    )
+    WITH CHECK (
+      bucket_id = 'chat-attachments'
       AND (
         public.fn_is_super_admin() = true
         OR EXISTS (

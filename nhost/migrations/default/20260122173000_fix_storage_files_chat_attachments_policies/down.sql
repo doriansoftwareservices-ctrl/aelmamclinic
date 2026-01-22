@@ -8,6 +8,7 @@ BEGIN
 
   EXECUTE 'DROP POLICY IF EXISTS chat_attachments_files_select ON storage.files';
   EXECUTE 'DROP POLICY IF EXISTS chat_attachments_files_insert ON storage.files';
+  EXECUTE 'DROP POLICY IF EXISTS chat_attachments_files_update ON storage.files';
   EXECUTE 'DROP POLICY IF EXISTS chat_attachments_files_delete ON storage.files';
 END
 $do$;
