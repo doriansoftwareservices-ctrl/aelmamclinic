@@ -477,6 +477,7 @@ class ChatService {
     required String name,
     required File file,
     required String mimeType,
+    Map<String, dynamic>? metadata,
   }) async {
     try {
       final res = await _storage.uploadFile(
@@ -484,6 +485,7 @@ class ChatService {
         name: name,
         bucketId: attachmentsBucket,
         mimeType: mimeType,
+        metadata: metadata,
       );
       final id = res['id']?.toString();
       if (id == null || id.isEmpty) {
@@ -1974,6 +1976,10 @@ class ChatService {
       name: storageName,
       file: file,
       mimeType: mime,
+      metadata: <String, dynamic>{
+        'conversation_id': conversationId,
+        'message_id': messageId,
+      },
     );
 
     final stat = await file.stat();
@@ -2023,6 +2029,10 @@ class ChatService {
       name: storageName,
       file: file,
       mimeType: mime,
+      metadata: <String, dynamic>{
+        'conversation_id': conversationId,
+        'message_id': messageId,
+      },
     );
 
     final url = await _signedOrPublicUrl(attachmentsBucket, storageName);

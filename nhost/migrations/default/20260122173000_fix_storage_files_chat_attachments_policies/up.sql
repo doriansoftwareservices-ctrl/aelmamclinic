@@ -40,11 +40,18 @@ BEGIN
           WHERE p.user_uid::text = public.request_uid_text()::text
             AND coalesce(p.is_deleted, false) = false
             AND p.conversation_id = (
-              CASE
-                WHEN split_part(storage.files.name, '/', 2) ~* '^[0-9a-f-]{36}$'
-                  THEN split_part(storage.files.name, '/', 2)::uuid
-                ELSE NULL
-              END
+              COALESCE(
+                CASE
+                  WHEN split_part(storage.files.name, '/', 2) ~* '^[0-9a-f-]{36}$'
+                    THEN split_part(storage.files.name, '/', 2)::uuid
+                  ELSE NULL
+                END,
+                CASE
+                  WHEN (storage.files.metadata->>'conversation_id') ~* '^[0-9a-f-]{36}$'
+                    THEN (storage.files.metadata->>'conversation_id')::uuid
+                  ELSE NULL
+                END
+              )
             )
         )
       )
@@ -70,11 +77,18 @@ BEGIN
           WHERE p.user_uid::text = public.request_uid_text()::text
             AND coalesce(p.is_deleted, false) = false
             AND p.conversation_id = (
-              CASE
-                WHEN split_part(storage.files.name, '/', 2) ~* '^[0-9a-f-]{36}$'
-                  THEN split_part(storage.files.name, '/', 2)::uuid
-                ELSE NULL
-              END
+              COALESCE(
+                CASE
+                  WHEN split_part(storage.files.name, '/', 2) ~* '^[0-9a-f-]{36}$'
+                    THEN split_part(storage.files.name, '/', 2)::uuid
+                  ELSE NULL
+                END,
+                CASE
+                  WHEN (storage.files.metadata->>'conversation_id') ~* '^[0-9a-f-]{36}$'
+                    THEN (storage.files.metadata->>'conversation_id')::uuid
+                  ELSE NULL
+                END
+              )
             )
         )
       )
@@ -98,11 +112,18 @@ BEGIN
           WHERE p.user_uid::text = public.request_uid_text()::text
             AND coalesce(p.is_deleted, false) = false
             AND p.conversation_id = (
-              CASE
-                WHEN split_part(storage.files.name, '/', 2) ~* '^[0-9a-f-]{36}$'
-                  THEN split_part(storage.files.name, '/', 2)::uuid
-                ELSE NULL
-              END
+              COALESCE(
+                CASE
+                  WHEN split_part(storage.files.name, '/', 2) ~* '^[0-9a-f-]{36}$'
+                    THEN split_part(storage.files.name, '/', 2)::uuid
+                  ELSE NULL
+                END,
+                CASE
+                  WHEN (storage.files.metadata->>'conversation_id') ~* '^[0-9a-f-]{36}$'
+                    THEN (storage.files.metadata->>'conversation_id')::uuid
+                  ELSE NULL
+                END
+              )
             )
         )
       )
@@ -117,11 +138,18 @@ BEGIN
           WHERE p.user_uid::text = public.request_uid_text()::text
             AND coalesce(p.is_deleted, false) = false
             AND p.conversation_id = (
-              CASE
-                WHEN split_part(storage.files.name, '/', 2) ~* '^[0-9a-f-]{36}$'
-                  THEN split_part(storage.files.name, '/', 2)::uuid
-                ELSE NULL
-              END
+              COALESCE(
+                CASE
+                  WHEN split_part(storage.files.name, '/', 2) ~* '^[0-9a-f-]{36}$'
+                    THEN split_part(storage.files.name, '/', 2)::uuid
+                  ELSE NULL
+                END,
+                CASE
+                  WHEN (storage.files.metadata->>'conversation_id') ~* '^[0-9a-f-]{36}$'
+                    THEN (storage.files.metadata->>'conversation_id')::uuid
+                  ELSE NULL
+                END
+              )
             )
         )
       )

@@ -45,6 +45,7 @@ class NhostStorageService {
     String? name,
     String? bucketId,
     String? mimeType,
+    Map<String, dynamic>? metadata,
   }) async {
     final bucket = bucketId?.trim();
     final filename = (name == null || name.trim().isEmpty)
@@ -59,6 +60,7 @@ class NhostStorageService {
           filename: filename,
           bucketId: bucket,
           mimeType: mimeType,
+          metadata: metadata,
         );
       }
 
@@ -95,6 +97,7 @@ class NhostStorageService {
             filename: filename,
             bucketId: bucket,
             mimeType: mimeType,
+            metadata: metadata,
           );
         } catch (restError) {
           if (_shouldRetryWithFunction(restError) &&
@@ -138,6 +141,7 @@ class NhostStorageService {
     required String filename,
     String? bucketId,
     String? mimeType,
+    Map<String, dynamic>? metadata,
   }) async {
     final uri = _api.storageUri('files');
     final headers = await _api.authHeaders();
@@ -171,11 +175,14 @@ class NhostStorageService {
       ),
     );
 
-    final meta = UploadFileMetadata(name: filename);
+    final meta = <String, dynamic>{'name': filename};
+    if (metadata != null && metadata.isNotEmpty) {
+      meta['metadata'] = metadata;
+    }
     request.files.add(
       http.MultipartFile.fromBytes(
         'metadata[]',
-        utf8.encode(jsonEncode(meta.toJson())),
+        utf8.encode(jsonEncode(meta)),
         filename: '',
         contentType: MediaType('application', 'json'),
       ),
