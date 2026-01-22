@@ -51,6 +51,17 @@ class NhostStorageService {
         ? file.uri.pathSegments.last
         : name.trim();
     try {
+      // Prefer REST for chat attachments to avoid SDK auth edge cases.
+      if ((bucket ?? '').isNotEmpty &&
+          (bucket ?? '') == AppConstants.chatBucketName) {
+        return await _uploadFileViaRest(
+          file: file,
+          filename: filename,
+          bucketId: bucket,
+          mimeType: mimeType,
+        );
+      }
+
       final bytes = await file.readAsBytes();
       final fileData = FileData(
         Uint8List.fromList(bytes),
@@ -130,6 +141,15 @@ class NhostStorageService {
   }) async {
     final uri = _api.storageUri('files');
     final headers = await _api.authHeaders();
+    final authHeader = headers[HttpHeaders.authorizationHeader];
+    // Basic diagnostics to confirm auth header presence (no token logging).
+    if (authHeader == null || authHeader.isEmpty) {
+      // ignore: avoid_print
+      print('[STORAGE] upload missing Authorization header');
+    } else {
+      // ignore: avoid_print
+      print('[STORAGE] upload Authorization header present');
+    }
     final request = http.MultipartRequest('POST', uri);
     request.headers.addAll(headers);
 
@@ -164,6 +184,8 @@ class NhostStorageService {
     final response = await request.send();
     final body = await response.stream.bytesToString();
     if (response.statusCode < 200 || response.statusCode >= 300) {
+      // ignore: avoid_print
+      print('[STORAGE] upload failed: ${response.statusCode} $body');
       throw HttpException(
         'Upload failed: ${response.statusCode} - $body',
       );
