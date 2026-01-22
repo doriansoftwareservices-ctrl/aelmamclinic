@@ -58,9 +58,9 @@ BEGIN
     );
   $sql$;
 
-  -- INSERT: allow participants to upload into chat-attachments bucket
+  -- INSERT: allow any authenticated user to upload into chat-attachments bucket
   -- NOTE: uploaded_by_user_id can be null at INSERT time in Nhost Storage,
-  -- so do not require it here.
+  -- and conversation_id may not be present at insert time.
   EXECUTE $sql$
     DROP POLICY IF EXISTS chat_attachments_files_insert ON storage.files;
     CREATE POLICY chat_attachments_files_insert
@@ -69,33 +69,11 @@ BEGIN
     TO PUBLIC
     WITH CHECK (
       bucket_id = 'chat-attachments'
-      AND (
-        public.fn_is_super_admin() = true
-        OR EXISTS (
-          SELECT 1
-          FROM public.chat_participants p
-          WHERE p.user_uid::text = public.request_uid_text()::text
-            AND coalesce(p.is_deleted, false) = false
-            AND p.conversation_id = (
-              COALESCE(
-                CASE
-                  WHEN split_part(storage.files.name, '/', 2) ~* '^[0-9a-f-]{36}$'
-                    THEN split_part(storage.files.name, '/', 2)::uuid
-                  ELSE NULL
-                END,
-                CASE
-                  WHEN (storage.files.metadata->>'conversation_id') ~* '^[0-9a-f-]{36}$'
-                    THEN (storage.files.metadata->>'conversation_id')::uuid
-                  ELSE NULL
-                END
-              )
-            )
-        )
-      )
+      AND nullif(public.request_uid_text(), '') IS NOT NULL
     );
   $sql$;
 
-  -- UPDATE: allow storage to finalize upload metadata for participants
+  -- UPDATE: allow storage to finalize upload metadata for authenticated users
   EXECUTE $sql$
     DROP POLICY IF EXISTS chat_attachments_files_update ON storage.files;
     CREATE POLICY chat_attachments_files_update
@@ -104,55 +82,11 @@ BEGIN
     TO PUBLIC
     USING (
       bucket_id = 'chat-attachments'
-      AND (
-        public.fn_is_super_admin() = true
-        OR EXISTS (
-          SELECT 1
-          FROM public.chat_participants p
-          WHERE p.user_uid::text = public.request_uid_text()::text
-            AND coalesce(p.is_deleted, false) = false
-            AND p.conversation_id = (
-              COALESCE(
-                CASE
-                  WHEN split_part(storage.files.name, '/', 2) ~* '^[0-9a-f-]{36}$'
-                    THEN split_part(storage.files.name, '/', 2)::uuid
-                  ELSE NULL
-                END,
-                CASE
-                  WHEN (storage.files.metadata->>'conversation_id') ~* '^[0-9a-f-]{36}$'
-                    THEN (storage.files.metadata->>'conversation_id')::uuid
-                  ELSE NULL
-                END
-              )
-            )
-        )
-      )
+      AND nullif(public.request_uid_text(), '') IS NOT NULL
     )
     WITH CHECK (
       bucket_id = 'chat-attachments'
-      AND (
-        public.fn_is_super_admin() = true
-        OR EXISTS (
-          SELECT 1
-          FROM public.chat_participants p
-          WHERE p.user_uid::text = public.request_uid_text()::text
-            AND coalesce(p.is_deleted, false) = false
-            AND p.conversation_id = (
-              COALESCE(
-                CASE
-                  WHEN split_part(storage.files.name, '/', 2) ~* '^[0-9a-f-]{36}$'
-                    THEN split_part(storage.files.name, '/', 2)::uuid
-                  ELSE NULL
-                END,
-                CASE
-                  WHEN (storage.files.metadata->>'conversation_id') ~* '^[0-9a-f-]{36}$'
-                    THEN (storage.files.metadata->>'conversation_id')::uuid
-                  ELSE NULL
-                END
-              )
-            )
-        )
-      )
+      AND nullif(public.request_uid_text(), '') IS NOT NULL
     );
   $sql$;
 
