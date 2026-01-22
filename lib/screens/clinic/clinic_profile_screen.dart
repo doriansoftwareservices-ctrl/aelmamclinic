@@ -3,6 +3,7 @@ import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'package:aelmamclinic/core/features.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/models/clinic_profile.dart';
@@ -127,6 +128,44 @@ class _ClinicProfileScreenState extends State<ClinicProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
+    final canAccess =
+        auth.isSuperAdmin || auth.featureAllowed(FeatureKeys.clinicProfile);
+    if (!canAccess) {
+      return Directionality(
+        textDirection: ui.TextDirection.rtl,
+        child: Scaffold(
+          appBar: AppBar(
+            centerTitle: true,
+            title: const Text('بيانات المرفق الصحي'),
+          ),
+          body: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: NeuCard(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.block_rounded,
+                      color: Theme.of(context).colorScheme.error,
+                      size: 34,
+                    ),
+                    const SizedBox(height: 10),
+                    const Text(
+                      'ليست لديك صلاحية لعرض بيانات المرفق الصحي',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     final canEdit = auth.isSuperAdmin ? false : auth.isOwnerOrAdmin;
     return Directionality(
       textDirection: ui.TextDirection.rtl,

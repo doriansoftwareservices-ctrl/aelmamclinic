@@ -519,11 +519,12 @@ class ChatProvider extends ChangeNotifier {
 
       if (convIds.isEmpty) {
         if (myRev == _listRev) {
-          _conversations..clear();
-          _participantsByConv..clear();
-          _displayTitleByConv..clear();
-          _myLastReadByConv..clear();
-          _safeNotify();
+          if (_conversations.isEmpty) {
+            _participantsByConv..clear();
+            _displayTitleByConv..clear();
+            _myLastReadByConv..clear();
+            _safeNotify();
+          }
         }
         return;
       }
@@ -1961,6 +1962,10 @@ class ChatProvider extends ChangeNotifier {
   // إنشاء DM / مجموعة
   Future<CM.ChatConversation> startDirectByEmail(String email) async {
     final conv = await _chat.startDMWithEmail(email);
+    _ensureConversationVisible(
+      conv,
+      displayTitle: email.trim(),
+    );
     _scheduleConversationsRefresh();
     return conv;
   }
@@ -1973,8 +1978,37 @@ class ChatProvider extends ChangeNotifier {
       title: title,
       memberEmails: memberEmails,
     );
+    _ensureConversationVisible(
+      conv,
+      displayTitle: title.trim(),
+    );
     _scheduleConversationsRefresh();
     return conv;
+  }
+
+  void _ensureConversationVisible(
+    CM.ChatConversation conv, {
+    String? displayTitle,
+  }) {
+    if (conv.id.isEmpty) return;
+    final now = DateTime.now().toUtc();
+    final normalized = conv.copyWith(
+      lastMsgAt: conv.lastMsgAt ?? conv.updatedAt ?? now,
+      updatedAt: conv.updatedAt ?? now,
+    );
+    final idx = _conversations.indexWhere((c) => c.id == conv.id);
+    if (idx == -1) {
+      _conversations.insert(0, normalized);
+    } else {
+      _conversations[idx] = normalized;
+    }
+
+    final trimmed = displayTitle?.trim();
+    if (trimmed != null && trimmed.isNotEmpty) {
+      _displayTitleByConv[conv.id] = trimmed;
+    }
+    _safeNotify();
+    unawaited(_local.upsertConversations([normalized]));
   }
 
   Future<void> groupSetTitle({

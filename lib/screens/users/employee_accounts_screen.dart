@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'package:aelmamclinic/core/features.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/models/employee_account_record.dart';
 import 'package:aelmamclinic/models/employee_seat_request.dart';
@@ -48,6 +49,7 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
   bool _canAccess(AuthProvider auth) {
     if (auth.isSuperAdmin) return true;
     if (!auth.isPro) return false;
+    if (!auth.featureAllowed(FeatureKeys.employeeAccounts)) return false;
     final role = auth.role?.toLowerCase();
     return role == 'owner' || role == 'admin';
   }

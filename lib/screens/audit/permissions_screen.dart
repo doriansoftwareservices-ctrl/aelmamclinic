@@ -649,10 +649,14 @@ const List<_FeatureDef> _kFeatureDefs = [
       FeatureKeys.repository, 'قسم المستودع', Icons.inventory_2_rounded),
   _FeatureDef(
       FeatureKeys.prescriptions, 'الوصفات الطبية', Icons.menu_book_rounded),
+  _FeatureDef(
+      FeatureKeys.clinicProfile, 'بيانات المرفق الصحي', Icons.local_hospital_outlined),
   _FeatureDef(FeatureKeys.chat, 'الدردشة', Icons.chat_bubble_outline_rounded),
   _FeatureDef(FeatureKeys.backup, 'النسخ الاحتياطي', Icons.backup_rounded),
   _FeatureDef(
       FeatureKeys.accounts, 'الحسابات', Icons.supervisor_account_rounded),
+  _FeatureDef(
+      FeatureKeys.employeeAccounts, 'حسابات الموظفين', Icons.badge_rounded),
   _FeatureDef(
       FeatureKeys.auditLogs, 'سجلات التدقيق', Icons.receipt_long_rounded),
   _FeatureDef(

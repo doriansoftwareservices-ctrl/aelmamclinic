@@ -783,18 +783,12 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
                         );
                       },
                     ),
-                    _drawerItem(
+                    _featureDrawerItem(
+                      auth: auth,
+                      featureKey: FeatureKeys.clinicProfile,
                       icon: Icons.local_hospital_outlined,
                       title: 'بيانات المرفق الصحي',
-                      enabled: auth.isOwnerOrAdmin,
-                      onDenied: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content:
-                                Text('هذه الميزة متاحة للمالك أو المدير فقط.'),
-                          ),
-                        );
-                      },
+                      requireUpdate: true,
                       onTap: () {
                         Navigator.pop(context);
                         Navigator.push(
@@ -864,23 +858,31 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
                     ),
 
                     // حسابات الموظفين (PRO)
-                    _drawerItem(
-                      icon: Icons.badge_rounded,
-                      title: 'حسابات الموظفين',
-                      enabled: _canManageEmployeeAccounts(auth),
-                      showProBadge: !auth.isSuperAdmin && !auth.isPro,
-                      onDenied: () {
-                        _openMyPlanFromDrawer();
-                      },
-                      onTap: () {
-                        Navigator.pop(context);
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => const EmployeeAccountsScreen()),
-                        );
-                      },
-                    ),
+                    Builder(builder: (_) {
+                      final allowed = _canManageEmployeeAccounts(auth) &&
+                          _isFeatureAllowed(auth, FeatureKeys.employeeAccounts);
+                      if (kHideDeniedTabs && !allowed && !auth.isSuperAdmin) {
+                        return const SizedBox.shrink();
+                      }
+                      return _drawerItem(
+                        icon: Icons.badge_rounded,
+                        title: 'حسابات الموظفين',
+                        enabled: allowed,
+                        showProBadge: !auth.isSuperAdmin && !auth.isPro,
+                        onDenied: () {
+                          _openMyPlanFromDrawer();
+                        },
+                        onTap: () {
+                          Navigator.pop(context);
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) =>
+                                    const EmployeeAccountsScreen()),
+                          );
+                        },
+                      );
+                    }),
 
                     // الشؤون المالية (مدفوعات)
                     _featureDrawerItem(

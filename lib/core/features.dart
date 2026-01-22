@@ -34,8 +34,10 @@ class FeatureKeys {
   static const String charts = 'charts';
   static const String repository = 'repository';
   static const String prescriptions = 'prescriptions';
+  static const String clinicProfile = 'clinic.profile';
   static const String backup = 'backup';
   static const String accounts = 'accounts'; // إدارة المستخدمين داخل الحساب
+  static const String employeeAccounts = 'employee.accounts';
   static const String chat = 'chat'; // 🔹 ميزة الدردشة
   static const String auditLogs = 'audit.logs';
   static const String auditPermissions = 'audit.permissions';
@@ -51,8 +53,10 @@ class FeatureKeys {
     charts,
     repository,
     prescriptions,
+    clinicProfile,
     backup,
     accounts,
+    employeeAccounts,
     chat,
     auditLogs,
     auditPermissions,
