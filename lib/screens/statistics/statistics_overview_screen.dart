@@ -686,6 +686,9 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
       requireUpdate: requireUpdate,
       requireDelete: requireDelete,
     );
+    if (kHideDeniedTabs && !allowed && !auth.isSuperAdmin) {
+      return const SizedBox.shrink();
+    }
     final isFreePlan = auth.planCode == 'free' && !auth.isSuperAdmin;
     final showProBadge =
         isFreePlan && !kFreePlanFeatures.contains(featureKey);
