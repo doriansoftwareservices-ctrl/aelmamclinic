@@ -186,6 +186,7 @@ END $m$;
 DO $m$
 BEGIN
   IF to_regclass('public.chat_conversations') IS NOT NULL THEN
+    EXECUTE 'DROP VIEW IF EXISTS public.v_chat_conversations_for_me';
     EXECUTE $sql$
       CREATE OR REPLACE VIEW public.v_chat_conversations_for_me AS
       WITH mine AS (
