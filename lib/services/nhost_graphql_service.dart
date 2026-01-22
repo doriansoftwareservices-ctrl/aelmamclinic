@@ -72,12 +72,9 @@ class NhostGraphqlService {
           request.context.entry<HttpLinkHeaders>()?.headers ?? const {};
       request = request.updateContextEntry<HttpLinkHeaders>((entry) {
         final headers = entry?.headers ?? const <String, String>{};
-        return HttpLinkHeaders(
-          headers: {
-            ...headers,
-            ...existing,
-          },
-        );
+        final merged = <String, String>{...headers, ...existing};
+        merged.putIfAbsent('x-hasura-role', () => 'superadmin');
+        return HttpLinkHeaders(headers: merged);
       });
       return forward!(request);
     });
