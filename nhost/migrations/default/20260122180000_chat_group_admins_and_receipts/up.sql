@@ -91,11 +91,11 @@ BEGIN
         r.last_delivered_message_id,
         r.last_delivered_at
       FROM public.chat_reads r
-      WHERE r.user_uid = nullif(public.request_uid_text(), '')::uuid;
-
-      REVOKE ALL ON TABLE public.v_chat_reads_for_me FROM PUBLIC;
-      GRANT SELECT ON TABLE public.v_chat_reads_for_me TO PUBLIC;
+      WHERE r.user_uid = nullif(public.request_uid_text(), '')::uuid
     $sql$;
+
+    EXECUTE 'REVOKE ALL ON TABLE public.v_chat_reads_for_me FROM PUBLIC';
+    EXECUTE 'GRANT SELECT ON TABLE public.v_chat_reads_for_me TO PUBLIC';
   END IF;
 END $m$;
 
@@ -171,11 +171,11 @@ BEGIN
         ON lm.conversation_id = c.id
       LEFT JOIN unread u
         ON u.conversation_id = c.id
-      WHERE coalesce(c.is_deleted, false) = false;
-
-      REVOKE ALL ON TABLE public.v_chat_conversations_for_me FROM PUBLIC;
-      GRANT SELECT ON TABLE public.v_chat_conversations_for_me TO PUBLIC;
+      WHERE coalesce(c.is_deleted, false) = false
     $sql$;
+
+    EXECUTE 'REVOKE ALL ON TABLE public.v_chat_conversations_for_me FROM PUBLIC';
+    EXECUTE 'GRANT SELECT ON TABLE public.v_chat_conversations_for_me TO PUBLIC';
   END IF;
 END $m$;
 
