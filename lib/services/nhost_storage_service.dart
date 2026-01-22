@@ -70,11 +70,11 @@ class NhostStorageService {
         filename: filename,
         contentType: mimeType,
       );
-      final metadata = UploadFileMetadata(name: filename);
+      final meta = UploadFileMetadata(name: filename);
       final results = await NhostManager.client.storage.uploadFiles(
         files: [fileData],
         bucketId: (bucket != null && bucket.isNotEmpty) ? bucket : null,
-        metadataList: [metadata],
+        metadataList: [meta],
       );
       if (results.isEmpty) {
         return <String, dynamic>{};
