@@ -3,7 +3,9 @@
     name: fn_is_super_admin_gql
   configuration:
     exposed_as: query
-    custom_name: fn_is_super_admin_gqlpermissions:
+    custom_name: fn_is_super_admin_gql
+    session_argument: hasura_session
+  permissions:
   - role: me
   - role: user
   - role: superadmin
@@ -12,7 +14,9 @@
     name: debug_auth_context
   configuration:
     exposed_as: query
-    custom_name: debug_auth_contextpermissions:
+    custom_name: debug_auth_context
+    session_argument: hasura_session
+  permissions:
   - role: superadmin
 - function:
     schema: public
@@ -67,7 +71,9 @@
     name: list_employees_with_email
   configuration:
     exposed_as: query
-    custom_name: list_employees_with_emailpermissions:
+    custom_name: list_employees_with_email
+    session_argument: hasura_session
+  permissions:
   - role: me
   - role: user
   - role: superadmin
@@ -96,7 +102,9 @@
     name: owner_create_employee_within_limit
   configuration:
     exposed_as: mutation
-    custom_name: owner_create_employee_within_limitpermissions:
+    custom_name: owner_create_employee_within_limit
+    session_argument: hasura_session
+  permissions:
   - role: me
   - role: user
   - role: superadmin
@@ -105,7 +113,9 @@
     name: owner_request_extra_employee
   configuration:
     exposed_as: mutation
-    custom_name: owner_request_extra_employeepermissions:
+    custom_name: owner_request_extra_employee
+    session_argument: hasura_session
+  permissions:
   - role: me
   - role: user
   - role: superadmin
@@ -114,7 +124,9 @@
     name: owner_submit_employee_seat_payment
   configuration:
     exposed_as: mutation
-    custom_name: owner_submit_employee_seat_paymentpermissions:
+    custom_name: owner_submit_employee_seat_payment
+    session_argument: hasura_session
+  permissions:
   - role: me
   - role: user
   - role: superadmin
@@ -131,7 +143,9 @@
     name: my_feature_permissions_rpc
   configuration:
     exposed_as: query
-    custom_name: my_feature_permissionspermissions:
+    custom_name: my_feature_permissions
+    session_argument: hasura_session
+  permissions:
   - role: me
   - role: user
   - role: superadmin
@@ -140,7 +154,9 @@
     name: my_account_id_rpc
   configuration:
     exposed_as: query
-    custom_name: my_account_idpermissions:
+    custom_name: my_account_id
+    session_argument: hasura_session
+  permissions:
   - role: me
   - role: user
   - role: superadmin
@@ -149,7 +165,9 @@
     name: set_current_account
   configuration:
     exposed_as: mutation
-    custom_name: set_current_accountpermissions:
+    custom_name: set_current_account
+    session_argument: hasura_session
+  permissions:
   - role: me
   - role: user
   - role: superadmin
@@ -158,7 +176,9 @@
     name: my_profile
   configuration:
     exposed_as: query
-    custom_name: my_profilepermissions:
+    custom_name: my_profile
+    session_argument: hasura_session
+  permissions:
   - role: me
   - role: user
   - role: superadmin
@@ -215,7 +235,9 @@
     name: my_account_plan
   configuration:
     exposed_as: query
-    custom_name: my_account_planpermissions:
+    custom_name: my_account_plan
+    session_argument: hasura_session
+  permissions:
   - role: me
   - role: user
   - role: superadmin
@@ -242,7 +264,9 @@
     name: create_subscription_request
   configuration:
     exposed_as: mutation
-    custom_name: create_subscription_requestpermissions:
+    custom_name: create_subscription_request
+    session_argument: hasura_session
+  permissions:
   - role: me
   - role: user
   - role: superadmin
@@ -342,50 +366,66 @@
     schema: public
     name: admin_dashboard_pending_subscription_requests
   configuration:
-    custom_name: admin_dashboard_pending_subscription_requestspermissions:
+    custom_name: admin_dashboard_pending_subscription_requests
+    session_argument: hasura_session
+  permissions:
   - role: superadmin
 - function:
     schema: public
     name: admin_dashboard_active_subscriptions
   configuration:
-    custom_name: admin_dashboard_active_subscriptionspermissions:
+    custom_name: admin_dashboard_active_subscriptions
+    session_argument: hasura_session
+  permissions:
   - role: superadmin
 - function:
     schema: public
     name: admin_dashboard_payments
   configuration:
-    custom_name: admin_dashboard_paymentspermissions:
+    custom_name: admin_dashboard_payments
+    session_argument: hasura_session
+  permissions:
   - role: superadmin
 - function:
     schema: public
     name: admin_dashboard_revenue_monthly
   configuration:
-    custom_name: admin_dashboard_revenue_monthlypermissions:
+    custom_name: admin_dashboard_revenue_monthly
+    session_argument: hasura_session
+  permissions:
   - role: superadmin
 - function:
     schema: public
     name: admin_dashboard_audit_tail
   configuration:
-    custom_name: admin_dashboard_audit_tailpermissions:
+    custom_name: admin_dashboard_audit_tail
+    session_argument: hasura_session
+  permissions:
   - role: superadmin
 - function:
     schema: public
     name: admin_dashboard_account_member_counts
   configuration:
-    custom_name: admin_dashboard_account_member_countspermissions:
+    custom_name: admin_dashboard_account_member_counts
+    session_argument: hasura_session
+  permissions:
   - role: superadmin
 - function:
     schema: public
     name: admin_dashboard_account_members
   configuration:
-    custom_name: admin_dashboard_account_memberspermissions:
+    custom_name: admin_dashboard_account_members
+    session_argument: hasura_session
+  permissions:
   - role: superadmin
 - function:
     schema: public
     name: user_cancel_subscription_request
   configuration:
     exposed_as: mutation
-    custom_name: user_cancel_subscription_requestpermissions:
+    custom_name: user_cancel_subscription_request
+    session_argument: hasura_session
+  permissions:
   - role: user
   - role: superadmin
 - function:
