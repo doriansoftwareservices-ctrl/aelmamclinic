@@ -394,6 +394,7 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
     final chat = context.read<ChatProvider>();
     final isDirect = !conversation.isGroup;
     final alias = isDirect ? chat.aliasForConversation(conversation.id) : null;
+    final archived = chat.isConversationArchived(conversation.id);
 
     await showModalBottomSheet<void>(
       context: context,
@@ -429,6 +430,27 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
                 onTap: () async {
                   Navigator.of(context).pop();
                   await chat.markConversationRead(conversation.id);
+                },
+              ),
+              ListTile(
+                leading: Icon(
+                  archived ? Icons.unarchive_rounded : Icons.archive_rounded,
+                ),
+                title: Text(archived ? 'إلغاء الأرشفة' : 'أرشفة المحادثة'),
+                onTap: () async {
+                  Navigator.of(context).pop();
+                  await chat.setConversationArchived(
+                    conversation.id,
+                    archived: !archived,
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete_outline_rounded),
+                title: const Text('حذف المحادثة من جهازي'),
+                onTap: () async {
+                  Navigator.of(context).pop();
+                  await chat.deleteConversationForMe(conversation.id);
                 },
               ),
             ],

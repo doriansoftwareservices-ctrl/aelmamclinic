@@ -1848,7 +1848,7 @@ class ChatService {
     for (final m in messages) {
       if (m.senderUid == uid) continue;
       if (m.id.isEmpty || m.id.startsWith('local-')) continue;
-      if (lastIncoming == null || m.createdAt.isAfter(lastIncoming!.createdAt)) {
+      if (lastIncoming == null || m.createdAt.isAfter(lastIncoming.createdAt)) {
         lastIncoming = m;
       }
     }
@@ -1856,9 +1856,9 @@ class ChatService {
     if (lastIncoming == null) return;
 
     await _upsertReadState(
-      conversationId: lastIncoming!.conversationId,
-      lastDeliveredMessageId: lastIncoming!.id,
-      lastDeliveredAt: lastIncoming!.createdAt,
+      conversationId: lastIncoming.conversationId,
+      lastDeliveredMessageId: lastIncoming.id,
+      lastDeliveredAt: lastIncoming.createdAt,
     );
   }
 

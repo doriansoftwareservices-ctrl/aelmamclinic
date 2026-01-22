@@ -21,9 +21,13 @@ class ChatLocalStore {
   static final ChatLocalStore instance = ChatLocalStore._();
 
   static const _dbName = 'chat_cache.db';
-  static const _dbVersion = 3; // ترقية للإصدار 3 (أضفنا conv_meta)
+  static const _dbVersion = 4; // v4: conversations/participants/reads/outbox
   static const _table = 'messages';
   static const _tableMeta = 'conv_meta';
+  static const _tableConvs = 'conversations';
+  static const _tableParts = 'participants';
+  static const _tableReads = 'read_states';
+  static const _tableOutbox = 'outbox';
 
   /// الحد الأعلى للرسائل المحتفظ بها لكل محادثة.
   static const int _maxPerConversation = 500;
@@ -46,6 +50,7 @@ class ChatLocalStore {
       onCreate: (db, v) async {
         await _createV2Tables(db);
         await _createV3Tables(db);
+        await _createV4Tables(db);
       },
       onUpgrade: (db, oldV, newV) async {
         if (oldV < 2) {
@@ -60,6 +65,9 @@ class ChatLocalStore {
         }
         if (oldV < 3) {
           await _createV3Tables(db);
+        }
+        if (oldV < 4) {
+          await _createV4Tables(db);
         }
       },
     );
@@ -106,6 +114,83 @@ CREATE TABLE IF NOT EXISTS $_tableMeta(
 ''');
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_meta_conv ON $_tableMeta(conversation_id)',
+    );
+  }
+
+  Future<void> _createV4Tables(Database db) async {
+    await db.execute('''
+CREATE TABLE IF NOT EXISTS $_tableConvs(
+  id TEXT PRIMARY KEY,
+  account_id TEXT,
+  is_group INTEGER,
+  title TEXT,
+  created_by TEXT,
+  created_at TEXT,
+  updated_at TEXT,
+  last_msg_at TEXT,
+  last_msg_snippet TEXT,
+  unread_count INTEGER,
+  is_frozen INTEGER,
+  admins_only INTEGER,
+  is_deleted INTEGER
+);
+''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_convs_last_msg ON $_tableConvs(last_msg_at DESC)',
+    );
+
+    await db.execute('''
+CREATE TABLE IF NOT EXISTS $_tableParts(
+  conversation_id TEXT NOT NULL,
+  user_uid TEXT NOT NULL,
+  email TEXT,
+  nickname TEXT,
+  joined_at TEXT,
+  role TEXT,
+  archived INTEGER,
+  pinned INTEGER,
+  blocked INTEGER,
+  is_deleted INTEGER,
+  deleted_at TEXT,
+  PRIMARY KEY (conversation_id, user_uid)
+);
+''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_parts_conv ON $_tableParts(conversation_id)',
+    );
+
+    await db.execute('''
+CREATE TABLE IF NOT EXISTS $_tableReads(
+  conversation_id TEXT NOT NULL,
+  user_uid TEXT NOT NULL,
+  last_delivered_message_id TEXT,
+  last_delivered_at TEXT,
+  last_read_message_id TEXT,
+  last_read_at TEXT,
+  PRIMARY KEY (conversation_id, user_uid)
+);
+''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_reads_conv ON $_tableReads(conversation_id)',
+    );
+
+    await db.execute('''
+CREATE TABLE IF NOT EXISTS $_tableOutbox(
+  local_id TEXT PRIMARY KEY,
+  conversation_id TEXT NOT NULL,
+  kind TEXT,
+  body TEXT,
+  created_at TEXT,
+  reply_to_message_id TEXT,
+  reply_to_snippet TEXT,
+  mentions_json TEXT,
+  attachments_json TEXT,
+  status TEXT,
+  error TEXT
+);
+''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_outbox_conv_created ON $_tableOutbox(conversation_id, created_at DESC)',
     );
   }
 
@@ -370,6 +455,155 @@ CREATE TABLE IF NOT EXISTS $_tableMeta(
     final s = row['last_read_at'] as String?;
     if (s == null || s.isEmpty) return null;
     return DateTime.tryParse(s)?.toUtc();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Conversations / Participants / Read states (v4)
+  // ---------------------------------------------------------------------------
+  int _b(bool v) => v ? 1 : 0;
+
+  Future<void> upsertConversations(List<ChatConversation> convs) async {
+    if (convs.isEmpty) return;
+    final db = await _open();
+    await db.transaction((txn) async {
+      final batch = txn.batch();
+      for (final c in convs) {
+        batch.insert(
+          _tableConvs,
+          {
+            'id': c.id,
+            'account_id': c.accountId,
+            'is_group': c.isGroup ? 1 : 0,
+            'title': c.title,
+            'created_by': c.createdBy,
+            'created_at': c.createdAt.toUtc().toIso8601String(),
+            'updated_at': c.updatedAt?.toUtc().toIso8601String(),
+            'last_msg_at': c.lastMsgAt?.toUtc().toIso8601String(),
+            'last_msg_snippet': c.lastMsgSnippet,
+            'unread_count': c.unreadCount ?? 0,
+            'is_frozen': _b(c.isFrozen),
+            'admins_only': _b(c.adminsOnly),
+            'is_deleted': _b(c.isDeleted),
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+      await batch.commit(noResult: true);
+    });
+  }
+
+  Future<List<ChatConversation>> getConversations() async {
+    final db = await _open();
+    final rows = await db.query(
+      _tableConvs,
+      orderBy: 'last_msg_at DESC',
+    );
+    return rows
+        .map((r) => ChatConversation.fromMap(Map<String, dynamic>.from(r)))
+        .toList();
+  }
+
+  Future<void> upsertParticipants(List<Map<String, dynamic>> participants) async {
+    if (participants.isEmpty) return;
+    final db = await _open();
+    await db.transaction((txn) async {
+      final batch = txn.batch();
+      for (final p in participants) {
+        batch.insert(
+          _tableParts,
+          {
+            'conversation_id': p['conversation_id']?.toString(),
+            'user_uid': p['user_uid']?.toString(),
+            'email': p['email']?.toString(),
+            'nickname': p['nickname']?.toString(),
+            'joined_at': p['joined_at']?.toString(),
+            'role': p['role']?.toString(),
+            'archived': _b((p['archived'] == true) || p['archived'] == 1),
+            'pinned': _b((p['pinned'] == true) || p['pinned'] == 1),
+            'blocked': _b((p['blocked'] == true) || p['blocked'] == 1),
+            'is_deleted': _b((p['is_deleted'] == true) || p['is_deleted'] == 1),
+            'deleted_at': p['deleted_at']?.toString(),
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+      await batch.commit(noResult: true);
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> getParticipants(String conversationId) async {
+    final db = await _open();
+    final rows = await db.query(
+      _tableParts,
+      where: 'conversation_id = ?',
+      whereArgs: [conversationId],
+      orderBy: 'joined_at ASC',
+    );
+    return rows.map((r) => Map<String, dynamic>.from(r)).toList();
+  }
+
+  Future<void> upsertReadStates(List<ChatReadState> states) async {
+    if (states.isEmpty) return;
+    final db = await _open();
+    await db.transaction((txn) async {
+      final batch = txn.batch();
+      for (final s in states) {
+        batch.insert(
+          _tableReads,
+          {
+            'conversation_id': s.conversationId,
+            'user_uid': s.userUid,
+            'last_delivered_message_id': s.lastDeliveredMessageId,
+            'last_delivered_at': s.lastDeliveredAt?.toUtc().toIso8601String(),
+            'last_read_message_id': s.lastReadMessageId,
+            'last_read_at': s.lastReadAt?.toUtc().toIso8601String(),
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+      await batch.commit(noResult: true);
+    });
+  }
+
+  Future<List<ChatReadState>> getReadStates(String conversationId) async {
+    final db = await _open();
+    final rows = await db.query(
+      _tableReads,
+      where: 'conversation_id = ?',
+      whereArgs: [conversationId],
+    );
+    return rows
+        .map((r) => ChatReadState.fromMap(Map<String, dynamic>.from(r)))
+        .toList();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Outbox (offline-first)
+  // ---------------------------------------------------------------------------
+  Future<void> upsertOutboxMessage(Map<String, dynamic> payload) async {
+    final db = await _open();
+    await db.insert(_tableOutbox, payload,
+        conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<List<Map<String, dynamic>>> getOutbox({int limit = 200}) async {
+    final db = await _open();
+    final rows = await db.query(
+      _tableOutbox,
+      orderBy: 'created_at ASC',
+      limit: limit,
+    );
+    return rows.map((r) => Map<String, dynamic>.from(r)).toList();
+  }
+
+  Future<void> deleteOutboxMessage(String localId) async {
+    final db = await _open();
+    await db.delete(_tableOutbox, where: 'local_id = ?', whereArgs: [localId]);
+  }
+
+  Future<void> clearOutbox() async {
+    final db = await _open();
+    await db.delete(_tableOutbox);
   }
 
   // ---------------------------------------------------------------------------

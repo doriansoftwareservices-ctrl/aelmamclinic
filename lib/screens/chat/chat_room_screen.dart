@@ -283,6 +283,14 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       return;
     }
 
+    final provider = context.read<ChatProvider>();
+    final conv = provider.conversationById(_convId) ?? widget.conversation;
+    final myRole = provider.myRoleForConversation(_convId);
+    if ((conv.isFrozen || conv.adminsOnly) && !_isAdminRole(myRole)) {
+      _snack('الدردشة مقفلة للمشرفين فقط.');
+      return;
+    }
+
     setState(() => _sending = true);
     try {
       if (hasText) {
@@ -603,6 +611,243 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   void _snack(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  bool _isAdminRole(String? role) =>
+      role != null && (role == 'owner' || role == 'admin');
+
+  Future<void> _openGroupActions(ChatConversation conv) async {
+    final provider = context.read<ChatProvider>();
+    final myRole = provider.myRoleForConversation(_convId);
+    final isAdmin = _isAdminRole(myRole);
+    if (!isAdmin) {
+      _snack('ليست لديك صلاحية إدارة المجموعة.');
+      return;
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (_) => Directionality(
+        textDirection: ui.TextDirection.rtl,
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.edit_rounded),
+                title: const Text('تغيير اسم المجموعة'),
+                onTap: () async {
+                  Navigator.of(context).pop();
+                  await _renameGroup(conv);
+                },
+              ),
+              ListTile(
+                leading: Icon(
+                  conv.isFrozen
+                      ? Icons.lock_open_rounded
+                      : Icons.lock_rounded,
+                ),
+                title: Text(conv.isFrozen ? 'فتح الدردشة' : 'قفل الدردشة'),
+                subtitle: const Text('عند القفل: الإرسال للمشرفين فقط'),
+                onTap: () async {
+                  Navigator.of(context).pop();
+                  await _toggleGroupLock(conv);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.group_rounded),
+                title: const Text('إدارة الأعضاء والمشرفين'),
+                onTap: () async {
+                  Navigator.of(context).pop();
+                  await _manageGroupMembers(conv);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete_outline_rounded),
+                title: const Text('حذف المجموعة'),
+                onTap: () async {
+                  Navigator.of(context).pop();
+                  await _deleteGroup(conv);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _renameGroup(ChatConversation conv) async {
+    final controller = TextEditingController(text: conv.title ?? '');
+    final result = await showDialog<String>(
+      context: context,
+      builder: (_) => Directionality(
+        textDirection: ui.TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('تغيير اسم المجموعة'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            decoration: const InputDecoration(hintText: 'اسم المجموعة'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('إلغاء'),
+            ),
+            FilledButton(
+              onPressed: () =>
+                  Navigator.of(context).pop(controller.text.trim()),
+              child: const Text('حفظ'),
+            ),
+          ],
+        ),
+      ),
+    );
+    controller.dispose();
+    if (result == null || result.trim().isEmpty) return;
+    try {
+      await context.read<ChatProvider>().groupSetTitle(
+            conversationId: _convId,
+            title: result.trim(),
+          );
+    } catch (e) {
+      _snack('تعذّر تغيير الاسم: $e');
+    }
+  }
+
+  Future<void> _toggleGroupLock(ChatConversation conv) async {
+    final isFrozen = !conv.isFrozen;
+    try {
+      await context.read<ChatProvider>().groupSetFrozen(
+            conversationId: _convId,
+            isFrozen: isFrozen,
+            adminsOnly: isFrozen ? true : false,
+          );
+    } catch (e) {
+      _snack('تعذّر تحديث القفل: $e');
+    }
+  }
+
+  Future<void> _manageGroupMembers(ChatConversation conv) async {
+    final provider = context.read<ChatProvider>();
+    final myRole = provider.myRoleForConversation(_convId);
+    final isOwner = myRole == 'owner';
+    final isAdmin = _isAdminRole(myRole);
+    final parts = provider.participantsOf(_convId);
+
+    if (!isAdmin) {
+      _snack('ليست لديك صلاحية إدارة الأعضاء.');
+      return;
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => Directionality(
+        textDirection: ui.TextDirection.rtl,
+        child: SafeArea(
+          child: SizedBox(
+            height: MediaQuery.of(context).size.height * 0.6,
+            child: ListView.separated(
+              padding: const EdgeInsets.all(12),
+              itemCount: parts.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (_, i) {
+                final p = parts[i];
+                final name = (p.nickname?.trim().isNotEmpty == true)
+                    ? p.nickname!
+                    : (p.email?.trim().isNotEmpty == true
+                        ? p.email!
+                        : p.userUid);
+                final roleLabel = p.role == 'owner'
+                    ? 'المنشئ'
+                    : (p.role == 'admin' ? 'مشرف' : 'عضو');
+                final canManageRole = isOwner && p.role != 'owner';
+                final canRemove =
+                    isAdmin && p.role != 'owner' && p.userUid != _currentUid;
+
+                return ListTile(
+                  leading: const Icon(Icons.person_rounded),
+                  title: Text(name, overflow: TextOverflow.ellipsis),
+                  subtitle: Text(roleLabel),
+                  trailing: Wrap(
+                    spacing: 8,
+                    children: [
+                      if (canManageRole)
+                        TextButton(
+                          onPressed: () async {
+                            final nextRole =
+                                (p.role == 'admin') ? 'member' : 'admin';
+                            try {
+                              await provider.groupSetMemberRole(
+                                conversationId: _convId,
+                                targetUid: p.userUid,
+                                role: nextRole,
+                              );
+                              _snack('تم تحديث الدور');
+                            } catch (e) {
+                              _snack('تعذّر تحديث الدور: $e');
+                            }
+                          },
+                          child: Text(
+                            p.role == 'admin' ? 'إلغاء مشرف' : 'ترقية مشرف',
+                          ),
+                        ),
+                      if (canRemove)
+                        TextButton(
+                          onPressed: () async {
+                            try {
+                              await provider.groupRemoveMember(
+                                conversationId: _convId,
+                                targetUid: p.userUid,
+                              );
+                              _snack('تم حذف العضو');
+                            } catch (e) {
+                              _snack('تعذّر حذف العضو: $e');
+                            }
+                          },
+                          child: const Text('حذف'),
+                        ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _deleteGroup(ChatConversation conv) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => Directionality(
+        textDirection: ui.TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('حذف المجموعة'),
+          content: const Text('هل تريد حذف هذه المجموعة نهائيًا؟'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('إلغاء'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('حذف'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirm != true) return;
+    try {
+      await context.read<ChatProvider>().groupDelete(_convId);
+      if (mounted) Navigator.of(context).pop();
+    } catch (e) {
+      _snack('تعذّر حذف المجموعة: $e');
+    }
   }
 
   void _showProgress() {
@@ -974,10 +1219,10 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final conv = widget.conversation;
+    final provider = context.watch<ChatProvider>();
+    final conv = provider.conversationById(_convId) ?? widget.conversation;
 
     // أسماء الذين "يكتبون الآن" من المزوّد فقط
-    final provider = context.watch<ChatProvider>();
     final typingUids = provider.typingUids(_convId);
     final typingNames = provider.displayNamesForTyping(_convId, typingUids);
 
@@ -1048,6 +1293,12 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
             ],
           ),
           actions: [
+            if (conv.isGroup)
+              IconButton(
+                icon: const Icon(Icons.settings_rounded),
+                onPressed: () => _openGroupActions(conv),
+                tooltip: 'إدارة المجموعة',
+              ),
             IconButton(
               tooltip: 'بحث',
               icon: const Icon(Icons.search_rounded),
@@ -1173,13 +1424,13 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                                     final ChatMessage raw = msgs[index];
                                     final mine = raw.senderUid == _currentUid;
 
-                                    // ✅ delivered ↦ sent بصريًا للرسائل الصادرة
-                                    final m = (mine &&
-                                            raw.status ==
-                                                ChatMessageStatus.delivered)
-                                        ? raw.copyWith(
-                                            status: ChatMessageStatus.sent)
-                                        : raw;
+                                    final effectiveStatus = mine
+                                        ? context
+                                            .read<ChatProvider>()
+                                            .computeStatusFor(_convId, raw)
+                                        : raw.status;
+                                    final m =
+                                        raw.copyWith(status: effectiveStatus);
 
                                     // هل نضيف فاصل يوم قبل هذه الرسالة؟
                                     bool showDayDivider = false;

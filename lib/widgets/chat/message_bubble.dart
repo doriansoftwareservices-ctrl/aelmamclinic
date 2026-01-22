@@ -100,10 +100,7 @@ class MessageBubble extends StatelessWidget {
       bottomRight: Radius.circular(!isMine && showTail ? 4 : 16),
     );
 
-    // اشتغال احترازي: إن وصلت delivered نظهرها كـ sent (لو لم تُطبّع سابقًا من الشاشة)
-    final rawUiStatus = _deriveUiStatus(message);
-    final uiStatus =
-        rawUiStatus == _UiStatus.delivered ? _UiStatus.sent : rawUiStatus;
+    final uiStatus = _deriveUiStatus(message);
 
     final maxW = MediaQuery.of(context).size.width * 0.78;
 
