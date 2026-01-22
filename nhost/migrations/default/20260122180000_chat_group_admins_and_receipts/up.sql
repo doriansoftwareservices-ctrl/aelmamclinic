@@ -141,6 +141,8 @@ DO $$
 BEGIN
   IF to_regclass('public.chat_reads') IS NOT NULL THEN
     ALTER TABLE public.chat_reads
+      ADD COLUMN IF NOT EXISTS last_read_message_id uuid,
+      ADD COLUMN IF NOT EXISTS last_read_at timestamptz,
       ADD COLUMN IF NOT EXISTS last_delivered_message_id uuid,
       ADD COLUMN IF NOT EXISTS last_delivered_at timestamptz;
 
@@ -603,10 +605,14 @@ BEGIN
     v_account_id := NULL;
   END IF;
 
-  SELECT EXISTS(
-    SELECT 1 FROM auth.user_roles ur
-    WHERE ur.user_id = v_other AND ur.role = 'superadmin'
-  ) INTO v_other_is_super;
+  IF to_regproc('public.fn_is_super_admin_email(text)') IS NOT NULL THEN
+    SELECT COALESCE(public.fn_is_super_admin_email(u.email), false)
+      INTO v_other_is_super
+    FROM auth.users u
+    WHERE u.id = v_other;
+  ELSE
+    v_other_is_super := false;
+  END IF;
 
   IF v_other_is_super THEN
     IF public.fn_is_super_admin() THEN
