@@ -171,6 +171,8 @@ class ChatService {
             is_group
             title
             account_id
+            is_frozen
+            admins_only
             created_by
             created_at
             updated_at
@@ -318,6 +320,7 @@ class ChatService {
     account_id
     device_id
     local_id
+    client_msg_id
     attachments
     $attBlock
     $receiptBlock
@@ -986,6 +989,8 @@ class ChatService {
           'account_id': convAccountId,
           'is_group': false,
           'title': null,
+          'is_frozen': false,
+          'admins_only': false,
           'created_by': uid,
           'created_at': nowIso,
           'updated_at': nowIso,
@@ -1013,12 +1018,14 @@ class ChatService {
           'user_uid': uid,
           'email': (_bestSenderEmail(me.email) ?? '').toLowerCase(),
           'joined_at': nowIso,
+          'role': 'owner',
         },
         {
           'conversation_id': convId,
           'user_uid': otherUid,
           'email': otherEmail,
           'joined_at': nowIso,
+          'role': 'member',
         },
       ],
     });
@@ -1036,6 +1043,8 @@ class ChatService {
       'is_group': false,
       'title': null,
       'account_id': convAccountId,
+      'is_frozen': false,
+      'admins_only': false,
       'created_by': uid,
       'created_at': nowIso,
       'updated_at': nowIso,
@@ -1142,6 +1151,8 @@ class ChatService {
           'account_id': convAccountId,
           'is_group': true,
           'title': title.trim(),
+          'is_frozen': false,
+          'admins_only': false,
           'created_by': uid,
           'created_at': nowIso,
           'updated_at': nowIso,
@@ -1156,6 +1167,7 @@ class ChatService {
         'email': (_bestSenderEmail(me.email) ?? '').toLowerCase(),
         'account_id': convAccountId,
         'joined_at': nowIso,
+        'role': 'owner',
       },
     ];
     final partsMutation = '''
@@ -1200,12 +1212,134 @@ class ChatService {
       'account_id': convAccountId,
       'is_group': true,
       'title': title.trim(),
+      'is_frozen': false,
+      'admins_only': false,
       'created_by': uid,
       'created_at': nowIso,
       'updated_at': nowIso,
       'last_msg_at': null,
       'last_msg_snippet': null,
     });
+  }
+
+  // --------------------------------------------------------------
+  // إدارة المجموعات (RPC)
+  // --------------------------------------------------------------
+  Future<void> groupSetTitle({
+    required String conversationId,
+    required String title,
+  }) async {
+    final mutation = '''
+      mutation GroupSetTitle(\$cid: uuid!, \$title: String!) {
+        chat_group_set_title(args: {p_conversation_id: \$cid, p_title: \$title}) {
+          ok
+          error
+        }
+      }
+    ''';
+    final data = await _runMutation(mutation, {
+      'cid': conversationId,
+      'title': title,
+    });
+    _assertRpcOk(data, 'chat_group_set_title');
+  }
+
+  Future<void> groupSetFrozen({
+    required String conversationId,
+    required bool isFrozen,
+    required bool adminsOnly,
+  }) async {
+    final mutation = '''
+      mutation GroupSetFrozen(\$cid: uuid!, \$frozen: Boolean!, \$adminsOnly: Boolean!) {
+        chat_group_set_frozen(args: {
+          p_conversation_id: \$cid,
+          p_is_frozen: \$frozen,
+          p_admins_only: \$adminsOnly
+        }) {
+          ok
+          error
+        }
+      }
+    ''';
+    final data = await _runMutation(mutation, {
+      'cid': conversationId,
+      'frozen': isFrozen,
+      'adminsOnly': adminsOnly,
+    });
+    _assertRpcOk(data, 'chat_group_set_frozen');
+  }
+
+  Future<void> groupSetMemberRole({
+    required String conversationId,
+    required String targetUid,
+    required String role,
+  }) async {
+    final mutation = '''
+      mutation GroupSetMemberRole(\$cid: uuid!, \$uid: uuid!, \$role: String!) {
+        chat_group_set_member_role(args: {
+          p_conversation_id: \$cid,
+          p_target_uid: \$uid,
+          p_role: \$role
+        }) {
+          ok
+          error
+        }
+      }
+    ''';
+    final data = await _runMutation(mutation, {
+      'cid': conversationId,
+      'uid': targetUid,
+      'role': role,
+    });
+    _assertRpcOk(data, 'chat_group_set_member_role');
+  }
+
+  Future<void> groupRemoveMember({
+    required String conversationId,
+    required String targetUid,
+  }) async {
+    final mutation = '''
+      mutation GroupRemoveMember(\$cid: uuid!, \$uid: uuid!) {
+        chat_group_remove_member(args: {
+          p_conversation_id: \$cid,
+          p_target_uid: \$uid
+        }) {
+          ok
+          error
+        }
+      }
+    ''';
+    final data = await _runMutation(mutation, {
+      'cid': conversationId,
+      'uid': targetUid,
+    });
+    _assertRpcOk(data, 'chat_group_remove_member');
+  }
+
+  Future<void> groupDelete(String conversationId) async {
+    final mutation = '''
+      mutation GroupDelete(\$cid: uuid!) {
+        chat_group_delete(args: {p_conversation_id: \$cid}) {
+          ok
+          error
+        }
+      }
+    ''';
+    final data = await _runMutation(mutation, {'cid': conversationId});
+    _assertRpcOk(data, 'chat_group_delete');
+  }
+
+  void _assertRpcOk(Map<String, dynamic> data, String key) {
+    final rows = data[key] as List?;
+    if (rows == null || rows.isEmpty) return;
+    final row = rows.first as Map;
+    final ok = row['ok'] == true || row['ok']?.toString() == 'true';
+    if (!ok) {
+      final err = row['error']?.toString();
+      if (err != null && err.isNotEmpty) {
+        throw err;
+      }
+    }
   }
 
   Future<List<ConversationListItem>> fetchMyConversationsOverview() async {
@@ -1217,6 +1351,8 @@ class ChatService {
           account_id
           is_group
           title
+          is_frozen
+          admins_only
           created_by
           created_at
           updated_at
@@ -1279,7 +1415,11 @@ class ChatService {
 
     final partsQuery = '''
       query MyParticipantConversations(\$uid: uuid!) {
-        $_tblParts(where: {user_uid: {_eq: \$uid}}) {
+        $_tblParts(where: {
+          user_uid: {_eq: \$uid},
+          archived: {_neq: true},
+          is_deleted: {_neq: true}
+        }) {
           conversation_id
         }
       }
@@ -1296,11 +1436,16 @@ class ChatService {
 
     final convQuery = '''
       query MyConversationsByIds(\$ids: [uuid!]!) {
-        $_tblConvs(where: {id: {_in: \$ids}}, order_by: {last_msg_at: desc}) {
+        $_tblConvs(
+          where: {id: {_in: \$ids}, is_deleted: {_neq: true}},
+          order_by: {last_msg_at: desc}
+        ) {
           id
           account_id
           is_group
           title
+          is_frozen
+          admins_only
           created_by
           created_at
           updated_at
@@ -1584,6 +1729,54 @@ class ChatService {
     } catch (_) {}
   }
 
+  // --------------------------------------------------------------
+  // أرشفة/حذف المحادثات للمستخدم الحالي
+  // --------------------------------------------------------------
+  Future<void> setConversationArchived({
+    required String conversationId,
+    required bool archived,
+  }) async {
+    final uid = currentUserId;
+    if (uid == null || conversationId.isEmpty) return;
+    final mutation = '''
+      mutation ArchiveConversation(\$cid: uuid!, \$uid: uuid!, \$archived: Boolean!) {
+        update_${_tblParts}(
+          where: {conversation_id: {_eq: \$cid}, user_uid: {_eq: \$uid}},
+          _set: {archived: \$archived}
+        ) {
+          affected_rows
+        }
+      }
+    ''';
+    await _runMutation(mutation, {
+      'cid': conversationId,
+      'uid': uid,
+      'archived': archived,
+    });
+  }
+
+  Future<void> deleteConversationForMe({
+    required String conversationId,
+  }) async {
+    final uid = currentUserId;
+    if (uid == null || conversationId.isEmpty) return;
+    final mutation = '''
+      mutation DeleteConversationForMe(\$cid: uuid!, \$uid: uuid!, \$ts: timestamptz!) {
+        update_${_tblParts}(
+          where: {conversation_id: {_eq: \$cid}, user_uid: {_eq: \$uid}},
+          _set: {is_deleted: true, deleted_at: \$ts}
+        ) {
+          affected_rows
+        }
+      }
+    ''';
+    await _runMutation(mutation, {
+      'cid': conversationId,
+      'uid': uid,
+      'ts': DateTime.now().toUtc().toIso8601String(),
+    });
+  }
+
   // ======= اشتراك مضبوط لكل محادثة =======
   final Map<String, StreamController<List<ChatMessage>>> _roomCtrls = {};
   final Map<String, StreamSubscription<QueryResult>> _roomSubs = {};
@@ -1651,26 +1844,22 @@ class ChatService {
     final uid = currentUserId;
     if (uid == null || messages.isEmpty) return;
 
-    final ids = messages
-        .where((m) => m.senderUid != uid)
-        .map((m) => m.id)
-        .where((id) => id.isNotEmpty && !id.startsWith('local-'))
-        .toSet()
-        .toList();
+    ChatMessage? lastIncoming;
+    for (final m in messages) {
+      if (m.senderUid == uid) continue;
+      if (m.id.isEmpty || m.id.startsWith('local-')) continue;
+      if (lastIncoming == null || m.createdAt.isAfter(lastIncoming!.createdAt)) {
+        lastIncoming = m;
+      }
+    }
 
-    if (ids.isEmpty) return;
+    if (lastIncoming == null) return;
 
-    try {
-      final mutation = '''
-        mutation MarkDelivered(\$ids: [uuid!]!) {
-          chat_mark_delivered(args: {p_message_ids: \$ids}) {
-            ok
-            error
-          }
-        }
-      ''';
-      await _runMutation(mutation, {'ids': ids});
-    } catch (_) {}
+    await _upsertReadState(
+      conversationId: lastIncoming!.conversationId,
+      lastDeliveredMessageId: lastIncoming!.id,
+      lastDeliveredAt: lastIncoming!.createdAt,
+    );
   }
 
   /// إرسال نص — يأخذ account_id من المحادثة
@@ -1678,6 +1867,7 @@ class ChatService {
     required String conversationId,
     required String body,
     int? localSeq,
+    String? clientMsgId,
     String? replyToMessageId,
     String? replyToSnippet,
     List<String>? mentionsEmails,
@@ -1711,6 +1901,8 @@ class ChatService {
       'created_at': now.toIso8601String(),
       'device_id': deviceId,
       'local_id': seq,
+      if (clientMsgId != null && clientMsgId.isNotEmpty)
+        'client_msg_id': clientMsgId,
       if (convAcc.isNotEmpty) 'account_id': convAcc,
       if (replyToMessageId != null) 'reply_to_message_id': replyToMessageId,
       if (replyToSnippet != null && replyToSnippet.trim().isNotEmpty)
@@ -1723,12 +1915,24 @@ class ChatService {
     try {
       final data = await _runMessageMutation((fields) => '''
         mutation InsertMessage(\$object: ${_tblMsgs}_insert_input!) {
-          insert_${_tblMsgs}_one(object: \$object) {
-            $fields
+          insert_${_tblMsgs}(
+            objects: [\$object],
+            on_conflict: {
+              constraint: chat_messages_conversation_client_msg_id_key,
+              update_columns: [body, text, edited, edited_at]
+            }
+          ) {
+            returning {
+              $fields
+            }
           }
         }
       ''', {'object': payload});
-      row = _rowFromData(data, 'insert_${_tblMsgs}_one');
+      final ret =
+          (data['insert_${_tblMsgs}'] as Map?)?['returning'] as List?;
+      if (ret != null && ret.isNotEmpty) {
+        row = Map<String, dynamic>.from(ret.first as Map);
+      }
     } catch (_) {
       final existing = await _findMessageByTriplet(
         conversationId: conversationId,
@@ -1842,6 +2046,7 @@ class ChatService {
     required List<File> files,
     String? optionalText,
     int? localSeq,
+    String? clientMsgId,
     String? replyToMessageId,
     String? replyToSnippet,
     List<String>? mentionsEmails,
@@ -1867,6 +2072,9 @@ class ChatService {
         conversationId: conversationId,
         body: optionalText.trim(),
         localSeq: null,
+        clientMsgId: clientMsgId == null
+            ? null
+            : '${clientMsgId}_text',
         replyToMessageId: replyToMessageId,
         replyToSnippet: replyToSnippet,
         mentionsEmails: mentionsEmails,
@@ -1924,6 +2132,8 @@ class ChatService {
         'created_at': now.toIso8601String(),
         'device_id': deviceId,
         'local_id': seq,
+        if (clientMsgId != null && clientMsgId.isNotEmpty)
+          'client_msg_id': clientMsgId,
         if (convAcc.isNotEmpty) 'account_id': convAcc,
         if (replyToMessageId != null) 'reply_to_message_id': replyToMessageId,
         if (replyToSnippet != null && replyToSnippet.trim().isNotEmpty)
@@ -1936,12 +2146,24 @@ class ChatService {
       try {
         final data = await _runMessageMutation((fields) => '''
           mutation InsertImageMessage(\$object: ${_tblMsgs}_insert_input!) {
-            insert_${_tblMsgs}_one(object: \$object) {
-              $fields
+            insert_${_tblMsgs}(
+              objects: [\$object],
+              on_conflict: {
+                constraint: chat_messages_conversation_client_msg_id_key,
+                update_columns: [edited, edited_at]
+              }
+            ) {
+              returning {
+                $fields
+              }
             }
           }
         ''', {'object': payload});
-        row = _rowFromData(data, 'insert_${_tblMsgs}_one');
+        final ret =
+            (data['insert_${_tblMsgs}'] as Map?)?['returning'] as List?;
+        if (ret != null && ret.isNotEmpty) {
+          row = Map<String, dynamic>.from(ret.first as Map);
+        }
       } catch (_) {
         final existing = await _findMessageByTriplet(
           conversationId: conversationId,
@@ -2200,6 +2422,52 @@ class ChatService {
   // --------------------------------------------------------------
   // Read state
   // --------------------------------------------------------------
+  Future<void> _upsertReadState({
+    required String conversationId,
+    String? lastDeliveredMessageId,
+    DateTime? lastDeliveredAt,
+    String? lastReadMessageId,
+    DateTime? lastReadAt,
+  }) async {
+    final uid = currentUserId;
+    if (uid == null || conversationId.isEmpty) return;
+
+    final payload = <String, dynamic>{
+      'conversation_id': conversationId,
+      'user_uid': uid,
+      if (lastDeliveredMessageId != null && lastDeliveredMessageId.isNotEmpty)
+        'last_delivered_message_id': lastDeliveredMessageId,
+      if (lastDeliveredAt != null)
+        'last_delivered_at': lastDeliveredAt.toUtc().toIso8601String(),
+      if (lastReadMessageId != null && lastReadMessageId.isNotEmpty)
+        'last_read_message_id': lastReadMessageId,
+      if (lastReadAt != null)
+        'last_read_at': lastReadAt.toUtc().toIso8601String(),
+    };
+
+    final mutation = '''
+      mutation UpsertReadState(\$object: ${_tblReads}_insert_input!) {
+        insert_${_tblReads}(
+          objects: [\$object],
+          on_conflict: {
+            constraint: chat_reads_pkey,
+            update_columns: [
+              last_delivered_message_id,
+              last_delivered_at,
+              last_read_message_id,
+              last_read_at
+            ]
+          }
+        ) {
+          affected_rows
+        }
+      }
+    ''';
+    try {
+      await _runMutation(mutation, {'object': payload});
+    } catch (_) {}
+  }
+
   Future<DateTime?> markReadUpToLatest(String conversationId) async {
     final uid = currentUserId;
     if (uid == null) return null;
@@ -2226,27 +2494,13 @@ class ChatService {
         DateTime.tryParse(lastRow['created_at'].toString())?.toUtc() ??
             DateTime.now().toUtc();
 
-    final mutation = '''
-      mutation UpsertRead(\$object: ${_tblReads}_insert_input!) {
-        insert_${_tblReads}(
-          objects: [\$object],
-          on_conflict: {
-            constraint: chat_reads_pkey,
-            update_columns: [last_read_message_id, last_read_at]
-          }
-        ) {
-          affected_rows
-        }
-      }
-    ''';
-    await _runMutation(mutation, {
-      'object': {
-        'conversation_id': conversationId,
-        'user_uid': uid,
-        'last_read_message_id': lastRow['id'].toString(),
-        'last_read_at': lastCreated.toIso8601String(),
-      },
-    });
+    await _upsertReadState(
+      conversationId: conversationId,
+      lastDeliveredMessageId: lastRow['id'].toString(),
+      lastDeliveredAt: lastCreated,
+      lastReadMessageId: lastRow['id'].toString(),
+      lastReadAt: lastCreated,
+    );
 
     return lastCreated;
   }

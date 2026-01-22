@@ -338,6 +338,9 @@ class ChatConversation {
   final String? createdBy; // uid
   final DateTime createdAt;
   final DateTime? updatedAt;
+  final bool isFrozen;
+  final bool adminsOnly;
+  final bool isDeleted;
 
   // حقول آخر رسالة (اختيارية)
   final DateTime? lastMsgAt; // أو last_message_at
@@ -359,6 +362,9 @@ class ChatConversation {
     this.lastMsgAt,
     this.lastMsgSnippet,
     this.unreadCount,
+    this.isFrozen = false,
+    this.adminsOnly = false,
+    this.isDeleted = false,
   });
 
   bool get isGroup => type == ChatConversationType.group;
@@ -374,6 +380,9 @@ class ChatConversation {
     DateTime? lastMsgAt,
     String? lastMsgSnippet,
     int? unreadCount,
+    bool? isFrozen,
+    bool? adminsOnly,
+    bool? isDeleted,
   }) {
     return ChatConversation(
       id: id ?? this.id,
@@ -386,6 +395,9 @@ class ChatConversation {
       lastMsgAt: lastMsgAt ?? this.lastMsgAt,
       lastMsgSnippet: lastMsgSnippet ?? this.lastMsgSnippet,
       unreadCount: unreadCount ?? this.unreadCount,
+      isFrozen: isFrozen ?? this.isFrozen,
+      adminsOnly: adminsOnly ?? this.adminsOnly,
+      isDeleted: isDeleted ?? this.isDeleted,
     );
   }
 
@@ -398,6 +410,9 @@ class ChatConversation {
       'created_by': createdBy,
       'created_at': _fmtDate(createdAt),
       'updated_at': _fmtDate(updatedAt),
+      'is_frozen': isFrozen,
+      'admins_only': adminsOnly,
+      'is_deleted': isDeleted,
       // كلا التسميتين لدعم الواجهات القديمة/الجديدة
       'last_msg_at': _fmtDate(lastMsgAt),
       'last_msg_snippet': lastMsgSnippet,
@@ -428,6 +443,9 @@ class ChatConversation {
       lastMsgSnippet: map['last_msg_snippet']?.toString() ??
           map['last_message_text']?.toString(),
       unreadCount: _toInt(map['unread_count']),
+      isFrozen: _isTruthy(map['is_frozen']),
+      adminsOnly: _isTruthy(map['admins_only']),
+      isDeleted: _isTruthy(map['is_deleted']),
     );
   }
 
@@ -604,12 +622,16 @@ class ChatReadState {
   final String userUid;
   final String? lastReadMessageId;
   final DateTime? lastReadAt;
+  final String? lastDeliveredMessageId;
+  final DateTime? lastDeliveredAt;
 
   const ChatReadState({
     required this.conversationId,
     required this.userUid,
     this.lastReadMessageId,
     this.lastReadAt,
+    this.lastDeliveredMessageId,
+    this.lastDeliveredAt,
   });
 
   Map<String, dynamic> toMap() {
@@ -618,6 +640,8 @@ class ChatReadState {
       'user_uid': userUid,
       'last_read_message_id': lastReadMessageId,
       'last_read_at': _fmtDate(lastReadAt),
+      'last_delivered_message_id': lastDeliveredMessageId,
+      'last_delivered_at': _fmtDate(lastDeliveredAt),
     };
   }
 
@@ -627,6 +651,9 @@ class ChatReadState {
       userUid: map['user_uid']?.toString() ?? '',
       lastReadMessageId: map['last_read_message_id']?.toString(),
       lastReadAt: _parseDate(map['last_read_at']),
+      lastDeliveredMessageId:
+          map['last_delivered_message_id']?.toString(),
+      lastDeliveredAt: _parseDate(map['last_delivered_at']),
     );
   }
 }
@@ -905,7 +932,8 @@ class ChatMessage {
       kind = ChatMessageKind.text;
     }
 
-    final localIdClient = map['local_id_client']?.toString();
+    final localIdClient =
+        map['local_id_client']?.toString() ?? map['client_msg_id']?.toString();
     final localIdStr = map['local_id'] != null && map['local_id'] is String
         ? map['local_id'] as String
         : null;
