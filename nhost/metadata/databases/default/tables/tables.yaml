@@ -189,6 +189,20 @@
           chat_participants:
             user_uid:
               _eq: "X-Hasura-User-Id"
+    - role: owner
+      permission:
+        columns: "*"
+        filter:
+          chat_participants:
+            user_uid:
+              _eq: "X-Hasura-User-Id"
+    - role: employee
+      permission:
+        columns: "*"
+        filter:
+          chat_participants:
+            user_uid:
+              _eq: "X-Hasura-User-Id"
     - role: superadmin
       permission:
         columns: "*"
@@ -304,6 +318,42 @@
                   disabled:
                     _eq: false
     - role: user
+      permission:
+        columns: "*"
+        filter:
+          _or:
+            - user_uid:
+                _eq: "X-Hasura-User-Id"
+            - _exists:
+                _table:
+                  schema: public
+                  name: account_users
+                _where:
+                  account_id:
+                    _ceq: "account_id"
+                  user_uid:
+                    _eq: "X-Hasura-User-Id"
+                  disabled:
+                    _eq: false
+    - role: owner
+      permission:
+        columns: "*"
+        filter:
+          _or:
+            - user_uid:
+                _eq: "X-Hasura-User-Id"
+            - _exists:
+                _table:
+                  schema: public
+                  name: account_users
+                _where:
+                  account_id:
+                    _ceq: "account_id"
+                  user_uid:
+                    _eq: "X-Hasura-User-Id"
+                  disabled:
+                    _eq: false
+    - role: employee
       permission:
         columns: "*"
         filter:
@@ -508,6 +558,32 @@
                 _ceq: "conversation_id"
               user_uid:
                 _eq: "X-Hasura-User-Id"
+    - role: owner
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: chat_participants
+            _where:
+              conversation_id:
+                _ceq: "conversation_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+    - role: employee
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: chat_participants
+            _where:
+              conversation_id:
+                _ceq: "conversation_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
     - role: superadmin
       permission:
         columns: "*"
@@ -604,6 +680,32 @@
               user_uid:
                 _eq: "X-Hasura-User-Id"
     - role: user
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: chat_participants
+            _where:
+              conversation_id:
+                _ceq: "conversation_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+    - role: owner
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: chat_participants
+            _where:
+              conversation_id:
+                _ceq: "conversation_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+    - role: employee
       permission:
         columns: "*"
         filter:
@@ -721,6 +823,50 @@
                   user_uid:
                     _eq: "X-Hasura-User-Id"
     - role: user
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: chat_messages
+            _where:
+              id:
+                _ceq: "message_id"
+              account_id:
+                _ceq: "account_id"
+              _exists:
+                _table:
+                  schema: public
+                  name: chat_participants
+                _where:
+                  conversation_id:
+                    _ceq: "conversation_id"
+                  user_uid:
+                    _eq: "X-Hasura-User-Id"
+    - role: owner
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: chat_messages
+            _where:
+              id:
+                _ceq: "message_id"
+              account_id:
+                _ceq: "account_id"
+              _exists:
+                _table:
+                  schema: public
+                  name: chat_participants
+                _where:
+                  conversation_id:
+                    _ceq: "conversation_id"
+                  user_uid:
+                    _eq: "X-Hasura-User-Id"
+    - role: employee
       permission:
         columns: "*"
         filter:
@@ -5033,6 +5179,32 @@
               user_uid:
                 _eq: "X-Hasura-User-Id"
     - role: user
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: chat_participants
+            _where:
+              conversation_id:
+                _ceq: "conversation_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+    - role: owner
+      permission:
+        columns: "*"
+        filter:
+          _exists:
+            _table:
+              schema: public
+              name: chat_participants
+            _where:
+              conversation_id:
+                _ceq: "conversation_id"
+              user_uid:
+                _eq: "X-Hasura-User-Id"
+    - role: employee
       permission:
         columns: "*"
         filter:
