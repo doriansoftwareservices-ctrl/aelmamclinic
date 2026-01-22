@@ -1234,7 +1234,9 @@ class ChatService {
     ''';
     final data = await _runQuery(query, const {});
     final rows = (data['v_chat_conversations_for_me'] as List?) ?? const [];
-    if (rows.isEmpty) return const <ConversationListItem>[];
+    if (rows.isEmpty) {
+      return _fallbackConversationsByParticipant();
+    }
 
     final items = <ConversationListItem>[];
     for (final row in rows.whereType<Map>()) {
@@ -1257,6 +1259,101 @@ class ChatService {
                   map['last_msg_snippet'] ??
                   map['last_message_body'])
               ?.toString(),
+        ),
+      );
+    }
+
+    items.sort((a, b) {
+      final aT = a.conversation.lastMsgAt ?? a.conversation.updatedAt;
+      final bT = b.conversation.lastMsgAt ?? b.conversation.updatedAt;
+      return (bT ?? DateTime.fromMillisecondsSinceEpoch(0))
+          .compareTo(aT ?? DateTime.fromMillisecondsSinceEpoch(0));
+    });
+
+    return items;
+  }
+
+  Future<List<ConversationListItem>> _fallbackConversationsByParticipant() async {
+    final uid = currentUserId;
+    if (uid == null || uid.isEmpty) return const <ConversationListItem>[];
+
+    final partsQuery = '''
+      query MyParticipantConversations(\$uid: uuid!) {
+        $_tblParts(where: {user_uid: {_eq: \$uid}}) {
+          conversation_id
+        }
+      }
+    ''';
+    final partsData = await _runQuery(partsQuery, {'uid': uid});
+    final partRows = (partsData[_tblParts] as List?) ?? const [];
+    final ids = partRows
+        .whereType<Map>()
+        .map((e) => (e['conversation_id'] ?? '').toString())
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList();
+    if (ids.isEmpty) return const <ConversationListItem>[];
+
+    final convQuery = '''
+      query MyConversationsByIds(\$ids: [uuid!]!) {
+        $_tblConvs(where: {id: {_in: \$ids}}, order_by: {last_msg_at: desc}) {
+          id
+          account_id
+          is_group
+          title
+          created_by
+          created_at
+          updated_at
+          last_msg_at
+          last_msg_snippet
+        }
+      }
+    ''';
+    final convData = await _runQuery(convQuery, {'ids': ids});
+    final convRows = (convData[_tblConvs] as List?) ?? const [];
+    if (convRows.isEmpty) return const <ConversationListItem>[];
+
+    final readsQuery = '''
+      query MyReads(\$ids: [uuid!]!, \$uid: uuid!) {
+        $_tblReads(
+          where: {
+            conversation_id: {_in: \$ids},
+            user_uid: {_eq: \$uid}
+          }
+        ) {
+          conversation_id
+          last_read_at
+        }
+      }
+    ''';
+    Map<String, DateTime?> lastReadByConv = <String, DateTime?>{};
+    try {
+      final readsData = await _runQuery(readsQuery, {'ids': ids, 'uid': uid});
+      final readRows = (readsData[_tblReads] as List?) ?? const [];
+      for (final row in readRows.whereType<Map>()) {
+        final cid = row['conversation_id']?.toString();
+        if (cid == null || cid.isEmpty) continue;
+        final ts = row['last_read_at']?.toString();
+        lastReadByConv[cid] = ts == null ? null : DateTime.tryParse(ts)?.toUtc();
+      }
+    } catch (_) {}
+
+    final items = <ConversationListItem>[];
+    for (final row in convRows.whereType<Map>()) {
+      final map = Map<String, dynamic>.from(row);
+      final convo = ChatConversation.fromMap(map);
+      final cid = convo.id;
+      final displayTitle = (convo.title ?? '').trim().isNotEmpty
+          ? convo.title!.trim()
+          : (convo.isGroup ? 'مجموعة' : 'محادثة');
+      items.add(
+        ConversationListItem(
+          conversation: convo,
+          displayTitle: displayTitle,
+          lastReadAt: lastReadByConv[cid],
+          unreadCount: 0,
+          lastMessageText:
+              (map['last_msg_snippet'] ?? map['last_message_text'])?.toString(),
         ),
       );
     }
