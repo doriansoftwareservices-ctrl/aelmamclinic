@@ -2,8 +2,19 @@ BEGIN;
 
 -- Ensure clinics table is protected at DB level too.
 DO $do$
+DECLARE
+  is_table boolean := false;
 BEGIN
-  IF to_regclass('public.clinics') IS NOT NULL THEN
+  SELECT EXISTS (
+    SELECT 1
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public'
+      AND c.relname = 'clinics'
+      AND c.relkind IN ('r', 'p')
+  ) INTO is_table;
+
+  IF is_table THEN
     EXECUTE 'ALTER TABLE public.clinics ENABLE ROW LEVEL SECURITY';
 
     EXECUTE 'DROP POLICY IF EXISTS clinics_select_member ON public.clinics';

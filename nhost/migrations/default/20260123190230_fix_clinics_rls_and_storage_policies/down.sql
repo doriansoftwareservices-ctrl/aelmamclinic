@@ -1,8 +1,19 @@
 BEGIN;
 
 DO $do$
+DECLARE
+  is_table boolean := false;
 BEGIN
-  IF to_regclass('public.clinics') IS NOT NULL THEN
+  SELECT EXISTS (
+    SELECT 1
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public'
+      AND c.relname = 'clinics'
+      AND c.relkind IN ('r', 'p')
+  ) INTO is_table;
+
+  IF is_table THEN
     EXECUTE 'DROP POLICY IF EXISTS clinics_delete_superadmin ON public.clinics';
     EXECUTE 'DROP POLICY IF EXISTS clinics_update_superadmin ON public.clinics';
     EXECUTE 'DROP POLICY IF EXISTS clinics_insert_superadmin ON public.clinics';
