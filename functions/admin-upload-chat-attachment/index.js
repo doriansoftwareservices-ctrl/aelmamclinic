@@ -1,3 +1,6 @@
+const https = require('https');
+const { URL } = require('url');
+
 const readBody = (req) =>
   new Promise((resolve) => {
     if (req.body && typeof req.body === 'object') {
@@ -102,6 +105,61 @@ function buildMultipart({ fieldName, filename, contentType, buffer, fields }) {
   };
 }
 
+function postJson(url, headers, body) {
+  return new Promise((resolve, reject) => {
+    const target = new URL(url);
+    const payload = JSON.stringify(body);
+    const opts = {
+      method: 'POST',
+      hostname: target.hostname,
+      port: target.port || 443,
+      path: target.pathname + target.search,
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload),
+        ...headers,
+      },
+    };
+    const req = https.request(opts, (res) => {
+      let data = '';
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+      res.on('end', () => {
+        resolve({ status: res.statusCode || 0, text: data });
+      });
+    });
+    req.on('error', reject);
+    req.write(payload);
+    req.end();
+  });
+}
+
+function postMultipart(url, headers, body) {
+  return new Promise((resolve, reject) => {
+    const target = new URL(url);
+    const opts = {
+      method: 'POST',
+      hostname: target.hostname,
+      port: target.port || 443,
+      path: target.pathname + target.search,
+      headers,
+    };
+    const req = https.request(opts, (res) => {
+      let data = '';
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+      res.on('end', () => {
+        resolve({ status: res.statusCode || 0, text: data });
+      });
+    });
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
+
 async function ensureChatParticipant(authHeader, conversationId) {
   const gqlUrl = process.env.NHOST_GRAPHQL_URL;
   if (!gqlUrl) {
@@ -120,15 +178,12 @@ async function ensureChatParticipant(authHeader, conversationId) {
     err.statusCode = 401;
     throw err;
   }
-  const res = await fetch(gqlUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(adminSecret
-        ? { 'x-hasura-admin-secret': adminSecret }
-        : { Authorization: authHeader }),
-    },
-    body: JSON.stringify({
+  const gqlRes = await postJson(
+    gqlUrl,
+    adminSecret
+      ? { 'x-hasura-admin-secret': adminSecret }
+      : { Authorization: authHeader },
+    {
       query: `
         query ChatAttachmentUploadAuth($cid: uuid!, $uid: uuid!) {
           fn_is_super_admin_gql { is_super_admin }
@@ -141,12 +196,17 @@ async function ensureChatParticipant(authHeader, conversationId) {
         }
       `,
       variables: { cid: conversationId, uid },
-    }),
-  });
-  if (!res.ok) {
-    throw new Error(`Auth check failed: ${res.status}`);
+    },
+  );
+  if (gqlRes.status < 200 || gqlRes.status >= 300) {
+    throw new Error(`Auth check failed: ${gqlRes.status} ${gqlRes.text}`);
   }
-  const json = await res.json();
+  let json = {};
+  try {
+    json = JSON.parse(gqlRes.text || '{}');
+  } catch (_) {
+    json = {};
+  }
   if (json.errors?.length) {
     throw new Error(json.errors.map((e) => e.message).join(' | '));
   }
@@ -222,11 +282,6 @@ module.exports = async function handler(req, res) {
       res.status(500).json({ ok: false, error: 'Missing storage config' });
       return;
     }
-    if (typeof fetch !== 'function') {
-      console.error(`${LOG_PREFIX} fetch not available in runtime`);
-      res.status(500).json({ ok: false, error: 'fetch not available' });
-      return;
-    }
 
     const bucketId = 'chat-attachments';
     const safeName = filename.replace(/^[\/\\]+/, '');
@@ -255,16 +310,14 @@ module.exports = async function handler(req, res) {
         fields,
       });
 
-      const uploadRes = await fetch(`${storageUrl}/files`, {
-        method: 'POST',
-        headers: { 'x-hasura-admin-secret': adminSecret, ...mp.headers },
-        body: mp.body,
-      });
-
-      const text = await uploadRes.text();
-      let responsePayload = text;
+      const uploadRes = await postMultipart(
+        `${storageUrl}/files`,
+        { 'x-hasura-admin-secret': adminSecret, ...mp.headers },
+        mp.body,
+      );
+      let responsePayload = uploadRes.text;
       try {
-        responsePayload = JSON.parse(text);
+        responsePayload = JSON.parse(uploadRes.text || '{}');
       } catch (_) {}
       return { uploadRes, responsePayload };
     };
@@ -285,8 +338,9 @@ module.exports = async function handler(req, res) {
       if (uploadRes.ok) break;
     }
 
-    if (!uploadRes || !uploadRes.ok) {
-      res.status(uploadRes.status).json({
+    if (!uploadRes || uploadRes.status < 200 || uploadRes.status >= 300) {
+      const status = uploadRes?.status || 500;
+      res.status(status).json({
         ok: false,
         error: responsePayload?.error ?? responsePayload ?? 'Upload failed',
       });
