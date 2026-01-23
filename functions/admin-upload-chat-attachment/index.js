@@ -50,17 +50,56 @@ const resolveStorageUrl = () => {
   return null;
 };
 
+const LOG_PREFIX = '[admin-upload-chat-attachment]';
+
 function decodeJwtPayload(authHeader) {
   if (!authHeader || !authHeader.startsWith('Bearer ')) return {};
   const token = authHeader.slice(7).trim();
   const parts = token.split('.');
   if (parts.length < 2) return {};
   try {
-    const payload = Buffer.from(parts[1], 'base64').toString('utf-8');
+    let payloadB64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    while (payloadB64.length % 4 !== 0) payloadB64 += '=';
+    const payload = Buffer.from(payloadB64, 'base64').toString('utf-8');
     return JSON.parse(payload);
   } catch (_) {
     return {};
   }
+}
+
+function buildMultipart({ fieldName, filename, contentType, buffer, fields }) {
+  const boundary = `--------------------------${Date.now().toString(16)}${Math.random()
+    .toString(16)
+    .slice(2)}`;
+  const chunks = [];
+  const push = (s) => chunks.push(Buffer.from(s, 'utf8'));
+  const pushField = (name, value) => {
+    push(`--${boundary}\r\n`);
+    push(`Content-Disposition: form-data; name="${name}"\r\n\r\n`);
+    push(`${value}\r\n`);
+  };
+  if (fields && typeof fields === 'object') {
+    for (const [k, v] of Object.entries(fields)) {
+      if (v === undefined || v === null) continue;
+      pushField(k, `${v}`);
+    }
+  }
+  push(`--${boundary}\r\n`);
+  push(
+    `Content-Disposition: form-data; name="${fieldName}"; filename="${filename}"\r\n`,
+  );
+  push(`Content-Type: ${contentType}\r\n\r\n`);
+  chunks.push(buffer);
+  push('\r\n');
+  push(`--${boundary}--\r\n`);
+  const body = Buffer.concat(chunks);
+  return {
+    body,
+    headers: {
+      'Content-Type': `multipart/form-data; boundary=${boundary}`,
+      'Content-Length': String(body.length),
+    },
+  };
 }
 
 async function ensureChatParticipant(authHeader, conversationId) {
@@ -175,7 +214,17 @@ module.exports = async function handler(req, res) {
     const adminSecret =
       process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
     if (!storageUrl || !adminSecret) {
+      console.error(
+        `${LOG_PREFIX} missing storage config`,
+        `storageUrl=${storageUrl ? 'set' : 'missing'}`,
+        `adminSecret=${adminSecret ? 'set' : 'missing'}`,
+      );
       res.status(500).json({ ok: false, error: 'Missing storage config' });
+      return;
+    }
+    if (typeof fetch !== 'function') {
+      console.error(`${LOG_PREFIX} fetch not available in runtime`);
+      res.status(500).json({ ok: false, error: 'fetch not available' });
       return;
     }
 
@@ -193,20 +242,23 @@ module.exports = async function handler(req, res) {
     };
 
     const tryUpload = async (useArrayFields, includeMeta) => {
-      const form = new FormData();
-      form.append('bucket-id', bucketId);
-      if (useArrayFields) {
-        form.append('file[]', new Blob([buffer], { type: mimeType }), storageName);
-        if (includeMeta) form.append('metadata[]', JSON.stringify(meta));
-      } else {
-        form.append('file', new Blob([buffer], { type: mimeType }), storageName);
-        if (includeMeta) form.append('metadata', JSON.stringify(meta));
+      const fields = { 'bucket-id': bucketId };
+      if (includeMeta) {
+        fields[useArrayFields ? 'metadata[]' : 'metadata'] = JSON.stringify(meta);
       }
+      const fieldName = useArrayFields ? 'file[]' : 'file';
+      const mp = buildMultipart({
+        fieldName,
+        filename: storageName,
+        contentType: mimeType,
+        buffer,
+        fields,
+      });
 
       const uploadRes = await fetch(`${storageUrl}/files`, {
         method: 'POST',
-        headers: { 'x-hasura-admin-secret': adminSecret },
-        body: form,
+        headers: { 'x-hasura-admin-secret': adminSecret, ...mp.headers },
+        body: mp.body,
       });
 
       const text = await uploadRes.text();
@@ -245,7 +297,7 @@ module.exports = async function handler(req, res) {
   } catch (err) {
     const status = err?.statusCode || 500;
     // Log full error for Nhost function logs.
-    console.error('admin-upload-chat-attachment failed', err);
+    console.error(`${LOG_PREFIX} failed`, err);
     res.status(status).json({
       ok: false,
       error: err?.message ?? 'Failed',
