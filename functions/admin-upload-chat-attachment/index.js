@@ -160,6 +160,43 @@ function postMultipart(url, headers, body) {
   });
 }
 
+function resolveRunSqlUrl(gqlUrl) {
+  if (!gqlUrl) return null;
+  return gqlUrl.replace(/\/v1\/graphql$/i, '/v2/query');
+}
+
+async function runSql({ gqlUrl, adminSecret, sql }) {
+  if (!gqlUrl) {
+    throw new Error('Missing NHOST_GRAPHQL_URL');
+  }
+  if (!adminSecret) {
+    throw new Error('Missing admin secret for run_sql');
+  }
+  const runSqlUrl = resolveRunSqlUrl(gqlUrl);
+  const res = await postJson(
+    runSqlUrl,
+    { 'x-hasura-admin-secret': adminSecret },
+    {
+      type: 'run_sql',
+      args: {
+        source: 'default',
+        read_only: true,
+        sql,
+      },
+    },
+  );
+  if (res.status < 200 || res.status >= 300) {
+    throw new Error(`run_sql failed: ${res.status} ${res.text}`);
+  }
+  let json = {};
+  try {
+    json = JSON.parse(res.text || '{}');
+  } catch (_) {
+    json = {};
+  }
+  return json;
+}
+
 async function ensureChatParticipant(authHeader, conversationId) {
   const gqlUrl = process.env.NHOST_GRAPHQL_URL;
   if (!gqlUrl) {
@@ -187,9 +224,6 @@ async function ensureChatParticipant(authHeader, conversationId) {
       query: `
         query ChatAttachmentUploadAuth($cid: uuid!, $uid: uuid!) {
           fn_is_super_admin_gql { is_super_admin }
-          chat_can_send(args: {p_conversation_id: $cid, p_user_uid: $uid}) {
-            chat_can_send
-          }
           chat_participants(
             where: { conversation_id: { _eq: $cid }, user_uid: { _eq: $uid } }
             limit: 1
@@ -219,9 +253,12 @@ async function ensureChatParticipant(authHeader, conversationId) {
   if (isSuper) return { isSuper: true };
   const parts = json.data?.chat_participants;
   if (Array.isArray(parts) && parts.length > 0) {
-    const canSendRows = json.data?.chat_can_send;
-    if (Array.isArray(canSendRows) && canSendRows.length > 0) {
-      const canSend = canSendRows[0]?.chat_can_send === true;
+    const sql = `select public.chat_can_send('${conversationId}'::uuid, '${uid}'::uuid) as can_send;`;
+    const sqlRes = await runSql({ gqlUrl, adminSecret, sql });
+    const result = sqlRes?.result || [];
+    if (Array.isArray(result) && result.length > 1) {
+      const row = result[1];
+      const canSend = row && row[0] === true;
       if (!canSend) {
         const err = new Error('chat_locked');
         err.statusCode = 403;

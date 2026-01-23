@@ -162,16 +162,6 @@
   - role: superadmin
 - function:
     schema: public
-    name: chat_can_send
-  configuration:
-    exposed_as: query
-    custom_name: chat_can_send
-  permissions:
-  - role: me
-  - role: user
-  - role: superadmin
-- function:
-    schema: public
     name: set_current_account
   configuration:
     exposed_as: mutation
