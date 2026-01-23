@@ -68,6 +68,8 @@ async function ensureChatParticipant(authHeader, conversationId) {
   if (!gqlUrl) {
     throw new Error('Missing NHOST_GRAPHQL_URL');
   }
+  const adminSecret =
+    process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
   const payload = decodeJwtPayload(authHeader);
   const claims = payload['https://hasura.io/jwt/claims'] || {};
   const uid =
@@ -83,7 +85,9 @@ async function ensureChatParticipant(authHeader, conversationId) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: authHeader,
+      ...(adminSecret
+        ? { 'x-hasura-admin-secret': adminSecret }
+        : { Authorization: authHeader }),
     },
     body: JSON.stringify({
       query: `
