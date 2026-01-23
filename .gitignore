@@ -124,3 +124,6 @@ linux/flutter/ephemeral/
 windows/.cache/
 server_snapshot_*/
 *.tar.gz
+
+# Build/Tool caches
+windows/.cache/
