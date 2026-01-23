@@ -7,7 +7,7 @@ import 'dart:developer' as dev;
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:fluttertoast/fluttertoast.dart';
+import 'package:aelmamclinic/utils/toast_utils.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -104,8 +104,8 @@ DynamicLibrary _loadWindowsSqliteLibrary() {
 }
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runZonedGuarded(() async {
-    WidgetsFlutterBinding.ensureInitialized();
 
     if (BackendLock.isOffline) {
       BackendLock.enforceOfflineNetwork();
@@ -537,17 +537,11 @@ Future<void> _requestNotificationPermission() async {
     if (status.isDenied || status.isRestricted) {
       final result = await Permission.notification.request();
       if (result.isDenied) {
-        Fluttertoast.showToast(
-          msg: 'هذا التطبيق يحتاج إلى إذن الإشعارات لتذكيرك بالمواعيد.',
-          toastLength: Toast.LENGTH_LONG,
-          gravity: ToastGravity.BOTTOM,
+        await ToastUtils.show(
+          'هذا التطبيق يحتاج إلى إذن الإشعارات لتذكيرك بالمواعيد.',
         );
       } else if (result.isPermanentlyDenied) {
-        Fluttertoast.showToast(
-          msg: 'يرجى تمكين الإشعارات من إعدادات التطبيق.',
-          toastLength: Toast.LENGTH_LONG,
-          gravity: ToastGravity.BOTTOM,
-        );
+        await ToastUtils.show('يرجى تمكين الإشعارات من إعدادات التطبيق.');
         openAppSettings();
       }
     }

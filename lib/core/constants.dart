@@ -4,6 +4,7 @@ import 'package:aelmamclinic/core/constants_nhost_override_loader_stub.dart'
     if (dart.library.io) 'package:aelmamclinic/core/constants_nhost_override_loader_io.dart'
     as override_loader;
 import 'package:aelmamclinic/core/nhost_config.dart';
+import 'package:aelmamclinic/utils/legacy_supabase_cleanup.dart';
 
 class AppConstants {
   AppConstants._();
@@ -37,6 +38,8 @@ class AppConstants {
     if (kIsWeb) {
       return;
     }
+
+    await LegacySupabaseCleanup.purge();
 
     final result = await (() async {
       try {

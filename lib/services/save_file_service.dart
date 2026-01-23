@@ -23,7 +23,7 @@ import 'package:flutter/foundation.dart'
     show kIsWeb; // احتياط (لو تم الاستيراد للويب)
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
-import 'package:fluttertoast/fluttertoast.dart';
+import 'package:aelmamclinic/utils/toast_utils.dart';
 
 /// يحفظ بايتات ملف باسم [fileName] ويُظهر Toast بالمسار النهائي.
 Future<void> saveFileBytes(Uint8List bytes, String fileName) async {
@@ -33,11 +33,7 @@ Future<void> saveFileBytes(Uint8List bytes, String fileName) async {
 /// يحفظ بايتات ملف باسم [fileName] ويُعيد المسار النهائي.
 Future<String> saveFileBytesWithPath(Uint8List bytes, String fileName) async {
   if (kIsWeb) {
-    Fluttertoast.showToast(
-      msg: "الحفظ المباشر غير مدعوم على الويب في هذا المسار.",
-      toastLength: Toast.LENGTH_LONG,
-      gravity: ToastGravity.BOTTOM,
-    );
+    await ToastUtils.show("الحفظ المباشر غير مدعوم على الويب في هذا المسار.");
     return '';
   }
 
@@ -51,18 +47,10 @@ Future<String> saveFileBytesWithPath(Uint8List bytes, String fileName) async {
     final file = File(targetPath);
     await file.writeAsBytes(bytes, flush: true);
 
-    Fluttertoast.showToast(
-      msg: "تم حفظ الملف بنجاح في: ${file.path}",
-      toastLength: Toast.LENGTH_LONG,
-      gravity: ToastGravity.BOTTOM,
-    );
+    await ToastUtils.show("تم حفظ الملف بنجاح في: ${file.path}");
     return file.path;
   } catch (e) {
-    Fluttertoast.showToast(
-      msg: "فشل حفظ الملف: $e",
-      toastLength: Toast.LENGTH_LONG,
-      gravity: ToastGravity.BOTTOM,
-    );
+    await ToastUtils.show("فشل حفظ الملف: $e");
     return '';
   }
 }
@@ -75,11 +63,7 @@ Future<void> saveExcelFile(Uint8List bytes, String fileName) async {
 /// ينسخ ملفًا موجودًا إلى مجلد مناسب حسب المنصة ويُعيد المسار النهائي.
 Future<String> saveFileToDownloads(File file, {String? fileName}) async {
   if (kIsWeb) {
-    Fluttertoast.showToast(
-      msg: "الحفظ المباشر غير مدعوم على الويب في هذا المسار.",
-      toastLength: Toast.LENGTH_LONG,
-      gravity: ToastGravity.BOTTOM,
-    );
+    await ToastUtils.show("الحفظ المباشر غير مدعوم على الويب في هذا المسار.");
     return '';
   }
 
@@ -91,18 +75,10 @@ Future<String> saveFileToDownloads(File file, {String? fileName}) async {
     final targetPath = await _uniqueFilePath(dir.path, safeName);
     final copied = await file.copy(targetPath);
 
-    Fluttertoast.showToast(
-      msg: "تم حفظ الملف بنجاح في: ${copied.path}",
-      toastLength: Toast.LENGTH_LONG,
-      gravity: ToastGravity.BOTTOM,
-    );
+    await ToastUtils.show("تم حفظ الملف بنجاح في: ${copied.path}");
     return copied.path;
   } catch (e) {
-    Fluttertoast.showToast(
-      msg: "فشل حفظ الملف: $e",
-      toastLength: Toast.LENGTH_LONG,
-      gravity: ToastGravity.BOTTOM,
-    );
+    await ToastUtils.show("فشل حفظ الملف: $e");
     return '';
   }
 }

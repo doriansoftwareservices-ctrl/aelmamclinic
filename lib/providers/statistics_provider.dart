@@ -23,6 +23,7 @@ class StatisticsProvider extends ChangeNotifier {
   bool _disposed = false;
   void _startPolling() {
     _pollTimer ??= Timer.periodic(const Duration(seconds: 5), (_) async {
+      if (_disposed) return;
       final db = DBService.instance;
       if (await db.isStatisticsDirty()) {
         await refresh();
@@ -114,82 +115,86 @@ class StatisticsProvider extends ChangeNotifier {
       notifyListeners();
     }
 
-    final db = DBService.instance;
+    try {
+      final db = DBService.instance;
 
-    // 1) إيرادات المرضى
-    final revenue = await db.getSumPatientsBetween(_from, _to);
-    // 2) استهلاكات المركز
-    final expense = await db.getSumConsumptionBetween(_from, _to);
-    // 3) نسب الأطباء
-    final ratios = await db.getSumAllDoctorShareBetween(_from, _to);
-    // 4) مدخلات الأطباء بعد خصم المركز
-    final inputs = await db.getEffectiveSumAllDoctorInputBetween(_from, _to);
-    // 5) حصّة المركز
-    final tower = await db.getSumAllTowerShareBetween(_from, _to);
-    // 6) سلف مصروفة
-    final loansRaw = await db.database.then((d) => d.rawQuery(
-        'SELECT SUM(loanAmount) AS total FROM employees_loans WHERE loanDateTime BETWEEN ? AND ?',
-        [_from.toIso8601String(), _to.toIso8601String()]));
-    final loans = (loansRaw.first['total'] as num?)?.toDouble() ?? 0.0;
-    // 7) خصومات
-    final discRaw = await db.database.then((d) => d.rawQuery(
-        'SELECT SUM(amount) AS total FROM employees_discounts WHERE discountDateTime BETWEEN ? AND ?',
-        [_from.toIso8601String(), _to.toIso8601String()]));
-    final discounts = (discRaw.first['total'] as num?)?.toDouble() ?? 0.0;
-    // 8) رواتب
-    final salRaw = await db.database.then((d) => d.rawQuery(
-        'SELECT SUM(netPay) AS total FROM employees_salaries WHERE paymentDate BETWEEN ? AND ?',
-        [_from.toIso8601String(), _to.toIso8601String()]));
-    final salaries = (salRaw.first['total'] as num?)?.toDouble() ?? 0.0;
-    // صافي الربح
-    final netProfit = revenue - salaries - expense;
+      // 1) إيرادات المرضى
+      final revenue = await db.getSumPatientsBetween(_from, _to);
+      // 2) استهلاكات المركز
+      final expense = await db.getSumConsumptionBetween(_from, _to);
+      // 3) نسب الأطباء
+      final ratios = await db.getSumAllDoctorShareBetween(_from, _to);
+      // 4) مدخلات الأطباء بعد خصم المركز
+      final inputs = await db.getEffectiveSumAllDoctorInputBetween(_from, _to);
+      // 5) حصّة المركز
+      final tower = await db.getSumAllTowerShareBetween(_from, _to);
+      // 6) سلف مصروفة
+      final loansRaw = await db.database.then((d) => d.rawQuery(
+          'SELECT SUM(loanAmount) AS total FROM employees_loans WHERE loanDateTime BETWEEN ? AND ?',
+          [_from.toIso8601String(), _to.toIso8601String()]));
+      final loans = (loansRaw.first['total'] as num?)?.toDouble() ?? 0.0;
+      // 7) خصومات
+      final discRaw = await db.database.then((d) => d.rawQuery(
+          'SELECT SUM(amount) AS total FROM employees_discounts WHERE discountDateTime BETWEEN ? AND ?',
+          [_from.toIso8601String(), _to.toIso8601String()]));
+      final discounts = (discRaw.first['total'] as num?)?.toDouble() ?? 0.0;
+      // 8) رواتب
+      final salRaw = await db.database.then((d) => d.rawQuery(
+          'SELECT SUM(netPay) AS total FROM employees_salaries WHERE paymentDate BETWEEN ? AND ?',
+          [_from.toIso8601String(), _to.toIso8601String()]));
+      final salaries = (salRaw.first['total'] as num?)?.toDouble() ?? 0.0;
+      // صافي الربح
+      final netProfit = revenue - salaries - expense;
 
-    // 9) تعداد المرضى
-    final monthlyPts = await _countPatientsBetween(_from, _to);
-    // 10) تنبيهات المخزون المنخفض
-    final lowStock = await _getLowStockCount();
-    // 11) استرجاع جميع العودات وحساب اليوم
-    final allReturns = await db.getAllReturns();
-    final now = DateTime.now();
-    final dueReturns = allReturns
-        .where((r) => r.date.isBefore(now) || r.date.isAtSameMomentAs(now))
-        .toList();
-    final todayConf = dueReturns.length;
-    // 12) حساب المتابعات حسب SharedPreferences
-    final prefs = await SharedPreferences.getInstance();
-    final seenIds = (prefs.getStringList('seen_reminder_ids') ?? [])
-        .map((e) => int.tryParse(e) ?? 0)
-        .toSet();
-    final todayFoll = dueReturns.where((r) => seenIds.contains(r.id)).length;
+      // 9) تعداد المرضى
+      final monthlyPts = await _countPatientsBetween(_from, _to);
+      // 10) تنبيهات المخزون المنخفض
+      final lowStock = await _getLowStockCount();
+      // 11) استرجاع جميع العودات وحساب اليوم
+      final allReturns = await db.getAllReturns();
+      final now = DateTime.now();
+      final dueReturns = allReturns
+          .where((r) => r.date.isBefore(now) || r.date.isAtSameMomentAs(now))
+          .toList();
+      final todayConf = dueReturns.length;
+      // 12) حساب المتابعات حسب SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      final seenIds = (prefs.getStringList('seen_reminder_ids') ?? [])
+          .map((e) => int.tryParse(e) ?? 0)
+          .toSet();
+      final todayFoll = dueReturns.where((r) => seenIds.contains(r.id)).length;
 
-    // 13) بيانات إضافية
-    final totalPts = await db.getTotalPatients();
-    final outOfStock = await _getOutOfStockCount();
-    final pendLoans = await _getPendingLoansSum();
+      // 13) بيانات إضافية
+      final totalPts = await db.getTotalPatients();
+      final outOfStock = await _getOutOfStockCount();
+      final pendLoans = await _getPendingLoansSum();
 
-    // تخزين القيم
-    _monthlyRevenue = revenue;
-    _monthlyExpense = expense;
-    _monthlyDoctorRatios = ratios;
-    _monthlyDoctorInputs = inputs;
-    _monthlyTowerShare = tower;
-    _monthlyLoansPaid = loans;
-    _monthlyDiscounts = discounts;
-    _monthlySalariesPaid = salaries;
-    _monthlyNetProfit = netProfit;
+      if (_disposed) return;
 
-    _monthlyPatients = monthlyPts;
-    _lowStockCount = lowStock;
-    _todayConfirmed = todayConf;
-    _todayFollowUps = todayFoll;
+      // تخزين القيم
+      _monthlyRevenue = revenue;
+      _monthlyExpense = expense;
+      _monthlyDoctorRatios = ratios;
+      _monthlyDoctorInputs = inputs;
+      _monthlyTowerShare = tower;
+      _monthlyLoansPaid = loans;
+      _monthlyDiscounts = discounts;
+      _monthlySalariesPaid = salaries;
+      _monthlyNetProfit = netProfit;
 
-    _totalPatientsAll = totalPts;
-    _outOfStockItems = outOfStock;
-    _pendingLoans = pendLoans;
+      _monthlyPatients = monthlyPts;
+      _lowStockCount = lowStock;
+      _todayConfirmed = todayConf;
+      _todayFollowUps = todayFoll;
 
-    _busy = false;
-    if (!_disposed) {
-      notifyListeners();
+      _totalPatientsAll = totalPts;
+      _outOfStockItems = outOfStock;
+      _pendingLoans = pendLoans;
+    } finally {
+      _busy = false;
+      if (!_disposed) {
+        notifyListeners();
+      }
     }
   }
 

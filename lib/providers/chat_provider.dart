@@ -496,7 +496,6 @@ class ChatProvider extends ChangeNotifier {
 
   // --------------------------------------------------------------------------
   // تحميل قائمة محادثاتي + المشاركين (+ آخر قراءة) مع دمج ذكي:
-  // - يمنع وميض شارة unread (نأخذ max(prev, server) للمحادثات غير المفتوحة)
   // - يحافظ على ظهور "أحدث رسالة" في الكرت: نُبقي lastMsgAt/snippet الأحدث بين
   //   الحالة السابقة والراجعة من السيرفر (تفادي الرجوع للخلف بسبب تأخّر التحديث).
   // --------------------------------------------------------------------------
@@ -666,11 +665,9 @@ class ChatProvider extends ChangeNotifier {
           effSnippet = prev!.lastMsgSnippet;
         }
 
-        // unread تقدير سريع ثم max(prev, server) لغير المفتوح
+        // unread يعتمد على الخادم لضمان الدقة (مع تصفير المفتوح)
         final serverUc = srv.unreadCount ?? 0;
-        final uc = (openedId == srv.id)
-            ? 0
-            : (prev != null ? max(serverUc, prev.unreadCount ?? 0) : serverUc);
+        final uc = (openedId == srv.id) ? 0 : serverUc;
 
         return srv.copyWith(
           lastMsgAt: effAt,

@@ -67,7 +67,13 @@ class _ActivationListenerState extends State<ActivationListener>
       builder: (context, activation, _) {
         if (!activation.isActivated) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            Navigator.of(context).pushReplacementNamed('/activation');
+            if (!mounted) return;
+            final nav = Navigator.maybeOf(context);
+            if (nav == null) return;
+            final current = ModalRoute.of(context)?.settings.name;
+            if (current != '/activation') {
+              nav.pushReplacementNamed('/activation');
+            }
           });
         }
         return widget.child;

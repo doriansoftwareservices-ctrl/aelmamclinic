@@ -34,13 +34,18 @@ if [[ -z "${SUBDOMAIN}" || -z "${REGION}" ]]; then
   exit 2
 fi
 
+# Prefer explicit HASURA_GRAPHQL_ADMIN_SECRET; fall back to HASURA_ADMIN_SECRET.
 if [[ -z "${HASURA_GRAPHQL_ADMIN_SECRET:-}" && -n "${HASURA_ADMIN_SECRET:-}" ]]; then
   HASURA_GRAPHQL_ADMIN_SECRET="${HASURA_ADMIN_SECRET}"
 fi
 
-if [[ -z "${HASURA_GRAPHQL_ADMIN_SECRET:-}" ]]; then
-  read -r -s -p "Paste HASURA_GRAPHQL_ADMIN_SECRET for ${SUBDOMAIN}: " HASURA_GRAPHQL_ADMIN_SECRET
+# Always prompt in interactive shells; use env fallback only in non-interactive runs.
+if [[ -t 0 ]]; then
+  read -r -s -p "Paste HASURA_GRAPHQL_ADMIN_SECRET for ${SUBDOMAIN}: " INPUT_SECRET
   echo
+  if [[ -n "${INPUT_SECRET:-}" ]]; then
+    HASURA_GRAPHQL_ADMIN_SECRET="${INPUT_SECRET}"
+  fi
 fi
 
 : "${HASURA_GRAPHQL_ADMIN_SECRET:?ERROR: HASURA_GRAPHQL_ADMIN_SECRET is empty.}"

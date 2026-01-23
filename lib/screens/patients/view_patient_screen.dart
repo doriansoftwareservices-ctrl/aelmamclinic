@@ -3,6 +3,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui show TextDirection;
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -258,6 +259,166 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
       );
     }
 
+    List<List<List<String>>> chunkRows(
+        List<List<String>> rows, int size) {
+      if (rows.isEmpty) return const [];
+      final chunks = <List<List<String>>>[];
+      for (var i = 0; i < rows.length; i += size) {
+        chunks.add(rows.sublist(i, math.min(i + size, rows.length)));
+      }
+      return chunks;
+    }
+
+    List<pw.Widget> buildServiceTables() {
+      final tables = <pw.Widget>[];
+      const maxRowsPerTable = 18;
+      final chunks = chunkRows(serviceRows, maxRowsPerTable);
+      if (chunks.isEmpty) {
+        tables.add(
+          pw.Table(
+            columnWidths: const <int, pw.TableColumnWidth>{
+              0: pw.FlexColumnWidth(1),
+              1: pw.FlexColumnWidth(3),
+            },
+            border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+            children: [
+              pw.TableRow(
+                decoration: const pw.BoxDecoration(color: PdfColors.grey300),
+                children: [
+                  pw.Padding(
+                    padding: const pw.EdgeInsets.all(8),
+                    child: pw.Text('Price',
+                        style: boldText, textAlign: pw.TextAlign.center),
+                  ),
+                  pw.Padding(
+                    padding: const pw.EdgeInsets.all(8),
+                    child: pw.Text('Service',
+                        style: boldText, textAlign: pw.TextAlign.right),
+                  ),
+                ],
+              ),
+              pw.TableRow(
+                children: [
+                  pw.Padding(
+                    padding: const pw.EdgeInsets.all(8),
+                    child: pw.Text('—',
+                        style: baseText, textAlign: pw.TextAlign.center),
+                  ),
+                  pw.Padding(
+                    padding: const pw.EdgeInsets.all(8),
+                    child: pw.Text('لا توجد خدمات مسجلة',
+                        style: baseText, textAlign: pw.TextAlign.right),
+                  ),
+                ],
+              ),
+              pw.TableRow(
+                decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                children: [
+                  pw.Padding(
+                    padding: const pw.EdgeInsets.all(8),
+                    child: pw.Text(
+                      totalCost.toStringAsFixed(2),
+                      style: pw.TextStyle(
+                          font: cairoBold,
+                          fontSize: 12,
+                          color: PdfColors.green700),
+                      textAlign: pw.TextAlign.center,
+                    ),
+                  ),
+                  pw.Padding(
+                    padding: const pw.EdgeInsets.all(8),
+                    child: pw.Text('Total',
+                        style: pw.TextStyle(
+                            font: cairoBold,
+                            fontSize: 12,
+                            color: PdfColors.green700),
+                        textAlign: pw.TextAlign.right),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+        return tables;
+      }
+
+      for (var idx = 0; idx < chunks.length; idx++) {
+        final part = chunks[idx];
+        tables.add(
+          pw.Table(
+            columnWidths: const <int, pw.TableColumnWidth>{
+              0: pw.FlexColumnWidth(1),
+              1: pw.FlexColumnWidth(3),
+            },
+            border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+            children: [
+              pw.TableRow(
+                decoration: const pw.BoxDecoration(color: PdfColors.grey300),
+                children: [
+                  pw.Padding(
+                    padding: const pw.EdgeInsets.all(8),
+                    child: pw.Text('Price',
+                        style: boldText, textAlign: pw.TextAlign.center),
+                  ),
+                  pw.Padding(
+                    padding: const pw.EdgeInsets.all(8),
+                    child: pw.Text('Service',
+                        style: boldText, textAlign: pw.TextAlign.right),
+                  ),
+                ],
+              ),
+              for (final r in part)
+                pw.TableRow(
+                  children: [
+                    pw.Padding(
+                      padding: const pw.EdgeInsets.all(8),
+                      child: pw.Text(r[0],
+                          style: baseText, textAlign: pw.TextAlign.center),
+                    ),
+                    pw.Padding(
+                      padding: const pw.EdgeInsets.all(8),
+                      child: pw.Text(r[1],
+                          style: baseText, textAlign: pw.TextAlign.right),
+                    ),
+                  ],
+                ),
+              if (idx == chunks.length - 1)
+                pw.TableRow(
+                  decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                  children: [
+                    pw.Padding(
+                      padding: const pw.EdgeInsets.all(8),
+                      child: pw.Text(
+                        totalCost.toStringAsFixed(2),
+                        style: pw.TextStyle(
+                            font: cairoBold,
+                            fontSize: 12,
+                            color: PdfColors.green700),
+                        textAlign: pw.TextAlign.center,
+                      ),
+                    ),
+                    pw.Padding(
+                      padding: const pw.EdgeInsets.all(8),
+                      child: pw.Text('Total',
+                          style: pw.TextStyle(
+                              font: cairoBold,
+                              fontSize: 12,
+                              color: PdfColors.green700),
+                          textAlign: pw.TextAlign.right),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+        );
+        if (idx != chunks.length - 1) {
+          tables.add(pw.SizedBox(height: 10));
+        }
+      }
+
+      return tables;
+    }
+
     pdf.addPage(
       pw.MultiPage(
         pageTheme: pageTheme,
@@ -414,88 +575,7 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
           ),
           pw.SizedBox(height: 6),
 
-          // جدول الخدمات
-          pw.Table(
-            columnWidths: const <int, pw.TableColumnWidth>{
-              0: pw.FlexColumnWidth(1),
-              1: pw.FlexColumnWidth(3),
-            },
-            border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
-            children: [
-              pw.TableRow(
-                decoration: const pw.BoxDecoration(color: PdfColors.grey300),
-                children: [
-                  pw.Padding(
-                    padding: const pw.EdgeInsets.all(8),
-                    child: pw.Text('Price',
-                        style: boldText, textAlign: pw.TextAlign.center),
-                  ),
-                  pw.Padding(
-                    padding: const pw.EdgeInsets.all(8),
-                    child: pw.Text('Service',
-                        style: boldText, textAlign: pw.TextAlign.right),
-                  ),
-                ],
-              ),
-              if (serviceRows.isNotEmpty)
-                for (final r in serviceRows)
-                  pw.TableRow(
-                    children: [
-                      pw.Padding(
-                        padding: const pw.EdgeInsets.all(8),
-                        child: pw.Text(r[0],
-                            style: baseText, textAlign: pw.TextAlign.center),
-                      ),
-                      pw.Padding(
-                        padding: const pw.EdgeInsets.all(8),
-                        child: pw.Text(r[1],
-                            style: baseText, textAlign: pw.TextAlign.right),
-                      ),
-                    ],
-                  )
-              else
-                // لو لا توجد خدمات (حالة مزامنة)، نظهر صفًا شكليًا بدل الجدول الفارغ
-                pw.TableRow(
-                  children: [
-                    pw.Padding(
-                      padding: const pw.EdgeInsets.all(8),
-                      child: pw.Text('—',
-                          style: baseText, textAlign: pw.TextAlign.center),
-                    ),
-                    pw.Padding(
-                      padding: const pw.EdgeInsets.all(8),
-                      child: pw.Text('لا توجد خدمات مسجلة',
-                          style: baseText, textAlign: pw.TextAlign.right),
-                    ),
-                  ],
-                ),
-              pw.TableRow(
-                decoration: const pw.BoxDecoration(color: PdfColors.grey200),
-                children: [
-                  pw.Padding(
-                    padding: const pw.EdgeInsets.all(8),
-                    child: pw.Text(
-                      totalCost.toStringAsFixed(2),
-                      style: pw.TextStyle(
-                          font: cairoBold,
-                          fontSize: 12,
-                          color: PdfColors.green700),
-                      textAlign: pw.TextAlign.center,
-                    ),
-                  ),
-                  pw.Padding(
-                    padding: const pw.EdgeInsets.all(8),
-                    child: pw.Text('Total',
-                        style: pw.TextStyle(
-                            font: cairoBold,
-                            fontSize: 12,
-                            color: PdfColors.green700),
-                        textAlign: pw.TextAlign.right),
-                  ),
-                ],
-              ),
-            ],
-          ),
+          ...buildServiceTables(),
         ],
       ),
     );

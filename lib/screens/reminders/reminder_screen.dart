@@ -2,7 +2,7 @@
 import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:fluttertoast/fluttertoast.dart';
+import 'package:aelmamclinic/utils/toast_utils.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -75,7 +75,7 @@ class _ReminderScreenState extends State<ReminderScreen> {
       _todayReturns = all.where((r) => sameDay(r.date, now)).toList()
         ..sort((a, b) => a.date.compareTo(b.date)); // الأقدم أولاً
     } catch (e) {
-      Fluttertoast.showToast(msg: 'فشل تحميل التذكيرات: $e');
+      await ToastUtils.show('فشل تحميل التذكيرات: $e');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -134,14 +134,14 @@ class _ReminderScreenState extends State<ReminderScreen> {
   Future<void> _call(String? phone) async {
     final p = (phone ?? '').trim();
     if (p.isEmpty) {
-      Fluttertoast.showToast(msg: 'لا يوجد رقم هاتف');
+      await ToastUtils.show('لا يوجد رقم هاتف');
       return;
     }
     final uri = Uri(scheme: 'tel', path: p);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);
     } else {
-      Fluttertoast.showToast(msg: 'لا يمكن إجراء المكالمة');
+      await ToastUtils.show('لا يمكن إجراء المكالمة');
     }
   }
 

@@ -31,6 +31,14 @@ class _ChartData {
   _ChartData(this.label, this.value);
 }
 
+double _safeTotal(Iterable<_ChartData> data) {
+  return data.fold<double>(0, (sum, d) {
+    final v = d.value;
+    if (v.isNaN || v.isInfinite) return sum;
+    return sum + v;
+  });
+}
+
 /*──────────────────────── أدوات PDF ────────────────────────*/
 class _PdfUtils {
   static Future<(pw.Font, pw.Font)> _loadFonts() async {
@@ -45,6 +53,13 @@ class _PdfUtils {
       textDirection: pw.TextDirection.rtl,
       theme: pw.ThemeData.withFont(base: base, bold: bold),
     );
+  }
+
+  static String formatNumber(double value, {int decimals = 2}) {
+    if (value.isNaN || value.isInfinite) {
+      return (0).toStringAsFixed(decimals);
+    }
+    return value.toStringAsFixed(decimals);
   }
 
   static pw.Widget header(
@@ -647,7 +662,7 @@ class _IncomeByDateWidgetState extends State<_IncomeByDateWidget> {
       _incomeByDate.entries.map((e) => _ChartData(e.key, e.value)).toList()
         ..sort((a, b) => a.label.compareTo(b.label));
 
-  double get _total => _data.fold<double>(0, (s, d) => s + d.value);
+  double get _total => _safeTotal(_data);
 
   Future<pw.Document> _buildPdf() async {
     final (base, bold) = await _PdfUtils._loadFonts();
@@ -659,7 +674,7 @@ class _IncomeByDateWidgetState extends State<_IncomeByDateWidget> {
     final rows = _incomeByDate.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
     final tableRows =
-        rows.map((e) => [e.key, e.value.toStringAsFixed(2)]).toList();
+        rows.map((e) => [e.key, _PdfUtils.formatNumber(e.value)]).toList();
 
     final doc = pw.Document();
     doc.addPage(
@@ -671,7 +686,7 @@ class _IncomeByDateWidgetState extends State<_IncomeByDateWidget> {
               logo: logo,
               clinic: clinic),
           pw.SizedBox(height: 6),
-          pw.Text('الإجمالي: ${_total.toStringAsFixed(2)}',
+          pw.Text('الإجمالي: ${_PdfUtils.formatNumber(_total)}',
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 10),
           ..._PdfUtils.lineChartsFromMap(_incomeByDate,
@@ -901,7 +916,7 @@ class _ConsumptionByDateWidgetState extends State<_ConsumptionByDateWidget> {
       _byDate.entries.map((e) => _ChartData(e.key, e.value)).toList()
         ..sort((a, b) => a.label.compareTo(b.label));
 
-  double get _total => _data.fold<double>(0, (s, d) => s + d.value);
+  double get _total => _safeTotal(_data);
 
   Future<pw.Document> _buildPdf() async {
     final (base, bold) = await _PdfUtils._loadFonts();
@@ -913,7 +928,7 @@ class _ConsumptionByDateWidgetState extends State<_ConsumptionByDateWidget> {
     final rows = _byDate.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
     final tableRows =
-        rows.map((e) => [e.key, e.value.toStringAsFixed(2)]).toList();
+        rows.map((e) => [e.key, _PdfUtils.formatNumber(e.value)]).toList();
 
     final doc = pw.Document();
     doc.addPage(
@@ -925,7 +940,7 @@ class _ConsumptionByDateWidgetState extends State<_ConsumptionByDateWidget> {
               logo: logo,
               clinic: clinic),
           pw.SizedBox(height: 6),
-          pw.Text('الإجمالي: ${_total.toStringAsFixed(2)}',
+          pw.Text('الإجمالي: ${_PdfUtils.formatNumber(_total)}',
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 10),
           ..._PdfUtils.lineChartsFromMap(_byDate,
@@ -1153,7 +1168,7 @@ class _IncomeByDoctorWidgetState extends State<_IncomeByDoctorWidget> {
       _byDoctor.entries.map((e) => _ChartData(e.key, e.value)).toList()
         ..sort((a, b) => b.value.compareTo(a.value));
 
-  double get _total => _data.fold<double>(0, (s, d) => s + d.value);
+  double get _total => _safeTotal(_data);
 
   Future<pw.Document> _buildPdf() async {
     final (base, bold) = await _PdfUtils._loadFonts();
@@ -1165,7 +1180,7 @@ class _IncomeByDoctorWidgetState extends State<_IncomeByDoctorWidget> {
     final rows = _byDoctor.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
     final tableRows =
-        rows.map((e) => [e.key, e.value.toStringAsFixed(2)]).toList();
+        rows.map((e) => [e.key, _PdfUtils.formatNumber(e.value)]).toList();
 
     final doc = pw.Document();
     doc.addPage(
@@ -1177,7 +1192,7 @@ class _IncomeByDoctorWidgetState extends State<_IncomeByDoctorWidget> {
               logo: logo,
               clinic: clinic),
           pw.SizedBox(height: 6),
-          pw.Text('الإجمالي: ${_total.toStringAsFixed(2)}',
+          pw.Text('الإجمالي: ${_PdfUtils.formatNumber(_total)}',
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 10),
           ..._PdfUtils.barChartsFromMap(_byDoctor,
@@ -1363,7 +1378,8 @@ class _ConsumptionTypeWidgetState extends State<_ConsumptionTypeWidget> {
     }
     final m = <String, double>{};
     for (final c in filtered) {
-      final type = (c.note ?? 'غير محدد').trim().isEmpty ? 'غير محدد' : c.note!;
+      final noteRaw = (c.note ?? '').trim();
+      final type = noteRaw.isEmpty ? 'غير محدد' : noteRaw;
       m[type] = (m[type] ?? 0) + c.amount;
     }
     setState(() => _byType = m);
@@ -1401,7 +1417,7 @@ class _ConsumptionTypeWidgetState extends State<_ConsumptionTypeWidget> {
       _byType.entries.map((e) => _ChartData(e.key, e.value)).toList()
         ..sort((a, b) => b.value.compareTo(a.value));
 
-  double get _total => _data.fold<double>(0, (s, d) => s + d.value);
+  double get _total => _safeTotal(_data);
 
   Future<pw.Document> _buildPdf() async {
     final (base, bold) = await _PdfUtils._loadFonts();
@@ -1413,7 +1429,7 @@ class _ConsumptionTypeWidgetState extends State<_ConsumptionTypeWidget> {
     final rows = _byType.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
     final tableRows =
-        rows.map((e) => [e.key, e.value.toStringAsFixed(2)]).toList();
+        rows.map((e) => [e.key, _PdfUtils.formatNumber(e.value)]).toList();
 
     final doc = pw.Document();
     doc.addPage(
@@ -1425,7 +1441,7 @@ class _ConsumptionTypeWidgetState extends State<_ConsumptionTypeWidget> {
               logo: logo,
               clinic: clinic),
           pw.SizedBox(height: 6),
-          pw.Text('الإجمالي: ${_total.toStringAsFixed(2)}',
+          pw.Text('الإجمالي: ${_PdfUtils.formatNumber(_total)}',
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 10),
           ..._PdfUtils.barChartsFromMap(_byType,
@@ -1643,7 +1659,7 @@ class _DoctorShareByDateWidgetState extends State<_DoctorShareByDateWidget> {
       _shareByDate.entries.map((e) => _ChartData(e.key, e.value)).toList()
         ..sort((a, b) => a.label.compareTo(b.label));
 
-  double get _total => _data.fold<double>(0, (s, d) => s + d.value);
+  double get _total => _safeTotal(_data);
 
   Future<pw.Document> _buildPdf() async {
     final (base, bold) = await _PdfUtils._loadFonts();
@@ -1655,7 +1671,7 @@ class _DoctorShareByDateWidgetState extends State<_DoctorShareByDateWidget> {
     final rows = _shareByDate.entries.toList()
       ..sort((a, b) => a.key.compareTo(b.key));
     final tableRows =
-        rows.map((e) => [e.key, e.value.toStringAsFixed(2)]).toList();
+        rows.map((e) => [e.key, _PdfUtils.formatNumber(e.value)]).toList();
 
     final doc = pw.Document();
     doc.addPage(
@@ -1667,7 +1683,7 @@ class _DoctorShareByDateWidgetState extends State<_DoctorShareByDateWidget> {
               logo: logo,
               clinic: clinic),
           pw.SizedBox(height: 6),
-          pw.Text('الإجمالي: ${_total.toStringAsFixed(2)}',
+          pw.Text('الإجمالي: ${_PdfUtils.formatNumber(_total)}',
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 10),
           ..._PdfUtils.lineChartsFromMap(_shareByDate,
@@ -1904,7 +1920,7 @@ class _NetProfitWidgetState extends State<_NetProfitWidget> {
       _netByDate.entries.map((e) => _ChartData(e.key, e.value)).toList()
         ..sort((a, b) => a.label.compareTo(b.label));
 
-  double get _total => _data.fold<double>(0, (s, d) => s + d.value);
+  double get _total => _safeTotal(_data);
 
   Future<pw.Document> _buildPdf() async {
     final (base, bold) = await _PdfUtils._loadFonts();
@@ -1916,7 +1932,7 @@ class _NetProfitWidgetState extends State<_NetProfitWidget> {
     final rows = _netByDate.entries.toList()
       ..sort((a, b) => a.key.compareTo(b.key));
     final tableRows =
-        rows.map((e) => [e.key, e.value.toStringAsFixed(2)]).toList();
+        rows.map((e) => [e.key, _PdfUtils.formatNumber(e.value)]).toList();
 
     final doc = pw.Document();
     doc.addPage(
@@ -1928,7 +1944,7 @@ class _NetProfitWidgetState extends State<_NetProfitWidget> {
               logo: logo,
               clinic: clinic),
           pw.SizedBox(height: 6),
-          pw.Text('مجموع صافي الأيام: ${_total.toStringAsFixed(2)}',
+          pw.Text('مجموع صافي الأيام: ${_PdfUtils.formatNumber(_total)}',
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 10),
           ..._PdfUtils.lineChartsFromMap(_netByDate,

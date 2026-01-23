@@ -72,6 +72,7 @@ class _DoctorServicesDetailScreenState
 
   /*────────────────── تحميل / فلترة ──────────────────*/
   Future<void> _loadDoctorServices() async {
+    if (!mounted) return;
     setState(() => _busy = true);
     try {
       final db = await DBService.instance.database;
@@ -94,6 +95,7 @@ class _DoctorServicesDetailScreenState
         ORDER BY ms.id DESC
       ''';
       final res = await db.rawQuery(sql, [widget.doctor.id]);
+      if (!mounted) return;
       setState(() {
         _doctorServices = res;
       });
@@ -104,6 +106,7 @@ class _DoctorServicesDetailScreenState
   }
 
   void _applyFilter() {
+    if (!mounted) return;
     final q = _searchCtrl.text.trim().toLowerCase();
     setState(() {
       if (q.isEmpty) {
@@ -262,6 +265,7 @@ class _DoctorServicesDetailScreenState
     );
     if (result == null || result.files.single.path == null) return;
 
+    if (!mounted) return;
     setState(() => _busy = true);
     try {
       final bytes = File(result.files.single.path!).readAsBytesSync();

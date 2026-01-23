@@ -158,94 +158,24 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
         return;
       }
 
-      // 1) المحادثات التي أشارك فيها
-      final partsData = await _runQuery(
+      // اعتمد على View الموحّد لضمان نفس منطق شاشة المحادثات (يحترم الأرشفة/الحذف)
+      final data = await _runQuery(
         '''
-        query ChatParticipants(\$uid: uuid!) {
-          chat_participants(where: {user_uid: {_eq: \$uid}}) {
-            conversation_id
+        query UnreadConversations {
+          v_chat_conversations_for_me {
+            unread_count
           }
         }
         ''',
-        {'uid': uid},
+        const {},
       );
-      final partRows = (partsData['chat_participants'] as List?) ?? const [];
-      final convIds = partRows
-          .whereType<Map>()
-          .map((r) => r['conversation_id']?.toString())
-          .whereType<String>()
-          .toSet()
-          .toList();
-
-      if (convIds.isEmpty) {
-        if (mounted) setState(() => _unreadChatsCount = 0);
-        return;
-      }
-
-      // 2) آخر نشاط للمحادثات (last_msg_at) + 3) آخر قراءة لي
-      final convData = await _runQuery(
-        '''
-        query Conversations(\$ids: [uuid!]!) {
-          chat_conversations(where: {id: {_in: \$ids}}) {
-            id
-            last_msg_at
-          }
-        }
-        ''',
-        {'ids': convIds},
-      );
-      final convRows = (convData['chat_conversations'] as List?) ?? const [];
-
-      final readData = await _runQuery(
-        '''
-        query Reads(\$uid: uuid!, \$ids: [uuid!]!) {
-          chat_reads(
-            where: {
-              user_uid: {_eq: \$uid}
-              conversation_id: {_in: \$ids}
-            }
-          ) {
-            conversation_id
-            last_read_at
-          }
-        }
-        ''',
-        {'uid': uid, 'ids': convIds},
-      );
-      final readRows = (readData['chat_reads'] as List?) ?? const [];
-
-      DateTime? _parse(dynamic v) {
-        if (v == null) return null;
-        try {
-          return DateTime.parse(v.toString()).toUtc();
-        } catch (_) {
-          return null;
-        }
-      }
-
-      final lastByConv = <String, DateTime?>{};
-      for (final r in convRows.whereType<Map>()) {
-        final id = r['id']?.toString() ?? '';
-        lastByConv[id] = _parse(r['last_msg_at']);
-      }
-
-      final readByConv = <String, DateTime?>{};
-      for (final r in readRows.whereType<Map>()) {
-        final id = r['conversation_id']?.toString() ?? '';
-        readByConv[id] = _parse(r['last_read_at']);
-      }
-
-      // 4) احسب عدد المحادثات التي فيها رسالة أحدث من آخر قراءة للمستخدم
+      final rows = (data['v_chat_conversations_for_me'] as List?) ?? const [];
       int cnt = 0;
-      for (final cid in convIds) {
-        final last = lastByConv[cid];
-        if (last == null) continue; // لا رسائل بعد
-        final read = readByConv[cid];
-        if (read == null || last.isAfter(read)) {
-          cnt++;
-        }
+      for (final r in rows.whereType<Map>()) {
+        final raw = r['unread_count'];
+        final uc = raw is num ? raw.toInt() : 0;
+        if (uc > 0) cnt++;
       }
-
       if (mounted) setState(() => _unreadChatsCount = cnt);
     } catch (_) {
       // تجاهل بهدوء؛ لا نكسر الواجهة بسبب العدّاد

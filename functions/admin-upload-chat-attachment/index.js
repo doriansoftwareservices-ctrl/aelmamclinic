@@ -187,6 +187,9 @@ async function ensureChatParticipant(authHeader, conversationId) {
       query: `
         query ChatAttachmentUploadAuth($cid: uuid!, $uid: uuid!) {
           fn_is_super_admin_gql { is_super_admin }
+          chat_can_send(args: {p_conversation_id: $cid, p_user_uid: $uid}) {
+            chat_can_send
+          }
           chat_participants(
             where: { conversation_id: { _eq: $cid }, user_uid: { _eq: $uid } }
             limit: 1
@@ -216,6 +219,15 @@ async function ensureChatParticipant(authHeader, conversationId) {
   if (isSuper) return { isSuper: true };
   const parts = json.data?.chat_participants;
   if (Array.isArray(parts) && parts.length > 0) {
+    const canSendRows = json.data?.chat_can_send;
+    if (Array.isArray(canSendRows) && canSendRows.length > 0) {
+      const canSend = canSendRows[0]?.chat_can_send === true;
+      if (!canSend) {
+        const err = new Error('chat_locked');
+        err.statusCode = 403;
+        throw err;
+      }
+    }
     return { isSuper: false };
   }
   const err = new Error('forbidden');

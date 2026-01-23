@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:fluttertoast/fluttertoast.dart';
+import 'package:aelmamclinic/utils/toast_utils.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:intl/intl.dart';
@@ -63,18 +63,12 @@ class _ListReturnsScreenState extends State<ListReturnsScreen> {
     if (status.isDenied || status.isRestricted) {
       final result = await Permission.notification.request();
       if (result.isDenied) {
-        Fluttertoast.showToast(
-          msg: 'هذا التطبيق يحتاج إلى إذن الإشعارات لتذكيرك بمواعيد العودات.',
-          toastLength: Toast.LENGTH_LONG,
-          gravity: ToastGravity.BOTTOM,
+        await ToastUtils.show(
+          'هذا التطبيق يحتاج إلى إذن الإشعارات لتذكيرك بمواعيد العودات.',
         );
       }
       if (result.isPermanentlyDenied) {
-        Fluttertoast.showToast(
-          msg: 'يرجى تمكين الإشعارات من إعدادات التطبيق.',
-          toastLength: Toast.LENGTH_LONG,
-          gravity: ToastGravity.BOTTOM,
-        );
+        await ToastUtils.show('يرجى تمكين الإشعارات من إعدادات التطبيق.');
         openAppSettings();
       }
     }
@@ -91,7 +85,7 @@ class _ListReturnsScreenState extends State<ListReturnsScreen> {
       Provider.of<AppointmentProvider>(context, listen: false)
           .loadAppointments();
     } catch (e) {
-      Fluttertoast.showToast(msg: 'فشل في تحميل العودات: $e');
+      await ToastUtils.show('فشل في تحميل العودات: $e');
     }
   }
 
@@ -162,22 +156,22 @@ class _ListReturnsScreenState extends State<ListReturnsScreen> {
   /*────────────────── حذف ──────────────────*/
   Future<void> _deleteReturn(int? id) async {
     if (id == null) {
-      Fluttertoast.showToast(msg: 'معرف العودة غير صالح.');
+      await ToastUtils.show('معرف العودة غير صالح.');
       return;
     }
     try {
       await NotificationService().cancelNotification(id % 1000000);
       final res = await DBService.instance.deleteReturn(id);
       if (res > 0) {
-        Fluttertoast.showToast(msg: 'تم حذف العودة بنجاح.');
+        await ToastUtils.show('تم حذف العودة بنجاح.');
         await _loadReturns();
       } else {
-        Fluttertoast.showToast(msg: 'لم يتم العثور على العودة لحذفها.');
+        await ToastUtils.show('لم يتم العثور على العودة لحذفها.');
       }
       Provider.of<AppointmentProvider>(context, listen: false)
           .loadAppointments();
     } catch (e) {
-      Fluttertoast.showToast(msg: 'فشل في حذف العودة: $e');
+      await ToastUtils.show('فشل في حذف العودة: $e');
     }
   }
 
@@ -232,7 +226,7 @@ class _ListReturnsScreenState extends State<ListReturnsScreen> {
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);
     } else {
-      Fluttertoast.showToast(msg: 'لا يمكن إجراء المكالمة');
+      await ToastUtils.show('لا يمكن إجراء المكالمة');
     }
   }
 
@@ -442,12 +436,13 @@ class _ListReturnsScreenState extends State<ListReturnsScreen> {
                                               tooltip: 'اتصال',
                                               icon: const Icon(Icons.phone),
                                               color: kPrimaryColor,
-                                              onPressed: () {
+                                              onPressed: () async {
                                                 if (r.phoneNumber.isNotEmpty) {
                                                   _makePhoneCall(r.phoneNumber);
                                                 } else {
-                                                  Fluttertoast.showToast(
-                                                      msg: 'لا يوجد رقم هاتف');
+                                                  await ToastUtils.show(
+                                                    'لا يوجد رقم هاتف',
+                                                  );
                                                 }
                                               },
                                             ),

@@ -6,7 +6,7 @@ import 'dart:ui' as ui show TextDirection;
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:fluttertoast/fluttertoast.dart';
+import 'package:aelmamclinic/utils/toast_utils.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -92,18 +92,18 @@ class _ActivationScreenState extends State<ActivationScreen> {
   /*────────────────── إجراءات السيريال ──────────────────*/
   Future<void> _copyCode() async {
     await Clipboard.setData(ClipboardData(text: serialCode));
-    Fluttertoast.showToast(msg: "تم نسخ السيريال بنجاح");
+    await ToastUtils.show("تم نسخ السيريال بنجاح");
   }
 
   Future<void> _pasteCode() async {
     final data = await Clipboard.getData('text/plain');
     final txt = (data?.text ?? '').trim();
     if (txt.isEmpty) {
-      Fluttertoast.showToast(msg: "لا يوجد نص في الحافظة");
+      await ToastUtils.show("لا يوجد نص في الحافظة");
       return;
     }
     setState(() => codeController.text = txt);
-    Fluttertoast.showToast(msg: "تم اللصق");
+    await ToastUtils.show("تم اللصق");
   }
 
   Future<void> _shareCode() async {
@@ -145,7 +145,7 @@ class _ActivationScreenState extends State<ActivationScreen> {
       _isLoading = false;
     });
 
-    Fluttertoast.showToast(msg: "تم تحديث السيريال");
+    await ToastUtils.show("تم تحديث السيريال");
   }
 
   /*────────────────── التفعيل ──────────────────*/
@@ -223,7 +223,7 @@ class _ActivationScreenState extends State<ActivationScreen> {
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);
     } else {
-      Fluttertoast.showToast(msg: "تعذر إجراء المكالمة.");
+      await ToastUtils.show("تعذر إجراء المكالمة.");
     }
   }
 
@@ -232,7 +232,7 @@ class _ActivationScreenState extends State<ActivationScreen> {
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } else {
-      Fluttertoast.showToast(msg: "تعذر فتح الواتساب.");
+      await ToastUtils.show("تعذر فتح الواتساب.");
     }
   }
 
