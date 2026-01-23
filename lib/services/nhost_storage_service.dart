@@ -101,12 +101,13 @@ class NhostStorageService {
           );
         } catch (restError) {
           if (_shouldRetryWithFunction(restError) &&
-              _isSubscriptionProofBucket(bucket)) {
+              _isFunctionUploadBucket(bucket)) {
             return _uploadFileViaFunction(
               file: file,
               filename: filename,
               bucketId: bucket,
               mimeType: mimeType,
+              metadata: metadata,
             );
           }
           throw HttpException('Upload failed: $restError');
@@ -132,8 +133,9 @@ class NhostStorageService {
         text.contains('not authorized');
   }
 
-  bool _isSubscriptionProofBucket(String? bucketId) {
-    return (bucketId ?? '').trim().toLowerCase() == 'subscription-proofs';
+  bool _isFunctionUploadBucket(String? bucketId) {
+    final bucket = (bucketId ?? '').trim().toLowerCase();
+    return bucket == 'subscription-proofs' || bucket == AppConstants.chatBucketName;
   }
 
   Future<Map<String, dynamic>> _uploadFileViaRest({
@@ -218,12 +220,15 @@ class NhostStorageService {
     required String filename,
     String? bucketId,
     String? mimeType,
+    Map<String, dynamic>? metadata,
   }) async {
-    final base = NhostConfig.functionsUrl.replaceAll(RegExp(r'/+$'), '');
-    final url = Uri.parse('$base/admin-upload-subscription-proof');
     final bucket = (bucketId == null || bucketId.trim().isEmpty)
         ? 'subscription-proofs'
         : bucketId.trim();
+    final base = NhostConfig.functionsUrl.replaceAll(RegExp(r'/+$'), '');
+    final url = bucket == AppConstants.chatBucketName
+        ? Uri.parse('$base/admin-upload-chat-attachment')
+        : Uri.parse('$base/admin-upload-subscription-proof');
     final bytes = await file.readAsBytes();
     final payload = <String, dynamic>{
       'filename': filename,
@@ -231,6 +236,9 @@ class NhostStorageService {
       'mimeType': mimeType,
       'base64': base64Encode(bytes),
     };
+    if (metadata != null && metadata.isNotEmpty) {
+      payload.addAll(metadata);
+    }
     final res = await _api.postJson(url, payload);
     final files = res['processedFiles'];
     if (files is List && files.isNotEmpty && files.first is Map) {
