@@ -50,10 +50,34 @@ const resolveStorageUrl = () => {
   return null;
 };
 
+function decodeJwtPayload(authHeader) {
+  if (!authHeader || !authHeader.startsWith('Bearer ')) return {};
+  const token = authHeader.slice(7).trim();
+  const parts = token.split('.');
+  if (parts.length < 2) return {};
+  try {
+    const payload = Buffer.from(parts[1], 'base64').toString('utf-8');
+    return JSON.parse(payload);
+  } catch (_) {
+    return {};
+  }
+}
+
 async function ensureChatParticipant(authHeader, conversationId) {
   const gqlUrl = process.env.NHOST_GRAPHQL_URL;
   if (!gqlUrl) {
     throw new Error('Missing NHOST_GRAPHQL_URL');
+  }
+  const payload = decodeJwtPayload(authHeader);
+  const claims = payload['https://hasura.io/jwt/claims'] || {};
+  const uid =
+    claims['x-hasura-user-id'] ||
+    payload['x-hasura-user-id'] ||
+    payload.sub;
+  if (!uid) {
+    const err = new Error('missing user id');
+    err.statusCode = 401;
+    throw err;
   }
   const res = await fetch(gqlUrl, {
     method: 'POST',
@@ -63,14 +87,17 @@ async function ensureChatParticipant(authHeader, conversationId) {
     },
     body: JSON.stringify({
       query: `
-        query ChatAttachmentUploadAuth($cid: uuid!) {
+        query ChatAttachmentUploadAuth($cid: uuid!, $uid: uuid!) {
           fn_is_super_admin_gql { is_super_admin }
-          chat_participants(where: { conversation_id: { _eq: $cid } }, limit: 1) {
+          chat_participants(
+            where: { conversation_id: { _eq: $cid }, user_uid: { _eq: $uid } }
+            limit: 1
+          ) {
             conversation_id
           }
         }
       `,
-      variables: { cid: conversationId },
+      variables: { cid: conversationId, uid },
     }),
   });
   if (!res.ok) {
@@ -213,6 +240,11 @@ module.exports = async function handler(req, res) {
     res.status(uploadRes.status).json(responsePayload);
   } catch (err) {
     const status = err?.statusCode || 500;
-    res.status(status).json({ ok: false, error: err?.message ?? 'Failed' });
+    // Log full error for Nhost function logs.
+    console.error('admin-upload-chat-attachment failed', err);
+    res.status(status).json({
+      ok: false,
+      error: err?.message ?? 'Failed',
+    });
   }
 };
