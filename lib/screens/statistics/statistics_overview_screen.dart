@@ -149,7 +149,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
     return result.data ?? <String, dynamic>{};
   }
 
-  /*────────────────── عدّاد المحادثات غير المقروءة ──────────────────*/
+  /*────────────────── عدّاد الرسائل غير المقروءة ──────────────────*/
   Future<void> _refreshUnreadChatsCount() async {
     try {
       final uid = NhostManager.client.auth.currentUser?.id;
@@ -174,7 +174,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
       for (final r in rows.whereType<Map>()) {
         final raw = r['unread_count'];
         final uc = raw is num ? raw.toInt() : 0;
-        if (uc > 0) cnt++;
+        if (uc > 0) cnt += uc;
       }
       if (mounted) setState(() => _unreadChatsCount = cnt);
     } catch (_) {
