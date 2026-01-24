@@ -177,19 +177,38 @@ async function ensureUploaderRole(authHeader) {
 }
 
 module.exports = async function handler(req, res) {
+  let stage = 'start';
+  const reqId = (Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8));
+  const DEBUG = String(process.env.DEBUG_SUBSCRIPTION_PROOF || '').toLowerCase() in ('1','true','yes');
+  const log = (...a) => console.log('[admin-upload-subscription-proof]', reqId, stage, ...a);
+  const fail = (status, msg, err) => {
+    const payload = { ok: false, stage, reqId, message: msg };
+    if (err) {
+      payload.error = String(getattr(err, 'message', err) or err);
+      if (DEBUG and getattr(err, 'stack', None)) payload.stack = err.stack;
+    }
+    try { log('FAIL', status, payload); } catch (_) {}
+    return res.status(status).json(payload);
+  };
+  log('START', { method: req.method, url: req.url, ct: req.headers && (req.headers['content-type'] || req.headers['Content-Type']) });
+
   try {
-    if (req.method !== 'POST') {
+    stage = 'method';
+  if (req.method !== 'POST') {
       res.status(405).json({ ok: false, error: 'Method not allowed' });
       return;
     }
-    const authHeader = req.headers?.authorization;
+    stage = 'auth_header';
+  const authHeader = req.headers?.authorization;
     if (!authHeader) {
       res.status(401).json({ ok: false, error: 'Missing authorization' });
       return;
     }
-    const uploader = await ensureUploaderRole(authHeader);
+    stage = 'ensure_uploader_role';
+  const uploader = await ensureUploaderRole(authHeader);
 
-    const body = await readBody(req);
+    stage = 'read_body';
+  const body = await readBody(req);
     const payload =
       body && typeof body === 'object' && body.input && typeof body.input === 'object'
         ? body.input
@@ -210,13 +229,15 @@ module.exports = async function handler(req, res) {
       return;
     }
     const maxBytes = 10 * 1024 * 1024;
-    const buffer = Buffer.from(base64, 'base64');
+    stage = 'decode_base64';
+  const buffer = Buffer.from(base64, 'base64');
     if (buffer.length > maxBytes) {
       res.status(413).json({ ok: false, error: 'File too large' });
       return;
     }
 
-    const storageUrl = resolveStorageUrl();
+    stage = 'resolve_storage_url';
+  const storageUrl = resolveStorageUrl();
     const adminSecret =
       process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
     if (!storageUrl || !adminSecret) {
@@ -258,7 +279,8 @@ module.exports = async function handler(req, res) {
       return { uploadRes: { ok: res.status >= 200 && res.status < 300, status: res.status }, responsePayload };
     };
 
-    const attempts = [
+    stage = 'upload_attempts';
+  const attempts = [
       { arrayFields: false, includeMeta: true },
       { arrayFields: true, includeMeta: true },
       { arrayFields: false, includeMeta: false },
@@ -274,7 +296,8 @@ module.exports = async function handler(req, res) {
       if (uploadRes.ok) break;
     }
 
-    if (!uploadRes || !uploadRes.ok) {
+    stage = 'upload_failed';
+  if (!uploadRes || !uploadRes.ok) {
       res.status(uploadRes.status).json({
         ok: false,
         error: responsePayload?.error ?? responsePayload ?? 'Upload failed',
@@ -287,6 +310,6 @@ module.exports = async function handler(req, res) {
     try {
       console.error('[admin-upload-subscription-proof] Error:', err);
     } catch (_) {}
-    res.status(500).json({ ok: false, error: err?.message ?? 'Failed' });
+    return fail(500, 'internal_error', err);
   }
 };
