@@ -189,7 +189,9 @@ module.exports = async function handler(req, res) {
   const fail = (status, msg, err) => {
     const payload = { ok: false, stage, reqId, message: msg };
     if (err) {
-      payload.error = String(err?.message ?? err);
+      payload.error = `stage=${stage} reqId=${reqId} ${String(
+        err?.message ?? err,
+      )}`.trim();
       if (DEBUG && err?.stack) payload.stack = err.stack;
     }
     try {
@@ -206,14 +208,12 @@ module.exports = async function handler(req, res) {
   try {
     stage = 'method';
   if (req.method !== 'POST') {
-      res.status(405).json({ ok: false, error: 'Method not allowed' });
-      return;
+      return fail(405, 'method_not_allowed');
     }
     stage = 'auth_header';
   const authHeader = req.headers?.authorization;
     if (!authHeader) {
-      res.status(401).json({ ok: false, error: 'Missing authorization' });
-      return;
+      return fail(401, 'missing_authorization');
     }
     stage = 'ensure_uploader_role';
   const uploader = await ensureUploaderRole(authHeader);
@@ -236,15 +236,13 @@ module.exports = async function handler(req, res) {
       'application/octet-stream';
 
     if (!base64) {
-      res.status(400).json({ ok: false, error: 'Missing base64 payload' });
-      return;
+      return fail(400, 'missing_base64_payload');
     }
     const maxBytes = 10 * 1024 * 1024;
     stage = 'decode_base64';
   const buffer = Buffer.from(base64, 'base64');
     if (buffer.length > maxBytes) {
-      res.status(413).json({ ok: false, error: 'File too large' });
-      return;
+      return fail(413, 'file_too_large');
     }
 
     stage = 'resolve_storage_url';
@@ -252,8 +250,7 @@ module.exports = async function handler(req, res) {
     const adminSecret =
       process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
     if (!storageUrl || !adminSecret) {
-      res.status(500).json({ ok: false, error: 'Missing storage config' });
-      return;
+      return fail(500, 'missing_storage_config');
     }
 
     const meta = { name: filename };
@@ -309,11 +306,11 @@ module.exports = async function handler(req, res) {
 
     stage = 'upload_failed';
   if (!uploadRes || !uploadRes.ok) {
-      res.status(uploadRes.status).json({
-        ok: false,
-        error: responsePayload?.error ?? responsePayload ?? 'Upload failed',
-      });
-      return;
+      return fail(
+        uploadRes?.status || 500,
+        'upload_failed',
+        responsePayload?.error ?? responsePayload ?? 'Upload failed',
+      );
     }
 
     res.status(uploadRes.status).json(responsePayload);
