@@ -41,6 +41,36 @@ const resolveStorageUrl = () => {
   return null;
 };
 
+function postJson(url, headers, body) {
+  return new Promise((resolve, reject) => {
+    const target = new URL(url);
+    const payload = JSON.stringify(body);
+    const opts = {
+      method: 'POST',
+      hostname: target.hostname,
+      port: target.port || 443,
+      path: target.pathname + target.search,
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload),
+        ...headers,
+      },
+    };
+    const req = require('https').request(opts, (res) => {
+      let data = '';
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+      res.on('end', () => {
+        resolve({ status: res.statusCode || 0, text: data });
+      });
+    });
+    req.on('error', reject);
+    req.write(payload);
+    req.end();
+  });
+}
+
 function buildMultipart({ fieldName, filename, contentType, buffer, fields }) {
   const boundary = `--------------------------${Date.now().toString(16)}${Math.random()
     .toString(16)
@@ -106,25 +136,27 @@ async function ensureUploaderRole(authHeader) {
   if (!gqlUrl) {
     throw new Error('Missing NHOST_GRAPHQL_URL');
   }
-  const res = await fetch(gqlUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: authHeader,
-    },
-    body: JSON.stringify({
+  const res = await postJson(
+    gqlUrl,
+    { Authorization: authHeader },
+    {
       query: `
         query ProofUploaderRole {
           fn_is_super_admin_gql { is_super_admin }
           my_profile { role account_id }
         }
       `,
-    }),
-  });
-  if (!res.ok) {
+    },
+  );
+  if (res.status < 200 || res.status >= 300) {
     throw new Error(`Auth check failed: ${res.status}`);
   }
-  const json = await res.json();
+  let json = {};
+  try {
+    json = JSON.parse(res.text || '{}');
+  } catch (_) {
+    json = {};
+  }
   if (json.errors?.length) {
     throw new Error(json.errors.map((e) => e.message).join(' | '));
   }
@@ -252,6 +284,9 @@ module.exports = async function handler(req, res) {
 
     res.status(uploadRes.status).json(responsePayload);
   } catch (err) {
+    try {
+      console.error('[admin-upload-subscription-proof] Error:', err);
+    } catch (_) {}
     res.status(500).json({ ok: false, error: err?.message ?? 'Failed' });
   }
 };
