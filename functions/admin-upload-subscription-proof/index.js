@@ -41,6 +41,66 @@ const resolveStorageUrl = () => {
   return null;
 };
 
+function buildMultipart({ fieldName, filename, contentType, buffer, fields }) {
+  const boundary = `--------------------------${Date.now().toString(16)}${Math.random()
+    .toString(16)
+    .slice(2)}`;
+  const chunks = [];
+  const push = (s) => chunks.push(Buffer.from(s, 'utf8'));
+  const pushField = (name, value) => {
+    push(`--${boundary}\r\n`);
+    push(`Content-Disposition: form-data; name="${name}"\r\n\r\n`);
+    push(`${value}\r\n`);
+  };
+  if (fields && typeof fields === 'object') {
+    for (const [k, v] of Object.entries(fields)) {
+      if (v === undefined || v === null) continue;
+      pushField(k, `${v}`);
+    }
+  }
+  push(`--${boundary}\r\n`);
+  push(
+    `Content-Disposition: form-data; name="${fieldName}"; filename="${filename}"\r\n`,
+  );
+  push(`Content-Type: ${contentType}\r\n\r\n`);
+  chunks.push(buffer);
+  push('\r\n');
+  push(`--${boundary}--\r\n`);
+  const body = Buffer.concat(chunks);
+  return {
+    body,
+    headers: {
+      'Content-Type': `multipart/form-data; boundary=${boundary}`,
+      'Content-Length': String(body.length),
+    },
+  };
+}
+
+function postMultipart(url, headers, body) {
+  return new Promise((resolve, reject) => {
+    const target = new URL(url);
+    const opts = {
+      method: 'POST',
+      hostname: target.hostname,
+      port: target.port || 443,
+      path: target.pathname + target.search,
+      headers,
+    };
+    const req = require('https').request(opts, (resp) => {
+      let data = '';
+      resp.on('data', (chunk) => {
+        data += chunk;
+      });
+      resp.on('end', () => {
+        resolve({ status: resp.statusCode || 0, text: data });
+      });
+    });
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
+
 async function ensureUploaderRole(authHeader) {
   const gqlUrl = process.env.NHOST_GRAPHQL_URL;
   if (!gqlUrl) {
@@ -138,38 +198,32 @@ module.exports = async function handler(req, res) {
     }
 
     const tryUpload = async (useArrayFields, includeMeta) => {
-      const form = new FormData();
-      form.append('bucket-id', bucketId);
-      if (useArrayFields) {
-        form.append('file[]', new Blob([buffer], { type: mimeType }), filename);
-        if (includeMeta) {
-          form.append(
-            'metadata[]',
-            JSON.stringify(meta),
-          );
-        }
-      } else {
-        form.append('file', new Blob([buffer], { type: mimeType }), filename);
-        if (includeMeta) {
-          form.append(
-            'metadata',
-            JSON.stringify(meta),
-          );
-        }
+      const fields = { 'bucket-id': bucketId };
+      if (includeMeta) {
+        fields[useArrayFields ? 'metadata[]' : 'metadata'] = JSON.stringify(meta);
       }
-
-      const uploadRes = await fetch(`${storageUrl}/files`, {
-        method: 'POST',
-        headers: { 'x-hasura-admin-secret': adminSecret },
-        body: form,
+      const multipart = buildMultipart({
+        fieldName: useArrayFields ? 'file[]' : 'file',
+        filename,
+        contentType: mimeType,
+        buffer,
+        fields,
       });
 
-      const text = await uploadRes.text();
-      let responsePayload = text;
+      const res = await postMultipart(
+        `${storageUrl}/files`,
+        {
+          'x-hasura-admin-secret': adminSecret,
+          ...multipart.headers,
+        },
+        multipart.body,
+      );
+
+      let responsePayload = res.text;
       try {
-        responsePayload = JSON.parse(text);
+        responsePayload = JSON.parse(res.text);
       } catch (_) {}
-      return { uploadRes, responsePayload };
+      return { uploadRes: { ok: res.status >= 200 && res.status < 300, status: res.status }, responsePayload };
     };
 
     const attempts = [

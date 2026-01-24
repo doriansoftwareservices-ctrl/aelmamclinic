@@ -61,7 +61,7 @@ import 'package:aelmamclinic/screens/admin/admin_dashboard_screen.dart';
 /// غيّر هذا الثابت حسب المطلوب:
 /// true  → إخفاء العناصر غير المسموح بها.
 /// false → إظهارها لكن تعطيل التفاعل مع تنبيه المستخدم.
-const bool kHideDeniedTabs = true;
+const bool kHideDeniedTabs = false;
 
 const Set<String> kFreePlanFeatures = {
   FeatureKeys.dashboard,

@@ -104,8 +104,8 @@ DynamicLibrary _loadWindowsSqliteLibrary() {
 }
 
 void main() {
-  WidgetsFlutterBinding.ensureInitialized();
   runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
 
     if (BackendLock.isOffline) {
       BackendLock.enforceOfflineNetwork();
