@@ -52,6 +52,16 @@ class NhostStorageService {
         ? file.uri.pathSegments.last
         : name.trim();
     try {
+      // Subscription proofs must go through the admin upload function to bypass RLS.
+      if ((bucket ?? '').isNotEmpty && (bucket ?? '') == 'subscription-proofs') {
+        return await _uploadFileViaFunction(
+          file: file,
+          filename: filename,
+          bucketId: bucket,
+          mimeType: mimeType,
+          metadata: metadata,
+        );
+      }
       // Prefer REST for chat attachments to avoid SDK auth edge cases.
       if ((bucket ?? '').isNotEmpty &&
           (bucket ?? '') == AppConstants.chatBucketName) {
@@ -129,6 +139,9 @@ class NhostStorageService {
     final text = error.toString().toLowerCase();
     return text.contains('statuscode=401') ||
         text.contains('statuscode=403') ||
+        text.contains(' 401') ||
+        text.contains(' 403') ||
+        text.contains('403 -') ||
         text.contains('unauthorized') ||
         text.contains('not authorized');
   }
