@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\zidan\AndroidStudioProjects\aelmamclinic\windows\.cache\printing\pdfium-download\CMakeFiles\59ecc3913d930fdd6614410ad0093327\generate.stamp.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{8CCFDC54-777D-32BF-B2B8-E5E85EEC54B2}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

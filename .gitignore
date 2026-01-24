@@ -127,3 +127,15 @@ server_snapshot_*/
 
 # Build/Tool caches
 windows/.cache/
+
+# --- generated / local ---
+.flutter-plugins-dependencies
+PROD_export_metadata.json
+windows/.cache/
+*.log
+
+# --- local scripts (keep out of repo unless you intentionally add a tools/ folder) ---
+fix_*.py
+hasura_*_fix.py
+resume_*_perms.py
+fix_*.sh

@@ -1,0 +1,14 @@
+# Target labels
+ pdfium-download
+# Source files and their labels
+C:/Users/zidan/AndroidStudioProjects/aelmamclinic/windows/.cache/printing/pdfium-download/CMakeFiles/pdfium-download
+C:/Users/zidan/AndroidStudioProjects/aelmamclinic/windows/.cache/printing/pdfium-download/CMakeFiles/59ecc3913d930fdd6614410ad0093327/pdfium-download.rule
+C:/Users/zidan/AndroidStudioProjects/aelmamclinic/windows/.cache/printing/pdfium-download/CMakeFiles/f4363e97483b66ca2df8f569cae4757d/pdfium-download-complete.rule
+C:/Users/zidan/AndroidStudioProjects/aelmamclinic/windows/.cache/printing/pdfium-download/CMakeFiles/964020abf390e3b98347eecbe872c44a/pdfium-download-build.rule
+C:/Users/zidan/AndroidStudioProjects/aelmamclinic/windows/.cache/printing/pdfium-download/CMakeFiles/964020abf390e3b98347eecbe872c44a/pdfium-download-configure.rule
+C:/Users/zidan/AndroidStudioProjects/aelmamclinic/windows/.cache/printing/pdfium-download/CMakeFiles/964020abf390e3b98347eecbe872c44a/pdfium-download-download.rule
+C:/Users/zidan/AndroidStudioProjects/aelmamclinic/windows/.cache/printing/pdfium-download/CMakeFiles/964020abf390e3b98347eecbe872c44a/pdfium-download-install.rule
+C:/Users/zidan/AndroidStudioProjects/aelmamclinic/windows/.cache/printing/pdfium-download/CMakeFiles/964020abf390e3b98347eecbe872c44a/pdfium-download-mkdir.rule
+C:/Users/zidan/AndroidStudioProjects/aelmamclinic/windows/.cache/printing/pdfium-download/CMakeFiles/964020abf390e3b98347eecbe872c44a/pdfium-download-patch.rule
+C:/Users/zidan/AndroidStudioProjects/aelmamclinic/windows/.cache/printing/pdfium-download/CMakeFiles/964020abf390e3b98347eecbe872c44a/pdfium-download-test.rule
+C:/Users/zidan/AndroidStudioProjects/aelmamclinic/windows/.cache/printing/pdfium-download/CMakeFiles/964020abf390e3b98347eecbe872c44a/pdfium-download-update.rule

@@ -1,503 +1,557 @@
 - function:
-    schema: public
-    name: fn_is_super_admin_gql
-  configuration:
-    exposed_as: query
-    custom_name: fn_is_super_admin_gql
-    session_argument: hasura_session
-  permissions:
-  - role: me
-  - role: user
-  - role: superadmin
-- function:
-    schema: public
-    name: debug_auth_context
-  configuration:
-    exposed_as: query
-    custom_name: debug_auth_context
-    session_argument: hasura_session
-  permissions:
-  - role: superadmin
-- function:
-    schema: public
-    name: admin_list_clinics
-  configuration:
-    exposed_as: query
-    custom_name: admin_list_clinics
-  permissions:
-  - role: superadmin
-- function:
-    schema: public
-    name: admin_set_clinic_frozen
-  configuration:
-    exposed_as: mutation
-    custom_name: admin_set_clinic_frozen
-  permissions:
-  - role: superadmin
-- function:
-    schema: public
-    name: admin_delete_clinic
-  configuration:
-    exposed_as: mutation
-    custom_name: admin_delete_clinic
-  permissions:
-  - role: superadmin
-- function:
-    schema: public
-    name: admin_reply_complaint
-  configuration:
-    exposed_as: mutation
-    custom_name: admin_reply_complaint
-  permissions:
-  - role: superadmin
-- function:
-    schema: public
-    name: admin_create_owner_full
-  configuration:
-    exposed_as: mutation
-    custom_name: admin_create_owner_full
-  permissions:
-  - role: superadmin
-- function:
-    schema: public
-    name: admin_create_employee_full
-  configuration:
-    exposed_as: mutation
-    custom_name: admin_create_employee_full
-  permissions:
-  - role: superadmin
-- function:
-    schema: public
-    name: list_employees_with_email
-  configuration:
-    exposed_as: query
-    custom_name: list_employees_with_email
-    session_argument: hasura_session
-  permissions:
-  - role: me
-  - role: user
-  - role: superadmin
-- function:
-    schema: public
-    name: set_employee_disabled
-  configuration:
-    exposed_as: mutation
-    custom_name: set_employee_disabled
-  permissions:
-  - role: me
-  - role: user
-  - role: superadmin
-- function:
-    schema: public
-    name: delete_employee
-  configuration:
-    exposed_as: mutation
-    custom_name: delete_employee
-  permissions:
-  - role: me
-  - role: user
-  - role: superadmin
-- function:
-    schema: public
-    name: owner_create_employee_within_limit
-  configuration:
-    exposed_as: mutation
-    custom_name: owner_create_employee_within_limit
-    session_argument: hasura_session
-  permissions:
-  - role: me
-  - role: user
-  - role: superadmin
-- function:
-    schema: public
-    name: owner_request_extra_employee
-  configuration:
-    exposed_as: mutation
-    custom_name: owner_request_extra_employee
-    session_argument: hasura_session
-  permissions:
-  - role: me
-  - role: user
-  - role: superadmin
-- function:
-    schema: public
-    name: owner_submit_employee_seat_payment
-  configuration:
-    exposed_as: mutation
-    custom_name: owner_submit_employee_seat_payment
-    session_argument: hasura_session
-  permissions:
-  - role: me
-  - role: user
-  - role: superadmin
-- function:
-    schema: public
-    name: superadmin_review_employee_seat_request
-  configuration:
-    exposed_as: mutation
-    custom_name: superadmin_review_employee_seat_request
-  permissions:
-  - role: superadmin
-- function:
-    schema: public
-    name: my_feature_permissions_rpc
-  configuration:
-    exposed_as: query
-    custom_name: my_feature_permissions
-    session_argument: hasura_session
-  permissions:
-  - role: me
-  - role: user
-  - role: superadmin
-- function:
-    schema: public
-    name: my_account_id_rpc
-  configuration:
-    exposed_as: query
-    custom_name: my_account_id
-    session_argument: hasura_session
-  permissions:
-  - role: me
-  - role: user
-  - role: superadmin
-- function:
-    schema: public
-    name: set_current_account
-  configuration:
-    exposed_as: mutation
-    custom_name: set_current_account
-    session_argument: hasura_session
-  permissions:
-  - role: me
-  - role: user
-  - role: superadmin
-- function:
-    schema: public
-    name: my_profile
-  configuration:
-    exposed_as: query
-    custom_name: my_profile
-    session_argument: hasura_session
-  permissions:
-  - role: me
-  - role: user
-  - role: superadmin
-- function:
-    schema: public
-    name: chat_accept_invitation
-  configuration:
-    exposed_as: mutation
-    custom_name: chat_accept_invitation
-  permissions:
-  - role: me
-  - role: user
-  - role: superadmin
-- function:
-    schema: public
-    name: chat_decline_invitation
-  configuration:
-    exposed_as: mutation
-    custom_name: chat_decline_invitation
-  permissions:
-  - role: me
-  - role: user
-  - role: superadmin
-- function:
-    schema: public
-    name: chat_mark_delivered
-  configuration:
-    exposed_as: mutation
-    custom_name: chat_mark_delivered
-  permissions:
-  - role: me
-  - role: user
-  - role: superadmin
-- function:
-    schema: public
-    name: chat_admin_start_dm
-  configuration:
-    exposed_as: mutation
-    custom_name: chat_admin_start_dm
-  permissions:
-  - role: superadmin
-- function:
-    schema: public
-    name: chat_start_dm
-  configuration:
-    exposed_as: mutation
-    custom_name: chat_start_dm
-  permissions:
-  - role: me
-  - role: user
-  - role: superadmin
-- function:
-    schema: public
-    name: my_account_plan
-  configuration:
-    exposed_as: query
-    custom_name: my_account_plan
-    session_argument: hasura_session
-  permissions:
-  - role: me
-  - role: user
-  - role: superadmin
-- function:
-    schema: public
     name: account_is_paid_gql
+    schema: public
   configuration:
-    exposed_as: query
     custom_name: account_is_paid_gql
-  permissions:
-  - role: superadmin
-- function:
-    schema: public
-    name: list_payment_methods
-  configuration:
+    custom_root_fields: {}
     exposed_as: query
-    custom_name: list_payment_methods
   permissions:
-  - role: me
-  - role: user
   - role: superadmin
 - function:
-    schema: public
-    name: create_subscription_request
-  configuration:
-    exposed_as: mutation
-    custom_name: create_subscription_request
-    session_argument: hasura_session
-  permissions:
-  - role: me
-  - role: user
-  - role: superadmin
-- function:
-    schema: public
-    name: self_create_account
-  configuration:
-    exposed_as: mutation
-    custom_name: self_create_account
-  permissions:
-  - role: me
-  - role: user
-  - role: superadmin
-- function:
-    schema: public
-    name: update_clinic_profile
-  configuration:
-    exposed_as: mutation
-    custom_name: update_clinic_profile
-  permissions:
-  - role: me
-  - role: user
-  - role: superadmin
-- function:
-    schema: public
     name: admin_approve_subscription_request
+    schema: public
   configuration:
-    exposed_as: mutation
     custom_name: admin_approve_subscription_request
-  permissions:
-  - role: superadmin
-- function:
-    schema: public
-    name: admin_reject_subscription_request
-  configuration:
+    custom_root_fields: {}
     exposed_as: mutation
-    custom_name: admin_reject_subscription_request
   permissions:
   - role: superadmin
 - function:
+    name: admin_create_employee_full
     schema: public
-    name: admin_set_account_plan
   configuration:
+    custom_name: admin_create_employee_full
+    custom_root_fields: {}
     exposed_as: mutation
-    custom_name: admin_set_account_plan
   permissions:
   - role: superadmin
 - function:
+    name: admin_create_owner_full
     schema: public
-    name: admin_payment_stats
   configuration:
-    exposed_as: query
-    custom_name: admin_payment_stats
-  permissions:
-  - role: superadmin
-- function:
-    schema: public
-    name: admin_payment_stats_by_plan
-  configuration:
-    exposed_as: query
-    custom_name: admin_payment_stats_by_plan
-  permissions:
-  - role: superadmin
-- function:
-    schema: public
-    name: admin_payment_stats_by_day
-  configuration:
-    exposed_as: query
-    custom_name: admin_payment_stats_by_day
-  permissions:
-  - role: superadmin
-- function:
-    schema: public
-    name: admin_payment_stats_by_month
-  configuration:
-    exposed_as: query
-    custom_name: admin_payment_stats_by_month
-  permissions:
-  - role: superadmin
-- function:
-    schema: public
-    name: expire_account_subscriptions
-  configuration:
+    custom_name: admin_create_owner_full
+    custom_root_fields: {}
     exposed_as: mutation
-    custom_name: expire_account_subscriptions
   permissions:
   - role: superadmin
 - function:
-    schema: public
-    name: admin_sync_super_admin_emails_gql
-  configuration:
-    exposed_as: mutation
-    custom_name: admin_sync_super_admin_emails_gql
-  permissions:
-  - role: superadmin
-- function:
-    schema: public
-    name: admin_dashboard_pending_subscription_requests
-  configuration:
-    custom_name: admin_dashboard_pending_subscription_requests
-    session_argument: hasura_session
-  permissions:
-  - role: superadmin
-- function:
-    schema: public
-    name: admin_dashboard_active_subscriptions
-  configuration:
-    custom_name: admin_dashboard_active_subscriptions
-    session_argument: hasura_session
-  permissions:
-  - role: superadmin
-- function:
-    schema: public
-    name: admin_dashboard_payments
-  configuration:
-    custom_name: admin_dashboard_payments
-    session_argument: hasura_session
-  permissions:
-  - role: superadmin
-- function:
-    schema: public
-    name: admin_dashboard_revenue_monthly
-  configuration:
-    custom_name: admin_dashboard_revenue_monthly
-    session_argument: hasura_session
-  permissions:
-  - role: superadmin
-- function:
-    schema: public
-    name: admin_dashboard_audit_tail
-  configuration:
-    custom_name: admin_dashboard_audit_tail
-    session_argument: hasura_session
-  permissions:
-  - role: superadmin
-- function:
-    schema: public
     name: admin_dashboard_account_member_counts
+    schema: public
   configuration:
     custom_name: admin_dashboard_account_member_counts
+    custom_root_fields: {}
     session_argument: hasura_session
   permissions:
   - role: superadmin
 - function:
-    schema: public
     name: admin_dashboard_account_members
+    schema: public
   configuration:
     custom_name: admin_dashboard_account_members
+    custom_root_fields: {}
     session_argument: hasura_session
   permissions:
   - role: superadmin
 - function:
+    name: admin_dashboard_active_subscriptions
     schema: public
-    name: user_cancel_subscription_request
   configuration:
+    custom_name: admin_dashboard_active_subscriptions
+    custom_root_fields: {}
+    session_argument: hasura_session
+  permissions:
+  - role: superadmin
+- function:
+    name: admin_dashboard_audit_tail
+    schema: public
+  configuration:
+    custom_name: admin_dashboard_audit_tail
+    custom_root_fields: {}
+    session_argument: hasura_session
+  permissions:
+  - role: superadmin
+- function:
+    name: admin_dashboard_payments
+    schema: public
+  configuration:
+    custom_name: admin_dashboard_payments
+    custom_root_fields: {}
+    session_argument: hasura_session
+  permissions:
+  - role: superadmin
+- function:
+    name: admin_dashboard_pending_subscription_requests
+    schema: public
+  configuration:
+    custom_name: admin_dashboard_pending_subscription_requests
+    custom_root_fields: {}
+    session_argument: hasura_session
+  permissions:
+  - role: superadmin
+- function:
+    name: admin_dashboard_revenue_monthly
+    schema: public
+  configuration:
+    custom_name: admin_dashboard_revenue_monthly
+    custom_root_fields: {}
+    session_argument: hasura_session
+  permissions:
+  - role: superadmin
+- function:
+    name: admin_delete_clinic
+    schema: public
+  configuration:
+    custom_name: admin_delete_clinic
+    custom_root_fields: {}
     exposed_as: mutation
-    custom_name: user_cancel_subscription_request
-    session_argument: hasura_session
   permissions:
-  - role: user
   - role: superadmin
 - function:
+    name: admin_list_clinics
     schema: public
-    name: chat_support_agent_gql
   configuration:
+    custom_name: admin_list_clinics
+    custom_root_fields: {}
     exposed_as: query
-    custom_name: chat_support_agent
+  permissions:
+  - role: superadmin
+- function:
+    name: admin_payment_stats
+    schema: public
+  configuration:
+    custom_name: admin_payment_stats
+    custom_root_fields: {}
+    exposed_as: query
+  permissions:
+  - role: superadmin
+- function:
+    name: admin_payment_stats_by_day
+    schema: public
+  configuration:
+    custom_name: admin_payment_stats_by_day
+    custom_root_fields: {}
+    exposed_as: query
+  permissions:
+  - role: superadmin
+- function:
+    name: admin_payment_stats_by_month
+    schema: public
+  configuration:
+    custom_name: admin_payment_stats_by_month
+    custom_root_fields: {}
+    exposed_as: query
+  permissions:
+  - role: superadmin
+- function:
+    name: admin_payment_stats_by_plan
+    schema: public
+  configuration:
+    custom_name: admin_payment_stats_by_plan
+    custom_root_fields: {}
+    exposed_as: query
+  permissions:
+  - role: superadmin
+- function:
+    name: admin_reject_subscription_request
+    schema: public
+  configuration:
+    custom_name: admin_reject_subscription_request
+    custom_root_fields: {}
+    exposed_as: mutation
+  permissions:
+  - role: superadmin
+- function:
+    name: admin_reply_complaint
+    schema: public
+  configuration:
+    custom_name: admin_reply_complaint
+    custom_root_fields: {}
+    exposed_as: mutation
+  permissions:
+  - role: superadmin
+- function:
+    name: admin_set_account_plan
+    schema: public
+  configuration:
+    custom_name: admin_set_account_plan
+    custom_root_fields: {}
+    exposed_as: mutation
+  permissions:
+  - role: superadmin
+- function:
+    name: admin_set_clinic_frozen
+    schema: public
+  configuration:
+    custom_name: admin_set_clinic_frozen
+    custom_root_fields: {}
+    exposed_as: mutation
+  permissions:
+  - role: superadmin
+- function:
+    name: admin_sync_super_admin_emails_gql
+    schema: public
+  configuration:
+    custom_name: admin_sync_super_admin_emails_gql
+    custom_root_fields: {}
+    exposed_as: mutation
+  permissions:
+  - role: superadmin
+- function:
+    name: chat_accept_invitation
+    schema: public
+  configuration:
+    custom_name: chat_accept_invitation
+    custom_root_fields: {}
+    exposed_as: mutation
   permissions:
   - role: me
   - role: user
   - role: superadmin
 - function:
+    name: chat_admin_start_dm
     schema: public
-    name: chat_set_support_agent_gql
   configuration:
+    custom_name: chat_admin_start_dm
+    custom_root_fields: {}
     exposed_as: mutation
-    custom_name: chat_set_support_agent
   permissions:
   - role: superadmin
 - function:
+    name: chat_decline_invitation
     schema: public
-    name: chat_group_set_title
   configuration:
+    custom_name: chat_decline_invitation
+    custom_root_fields: {}
     exposed_as: mutation
-    custom_name: chat_group_set_title
   permissions:
+  - role: me
   - role: user
-  - role: owner
-  - role: employee
   - role: superadmin
 - function:
-    schema: public
-    name: chat_group_set_frozen
-  configuration:
-    exposed_as: mutation
-    custom_name: chat_group_set_frozen
-  permissions:
-  - role: user
-  - role: owner
-  - role: employee
-  - role: superadmin
-- function:
-    schema: public
-    name: chat_group_set_member_role
-  configuration:
-    exposed_as: mutation
-    custom_name: chat_group_set_member_role
-  permissions:
-  - role: user
-  - role: owner
-  - role: employee
-  - role: superadmin
-- function:
-    schema: public
-    name: chat_group_remove_member
-  configuration:
-    exposed_as: mutation
-    custom_name: chat_group_remove_member
-  permissions:
-  - role: user
-  - role: owner
-  - role: employee
-  - role: superadmin
-- function:
-    schema: public
     name: chat_group_delete
+    schema: public
   configuration:
-    exposed_as: mutation
     custom_name: chat_group_delete
+    custom_root_fields: {}
+    exposed_as: mutation
   permissions:
   - role: user
   - role: owner
   - role: employee
+  - role: superadmin
+- function:
+    name: chat_group_remove_member
+    schema: public
+  configuration:
+    custom_name: chat_group_remove_member
+    custom_root_fields: {}
+    exposed_as: mutation
+  permissions:
+  - role: user
+  - role: owner
+  - role: employee
+  - role: superadmin
+- function:
+    name: chat_group_set_frozen
+    schema: public
+  configuration:
+    custom_name: chat_group_set_frozen
+    custom_root_fields: {}
+    exposed_as: mutation
+  permissions:
+  - role: user
+  - role: owner
+  - role: employee
+  - role: superadmin
+- function:
+    name: chat_group_set_member_role
+    schema: public
+  configuration:
+    custom_name: chat_group_set_member_role
+    custom_root_fields: {}
+    exposed_as: mutation
+  permissions:
+  - role: user
+  - role: owner
+  - role: employee
+  - role: superadmin
+- function:
+    name: chat_group_set_title
+    schema: public
+  configuration:
+    custom_name: chat_group_set_title
+    custom_root_fields: {}
+    exposed_as: mutation
+  permissions:
+  - role: user
+  - role: owner
+  - role: employee
+  - role: superadmin
+- function:
+    name: chat_mark_delivered
+    schema: public
+  configuration:
+    custom_name: chat_mark_delivered
+    custom_root_fields: {}
+    exposed_as: mutation
+  permissions:
+  - role: me
+  - role: user
+  - role: superadmin
+- function:
+    name: chat_set_support_agent_gql
+    schema: public
+  configuration:
+    custom_name: chat_set_support_agent
+    custom_root_fields: {}
+    exposed_as: mutation
+  permissions:
+  - role: superadmin
+- function:
+    name: chat_start_dm
+    schema: public
+  configuration:
+    custom_name: chat_start_dm
+    custom_root_fields: {}
+    exposed_as: mutation
+  permissions:
+  - role: me
+  - role: user
+  - role: superadmin
+- function:
+    name: chat_support_agent_gql
+    schema: public
+  configuration:
+    custom_name: chat_support_agent
+    custom_root_fields: {}
+    exposed_as: query
+  permissions:
+  - role: me
+  - role: user
+  - role: superadmin
+- function:
+    name: create_subscription_request
+    schema: public
+  configuration:
+    custom_name: create_subscription_request
+    custom_root_fields: {}
+    exposed_as: mutation
+    session_argument: hasura_session
+  permissions:
+  - role: me
+  - role: user
+  - role: superadmin
+- function:
+    name: debug_auth_context
+    schema: public
+  configuration:
+    custom_name: debug_auth_context
+    custom_root_fields: {}
+    exposed_as: query
+    session_argument: hasura_session
+  permissions:
+  - role: superadmin
+- function:
+    name: delete_employee
+    schema: public
+  configuration:
+    custom_name: delete_employee
+    custom_root_fields: {}
+    exposed_as: mutation
+  permissions:
+  - role: me
+  - role: user
+  - role: superadmin
+- function:
+    name: expire_account_subscriptions
+    schema: public
+  configuration:
+    custom_name: expire_account_subscriptions
+    custom_root_fields: {}
+    exposed_as: mutation
+  permissions:
+  - role: superadmin
+- function:
+    name: fn_is_super_admin_gql
+    schema: public
+  configuration:
+    custom_name: fn_is_super_admin_gql
+    custom_root_fields: {}
+    exposed_as: query
+    session_argument: hasura_session
+  permissions:
+  - role: me
+  - role: user
+  - role: superadmin
+- function:
+    name: list_employees_with_email
+    schema: public
+  configuration:
+    custom_name: list_employees_with_email
+    custom_root_fields: {}
+    exposed_as: query
+    session_argument: hasura_session
+  permissions:
+  - role: me
+  - role: user
+  - role: superadmin
+- function:
+    name: list_payment_methods
+    schema: public
+  configuration:
+    custom_name: list_payment_methods
+    custom_root_fields: {}
+    exposed_as: query
+  permissions:
+  - role: me
+  - role: user
+  - role: superadmin
+- function:
+    name: my_account_id_rpc
+    schema: public
+  configuration:
+    custom_name: my_account_id
+    custom_root_fields: {}
+    exposed_as: query
+    session_argument: hasura_session
+  permissions:
+  - role: me
+  - role: user
+  - role: superadmin
+- function:
+    name: my_account_plan
+    schema: public
+  configuration:
+    custom_name: my_account_plan
+    custom_root_fields: {}
+    exposed_as: query
+    session_argument: hasura_session
+  permissions:
+  - role: me
+  - role: user
+  - role: superadmin
+- function:
+    name: my_feature_permissions_rpc
+    schema: public
+  configuration:
+    custom_name: my_feature_permissions
+    custom_root_fields: {}
+    exposed_as: query
+    session_argument: hasura_session
+  permissions:
+  - role: me
+  - role: user
+  - role: superadmin
+- function:
+    name: my_profile
+    schema: public
+  configuration:
+    custom_name: my_profile
+    custom_root_fields: {}
+    exposed_as: query
+    session_argument: hasura_session
+  permissions:
+  - role: me
+  - role: user
+  - role: superadmin
+- function:
+    name: owner_create_employee_within_limit
+    schema: public
+  configuration:
+    custom_name: owner_create_employee_within_limit
+    custom_root_fields: {}
+    exposed_as: mutation
+    session_argument: hasura_session
+  permissions:
+  - role: me
+  - role: user
+  - role: superadmin
+- function:
+    name: owner_request_extra_employee
+    schema: public
+  configuration:
+    custom_name: owner_request_extra_employee
+    custom_root_fields: {}
+    exposed_as: mutation
+    session_argument: hasura_session
+  permissions:
+  - role: me
+  - role: user
+  - role: superadmin
+- function:
+    name: owner_submit_employee_seat_payment
+    schema: public
+  configuration:
+    custom_name: owner_submit_employee_seat_payment
+    custom_root_fields: {}
+    exposed_as: mutation
+    session_argument: hasura_session
+  permissions:
+  - role: me
+  - role: user
+  - role: superadmin
+- function:
+    name: self_create_account
+    schema: public
+  configuration:
+    custom_name: self_create_account
+    custom_root_fields: {}
+    exposed_as: mutation
+  permissions:
+  - role: me
+  - role: user
+  - role: superadmin
+- function:
+    name: set_current_account
+    schema: public
+  configuration:
+    custom_name: set_current_account
+    custom_root_fields: {}
+    exposed_as: mutation
+    session_argument: hasura_session
+  permissions:
+  - role: me
+  - role: user
+  - role: superadmin
+- function:
+    name: set_employee_disabled
+    schema: public
+  configuration:
+    custom_name: set_employee_disabled
+    custom_root_fields: {}
+    exposed_as: mutation
+  permissions:
+  - role: me
+  - role: user
+  - role: superadmin
+- function:
+    name: superadmin_review_employee_seat_request
+    schema: public
+  configuration:
+    custom_name: superadmin_review_employee_seat_request
+    custom_root_fields: {}
+    exposed_as: mutation
+  permissions:
+  - role: superadmin
+- function:
+    name: update_clinic_profile
+    schema: public
+  configuration:
+    custom_name: update_clinic_profile
+    custom_root_fields: {}
+    exposed_as: mutation
+  permissions:
+  - role: me
+  - role: user
+  - role: superadmin
+- function:
+    name: user_cancel_subscription_request
+    schema: public
+  configuration:
+    custom_name: user_cancel_subscription_request
+    custom_root_fields: {}
+    exposed_as: mutation
+    session_argument: hasura_session
+  permissions:
+  - role: user
   - role: superadmin
