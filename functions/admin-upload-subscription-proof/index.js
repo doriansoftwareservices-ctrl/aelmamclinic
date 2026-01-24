@@ -188,12 +188,11 @@ module.exports = async function handler(req, res) {
     console.log('[admin-upload-subscription-proof]', reqId, stage, ...a);
   const fail = (status, msg, err) => {
     const payload = { ok: false, stage, reqId, message: msg, status };
-    if (err) {
-      payload.error = `stage=${stage} reqId=${reqId} ${String(
-        err?.message ?? err,
-      )}`.trim();
-      if (DEBUG && err?.stack) payload.stack = err.stack;
-    }
+    const errText = err ? String(err?.message ?? err) : '';
+    payload.error = `stage=${stage} reqId=${reqId} ${msg}${
+      errText ? ` | ${errText}` : ''
+    }`.trim();
+    if (DEBUG && err?.stack) payload.stack = err.stack;
     try {
       log('FAIL', status, payload);
     } catch (_) {}
@@ -315,7 +314,7 @@ module.exports = async function handler(req, res) {
       return fail(
         uploadRes?.status || 500,
         detail,
-        responsePayload?.error ?? responsePayload ?? responseText ?? 'Upload failed',
+        detail,
       );
     }
 
