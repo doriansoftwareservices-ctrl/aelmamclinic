@@ -211,11 +211,20 @@ module.exports = async function handler(req, res) {
     }
     stage = 'auth_header';
   const authHeader = req.headers?.authorization;
-    if (!authHeader) {
+    const adminSecret =
+      process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
+    const adminHeader =
+      req.headers?.['x-hasura-admin-secret'] ||
+      req.headers?.['x-nhost-admin-secret'];
+    const hasAdminSecret =
+      adminSecret && adminHeader && `${adminHeader}` === `${adminSecret}`;
+    if (!authHeader && !hasAdminSecret) {
       return fail(401, 'missing_authorization');
     }
     stage = 'ensure_uploader_role';
-  const uploader = await ensureUploaderRole(authHeader);
+  const uploader = hasAdminSecret
+      ? { isSuper: true, accountId: '' }
+      : await ensureUploaderRole(authHeader);
 
     stage = 'read_body';
   const body = await readBody(req);
@@ -274,6 +283,7 @@ module.exports = async function handler(req, res) {
         `${storageUrl}/files`,
         {
           'x-hasura-admin-secret': adminSecret,
+          'x-nhost-admin-secret': adminSecret,
           ...multipart.headers,
         },
         multipart.body,
