@@ -178,19 +178,30 @@ async function ensureUploaderRole(authHeader) {
 
 module.exports = async function handler(req, res) {
   let stage = 'start';
-  const reqId = (Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8));
-  const DEBUG = String(process.env.DEBUG_SUBSCRIPTION_PROOF || '').toLowerCase() in ('1','true','yes');
-  const log = (...a) => console.log('[admin-upload-subscription-proof]', reqId, stage, ...a);
+  const reqId = `${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
+  const DEBUG = ['1', 'true', 'yes'].includes(
+    String(process.env.DEBUG_SUBSCRIPTION_PROOF || '').toLowerCase(),
+  );
+  const log = (...a) =>
+    console.log('[admin-upload-subscription-proof]', reqId, stage, ...a);
   const fail = (status, msg, err) => {
     const payload = { ok: false, stage, reqId, message: msg };
     if (err) {
-      payload.error = String(getattr(err, 'message', err) or err);
-      if (DEBUG and getattr(err, 'stack', None)) payload.stack = err.stack;
+      payload.error = String(err?.message ?? err);
+      if (DEBUG && err?.stack) payload.stack = err.stack;
     }
-    try { log('FAIL', status, payload); } catch (_) {}
+    try {
+      log('FAIL', status, payload);
+    } catch (_) {}
     return res.status(status).json(payload);
   };
-  log('START', { method: req.method, url: req.url, ct: req.headers && (req.headers['content-type'] || req.headers['Content-Type']) });
+  log('START', {
+    method: req.method,
+    url: req.url,
+    ct: req.headers && (req.headers['content-type'] || req.headers['Content-Type']),
+  });
 
   try {
     stage = 'method';
