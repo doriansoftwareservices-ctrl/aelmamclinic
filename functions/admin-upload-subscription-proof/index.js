@@ -187,7 +187,7 @@ module.exports = async function handler(req, res) {
   const log = (...a) =>
     console.log('[admin-upload-subscription-proof]', reqId, stage, ...a);
   const fail = (status, msg, err) => {
-    const payload = { ok: false, stage, reqId, message: msg };
+    const payload = { ok: false, stage, reqId, message: msg, status };
     if (err) {
       payload.error = `stage=${stage} reqId=${reqId} ${String(
         err?.message ?? err,
@@ -296,20 +296,26 @@ module.exports = async function handler(req, res) {
     ];
     let uploadRes;
     let responsePayload;
+    let responseText;
     for (const attempt of attempts) {
       ({ uploadRes, responsePayload } = await tryUpload(
         attempt.arrayFields,
         attempt.includeMeta,
       ));
+      responseText =
+        typeof responsePayload === 'string'
+          ? responsePayload
+          : JSON.stringify(responsePayload ?? {});
       if (uploadRes.ok) break;
     }
 
     stage = 'upload_failed';
   if (!uploadRes || !uploadRes.ok) {
+      const detail = `upload_failed status=${uploadRes?.status || 0} body=${responseText ?? ''}`;
       return fail(
         uploadRes?.status || 500,
-        'upload_failed',
-        responsePayload?.error ?? responsePayload ?? 'Upload failed',
+        detail,
+        responsePayload?.error ?? responsePayload ?? responseText ?? 'Upload failed',
       );
     }
 
