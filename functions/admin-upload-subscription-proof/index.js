@@ -255,8 +255,7 @@ module.exports = async function handler(req, res) {
 
     stage = 'resolve_storage_url';
   const storageUrl = resolveStorageUrl();
-    const adminSecret =
-      process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
+    // Reuse adminSecret from auth_header stage.
     if (!storageUrl || !adminSecret) {
       return fail(500, 'missing_storage_config');
     }
