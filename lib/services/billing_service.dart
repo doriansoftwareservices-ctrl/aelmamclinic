@@ -12,6 +12,39 @@ class BillingService {
       : _gql = client ?? NhostGraphqlService.client;
 
   final GraphQLClient _gql;
+  static const int _maxQueryAttempts = 4;
+
+  bool _isTransientException(OperationException ex) {
+    final msg = ex.toString().toLowerCase();
+    return msg.contains('responseformatexception') ||
+        msg.contains('formatexception') ||
+        msg.contains('unexpected character') ||
+        msg.contains('503') ||
+        msg.contains('502') ||
+        msg.contains('bad gateway') ||
+        msg.contains('service temporarily unavailable') ||
+        msg.contains('eof') ||
+        msg.contains('context deadline exceeded');
+  }
+
+  Future<QueryResult> _queryWithRetry(
+    QueryOptions options, {
+    int maxAttempts = _maxQueryAttempts,
+  }) async {
+    var attempt = 0;
+    while (true) {
+      attempt += 1;
+      final res = await _gql.query(options);
+      if (!res.hasException) return res;
+      final ex = res.exception!;
+      if (attempt >= maxAttempts || !_isTransientException(ex)) {
+        throw ex;
+      }
+      await Future<void>.delayed(
+        Duration(milliseconds: 350 * attempt),
+      );
+    }
+  }
 
   Future<Map<String, dynamic>> fetchMyPlanDetails() async {
     const query = r'''
@@ -22,12 +55,9 @@ class BillingService {
         }
       }
     ''';
-    final res = await _gql.query(
+    final res = await _queryWithRetry(
       QueryOptions(document: gql(query), fetchPolicy: FetchPolicy.noCache),
     );
-    if (res.hasException) {
-      throw res.exception!;
-    }
     final rows = (res.data?['my_account_plan'] as List?) ?? const [];
     if (rows.isEmpty) return {'plan_code': 'free', 'plan_end_at': null};
     return Map<String, dynamic>.from(rows.first as Map);
@@ -45,12 +75,9 @@ class BillingService {
         }
       }
     ''';
-    final res = await _gql.query(
+    final res = await _queryWithRetry(
       QueryOptions(document: gql(query), fetchPolicy: FetchPolicy.noCache),
     );
-    if (res.hasException) {
-      throw res.exception!;
-    }
     final rows = (res.data?['subscription_plans'] as List?) ?? const [];
     return rows
         .whereType<Map>()
@@ -66,12 +93,9 @@ class BillingService {
         }
       }
     ''';
-    final res = await _gql.query(
+    final res = await _queryWithRetry(
       QueryOptions(document: gql(query), fetchPolicy: FetchPolicy.noCache),
     );
-    if (res.hasException) {
-      throw res.exception!;
-    }
     final rows = (res.data?['my_account_plan'] as List?) ?? const [];
     if (rows.isEmpty) return 'free';
     return (rows.first as Map)['plan_code']?.toString().toLowerCase() ?? 'free';
@@ -89,12 +113,9 @@ class BillingService {
         }
       }
     ''';
-    final res = await _gql.query(
+    final res = await _queryWithRetry(
       QueryOptions(document: gql(query), fetchPolicy: FetchPolicy.noCache),
     );
-    if (res.hasException) {
-      throw res.exception!;
-    }
     final rows = (res.data?['list_payment_methods'] as List?) ?? const [];
     return rows
         .whereType<Map>()
