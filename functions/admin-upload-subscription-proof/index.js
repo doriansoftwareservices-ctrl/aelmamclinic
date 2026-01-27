@@ -250,21 +250,12 @@ module.exports = async function handler(req, res) {
       return fail(405, 'method_not_allowed');
     }
     stage = 'auth_header';
-  const authHeader = req.headers?.authorization;
-    const adminSecret =
-      process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
-    const adminHeader =
-      req.headers?.['x-hasura-admin-secret'] ||
-      req.headers?.['x-nhost-admin-secret'];
-    const hasAdminSecret =
-      adminSecret && adminHeader && `${adminHeader}` === `${adminSecret}`;
-    if (!authHeader && !hasAdminSecret) {
+    const authHeader = req.headers?.authorization;
+    if (!authHeader) {
       return fail(401, 'missing_authorization');
     }
     stage = 'ensure_uploader_role';
-  const uploader = hasAdminSecret
-      ? { isSuper: true, accountId: '' }
-      : await ensureUploaderRole(authHeader);
+    const uploader = await ensureUploaderRole(authHeader);
 
     stage = 'read_body';
   const body = await readBody(req);
@@ -294,9 +285,8 @@ module.exports = async function handler(req, res) {
     }
 
     stage = 'resolve_storage_url';
-  const storageUrl = resolveStorageUrl();
-    // Reuse adminSecret from auth_header stage.
-    if (!storageUrl || !adminSecret) {
+    const storageUrl = resolveStorageUrl();
+    if (!storageUrl) {
       return fail(500, 'missing_storage_config');
     }
 
@@ -305,84 +295,52 @@ module.exports = async function handler(req, res) {
       meta.metadata = { account_id: uploader.accountId };
     }
 
-    const tryUpload = async (useArrayFields, includeMeta) => {
-      const fields = { 'bucket-id': bucketId };
-      const extraFiles = [];
-      if (includeMeta) {
-        const metaJson = JSON.stringify(meta);
-        fields[useArrayFields ? 'metadata[]' : 'metadata'] = metaJson;
-        extraFiles.push({
-          name: useArrayFields ? 'metadata[]' : 'metadata',
-          filename: '',
-          contentType: 'application/json',
-          buffer: Buffer.from(metaJson, 'utf8'),
-        });
-      }
-      // Add both file and file[] to satisfy storage validators in different versions.
-      const primaryField = useArrayFields ? 'file[]' : 'file';
-      const secondaryField = useArrayFields ? 'file' : 'file[]';
-      extraFiles.push({
-        name: secondaryField,
-        filename,
-        contentType: mimeType,
-        buffer,
-      });
-      const multipart = buildMultipart({
-        fieldName: primaryField,
-        filename,
-        contentType: mimeType,
-        buffer,
-        fields,
-        extraFiles,
-      });
-
-      const res = await postMultipart(
-        `${storageUrl}/files`,
-        {
-          'x-hasura-admin-secret': adminSecret,
-          'x-nhost-admin-secret': adminSecret,
-          ...multipart.headers,
-        },
-        multipart.body,
-      );
-
-      let responsePayload = res.text;
-      try {
-        responsePayload = JSON.parse(res.text);
-      } catch (_) {}
-      return { uploadRes: { ok: res.status >= 200 && res.status < 300, status: res.status }, responsePayload };
-    };
+    const fields = { 'bucket-id': bucketId };
+    const metaJson = JSON.stringify(meta);
+    const extraFiles = [
+      {
+        name: 'metadata[]',
+        filename: '',
+        contentType: 'application/json',
+        buffer: Buffer.from(metaJson, 'utf8'),
+      },
+    ];
+    const multipart = buildMultipart({
+      fieldName: 'file[]',
+      filename,
+      contentType: mimeType,
+      buffer,
+      fields,
+      extraFiles,
+    });
 
     stage = 'upload_attempts';
-    const attempts = [
-      { arrayFields: true, includeMeta: true },
-      { arrayFields: true, includeMeta: false },
-      { arrayFields: false, includeMeta: true },
-      { arrayFields: false, includeMeta: false },
-    ];
-    let uploadRes;
-    let responsePayload;
-    let responseText;
-    for (const attempt of attempts) {
-      ({ uploadRes, responsePayload } = await tryUpload(
-        attempt.arrayFields,
-        attempt.includeMeta,
-      ));
-      responseText =
-        typeof responsePayload === 'string'
-          ? responsePayload
-          : JSON.stringify(responsePayload ?? {});
-      if (uploadRes.ok) break;
-    }
+    const res = await postMultipart(
+      `${storageUrl}/files`,
+      {
+        Authorization: authHeader,
+        ...multipart.headers,
+      },
+      multipart.body,
+    );
+
+    let responsePayload = res.text;
+    try {
+      responsePayload = JSON.parse(res.text);
+    } catch (_) {}
+    const uploadRes = {
+      ok: res.status >= 200 && res.status < 300,
+      status: res.status,
+    };
+    const responseText =
+      typeof responsePayload === 'string'
+        ? responsePayload
+        : JSON.stringify(responsePayload ?? {});
 
     stage = 'upload_failed';
-  if (!uploadRes || !uploadRes.ok) {
-      const detail = `upload_failed status=${uploadRes?.status || 0} body=${responseText ?? ''}`;
-      return fail(
-        uploadRes?.status || 500,
-        detail,
-        detail,
-      );
+    if (!uploadRes.ok) {
+      const detail = `upload_failed status=${uploadRes.status} body=${responseText}`;
+      return fail(uploadRes.status || 500, detail, detail);
     }
 
     res.status(uploadRes.status).json(responsePayload);
