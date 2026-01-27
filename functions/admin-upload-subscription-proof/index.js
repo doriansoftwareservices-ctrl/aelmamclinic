@@ -89,7 +89,14 @@ function postJson(url, headers, body) {
   });
 }
 
-function buildMultipart({ fieldName, filename, contentType, buffer, fields }) {
+function buildMultipart({
+  fieldName,
+  filename,
+  contentType,
+  buffer,
+  fields,
+  extraFiles,
+}) {
   const boundary = `--------------------------${Date.now().toString(16)}${Math.random()
     .toString(16)
     .slice(2)}`;
@@ -113,6 +120,21 @@ function buildMultipart({ fieldName, filename, contentType, buffer, fields }) {
   push(`Content-Type: ${contentType}\r\n\r\n`);
   chunks.push(buffer);
   push('\r\n');
+  if (Array.isArray(extraFiles)) {
+    for (const part of extraFiles) {
+      if (!part || !part.name || !part.buffer) continue;
+      const partName = part.name;
+      const partFilename = part.filename ?? '';
+      const partType = part.contentType ?? 'application/octet-stream';
+      push(`--${boundary}\r\n`);
+      push(
+        `Content-Disposition: form-data; name="${partName}"; filename="${partFilename}"\r\n`,
+      );
+      push(`Content-Type: ${partType}\r\n\r\n`);
+      chunks.push(part.buffer);
+      push('\r\n');
+    }
+  }
   push(`--${boundary}--\r\n`);
   const body = Buffer.concat(chunks);
   return {
@@ -280,13 +302,19 @@ module.exports = async function handler(req, res) {
 
     const meta = { name: filename };
     if (uploader && uploader.accountId) {
-      meta.account_id = uploader.accountId;
+      meta.metadata = { account_id: uploader.accountId };
     }
 
     const tryUpload = async (useArrayFields, includeMeta) => {
       const fields = { 'bucket-id': bucketId };
+      const extraFiles = [];
       if (includeMeta) {
-        fields[useArrayFields ? 'metadata[]' : 'metadata'] = JSON.stringify(meta);
+        extraFiles.push({
+          name: useArrayFields ? 'metadata[]' : 'metadata',
+          filename: '',
+          contentType: 'application/json',
+          buffer: Buffer.from(JSON.stringify(meta), 'utf8'),
+        });
       }
       const multipart = buildMultipart({
         fieldName: useArrayFields ? 'file[]' : 'file',
@@ -294,6 +322,7 @@ module.exports = async function handler(req, res) {
         contentType: mimeType,
         buffer,
         fields,
+        extraFiles,
       });
 
       const res = await postMultipart(
@@ -314,11 +343,11 @@ module.exports = async function handler(req, res) {
     };
 
     stage = 'upload_attempts';
-  const attempts = [
-      { arrayFields: false, includeMeta: true },
+    const attempts = [
       { arrayFields: true, includeMeta: true },
-      { arrayFields: false, includeMeta: false },
       { arrayFields: true, includeMeta: false },
+      { arrayFields: false, includeMeta: true },
+      { arrayFields: false, includeMeta: false },
     ];
     let uploadRes;
     let responsePayload;
