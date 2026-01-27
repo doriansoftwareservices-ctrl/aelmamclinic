@@ -13,31 +13,49 @@ const readBody = (req) =>
   });
 
 const resolveStorageUrl = () => {
+  const subdomain = process.env.NHOST_SUBDOMAIN;
+  const region = process.env.NHOST_REGION;
+  if (subdomain && region) {
+    return `https://${subdomain}.storage.${region}.nhost.run/v1`;
+  }
+
+  const normalize = (raw) => {
+    if (!raw) return null;
+    let url = raw.replace(/\/+$/, '');
+    if (!url.includes('nhost.run')) return null;
+
+    url = url
+      .replace('.graphql.', '.storage.')
+      .replace('.hasura.', '.storage.')
+      .replace('.functions.', '.storage.')
+      .replace('.auth.', '.storage.')
+      .replace('.backend.', '.storage.');
+
+    url = url
+      .replace(/\/v1\/graphql$/i, '')
+      .replace(/\/graphql$/i, '')
+      .replace(/\/v1$/i, '');
+
+    if (!url.includes('.storage.') && region) {
+      const m = url.match(/^https?:\/\/([a-z0-9-]+)(?:\.[a-z0-9-]+)*\.nhost\.run/i);
+      if (m) {
+        return `https://${m[1]}.storage.${region}.nhost.run/v1`;
+      }
+    }
+
+    return `${url}/v1`;
+  };
+
   const candidates = [
     process.env.NHOST_STORAGE_URL,
     process.env.NHOST_BACKEND_URL,
     process.env.NHOST_GRAPHQL_URL,
   ];
   for (const raw of candidates) {
-    if (!raw) continue;
-    if (!raw.includes('nhost.run')) continue;
-    let url = raw.replace(/\/+$/, '');
-    url = url
-      .replace('.graphql.', '.storage.')
-      .replace('.functions.', '.storage.')
-      .replace('.auth.', '.storage.');
-    url = url
-      .replace(/\/v1\/graphql$/i, '')
-      .replace(/\/graphql$/i, '')
-      .replace(/\/v1$/i, '');
-    url = `${url}/v1`;
-    return url;
+    const normalized = normalize(raw);
+    if (normalized) return normalized;
   }
-  const subdomain = process.env.NHOST_SUBDOMAIN;
-  const region = process.env.NHOST_REGION;
-  if (subdomain && region) {
-    return `https://${subdomain}.storage.${region}.nhost.run/v1`;
-  }
+
   return null;
 };
 
