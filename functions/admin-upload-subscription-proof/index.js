@@ -309,15 +309,26 @@ module.exports = async function handler(req, res) {
       const fields = { 'bucket-id': bucketId };
       const extraFiles = [];
       if (includeMeta) {
+        const metaJson = JSON.stringify(meta);
+        fields[useArrayFields ? 'metadata[]' : 'metadata'] = metaJson;
         extraFiles.push({
           name: useArrayFields ? 'metadata[]' : 'metadata',
           filename: '',
           contentType: 'application/json',
-          buffer: Buffer.from(JSON.stringify(meta), 'utf8'),
+          buffer: Buffer.from(metaJson, 'utf8'),
         });
       }
+      // Add both file and file[] to satisfy storage validators in different versions.
+      const primaryField = useArrayFields ? 'file[]' : 'file';
+      const secondaryField = useArrayFields ? 'file' : 'file[]';
+      extraFiles.push({
+        name: secondaryField,
+        filename,
+        contentType: mimeType,
+        buffer,
+      });
       const multipart = buildMultipart({
-        fieldName: useArrayFields ? 'file[]' : 'file',
+        fieldName: primaryField,
         filename,
         contentType: mimeType,
         buffer,
