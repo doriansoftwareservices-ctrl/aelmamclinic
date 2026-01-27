@@ -178,10 +178,7 @@ class BillingService {
     );
     if (res.hasException) {
       final ex = res.exception!;
-      final msg = ex.graphqlErrors.map((e) => e.message).join(' | ');
-      final lowered = msg.toLowerCase();
-      if (lowered.contains('database query error') ||
-          lowered.contains('unexpected')) {
+      if (_isSchemaError(ex)) {
         final fallbackId = await _fallbackInsertSubscriptionRequest(
           planCode: planCode,
           paymentMethodId: paymentMethodId,
@@ -198,6 +195,16 @@ class BillingService {
         (res.data?['create_subscription_request'] as List?) ?? const [];
     if (rows.isEmpty) return '';
     return (rows.first as Map)['id']?.toString() ?? '';
+  }
+
+  bool _isSchemaError(OperationException ex) {
+    final message = ex.graphqlErrors.isEmpty
+        ? ex.toString()
+        : ex.graphqlErrors.map((e) => e.message).join(' | ');
+    final lower = message.toLowerCase();
+    return lower.contains('not found in type') ||
+        (lower.contains('field') && lower.contains('not found')) ||
+        (lower.contains('does not exist') && lower.contains('function'));
   }
 
   Future<double?> _fetchPlanPrice(String planCode) async {

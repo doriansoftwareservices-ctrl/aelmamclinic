@@ -1,0 +1,1 @@
+-- No-op: keep create_subscription_request pending-update behavior.

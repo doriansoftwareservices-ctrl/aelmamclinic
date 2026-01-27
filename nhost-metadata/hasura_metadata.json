@@ -800,7 +800,135 @@
             },
             "use_prepared_statements": true
           }
-        }
+        },
+        "functions": [
+          {
+            "function": {
+              "schema": "public",
+              "name": "chat_accept_invitation"
+            },
+            "configuration": {
+              "custom_name": "chat_accept_invitation",
+              "custom_root_fields": {},
+              "exposed_as": "mutation"
+            },
+            "permissions": [
+              {
+                "role": "me"
+              },
+              {
+                "role": "user"
+              },
+              {
+                "role": "superadmin"
+              }
+            ]
+          },
+          {
+            "function": {
+              "schema": "public",
+              "name": "chat_decline_invitation"
+            },
+            "configuration": {
+              "custom_name": "chat_decline_invitation",
+              "custom_root_fields": {},
+              "exposed_as": "mutation"
+            },
+            "permissions": [
+              {
+                "role": "me"
+              },
+              {
+                "role": "user"
+              },
+              {
+                "role": "superadmin"
+              }
+            ]
+          },
+          {
+            "function": {
+              "schema": "public",
+              "name": "chat_mark_delivered"
+            },
+            "configuration": {
+              "custom_name": "chat_mark_delivered",
+              "custom_root_fields": {},
+              "exposed_as": "mutation"
+            },
+            "permissions": [
+              {
+                "role": "me"
+              },
+              {
+                "role": "user"
+              },
+              {
+                "role": "superadmin"
+              }
+            ]
+          },
+          {
+            "function": {
+              "schema": "public",
+              "name": "chat_set_support_agent"
+            },
+            "configuration": {
+              "custom_name": "chat_set_support_agent",
+              "custom_root_fields": {},
+              "exposed_as": "mutation"
+            },
+            "permissions": [
+              {
+                "role": "superadmin"
+              }
+            ]
+          },
+          {
+            "function": {
+              "schema": "public",
+              "name": "chat_start_dm"
+            },
+            "configuration": {
+              "custom_name": "chat_start_dm",
+              "custom_root_fields": {},
+              "exposed_as": "mutation"
+            },
+            "permissions": [
+              {
+                "role": "me"
+              },
+              {
+                "role": "user"
+              },
+              {
+                "role": "superadmin"
+              }
+            ]
+          },
+          {
+            "function": {
+              "schema": "public",
+              "name": "chat_support_agent"
+            },
+            "configuration": {
+              "custom_name": "chat_support_agent",
+              "custom_root_fields": {},
+              "exposed_as": "query"
+            },
+            "permissions": [
+              {
+                "role": "me"
+              },
+              {
+                "role": "user"
+              },
+              {
+                "role": "superadmin"
+              }
+            ]
+          }
+        ]
       }
     ]
   }

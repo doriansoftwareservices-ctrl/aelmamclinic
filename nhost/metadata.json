@@ -13053,6 +13053,22 @@
           },
           {
             "function": {
+              "schema": "public",
+              "name": "chat_set_support_agent"
+            },
+            "configuration": {
+              "custom_name": "chat_set_support_agent",
+              "custom_root_fields": {},
+              "exposed_as": "mutation"
+            },
+            "permissions": [
+              {
+                "role": "superadmin"
+              }
+            ]
+          },
+          {
+            "function": {
               "name": "chat_set_support_agent_gql",
               "schema": "public"
             },
@@ -13076,6 +13092,28 @@
               "custom_name": "chat_start_dm",
               "custom_root_fields": {},
               "exposed_as": "mutation"
+            },
+            "permissions": [
+              {
+                "role": "me"
+              },
+              {
+                "role": "user"
+              },
+              {
+                "role": "superadmin"
+              }
+            ]
+          },
+          {
+            "function": {
+              "schema": "public",
+              "name": "chat_support_agent"
+            },
+            "configuration": {
+              "custom_name": "chat_support_agent",
+              "custom_root_fields": {},
+              "exposed_as": "query"
             },
             "permissions": [
               {

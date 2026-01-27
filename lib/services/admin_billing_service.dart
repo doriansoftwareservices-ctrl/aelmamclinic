@@ -15,6 +15,12 @@ class AdminBillingService {
 
   final GraphQLClient _gql;
 
+  Context _superAdminContext() {
+    return Context.fromList(const [
+      HttpLinkHeaders(headers: {'x-hasura-role': 'superadmin'}),
+    ]);
+  }
+
   Future<List<SubscriptionRequest>> fetchSubscriptionRequests() async {
     const query = r'''
       query Requests {
@@ -35,7 +41,11 @@ class AdminBillingService {
       }
     ''';
     final res = await _gql.query(
-      QueryOptions(document: gql(query), fetchPolicy: FetchPolicy.noCache),
+      QueryOptions(
+        document: gql(query),
+        fetchPolicy: FetchPolicy.noCache,
+        context: _superAdminContext(),
+      ),
     );
     if (res.hasException) throw res.exception!;
     final rows = (res.data?['subscription_requests'] as List?) ?? const [];
@@ -60,6 +70,7 @@ class AdminBillingService {
         document: gql(mutation),
         variables: {'id': requestId, 'note': note},
         fetchPolicy: FetchPolicy.noCache,
+        context: _superAdminContext(),
       ),
     );
     if (res.hasException) {
@@ -92,6 +103,7 @@ class AdminBillingService {
         document: gql(mutation),
         variables: {'id': requestId, 'note': note},
         fetchPolicy: FetchPolicy.noCache,
+        context: _superAdminContext(),
       ),
     );
     if (res.hasException) {
@@ -123,7 +135,11 @@ class AdminBillingService {
       }
     ''';
     final res = await _gql.query(
-      QueryOptions(document: gql(query), fetchPolicy: FetchPolicy.noCache),
+      QueryOptions(
+        document: gql(query),
+        fetchPolicy: FetchPolicy.noCache,
+        context: _superAdminContext(),
+      ),
     );
     if (res.hasException) throw res.exception!;
     final rows = (res.data?['payment_methods'] as List?) ?? const [];
@@ -152,6 +168,7 @@ class AdminBillingService {
         document: gql(mutation),
         variables: {'name': name, 'bank': bankAccount, 'logo': logoUrl},
         fetchPolicy: FetchPolicy.noCache,
+        context: _superAdminContext(),
       ),
     );
     if (res.hasException) throw res.exception!;
@@ -185,6 +202,7 @@ class AdminBillingService {
           'active': isActive
         },
         fetchPolicy: FetchPolicy.noCache,
+        context: _superAdminContext(),
       ),
     );
     if (res.hasException) throw res.exception!;
@@ -201,6 +219,7 @@ class AdminBillingService {
         document: gql(mutation),
         variables: {'id': id},
         fetchPolicy: FetchPolicy.noCache,
+        context: _superAdminContext(),
       ),
     );
     if (res.hasException) throw res.exception!;
@@ -224,7 +243,11 @@ class AdminBillingService {
       }
     ''';
     final res = await _gql.query(
-      QueryOptions(document: gql(query), fetchPolicy: FetchPolicy.noCache),
+      QueryOptions(
+        document: gql(query),
+        fetchPolicy: FetchPolicy.noCache,
+        context: _superAdminContext(),
+      ),
     );
     if (res.hasException) throw res.exception!;
     final rows = (res.data?['complaints'] as List?) ?? const [];
@@ -248,6 +271,7 @@ class AdminBillingService {
         document: gql(mutation),
         variables: {'id': id, 'status': status},
         fetchPolicy: FetchPolicy.noCache,
+        context: _superAdminContext(),
       ),
     );
     if (res.hasException) throw res.exception!;
@@ -271,6 +295,7 @@ class AdminBillingService {
         document: gql(mutation),
         variables: {'id': id, 'reply': replyMessage, 'status': status},
         fetchPolicy: FetchPolicy.noCache,
+        context: _superAdminContext(),
       ),
     );
     if (res.hasException) {
@@ -339,6 +364,7 @@ class AdminBillingService {
           'repliedBy': uid,
         },
         fetchPolicy: FetchPolicy.noCache,
+        context: _superAdminContext(),
       ),
     );
     if (res.hasException) throw res.exception!;
@@ -356,7 +382,11 @@ class AdminBillingService {
       }
     ''';
     final res = await _gql.query(
-      QueryOptions(document: gql(query), fetchPolicy: FetchPolicy.noCache),
+      QueryOptions(
+        document: gql(query),
+        fetchPolicy: FetchPolicy.noCache,
+        context: _superAdminContext(),
+      ),
     );
     if (res.hasException) throw res.exception!;
     final rows = (res.data?['admin_payment_stats'] as List?) ?? const [];
@@ -377,7 +407,11 @@ class AdminBillingService {
       }
     ''';
     final res = await _gql.query(
-      QueryOptions(document: gql(query), fetchPolicy: FetchPolicy.noCache),
+      QueryOptions(
+        document: gql(query),
+        fetchPolicy: FetchPolicy.noCache,
+        context: _superAdminContext(),
+      ),
     );
     if (res.hasException) throw res.exception!;
     final rows =
@@ -399,7 +433,11 @@ class AdminBillingService {
       }
     ''';
     final res = await _gql.query(
-      QueryOptions(document: gql(query), fetchPolicy: FetchPolicy.noCache),
+      QueryOptions(
+        document: gql(query),
+        fetchPolicy: FetchPolicy.noCache,
+        context: _superAdminContext(),
+      ),
     );
     if (res.hasException) throw res.exception!;
     final rows = (res.data?['admin_payment_stats_by_day'] as List?) ?? const [];
@@ -420,7 +458,11 @@ class AdminBillingService {
       }
     ''';
     final res = await _gql.query(
-      QueryOptions(document: gql(query), fetchPolicy: FetchPolicy.noCache),
+      QueryOptions(
+        document: gql(query),
+        fetchPolicy: FetchPolicy.noCache,
+        context: _superAdminContext(),
+      ),
     );
     if (res.hasException) throw res.exception!;
     final rows =
