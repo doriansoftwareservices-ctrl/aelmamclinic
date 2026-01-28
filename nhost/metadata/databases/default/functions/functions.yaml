@@ -43,6 +43,7 @@
     session_argument: hasura_session
   permissions:
   - role: superadmin
+  - role: user
 - function:
     name: admin_dashboard_account_members
     schema: public
@@ -52,6 +53,7 @@
     session_argument: hasura_session
   permissions:
   - role: superadmin
+  - role: user
 - function:
     name: admin_dashboard_active_subscriptions
     schema: public
