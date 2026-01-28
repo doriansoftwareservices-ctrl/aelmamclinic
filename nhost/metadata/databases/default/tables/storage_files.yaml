@@ -69,3 +69,86 @@ select_permissions:
     permission:
       columns: "*"
       filter: {}
+insert_permissions:
+  - role: me
+    permission:
+      check:
+        _and:
+          - bucket_id:
+              _in:
+                - chat-attachments
+                - subscription-proofs
+          - uploaded_by_user_id:
+              _eq: "X-Hasura-User-Id"
+      columns: "*"
+  - role: user
+    permission:
+      check:
+        _and:
+          - bucket_id:
+              _in:
+                - chat-attachments
+                - subscription-proofs
+          - uploaded_by_user_id:
+              _eq: "X-Hasura-User-Id"
+      columns: "*"
+update_permissions:
+  - role: me
+    permission:
+      columns: "*"
+      filter:
+        _and:
+          - bucket_id:
+              _in:
+                - chat-attachments
+                - subscription-proofs
+          - uploaded_by_user_id:
+              _eq: "X-Hasura-User-Id"
+      check:
+        _and:
+          - bucket_id:
+              _in:
+                - chat-attachments
+                - subscription-proofs
+          - uploaded_by_user_id:
+              _eq: "X-Hasura-User-Id"
+  - role: user
+    permission:
+      columns: "*"
+      filter:
+        _and:
+          - bucket_id:
+              _in:
+                - chat-attachments
+                - subscription-proofs
+          - uploaded_by_user_id:
+              _eq: "X-Hasura-User-Id"
+      check:
+        _and:
+          - bucket_id:
+              _in:
+                - chat-attachments
+                - subscription-proofs
+          - uploaded_by_user_id:
+              _eq: "X-Hasura-User-Id"
+delete_permissions:
+  - role: me
+    permission:
+      filter:
+        _and:
+          - bucket_id:
+              _in:
+                - chat-attachments
+                - subscription-proofs
+          - uploaded_by_user_id:
+              _eq: "X-Hasura-User-Id"
+  - role: user
+    permission:
+      filter:
+        _and:
+          - bucket_id:
+              _in:
+                - chat-attachments
+                - subscription-proofs
+          - uploaded_by_user_id:
+              _eq: "X-Hasura-User-Id"
