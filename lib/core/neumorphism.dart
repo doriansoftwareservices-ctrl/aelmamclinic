@@ -205,13 +205,17 @@ class NeuButton extends StatelessWidget {
                       Icon(icon, color: txt, size: 20),
                       const SizedBox(width: 10),
                     ],
-                    Text(
-                      label,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: txt,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 15,
+                    Flexible(
+                      child: Text(
+                        label,
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: txt,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                        ),
                       ),
                     ),
                     if (trailing != null) ...[
