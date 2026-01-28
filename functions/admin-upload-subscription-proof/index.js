@@ -315,7 +315,7 @@ module.exports = async function handler(req, res) {
     });
 
     stage = 'upload_attempts';
-    const res = await postMultipart(
+    const uploadResp = await postMultipart(
       `${storageUrl}/files`,
       {
         Authorization: authHeader,
@@ -324,13 +324,13 @@ module.exports = async function handler(req, res) {
       multipart.body,
     );
 
-    let responsePayload = res.text;
+    let responsePayload = uploadResp.text;
     try {
-      responsePayload = JSON.parse(res.text);
+      responsePayload = JSON.parse(uploadResp.text);
     } catch (_) {}
-    const uploadRes = {
-      ok: res.status >= 200 && res.status < 300,
-      status: res.status,
+    const uploadStatus = {
+      ok: uploadResp.status >= 200 && uploadResp.status < 300,
+      status: uploadResp.status,
     };
     const responseText =
       typeof responsePayload === 'string'
@@ -338,12 +338,12 @@ module.exports = async function handler(req, res) {
         : JSON.stringify(responsePayload ?? {});
 
     stage = 'upload_failed';
-    if (!uploadRes.ok) {
-      const detail = `upload_failed status=${uploadRes.status} body=${responseText}`;
-      return fail(uploadRes.status || 500, detail, detail);
+    if (!uploadStatus.ok) {
+      const detail = `upload_failed status=${uploadStatus.status} body=${responseText}`;
+      return fail(uploadStatus.status || 500, detail, detail);
     }
 
-    res.status(uploadRes.status).json(responsePayload);
+    res.status(uploadStatus.status).json(responsePayload);
   } catch (err) {
     try {
       console.error('[admin-upload-subscription-proof] Error:', err);
