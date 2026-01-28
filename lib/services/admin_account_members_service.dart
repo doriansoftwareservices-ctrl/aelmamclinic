@@ -10,6 +10,12 @@ class AdminAccountMembersService {
 
   final GraphQLClient _gql;
 
+  Context _superAdminContext() {
+    return Context.fromList(const [
+      HttpLinkHeaders(headers: {'x-hasura-role': 'superadmin'}),
+    ]);
+  }
+
   Future<List<AdminAccountMemberCount>> fetchMemberCounts({
     bool onlyActive = true,
   }) async {
@@ -32,6 +38,7 @@ class AdminAccountMembersService {
         document: gql(query),
         variables: {'onlyActive': onlyActive},
         fetchPolicy: FetchPolicy.noCache,
+        context: _superAdminContext(),
       ),
     );
     if (res.hasException) {
@@ -74,6 +81,7 @@ class AdminAccountMembersService {
           'onlyActive': onlyActive,
         },
         fetchPolicy: FetchPolicy.noCache,
+        context: _superAdminContext(),
       ),
     );
     if (res.hasException) {
