@@ -209,16 +209,11 @@ insert_permissions:
     permission:
       check:
         _or:
-          - _and:
-              - bucket_id:
-                  _eq: chat-attachments
-              - uploaded_by_user_id:
-                  _eq: "X-Hasura-User-Id"
+          - bucket_id:
+              _eq: chat-attachments
           - _and:
               - bucket_id:
                   _eq: subscription-proofs
-              - uploaded_by_user_id:
-                  _eq: "X-Hasura-User-Id"
               - _exists:
                   _table:
                     name: account_users
@@ -232,21 +227,18 @@ insert_permissions:
                       _in:
                         - owner
                         - admin
+      set:
+        uploaded_by_user_id: x-hasura-user-id
       columns: "*"
   - role: user
     permission:
       check:
         _or:
-          - _and:
-              - bucket_id:
-                  _eq: chat-attachments
-              - uploaded_by_user_id:
-                  _eq: "X-Hasura-User-Id"
+          - bucket_id:
+              _eq: chat-attachments
           - _and:
               - bucket_id:
                   _eq: subscription-proofs
-              - uploaded_by_user_id:
-                  _eq: "X-Hasura-User-Id"
               - _exists:
                   _table:
                     name: account_users
@@ -260,21 +252,18 @@ insert_permissions:
                       _in:
                         - owner
                         - admin
+      set:
+        uploaded_by_user_id: x-hasura-user-id
       columns: "*"
   - role: owner
     permission:
       check:
         _or:
-          - _and:
-              - bucket_id:
-                  _eq: chat-attachments
-              - uploaded_by_user_id:
-                  _eq: "X-Hasura-User-Id"
+          - bucket_id:
+              _eq: chat-attachments
           - _and:
               - bucket_id:
                   _eq: subscription-proofs
-              - uploaded_by_user_id:
-                  _eq: "X-Hasura-User-Id"
               - _exists:
                   _table:
                     name: account_users
@@ -288,21 +277,18 @@ insert_permissions:
                       _in:
                         - owner
                         - admin
+      set:
+        uploaded_by_user_id: x-hasura-user-id
       columns: "*"
   - role: employee
     permission:
       check:
         _or:
-          - _and:
-              - bucket_id:
-                  _eq: chat-attachments
-              - uploaded_by_user_id:
-                  _eq: "X-Hasura-User-Id"
+          - bucket_id:
+              _eq: chat-attachments
           - _and:
               - bucket_id:
                   _eq: subscription-proofs
-              - uploaded_by_user_id:
-                  _eq: "X-Hasura-User-Id"
               - _exists:
                   _table:
                     name: account_users
@@ -316,6 +302,8 @@ insert_permissions:
                       _in:
                         - owner
                         - admin
+      set:
+        uploaded_by_user_id: x-hasura-user-id
       columns: "*"
 update_permissions:
   - role: me
