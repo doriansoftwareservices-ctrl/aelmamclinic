@@ -7338,6 +7338,43 @@
         table:
           name: files
           schema: storage
+  select_permissions:
+  - role: me
+    permission:
+      columns: '*'
+      filter:
+        id:
+          _in:
+          - chat-attachments
+          - subscription-proofs
+  - role: user
+    permission:
+      columns: '*'
+      filter:
+        id:
+          _in:
+          - chat-attachments
+          - subscription-proofs
+  - role: owner
+    permission:
+      columns: '*'
+      filter:
+        id:
+          _in:
+          - chat-attachments
+          - subscription-proofs
+  - role: employee
+    permission:
+      columns: '*'
+      filter:
+        id:
+          _in:
+          - chat-attachments
+          - subscription-proofs
+  - role: superadmin
+    permission:
+      columns: '*'
+      filter: {}
 - table:
     name: files
     schema: storage
