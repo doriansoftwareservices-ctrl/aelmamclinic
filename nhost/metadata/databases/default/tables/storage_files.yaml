@@ -52,19 +52,157 @@ object_relationships:
   - name: bucket
     using:
       foreign_key_constraint_on: bucket_id
+array_relationships:
+  - name: chat_attachments_by_name
+    using:
+      manual_configuration:
+        column_mapping:
+          name: path
+        insertion_order: null
+        remote_table:
+          name: chat_attachments
+          schema: public
 select_permissions:
   - role: me
     permission:
       columns: "*"
       filter:
-        uploaded_by_user_id:
-          _eq: "X-Hasura-User-Id"
+        _or:
+          - _and:
+              - uploaded_by_user_id:
+                  _eq: "X-Hasura-User-Id"
+              - _or:
+                  - bucket_id:
+                      _neq: subscription-proofs
+                  - _and:
+                      - bucket_id:
+                          _eq: subscription-proofs
+                      - _exists:
+                          _table:
+                            name: account_users
+                            schema: public
+                          _where:
+                            user_uid:
+                              _eq: "X-Hasura-User-Id"
+                            disabled:
+                              _eq: false
+                            role:
+                              _in:
+                                - owner
+                                - admin
+          - _and:
+              - bucket_id:
+                  _eq: chat-attachments
+              - chat_attachments_by_name:
+                  chat_message:
+                    chat_participants:
+                      user_uid:
+                        _eq: "X-Hasura-User-Id"
   - role: user
     permission:
       columns: "*"
       filter:
-        uploaded_by_user_id:
-          _eq: "X-Hasura-User-Id"
+        _or:
+          - _and:
+              - uploaded_by_user_id:
+                  _eq: "X-Hasura-User-Id"
+              - _or:
+                  - bucket_id:
+                      _neq: subscription-proofs
+                  - _and:
+                      - bucket_id:
+                          _eq: subscription-proofs
+                      - _exists:
+                          _table:
+                            name: account_users
+                            schema: public
+                          _where:
+                            user_uid:
+                              _eq: "X-Hasura-User-Id"
+                            disabled:
+                              _eq: false
+                            role:
+                              _in:
+                                - owner
+                                - admin
+          - _and:
+              - bucket_id:
+                  _eq: chat-attachments
+              - chat_attachments_by_name:
+                  chat_message:
+                    chat_participants:
+                      user_uid:
+                        _eq: "X-Hasura-User-Id"
+  - role: owner
+    permission:
+      columns: "*"
+      filter:
+        _or:
+          - _and:
+              - uploaded_by_user_id:
+                  _eq: "X-Hasura-User-Id"
+              - _or:
+                  - bucket_id:
+                      _neq: subscription-proofs
+                  - _and:
+                      - bucket_id:
+                          _eq: subscription-proofs
+                      - _exists:
+                          _table:
+                            name: account_users
+                            schema: public
+                          _where:
+                            user_uid:
+                              _eq: "X-Hasura-User-Id"
+                            disabled:
+                              _eq: false
+                            role:
+                              _in:
+                                - owner
+                                - admin
+          - _and:
+              - bucket_id:
+                  _eq: chat-attachments
+              - chat_attachments_by_name:
+                  chat_message:
+                    chat_participants:
+                      user_uid:
+                        _eq: "X-Hasura-User-Id"
+  - role: employee
+    permission:
+      columns: "*"
+      filter:
+        _or:
+          - _and:
+              - uploaded_by_user_id:
+                  _eq: "X-Hasura-User-Id"
+              - _or:
+                  - bucket_id:
+                      _neq: subscription-proofs
+                  - _and:
+                      - bucket_id:
+                          _eq: subscription-proofs
+                      - _exists:
+                          _table:
+                            name: account_users
+                            schema: public
+                          _where:
+                            user_uid:
+                              _eq: "X-Hasura-User-Id"
+                            disabled:
+                              _eq: false
+                            role:
+                              _in:
+                                - owner
+                                - admin
+          - _and:
+              - bucket_id:
+                  _eq: chat-attachments
+              - chat_attachments_by_name:
+                  chat_message:
+                    chat_participants:
+                      user_uid:
+                        _eq: "X-Hasura-User-Id"
   - role: superadmin
     permission:
       columns: "*"
@@ -73,82 +211,434 @@ insert_permissions:
   - role: me
     permission:
       check:
-        _and:
-          - bucket_id:
-              _in:
-                - chat-attachments
-                - subscription-proofs
-          - uploaded_by_user_id:
-              _eq: "X-Hasura-User-Id"
+        _or:
+          - _and:
+              - bucket_id:
+                  _eq: chat-attachments
+              - uploaded_by_user_id:
+                  _eq: "X-Hasura-User-Id"
+          - _and:
+              - bucket_id:
+                  _eq: subscription-proofs
+              - uploaded_by_user_id:
+                  _eq: "X-Hasura-User-Id"
+              - _exists:
+                  _table:
+                    name: account_users
+                    schema: public
+                  _where:
+                    user_uid:
+                      _eq: "X-Hasura-User-Id"
+                    disabled:
+                      _eq: false
+                    role:
+                      _in:
+                        - owner
+                        - admin
       columns: "*"
   - role: user
     permission:
       check:
-        _and:
-          - bucket_id:
-              _in:
-                - chat-attachments
-                - subscription-proofs
-          - uploaded_by_user_id:
-              _eq: "X-Hasura-User-Id"
+        _or:
+          - _and:
+              - bucket_id:
+                  _eq: chat-attachments
+              - uploaded_by_user_id:
+                  _eq: "X-Hasura-User-Id"
+          - _and:
+              - bucket_id:
+                  _eq: subscription-proofs
+              - uploaded_by_user_id:
+                  _eq: "X-Hasura-User-Id"
+              - _exists:
+                  _table:
+                    name: account_users
+                    schema: public
+                  _where:
+                    user_uid:
+                      _eq: "X-Hasura-User-Id"
+                    disabled:
+                      _eq: false
+                    role:
+                      _in:
+                        - owner
+                        - admin
+      columns: "*"
+  - role: owner
+    permission:
+      check:
+        _or:
+          - _and:
+              - bucket_id:
+                  _eq: chat-attachments
+              - uploaded_by_user_id:
+                  _eq: "X-Hasura-User-Id"
+          - _and:
+              - bucket_id:
+                  _eq: subscription-proofs
+              - uploaded_by_user_id:
+                  _eq: "X-Hasura-User-Id"
+              - _exists:
+                  _table:
+                    name: account_users
+                    schema: public
+                  _where:
+                    user_uid:
+                      _eq: "X-Hasura-User-Id"
+                    disabled:
+                      _eq: false
+                    role:
+                      _in:
+                        - owner
+                        - admin
+      columns: "*"
+  - role: employee
+    permission:
+      check:
+        _or:
+          - _and:
+              - bucket_id:
+                  _eq: chat-attachments
+              - uploaded_by_user_id:
+                  _eq: "X-Hasura-User-Id"
+          - _and:
+              - bucket_id:
+                  _eq: subscription-proofs
+              - uploaded_by_user_id:
+                  _eq: "X-Hasura-User-Id"
+              - _exists:
+                  _table:
+                    name: account_users
+                    schema: public
+                  _where:
+                    user_uid:
+                      _eq: "X-Hasura-User-Id"
+                    disabled:
+                      _eq: false
+                    role:
+                      _in:
+                        - owner
+                        - admin
       columns: "*"
 update_permissions:
   - role: me
     permission:
       columns: "*"
       filter:
-        _and:
-          - bucket_id:
-              _in:
-                - chat-attachments
-                - subscription-proofs
-          - uploaded_by_user_id:
-              _eq: "X-Hasura-User-Id"
+        _or:
+          - _and:
+              - bucket_id:
+                  _eq: chat-attachments
+              - uploaded_by_user_id:
+                  _eq: "X-Hasura-User-Id"
+          - _and:
+              - bucket_id:
+                  _eq: subscription-proofs
+              - uploaded_by_user_id:
+                  _eq: "X-Hasura-User-Id"
+              - _exists:
+                  _table:
+                    name: account_users
+                    schema: public
+                  _where:
+                    user_uid:
+                      _eq: "X-Hasura-User-Id"
+                    disabled:
+                      _eq: false
+                    role:
+                      _in:
+                        - owner
+                        - admin
       check:
-        _and:
-          - bucket_id:
-              _in:
-                - chat-attachments
-                - subscription-proofs
-          - uploaded_by_user_id:
-              _eq: "X-Hasura-User-Id"
+        _or:
+          - _and:
+              - bucket_id:
+                  _eq: chat-attachments
+              - uploaded_by_user_id:
+                  _eq: "X-Hasura-User-Id"
+          - _and:
+              - bucket_id:
+                  _eq: subscription-proofs
+              - uploaded_by_user_id:
+                  _eq: "X-Hasura-User-Id"
+              - _exists:
+                  _table:
+                    name: account_users
+                    schema: public
+                  _where:
+                    user_uid:
+                      _eq: "X-Hasura-User-Id"
+                    disabled:
+                      _eq: false
+                    role:
+                      _in:
+                        - owner
+                        - admin
   - role: user
     permission:
       columns: "*"
       filter:
-        _and:
-          - bucket_id:
-              _in:
-                - chat-attachments
-                - subscription-proofs
-          - uploaded_by_user_id:
-              _eq: "X-Hasura-User-Id"
+        _or:
+          - _and:
+              - bucket_id:
+                  _eq: chat-attachments
+              - uploaded_by_user_id:
+                  _eq: "X-Hasura-User-Id"
+          - _and:
+              - bucket_id:
+                  _eq: subscription-proofs
+              - uploaded_by_user_id:
+                  _eq: "X-Hasura-User-Id"
+              - _exists:
+                  _table:
+                    name: account_users
+                    schema: public
+                  _where:
+                    user_uid:
+                      _eq: "X-Hasura-User-Id"
+                    disabled:
+                      _eq: false
+                    role:
+                      _in:
+                        - owner
+                        - admin
       check:
-        _and:
-          - bucket_id:
-              _in:
-                - chat-attachments
-                - subscription-proofs
-          - uploaded_by_user_id:
-              _eq: "X-Hasura-User-Id"
+        _or:
+          - _and:
+              - bucket_id:
+                  _eq: chat-attachments
+              - uploaded_by_user_id:
+                  _eq: "X-Hasura-User-Id"
+          - _and:
+              - bucket_id:
+                  _eq: subscription-proofs
+              - uploaded_by_user_id:
+                  _eq: "X-Hasura-User-Id"
+              - _exists:
+                  _table:
+                    name: account_users
+                    schema: public
+                  _where:
+                    user_uid:
+                      _eq: "X-Hasura-User-Id"
+                    disabled:
+                      _eq: false
+                    role:
+                      _in:
+                        - owner
+                        - admin
+  - role: owner
+    permission:
+      columns: "*"
+      filter:
+        _or:
+          - _and:
+              - bucket_id:
+                  _eq: chat-attachments
+              - uploaded_by_user_id:
+                  _eq: "X-Hasura-User-Id"
+          - _and:
+              - bucket_id:
+                  _eq: subscription-proofs
+              - uploaded_by_user_id:
+                  _eq: "X-Hasura-User-Id"
+              - _exists:
+                  _table:
+                    name: account_users
+                    schema: public
+                  _where:
+                    user_uid:
+                      _eq: "X-Hasura-User-Id"
+                    disabled:
+                      _eq: false
+                    role:
+                      _in:
+                        - owner
+                        - admin
+      check:
+        _or:
+          - _and:
+              - bucket_id:
+                  _eq: chat-attachments
+              - uploaded_by_user_id:
+                  _eq: "X-Hasura-User-Id"
+          - _and:
+              - bucket_id:
+                  _eq: subscription-proofs
+              - uploaded_by_user_id:
+                  _eq: "X-Hasura-User-Id"
+              - _exists:
+                  _table:
+                    name: account_users
+                    schema: public
+                  _where:
+                    user_uid:
+                      _eq: "X-Hasura-User-Id"
+                    disabled:
+                      _eq: false
+                    role:
+                      _in:
+                        - owner
+                        - admin
+  - role: employee
+    permission:
+      columns: "*"
+      filter:
+        _or:
+          - _and:
+              - bucket_id:
+                  _eq: chat-attachments
+              - uploaded_by_user_id:
+                  _eq: "X-Hasura-User-Id"
+          - _and:
+              - bucket_id:
+                  _eq: subscription-proofs
+              - uploaded_by_user_id:
+                  _eq: "X-Hasura-User-Id"
+              - _exists:
+                  _table:
+                    name: account_users
+                    schema: public
+                  _where:
+                    user_uid:
+                      _eq: "X-Hasura-User-Id"
+                    disabled:
+                      _eq: false
+                    role:
+                      _in:
+                        - owner
+                        - admin
+      check:
+        _or:
+          - _and:
+              - bucket_id:
+                  _eq: chat-attachments
+              - uploaded_by_user_id:
+                  _eq: "X-Hasura-User-Id"
+          - _and:
+              - bucket_id:
+                  _eq: subscription-proofs
+              - uploaded_by_user_id:
+                  _eq: "X-Hasura-User-Id"
+              - _exists:
+                  _table:
+                    name: account_users
+                    schema: public
+                  _where:
+                    user_uid:
+                      _eq: "X-Hasura-User-Id"
+                    disabled:
+                      _eq: false
+                    role:
+                      _in:
+                        - owner
+                        - admin
 delete_permissions:
   - role: me
     permission:
       filter:
-        _and:
-          - bucket_id:
-              _in:
-                - chat-attachments
-                - subscription-proofs
-          - uploaded_by_user_id:
-              _eq: "X-Hasura-User-Id"
+        _or:
+          - _and:
+              - bucket_id:
+                  _eq: chat-attachments
+              - uploaded_by_user_id:
+                  _eq: "X-Hasura-User-Id"
+          - _and:
+              - bucket_id:
+                  _eq: subscription-proofs
+              - uploaded_by_user_id:
+                  _eq: "X-Hasura-User-Id"
+              - _exists:
+                  _table:
+                    name: account_users
+                    schema: public
+                  _where:
+                    user_uid:
+                      _eq: "X-Hasura-User-Id"
+                    disabled:
+                      _eq: false
+                    role:
+                      _in:
+                        - owner
+                        - admin
   - role: user
     permission:
       filter:
-        _and:
-          - bucket_id:
-              _in:
-                - chat-attachments
-                - subscription-proofs
-          - uploaded_by_user_id:
-              _eq: "X-Hasura-User-Id"
+        _or:
+          - _and:
+              - bucket_id:
+                  _eq: chat-attachments
+              - uploaded_by_user_id:
+                  _eq: "X-Hasura-User-Id"
+          - _and:
+              - bucket_id:
+                  _eq: subscription-proofs
+              - uploaded_by_user_id:
+                  _eq: "X-Hasura-User-Id"
+              - _exists:
+                  _table:
+                    name: account_users
+                    schema: public
+                  _where:
+                    user_uid:
+                      _eq: "X-Hasura-User-Id"
+                    disabled:
+                      _eq: false
+                    role:
+                      _in:
+                        - owner
+                        - admin
+  - role: owner
+    permission:
+      filter:
+        _or:
+          - _and:
+              - bucket_id:
+                  _eq: chat-attachments
+              - uploaded_by_user_id:
+                  _eq: "X-Hasura-User-Id"
+          - _and:
+              - bucket_id:
+                  _eq: subscription-proofs
+              - uploaded_by_user_id:
+                  _eq: "X-Hasura-User-Id"
+              - _exists:
+                  _table:
+                    name: account_users
+                    schema: public
+                  _where:
+                    user_uid:
+                      _eq: "X-Hasura-User-Id"
+                    disabled:
+                      _eq: false
+                    role:
+                      _in:
+                        - owner
+                        - admin
+  - role: employee
+    permission:
+      filter:
+        _or:
+          - _and:
+              - bucket_id:
+                  _eq: chat-attachments
+              - uploaded_by_user_id:
+                  _eq: "X-Hasura-User-Id"
+          - _and:
+              - bucket_id:
+                  _eq: subscription-proofs
+              - uploaded_by_user_id:
+                  _eq: "X-Hasura-User-Id"
+              - _exists:
+                  _table:
+                    name: account_users
+                    schema: public
+                  _where:
+                    user_uid:
+                      _eq: "X-Hasura-User-Id"
+                    disabled:
+                      _eq: false
+                    role:
+                      _in:
+                        - owner
+                        - admin

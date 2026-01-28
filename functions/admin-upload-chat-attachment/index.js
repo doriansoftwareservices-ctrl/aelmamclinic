@@ -90,7 +90,14 @@ function decodeJwtPayload(authHeader) {
   }
 }
 
-function buildMultipart({ fieldName, filename, contentType, buffer, fields }) {
+function buildMultipart({
+  fieldName,
+  filename,
+  contentType,
+  buffer,
+  fields,
+  extraFiles,
+}) {
   const boundary = `--------------------------${Date.now().toString(16)}${Math.random()
     .toString(16)
     .slice(2)}`;
@@ -114,6 +121,21 @@ function buildMultipart({ fieldName, filename, contentType, buffer, fields }) {
   push(`Content-Type: ${contentType}\r\n\r\n`);
   chunks.push(buffer);
   push('\r\n');
+  if (Array.isArray(extraFiles)) {
+    for (const part of extraFiles) {
+      if (!part || !part.name || !part.buffer) continue;
+      const partName = part.name;
+      const partFilename = part.filename ?? '';
+      const partType = part.contentType ?? 'application/octet-stream';
+      push(`--${boundary}\r\n`);
+      push(
+        `Content-Disposition: form-data; name="${partName}"; filename="${partFilename}"\r\n`,
+      );
+      push(`Content-Type: ${partType}\r\n\r\n`);
+      chunks.push(part.buffer);
+      push('\r\n');
+    }
+  }
   push(`--${boundary}--\r\n`);
   const body = Buffer.concat(chunks);
   return {
@@ -180,50 +202,11 @@ function postMultipart(url, headers, body) {
   });
 }
 
-function resolveRunSqlUrl(gqlUrl) {
-  if (!gqlUrl) return null;
-  return gqlUrl.replace(/\/v1\/graphql$/i, '/v2/query');
-}
-
-async function runSql({ gqlUrl, adminSecret, sql }) {
-  if (!gqlUrl) {
-    throw new Error('Missing NHOST_GRAPHQL_URL');
-  }
-  if (!adminSecret) {
-    throw new Error('Missing admin secret for run_sql');
-  }
-  const runSqlUrl = resolveRunSqlUrl(gqlUrl);
-  const res = await postJson(
-    runSqlUrl,
-    { 'x-hasura-admin-secret': adminSecret },
-    {
-      type: 'run_sql',
-      args: {
-        source: 'default',
-        read_only: true,
-        sql,
-      },
-    },
-  );
-  if (res.status < 200 || res.status >= 300) {
-    throw new Error(`run_sql failed: ${res.status} ${res.text}`);
-  }
-  let json = {};
-  try {
-    json = JSON.parse(res.text || '{}');
-  } catch (_) {
-    json = {};
-  }
-  return json;
-}
-
 async function ensureChatParticipant(authHeader, conversationId) {
   const gqlUrl = process.env.NHOST_GRAPHQL_URL;
   if (!gqlUrl) {
     throw new Error('Missing NHOST_GRAPHQL_URL');
   }
-  const adminSecret =
-    process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
   const payload = decodeJwtPayload(authHeader);
   const claims = payload['https://hasura.io/jwt/claims'] || {};
   const uid =
@@ -237,9 +220,7 @@ async function ensureChatParticipant(authHeader, conversationId) {
   }
   const gqlRes = await postJson(
     gqlUrl,
-    adminSecret
-      ? { 'x-hasura-admin-secret': adminSecret }
-      : { Authorization: authHeader },
+    { Authorization: authHeader },
     {
       query: `
         query ChatAttachmentUploadAuth($cid: uuid!, $uid: uuid!) {
@@ -273,18 +254,6 @@ async function ensureChatParticipant(authHeader, conversationId) {
   if (isSuper) return { isSuper: true };
   const parts = json.data?.chat_participants;
   if (Array.isArray(parts) && parts.length > 0) {
-    const sql = `select public.chat_can_send('${conversationId}'::uuid, '${uid}'::uuid) as can_send;`;
-    const sqlRes = await runSql({ gqlUrl, adminSecret, sql });
-    const result = sqlRes?.result || [];
-    if (Array.isArray(result) && result.length > 1) {
-      const row = result[1];
-      const canSend = row && row[0] === true;
-      if (!canSend) {
-        const err = new Error('chat_locked');
-        err.statusCode = 403;
-        throw err;
-      }
-    }
     return { isSuper: false };
   }
   const err = new Error('forbidden');
@@ -340,13 +309,10 @@ module.exports = async function handler(req, res) {
     }
 
     const storageUrl = resolveStorageUrl();
-    const adminSecret =
-      process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
-    if (!storageUrl || !adminSecret) {
+    if (!storageUrl) {
       console.error(
         `${LOG_PREFIX} missing storage config`,
         `storageUrl=${storageUrl ? 'set' : 'missing'}`,
-        `adminSecret=${adminSecret ? 'set' : 'missing'}`,
       );
       res.status(500).json({ ok: false, error: 'Missing storage config' });
       return;
@@ -365,47 +331,33 @@ module.exports = async function handler(req, res) {
       },
     };
 
-    const tryUpload = async (useArrayFields, includeMeta) => {
-      const fields = { 'bucket-id': bucketId };
-      if (includeMeta) {
-        fields[useArrayFields ? 'metadata[]' : 'metadata'] = JSON.stringify(meta);
-      }
-      const fieldName = useArrayFields ? 'file[]' : 'file';
-      const mp = buildMultipart({
-        fieldName,
-        filename: storageName,
-        contentType: mimeType,
-        buffer,
-        fields,
-      });
-
-      const uploadRes = await postMultipart(
-        `${storageUrl}/files`,
-        { 'x-hasura-admin-secret': adminSecret, ...mp.headers },
-        mp.body,
-      );
-      let responsePayload = uploadRes.text;
-      try {
-        responsePayload = JSON.parse(uploadRes.text || '{}');
-      } catch (_) {}
-      return { uploadRes, responsePayload };
-    };
-
-    const attempts = [
-      { arrayFields: false, includeMeta: true },
-      { arrayFields: true, includeMeta: true },
-      { arrayFields: false, includeMeta: false },
-      { arrayFields: true, includeMeta: false },
+    const fields = { 'bucket-id': bucketId };
+    const extraFiles = [
+      {
+        name: 'metadata[]',
+        filename: '',
+        contentType: 'application/json',
+        buffer: Buffer.from(JSON.stringify(meta), 'utf8'),
+      },
     ];
-    let uploadRes;
-    let responsePayload;
-    for (const attempt of attempts) {
-      ({ uploadRes, responsePayload } = await tryUpload(
-        attempt.arrayFields,
-        attempt.includeMeta,
-      ));
-      if (uploadRes.ok) break;
-    }
+    const mp = buildMultipart({
+      fieldName: 'file[]',
+      filename: storageName,
+      contentType: mimeType,
+      buffer,
+      fields,
+      extraFiles,
+    });
+
+    const uploadRes = await postMultipart(
+      `${storageUrl}/files`,
+      { Authorization: authHeader, ...mp.headers },
+      mp.body,
+    );
+    let responsePayload = uploadRes.text;
+    try {
+      responsePayload = JSON.parse(uploadRes.text || '{}');
+    } catch (_) {}
 
     if (!uploadRes || uploadRes.status < 200 || uploadRes.status >= 300) {
       const status = uploadRes?.status || 500;

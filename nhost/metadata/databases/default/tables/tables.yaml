@@ -1384,50 +1384,86 @@
           name: chat_participants
           schema: public
   insert_permissions:
-  - role: me
-    permission:
-      check:
-        _or:
-        - account_id:
-            _is_null: true
-        - _exists:
-            _table:
-              name: account_users
-              schema: public
-            _where:
-              account_id:
-                _ceq: account_id
-              disabled:
-                _eq: false
-              user_uid:
-                _eq: X-Hasura-User-Id
-        created_by:
+- role: me
+  permission:
+    check:
+      _and:
+      - created_by:
           _eq: X-Hasura-User-Id
-      columns: '*'
+      - _or:
+        - _and:
+          - account_id:
+              _is_null: true
+          - _exists:
+              _table:
+                name: account_users
+                schema: public
+              _where:
+                user_uid:
+                  _eq: X-Hasura-User-Id
+                disabled:
+                  _eq: false
+                role:
+                  _in:
+                  - owner
+                  - admin
+        - _and:
+          - account_id:
+              _is_null: false
+          - _exists:
+              _table:
+                name: account_users
+                schema: public
+              _where:
+                account_id:
+                  _ceq: account_id
+                disabled:
+                  _eq: false
+                user_uid:
+                  _eq: X-Hasura-User-Id
+    columns: '*'
   - role: superadmin
     permission:
       check: {}
       columns: '*'
-  - role: user
-    permission:
-      check:
-        _or:
-        - account_id:
-            _is_null: true
-        - _exists:
-            _table:
-              name: account_users
-              schema: public
-            _where:
-              account_id:
-                _ceq: account_id
-              disabled:
-                _eq: false
-              user_uid:
-                _eq: X-Hasura-User-Id
-        created_by:
+- role: user
+  permission:
+    check:
+      _and:
+      - created_by:
           _eq: X-Hasura-User-Id
-      columns: '*'
+      - _or:
+        - _and:
+          - account_id:
+              _is_null: true
+          - _exists:
+              _table:
+                name: account_users
+                schema: public
+              _where:
+                user_uid:
+                  _eq: X-Hasura-User-Id
+                disabled:
+                  _eq: false
+                role:
+                  _in:
+                  - owner
+                  - admin
+        - _and:
+          - account_id:
+              _is_null: false
+          - _exists:
+              _table:
+                name: account_users
+                schema: public
+              _where:
+                account_id:
+                  _ceq: account_id
+                disabled:
+                  _eq: false
+                user_uid:
+                  _eq: X-Hasura-User-Id
+    columns: '*'
   select_permissions:
   - role: employee
     permission:
@@ -1723,6 +1759,15 @@
         table:
           name: chat_delivery_receipts
           schema: public
+  - name: chat_participants
+    using:
+      manual_configuration:
+        column_mapping:
+          conversation_id: conversation_id
+        insertion_order: null
+        remote_table:
+          name: chat_participants
+          schema: public
   insert_permissions:
   - role: employee
     permission:
@@ -1919,13 +1964,30 @@
     using:
       foreign_key_constraint_on: conversation_id
   insert_permissions:
-  - role: me
-    permission:
-      check:
-        _and:
-        - _or:
+- role: me
+  permission:
+    check:
+      _and:
+      - _or:
+        - _and:
           - account_id:
               _is_null: true
+          - _exists:
+              _table:
+                name: account_users
+                schema: public
+              _where:
+                user_uid:
+                  _eq: X-Hasura-User-Id
+                disabled:
+                  _eq: false
+                role:
+                  _in:
+                  - owner
+                  - admin
+        - _and:
+          - account_id:
+              _is_null: false
           - _exists:
               _table:
                 name: account_users
@@ -1937,17 +1999,17 @@
                   _eq: false
                 user_uid:
                   _eq: X-Hasura-User-Id
-        - _or:
-          - user_uid:
+      - _or:
+        - user_uid:
+            _eq: X-Hasura-User-Id
+        - chat_conversation:
+            created_by:
               _eq: X-Hasura-User-Id
-          - chat_conversation:
-              created_by:
-                _eq: X-Hasura-User-Id
-      columns:
-      - account_id
-      - conversation_id
-      - user_uid
-      - email
+    columns:
+    - account_id
+    - conversation_id
+    - user_uid
+    - email
       - nickname
       - role
       - joined_at
@@ -1956,13 +2018,30 @@
     permission:
       check: {}
       columns: '*'
-  - role: user
-    permission:
-      check:
-        _and:
-        - _or:
+- role: user
+  permission:
+    check:
+      _and:
+      - _or:
+        - _and:
           - account_id:
               _is_null: true
+          - _exists:
+              _table:
+                name: account_users
+                schema: public
+              _where:
+                user_uid:
+                  _eq: X-Hasura-User-Id
+                disabled:
+                  _eq: false
+                role:
+                  _in:
+                  - owner
+                  - admin
+        - _and:
+          - account_id:
+              _is_null: false
           - _exists:
               _table:
                 name: account_users
@@ -1974,17 +2053,17 @@
                   _eq: false
                 user_uid:
                   _eq: X-Hasura-User-Id
-        - _or:
-          - user_uid:
+      - _or:
+        - user_uid:
+            _eq: X-Hasura-User-Id
+        - chat_conversation:
+            created_by:
               _eq: X-Hasura-User-Id
-          - chat_conversation:
-              created_by:
-                _eq: X-Hasura-User-Id
-      columns:
-      - account_id
-      - conversation_id
-      - user_uid
-      - email
+    columns:
+    - account_id
+    - conversation_id
+    - user_uid
+    - email
       - nickname
       - role
       - joined_at

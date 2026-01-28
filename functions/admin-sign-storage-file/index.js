@@ -125,9 +125,7 @@ module.exports = async function handler(req, res) {
     }
 
     const storageUrl = resolveStorageUrl();
-    const adminSecret =
-      process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
-    if (!storageUrl || !adminSecret) {
+    if (!storageUrl) {
       res.status(500).json({ ok: false, error: 'Missing storage config' });
       return;
     }
@@ -135,7 +133,7 @@ module.exports = async function handler(req, res) {
     let meta = null;
     const metaRes = await fetch(`${storageUrl}/files/${fileId}/metadata`, {
       headers: {
-        'x-hasura-admin-secret': adminSecret,
+        Authorization: authHeader,
         Accept: 'application/json',
       },
     });
@@ -154,7 +152,7 @@ module.exports = async function handler(req, res) {
     } else {
       const rawRes = await fetch(`${storageUrl}/files/${fileId}`, {
         headers: {
-          'x-hasura-admin-secret': adminSecret,
+          Authorization: authHeader,
           Accept: 'application/json',
         },
       });
@@ -200,7 +198,7 @@ module.exports = async function handler(req, res) {
         method: attempt.method,
         headers: {
           'Content-Type': 'application/json',
-          'x-hasura-admin-secret': adminSecret,
+          Authorization: authHeader,
         },
         body: attempt.body,
       });
@@ -217,7 +215,7 @@ module.exports = async function handler(req, res) {
       // Fallback: stream the file with admin secret and return base64.
       const rawRes = await fetch(`${storageUrl}/files/${fileId}`, {
         headers: {
-          'x-hasura-admin-secret': adminSecret,
+          Authorization: authHeader,
         },
       });
       if (!rawRes.ok) {
