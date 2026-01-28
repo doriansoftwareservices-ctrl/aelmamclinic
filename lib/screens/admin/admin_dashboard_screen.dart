@@ -295,6 +295,17 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       _snack('لا يوجد إثبات دفع لهذا الطلب.');
       return;
     }
+    if (proofId.startsWith('http://') ||
+        proofId.startsWith('https://') ||
+        proofId.startsWith('data:')) {
+      final dataBytes = _decodeDataUrl(proofId);
+      if (dataBytes != null) {
+        _showProofDialogBytes(title: 'إثبات الدفع', bytes: dataBytes);
+      } else {
+        _showProofDialog(title: 'إثبات الدفع', url: proofId);
+      }
+      return;
+    }
     final signed = await _storageService.createAdminSignedUrl(proofId);
     if (signed == null || signed.trim().isEmpty) {
       _snack('تعذر جلب رابط الإثبات.');
@@ -314,6 +325,17 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   Future<void> _openSeatProof(String fileId) async {
     if (fileId.isEmpty) {
       _snack('لا يوجد وصل مرفق.');
+      return;
+    }
+    if (fileId.startsWith('http://') ||
+        fileId.startsWith('https://') ||
+        fileId.startsWith('data:')) {
+      final dataBytes = _decodeDataUrl(fileId);
+      if (dataBytes != null) {
+        _showProofDialogBytes(title: 'وصل الدفع', bytes: dataBytes);
+      } else {
+        _showProofDialog(title: 'وصل الدفع', url: fileId);
+      }
       return;
     }
     final signed = await _storageService.createAdminSignedUrl(fileId);

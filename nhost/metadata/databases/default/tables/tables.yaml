@@ -7459,11 +7459,26 @@
                 chat_participants:
                   user_uid:
                     _eq: X-Hasura-User-Id
+            - _exists:
+                _table:
+                  name: super_admins
+                  schema: public
+                _where:
+                  user_uid:
+                    _eq: X-Hasura-User-Id
         - _and:
           - bucket_id:
               _eq: subscription-proofs
-          - uploaded_by_user_id:
-              _eq: X-Hasura-User-Id
+          - _or:
+            - uploaded_by_user_id:
+                _eq: X-Hasura-User-Id
+            - _exists:
+                _table:
+                  name: super_admins
+                  schema: public
+                _where:
+                  user_uid:
+                    _eq: X-Hasura-User-Id
   - role: owner
     permission:
       columns: '*'
@@ -7479,11 +7494,26 @@
                 chat_participants:
                   user_uid:
                     _eq: X-Hasura-User-Id
+            - _exists:
+                _table:
+                  name: super_admins
+                  schema: public
+                _where:
+                  user_uid:
+                    _eq: X-Hasura-User-Id
         - _and:
           - bucket_id:
               _eq: subscription-proofs
-          - uploaded_by_user_id:
-              _eq: X-Hasura-User-Id
+          - _or:
+            - uploaded_by_user_id:
+                _eq: X-Hasura-User-Id
+            - _exists:
+                _table:
+                  name: super_admins
+                  schema: public
+                _where:
+                  user_uid:
+                    _eq: X-Hasura-User-Id
   - role: employee
     permission:
       columns: '*'
@@ -7499,11 +7529,26 @@
                 chat_participants:
                   user_uid:
                     _eq: X-Hasura-User-Id
+            - _exists:
+                _table:
+                  name: super_admins
+                  schema: public
+                _where:
+                  user_uid:
+                    _eq: X-Hasura-User-Id
         - _and:
           - bucket_id:
               _eq: subscription-proofs
-          - uploaded_by_user_id:
-              _eq: X-Hasura-User-Id
+          - _or:
+            - uploaded_by_user_id:
+                _eq: X-Hasura-User-Id
+            - _exists:
+                _table:
+                  name: super_admins
+                  schema: public
+                _where:
+                  user_uid:
+                    _eq: X-Hasura-User-Id
   - role: user
     permission:
       columns: '*'
@@ -7519,11 +7564,26 @@
                 chat_participants:
                   user_uid:
                     _eq: X-Hasura-User-Id
+            - _exists:
+                _table:
+                  name: super_admins
+                  schema: public
+                _where:
+                  user_uid:
+                    _eq: X-Hasura-User-Id
         - _and:
           - bucket_id:
               _eq: subscription-proofs
-          - uploaded_by_user_id:
-              _eq: X-Hasura-User-Id
+          - _or:
+            - uploaded_by_user_id:
+                _eq: X-Hasura-User-Id
+            - _exists:
+                _table:
+                  name: super_admins
+                  schema: public
+                _where:
+                  user_uid:
+                    _eq: X-Hasura-User-Id
   - role: superadmin
     permission:
       columns: '*'
