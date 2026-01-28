@@ -7437,11 +7437,12 @@
       foreign_key_constraint_on: bucket_id
   - name: chat_conversation
     using:
-      foreign_key_constraint_on:
-        column: conversation_id
-        table:
+      manual_configuration:
+        remote_table:
           name: chat_conversations
           schema: public
+        column_mapping:
+          conversation_id: id
   select_permissions:
   - role: me
     permission:
