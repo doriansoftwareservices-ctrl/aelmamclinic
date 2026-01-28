@@ -52,16 +52,7 @@ class NhostStorageService {
         ? file.uri.pathSegments.last
         : name.trim();
     try {
-      // Subscription proofs must go through the admin upload function to bypass RLS.
-      if ((bucket ?? '').isNotEmpty && (bucket ?? '') == 'subscription-proofs') {
-        return await _uploadFileViaFunction(
-          file: file,
-          filename: filename,
-          bucketId: bucket,
-          mimeType: mimeType,
-          metadata: metadata,
-        );
-      }
+      // Prefer REST for storage uploads; fall back to function only on auth errors.
       // Prefer REST for chat attachments to avoid SDK auth edge cases.
       if ((bucket ?? '').isNotEmpty &&
           (bucket ?? '') == AppConstants.chatBucketName) {
@@ -250,7 +241,7 @@ class NhostStorageService {
       'base64': base64Encode(bytes),
     };
     if (metadata != null && metadata.isNotEmpty) {
-      payload.addAll(metadata);
+      payload['metadata'] = metadata;
     }
     final res = await _api.postJson(url, payload);
     final files = res['processedFiles'];

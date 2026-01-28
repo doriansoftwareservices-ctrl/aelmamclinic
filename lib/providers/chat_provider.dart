@@ -465,6 +465,10 @@ class ChatProvider extends ChangeNotifier {
 
   Future<String> _signedOrPublicUrl(String bucket, String path) async {
     if (AppConstants.chatPreferPublicUrls) {
+      final fileId = await _resolveFileId(bucket, path);
+      if (fileId != null && fileId.isNotEmpty) {
+        return _storage.publicFileUrl(fileId);
+      }
       return _storage.publicFileUrl(path);
     }
 
