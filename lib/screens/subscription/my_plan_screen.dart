@@ -24,6 +24,7 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
   String _currentPlan = 'free';
   DateTime? _planEndAt;
   String? _error;
+  final _currency = NumberFormat.currency(symbol: '\$', decimalDigits: 0);
 
   @override
   void initState() {
@@ -92,60 +93,130 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
     final auth = context.watch<AuthProvider>();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('خطتي')),
-      body: SafeArea(
-        child: Padding(
-          padding: kScreenPadding,
-          child: _loading
-              ? const Center(child: CircularProgressIndicator())
-              : _error != null
-                  ? Center(child: Text(_error!))
-                  : ListView(
-                      children: [
-                        Text(
-                          'الخطة الحالية: ${_currentPlan.toUpperCase()}',
-                          style: TextStyle(
-                            color: scheme.primary,
-                            fontWeight: FontWeight.w700,
+      appBar: AppBar(
+        title: const Text('خطتي'),
+      ),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              scheme.surface,
+              scheme.surfaceContainerHighest.withValues(alpha: 0.6),
+              scheme.surface,
+            ],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: kScreenPadding,
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _error != null
+                    ? Center(child: Text(_error!))
+                    : ListView(
+                        children: [
+                          _PlanHeader(
+                            currentPlan: _currentPlan,
+                            planEndAt: _planEndAt,
                           ),
-                        ),
-                        if (_planEndAt != null && _currentPlan != 'free') ...[
-                          const SizedBox(height: 6),
-                          Text(
-                            'تنتهي في: ${DateFormat('yyyy-MM-dd').format(_planEndAt!)}',
-                            style: TextStyle(
-                              color: scheme.onSurface.withValues(alpha: 0.7),
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
+                          const SizedBox(height: 16),
+                          ..._plans.map((plan) {
+                            final isCurrent = plan.code == _currentPlan;
+                            final isFree = plan.code == 'free';
+                            return _PlanTile3D(
+                              plan: plan,
+                              isCurrent: isCurrent,
+                              isFree: isFree,
+                              canUpgrade:
+                                  auth.isLoggedIn && !isCurrent && !isFree,
+                              priceLabel: isFree
+                                  ? 'مجانية'
+                                  : _currency.format(plan.priceUsd),
+                              onUpgrade: () => _startUpgrade(plan),
+                            );
+                          }),
+                          const SizedBox(height: 24),
                         ],
-                        const SizedBox(height: 12),
-                        ..._plans.map((plan) {
-                          final isCurrent = plan.code == _currentPlan;
-                          final isFree = plan.code == 'free';
-                          return _PlanCard(
-                            plan: plan,
-                            isCurrent: isCurrent,
-                            isFree: isFree,
-                            canUpgrade:
-                                auth.isLoggedIn && !isCurrent && !isFree,
-                            onUpgrade: () => _startUpgrade(plan),
-                          );
-                        }),
-                      ],
-                    ),
+                      ),
+          ),
         ),
       ),
     );
   }
 }
 
-class _PlanCard extends StatelessWidget {
-  const _PlanCard({
+class _PlanHeader extends StatelessWidget {
+  const _PlanHeader({
+    required this.currentPlan,
+    required this.planEndAt,
+  });
+
+  final String currentPlan;
+  final DateTime? planEndAt;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'خطتي الحالية',
+          style: TextStyle(
+            color: scheme.primary,
+            fontWeight: FontWeight.w800,
+            fontSize: 18,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: scheme.primary.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: scheme.primary.withValues(alpha: 0.2),
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.stars_rounded, color: scheme.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  currentPlan.toUpperCase(),
+                  style: TextStyle(
+                    color: scheme.primary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              if (planEndAt != null && currentPlan != 'free')
+                Text(
+                  'تنتهي: ${DateFormat('yyyy-MM-dd').format(planEndAt!)}',
+                  style: TextStyle(
+                    color: scheme.onSurface.withValues(alpha: 0.6),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PlanTile3D extends StatelessWidget {
+  const _PlanTile3D({
     required this.plan,
     required this.isCurrent,
     required this.isFree,
     required this.canUpgrade,
+    required this.priceLabel,
     required this.onUpgrade,
   });
 
@@ -153,69 +224,111 @@ class _PlanCard extends StatelessWidget {
   final bool isCurrent;
   final bool isFree;
   final bool canUpgrade;
+  final String priceLabel;
   final VoidCallback onUpgrade;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final badgeColor =
-        isCurrent ? scheme.primary : scheme.onSurface.withValues(alpha: 0.4);
+    final titleColor = isCurrent ? scheme.primary : scheme.onSurface;
+    final glow = isCurrent ? scheme.primary : scheme.secondary;
+    final gradient = isFree
+        ? [scheme.surface, scheme.surfaceContainerHighest]
+        : [scheme.surface, glow.withValues(alpha: 0.08)];
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: NeuCard(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Text(
-                  plan.name,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                if (isCurrent)
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: badgeColor.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(22),
+          gradient: LinearGradient(
+            colors: gradient,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.08),
+              offset: const Offset(0, 12),
+              blurRadius: 22,
+            ),
+            BoxShadow(
+              color: glow.withValues(alpha: 0.18),
+              offset: const Offset(-4, -4),
+              blurRadius: 12,
+            ),
+          ],
+          border: Border.all(
+            color: scheme.outlineVariant.withValues(alpha: 0.4),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
                     child: Text(
-                      'الخطة الحالية',
+                      plan.name,
                       style: TextStyle(
-                        color: badgeColor,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: titleColor,
                       ),
                     ),
                   ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              isFree
-                  ? 'مجانية مع صلاحيات محدودة'
-                  : 'السعر: \$${plan.priceUsd.toStringAsFixed(0)}',
-              style: TextStyle(
-                color: scheme.onSurface.withValues(alpha: 0.7),
+                  if (isCurrent)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: scheme.primary.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        'الخطة الحالية',
+                        style: TextStyle(
+                          color: scheme.primary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                ],
               ),
-            ),
-            const SizedBox(height: 12),
-            if (canUpgrade)
-              Align(
-                alignment: Alignment.centerLeft,
-                child: NeuButton.primary(
-                  label: 'طلب ترقية',
-                  onPressed: onUpgrade,
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Icon(
+                    Icons.payments_rounded,
+                    size: 18,
+                    color: scheme.onSurface.withValues(alpha: 0.7),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    priceLabel,
+                    style: TextStyle(
+                      color: scheme.onSurface.withValues(alpha: 0.7),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              if (canUpgrade)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: NeuButton.primary(
+                    label: 'طلب ترقية',
+                    onPressed: onUpgrade,
+                  ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );

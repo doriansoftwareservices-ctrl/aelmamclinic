@@ -79,7 +79,6 @@ class ChatProvider extends ChangeNotifier {
       _displayTitleByConv[conversationId] ?? 'محادثة';
 
   String? _supportConversationId;
-  String? _supportAgentUid;
   String _supportDisplayName = 'خدمة العملاء';
   bool _supportReady = false;
 
@@ -316,7 +315,6 @@ class ChatProvider extends ChangeNotifier {
         return;
       }
 
-      _supportAgentUid = uid;
       _supportDisplayName = name;
 
       final conv = await _chat.startDMWithUid(uid);

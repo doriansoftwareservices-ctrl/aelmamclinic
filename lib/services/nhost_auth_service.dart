@@ -491,7 +491,7 @@ class NhostAuthService {
 
     final tokenRoles = user.roles.map((r) => r.toLowerCase()).toList();
     final tokenIsSuper = tokenRoles.contains('superadmin') ||
-        (user.defaultRole?.toLowerCase() == 'superadmin');
+        (user.defaultRole.toLowerCase() == 'superadmin');
     final metaRole =
         (user.metadata?['role']?.toString().toLowerCase() == 'superadmin');
     final isSuper =

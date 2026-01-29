@@ -395,31 +395,6 @@ class AdminBillingService {
     if (res.hasException) throw res.exception!;
   }
 
-  Future<PaymentStatsBundle> fetchPaymentStatsBundle() async {
-    try {
-      final results = await Future.wait([
-        fetchPaymentStats(),
-        fetchPaymentStatsByPlan(),
-        fetchPaymentStatsByMonth(),
-        fetchPaymentStatsByDay(),
-      ]);
-      return PaymentStatsBundle(
-        methods: results[0] as List<PaymentStat>,
-        plans: results[1] as List<PaymentPlanStat>,
-        monthly: results[2] as List<PaymentTimeStat>,
-        daily: results[3] as List<PaymentTimeStat>,
-      );
-    } catch (_) {
-      final payments = await _fetchPaymentsView();
-      return PaymentStatsBundle(
-        methods: _statsFromPayments(payments),
-        plans: _planStatsFromPayments(payments),
-        monthly: _timeStatsFromPayments(payments, byMonth: true),
-        daily: _timeStatsFromPayments(payments, byMonth: false),
-      );
-    }
-  }
-
   Future<List<PaymentStat>> fetchPaymentStats() async {
     const query = r'''
       query Stats {
