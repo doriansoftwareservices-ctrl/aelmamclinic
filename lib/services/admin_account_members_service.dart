@@ -9,7 +9,6 @@ class AdminAccountMembersService {
       : _gql = client ?? NhostGraphqlService.client;
 
   final GraphQLClient _gql;
-  static const _countsView = 'v_admin_dashboard_account_member_counts';
   static const _membersView = 'v_admin_dashboard_account_members';
 
   Context _superAdminContext() {
