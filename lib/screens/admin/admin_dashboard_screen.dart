@@ -568,16 +568,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   Future<void> _fetchPaymentStats() async {
     try {
       setState(() => _loadingStats = true);
-      final rows = await _billingService.fetchPaymentStats();
-      final byPlan = await _billingService.fetchPaymentStatsByPlan();
-      final byMonth = await _billingService.fetchPaymentStatsByMonth();
-      final byDay = await _billingService.fetchPaymentStatsByDay();
+      final bundle = await _billingService.fetchPaymentStatsBundle();
       if (!mounted) return;
       setState(() {
-        _paymentStats = rows;
-        _paymentPlanStats = byPlan;
-        _paymentMonthlyStats = byMonth;
-        _paymentDailyStats = byDay;
+        _paymentStats = bundle.methods;
+        _paymentPlanStats = bundle.plans;
+        _paymentMonthlyStats = bundle.monthly;
+        _paymentDailyStats = bundle.daily;
         _loadingStats = false;
       });
     } catch (e) {

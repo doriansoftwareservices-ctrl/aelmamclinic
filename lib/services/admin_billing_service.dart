@@ -21,6 +21,31 @@ class AdminBillingService {
     ]);
   }
 
+  Future<PaymentStatsBundle> fetchPaymentStatsBundle() async {
+    try {
+      final results = await Future.wait([
+        fetchPaymentStats(),
+        fetchPaymentStatsByPlan(),
+        fetchPaymentStatsByMonth(),
+        fetchPaymentStatsByDay(),
+      ]);
+      return PaymentStatsBundle(
+        methods: results[0] as List<PaymentStat>,
+        plans: results[1] as List<PaymentPlanStat>,
+        monthly: results[2] as List<PaymentTimeStat>,
+        daily: results[3] as List<PaymentTimeStat>,
+      );
+    } catch (_) {
+      final payments = await _fetchPaymentsView();
+      return PaymentStatsBundle(
+        methods: _statsFromPayments(payments),
+        plans: _planStatsFromPayments(payments),
+        monthly: _timeStatsFromPayments(payments, byMonth: true),
+        daily: _timeStatsFromPayments(payments, byMonth: false),
+      );
+    }
+  }
+
   Future<List<SubscriptionRequest>> fetchSubscriptionRequests() async {
     const query = r'''
       query Requests {
@@ -370,6 +395,31 @@ class AdminBillingService {
     if (res.hasException) throw res.exception!;
   }
 
+  Future<PaymentStatsBundle> fetchPaymentStatsBundle() async {
+    try {
+      final results = await Future.wait([
+        fetchPaymentStats(),
+        fetchPaymentStatsByPlan(),
+        fetchPaymentStatsByMonth(),
+        fetchPaymentStatsByDay(),
+      ]);
+      return PaymentStatsBundle(
+        methods: results[0] as List<PaymentStat>,
+        plans: results[1] as List<PaymentPlanStat>,
+        monthly: results[2] as List<PaymentTimeStat>,
+        daily: results[3] as List<PaymentTimeStat>,
+      );
+    } catch (_) {
+      final payments = await _fetchPaymentsView();
+      return PaymentStatsBundle(
+        methods: _statsFromPayments(payments),
+        plans: _planStatsFromPayments(payments),
+        monthly: _timeStatsFromPayments(payments, byMonth: true),
+        daily: _timeStatsFromPayments(payments, byMonth: false),
+      );
+    }
+  }
+
   Future<List<PaymentStat>> fetchPaymentStats() async {
     const query = r'''
       query Stats {
@@ -472,4 +522,131 @@ class AdminBillingService {
         .map((row) => PaymentTimeStat.fromMap(Map<String, dynamic>.from(row)))
         .toList();
   }
+
+  Future<List<Map<String, dynamic>>> _fetchPaymentsView() async {
+    const query = r'''
+      query PaymentsView {
+        v_admin_dashboard_payments {
+          received_at
+          plan_code
+          amount_usd
+          payment_method
+        }
+      }
+    ''';
+    final res = await _gql.query(
+      QueryOptions(
+        document: gql(query),
+        fetchPolicy: FetchPolicy.noCache,
+        context: _superAdminContext(),
+      ),
+    );
+    if (res.hasException) throw res.exception!;
+    final rows = (res.data?['v_admin_dashboard_payments'] as List?) ?? const [];
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
+  }
+
+  static double _toDouble(Object? v) {
+    if (v is num) return v.toDouble();
+    return double.tryParse('${v ?? ''}') ?? 0;
+  }
+
+  static List<PaymentStat> _statsFromPayments(
+      List<Map<String, dynamic>> rows) {
+    final Map<String, _StatAgg> agg = {};
+    for (final row in rows) {
+      final method = row['payment_method']?.toString() ?? '—';
+      final amount = _toDouble(row['amount_usd']);
+      final entry = agg.putIfAbsent(method, () => _StatAgg(method));
+      entry.total += amount;
+      entry.count += 1;
+    }
+    return agg.values
+        .map((a) => PaymentStat(
+              paymentMethodId: null,
+              paymentMethodName: a.key,
+              totalAmount: a.total,
+              paymentsCount: a.count,
+            ))
+        .toList()
+      ..sort((a, b) => b.totalAmount.compareTo(a.totalAmount));
+  }
+
+  static List<PaymentPlanStat> _planStatsFromPayments(
+      List<Map<String, dynamic>> rows) {
+    final Map<String, _StatAgg> agg = {};
+    for (final row in rows) {
+      final plan = row['plan_code']?.toString() ?? '—';
+      final amount = _toDouble(row['amount_usd']);
+      final entry = agg.putIfAbsent(plan, () => _StatAgg(plan));
+      entry.total += amount;
+      entry.count += 1;
+    }
+    return agg.values
+        .map((a) => PaymentPlanStat(
+              planCode: a.key,
+              totalAmount: a.total,
+              paymentsCount: a.count,
+            ))
+        .toList()
+      ..sort((a, b) => b.totalAmount.compareTo(a.totalAmount));
+  }
+
+  static List<PaymentTimeStat> _timeStatsFromPayments(
+    List<Map<String, dynamic>> rows, {
+    required bool byMonth,
+  }) {
+    final Map<String, _StatAgg> agg = {};
+    for (final row in rows) {
+      final raw = row['received_at']?.toString();
+      if (raw == null) continue;
+      final parsed = DateTime.tryParse(raw);
+      if (parsed == null) continue;
+      final keyDate = byMonth
+          ? DateTime.utc(parsed.year, parsed.month, 1)
+          : DateTime.utc(parsed.year, parsed.month, parsed.day);
+      final key = keyDate.toIso8601String();
+      final amount = _toDouble(row['amount_usd']);
+      final entry = agg.putIfAbsent(key, () => _StatAgg(key));
+      entry.total += amount;
+      entry.count += 1;
+    }
+    return agg.values
+        .map((a) => PaymentTimeStat(
+              period: DateTime.tryParse(a.key),
+              totalAmount: a.total,
+              paymentsCount: a.count,
+            ))
+        .toList()
+      ..sort((a, b) {
+        final ad = a.period ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final bd = b.period ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return bd.compareTo(ad);
+      });
+  }
+}
+
+class PaymentStatsBundle {
+  final List<PaymentStat> methods;
+  final List<PaymentPlanStat> plans;
+  final List<PaymentTimeStat> monthly;
+  final List<PaymentTimeStat> daily;
+
+  const PaymentStatsBundle({
+    required this.methods,
+    required this.plans,
+    required this.monthly,
+    required this.daily,
+  });
+}
+
+class _StatAgg {
+  _StatAgg(this.key);
+
+  final String key;
+  double total = 0;
+  int count = 0;
 }
