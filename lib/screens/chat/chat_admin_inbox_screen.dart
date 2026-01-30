@@ -587,7 +587,7 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
                         ),
                         const SizedBox(height: 8),
                         DropdownButtonFormField<String>(
-                          value: _supportAgentUid,
+                          initialValue: _supportAgentUid,
                           decoration: const InputDecoration(
                             labelText: 'حساب خدمة العملاء',
                             border: OutlineInputBorder(),

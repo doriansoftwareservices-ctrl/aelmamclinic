@@ -253,7 +253,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             ),
             const SizedBox(height: 10),
             DropdownButtonFormField<String>(
-              value: status,
+              initialValue: status,
               decoration: const InputDecoration(
                 labelText: 'تحديث الحالة',
               ),
