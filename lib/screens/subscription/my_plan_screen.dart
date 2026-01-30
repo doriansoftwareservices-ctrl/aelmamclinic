@@ -1,8 +1,9 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/models/payment_method.dart';
 import 'package:aelmamclinic/models/subscription_plan.dart';
@@ -19,12 +20,49 @@ class MyPlanScreen extends StatefulWidget {
 
 class _MyPlanScreenState extends State<MyPlanScreen> {
   final BillingService _billing = BillingService();
+
   bool _loading = true;
   List<SubscriptionPlan> _plans = const [];
   String _currentPlan = 'free';
   DateTime? _planEndAt;
   String? _error;
+
   final _currency = NumberFormat.currency(symbol: '\$', decimalDigits: 0);
+
+  // ✅ نفس مزايا الشهري والسنوي — الفرق فقط مدة الاشتراك.
+  static const List<String> _paidFeatures = [
+    'لوحة التحكم',
+    'إضافة المرضى',
+    'قائمة المرضى',
+    'استخراج تقارير للمرضى',
+    'ادارة المخزن',
+    'المرتجعات',
+    'اضافة طبيب وخدماته',
+    'الموظفون',
+    'المدفوعات',
+    'المختبر/الأشعة',
+    'الرسوم البيانية',
+    'المستودع/المخزون',
+    'الوصفات الطبية',
+    'النسخ الاحتياطي',
+    'إدارة الحسابات داخل العيادة',
+    'الدردشة',
+    'سجل التدقيق',
+    'صلاحيات التدقيق',
+  ];
+
+  static const List<String> _freeFeatures = [
+    'لوحة التحكم',
+    'إضافة المرضى',
+    'قائمة المرضى',
+    'اضافة طبيب وخدماته',
+    'استخراج تقارير للمرضى',
+  ];
+
+  static const List<String> _employeesPolicy = [
+    'الحد الأساسي: حتى 5 موظفين للعيادة.',
+    'لأكثر من 5: يتم دفع مبلغ لكل موظف إضافي مع اعتماد الطلب من القائمين على نظام ElmamClinic.',
+  ];
 
   @override
   void initState() {
@@ -38,12 +76,14 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
         _loading = true;
         _error = null;
       });
+
       final plans = await _billing.fetchPlans();
       final details = await _billing.fetchMyPlanDetails();
+
       final planCode = details['plan_code']?.toString().toLowerCase() ?? 'free';
       final planEndRaw = details['plan_end_at']?.toString();
-      final planEndAt =
-          planEndRaw == null ? null : DateTime.tryParse(planEndRaw);
+      final planEndAt = planEndRaw == null ? null : DateTime.tryParse(planEndRaw);
+
       if (!mounted) return;
       setState(() {
         _plans = plans.where((p) => p.isActive).toList();
@@ -63,22 +103,29 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
   Future<void> _startUpgrade(SubscriptionPlan plan) async {
     final methods = await _billing.fetchPaymentMethods();
     if (!mounted) return;
+
     if (methods.isEmpty) {
       _snack('لا توجد وسائل دفع متاحة حاليًا.');
       return;
     }
+
     final selected = await showModalBottomSheet<PaymentMethod>(
       context: context,
+      isScrollControlled: true,
       showDragHandle: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       builder: (_) => _PaymentMethodPicker(methods: methods),
     );
+
     if (!mounted) return;
     if (selected == null) return;
+
     final ok = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => PaymentRequestScreen(plan: plan, method: selected),
       ),
     );
+
     if (!mounted || ok != true) return;
     _snack('تم إرسال طلب الاشتراك بنجاح. سيتم مراجعته قريبًا.');
   }
@@ -87,59 +134,229 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
+  String _currentPlanName() {
+    for (final p in _plans) {
+      if (p.code.toLowerCase() == _currentPlan.toLowerCase()) return p.name;
+    }
+    return _currentPlan.toUpperCase();
+  }
+
+  bool _isAnnualByCode(String code) {
+    final c = code.toLowerCase();
+    return c.contains('year') || c.contains('annual') || c.contains('yearly');
+  }
+
+  String _cycleLabelByCode(String code) {
+    final c = code.toLowerCase();
+    if (c.contains('month') || c.contains('monthly')) return 'شهري';
+    if (_isAnnualByCode(c)) return 'سنوي';
+    return 'اشتراك';
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final auth = context.watch<AuthProvider>();
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('خطتي'),
+    return Directionality(
+      textDirection: ui.TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('خطتي'),
+          centerTitle: false,
+        ),
+        body: Stack(
+          children: [
+            const _PricingBackdrop(),
+            SafeArea(
+              child: Padding(
+                padding: kScreenPadding,
+                child: _loading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _error != null
+                        ? Center(
+                            child: _ErrorState(
+                              message: _error!,
+                              onRetry: _load,
+                            ),
+                          )
+                        : LayoutBuilder(
+                            builder: (context, constraints) {
+                              final w = constraints.maxWidth;
+
+                              // ✅ عرض كروت كـ "أعمدة" في الشاشات الواسعة، وعمودي (واحد تحت واحد) على الجوال.
+                              final columns = w >= 1100
+                                  ? 3
+                                  : w >= 760
+                                      ? 2
+                                      : 1;
+
+                              final spacing = 14.0;
+                              final cardWidth = (w - (spacing * (columns - 1))) / columns;
+
+                              return SingleChildScrollView(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    _PlanHeaderModern(
+                                      currentPlanName: _currentPlanName(),
+                                      currentPlanCode: _currentPlan,
+                                      planEndAt: _planEndAt,
+                                    ),
+                                    const SizedBox(height: 14),
+
+                                    _SectionTitle(
+                                      title: 'الخطط المتاحة',
+                                      subtitle: 'اختر الخطة المناسبة—المزايا موضّحة داخل كل كرت.',
+                                    ),
+                                    const SizedBox(height: 12),
+
+                                    Wrap(
+                                      spacing: spacing,
+                                      runSpacing: spacing,
+                                      children: _plans.map((plan) {
+                                        final isCurrent = plan.code.toLowerCase() == _currentPlan.toLowerCase();
+                                        final isFree = plan.code.toLowerCase() == 'free';
+                                        final canUpgrade = auth.isLoggedIn && !isCurrent && !isFree;
+
+                                        final isAnnual = _isAnnualByCode(plan.code);
+                                        final cycleLabel = isFree ? '' : _cycleLabelByCode(plan.code);
+
+                                        final priceMain = isFree ? 'مجانية' : _currency.format(plan.priceUsd);
+                                        final priceSuffix = isFree ? '' : ' / $cycleLabel';
+
+                                        return SizedBox(
+                                          width: cardWidth,
+                                          child: _PlanPricingCard(
+                                            planName: plan.name,
+                                            planCode: plan.code,
+                                            isCurrent: isCurrent,
+                                            isFree: isFree,
+                                            isAnnual: isAnnual,
+                                            priceMain: priceMain,
+                                            priceSuffix: priceSuffix,
+                                            features: isFree ? _freeFeatures : _paidFeatures,
+                                            employeesPolicy: isFree ? const [] : _employeesPolicy,
+                                            canUpgrade: canUpgrade,
+                                            onUpgrade: () => _startUpgrade(plan),
+                                            // إذا غير مسجل دخول: زر بشكل أنيق لكن غير مفعل
+                                            onNeedLogin: () => _snack('سجّل الدخول أولاً لطلب الترقية.'),
+                                          ),
+                                        );
+                                      }).toList(),
+                                    ),
+
+                                    const SizedBox(height: 18),
+
+                                    if (!auth.isLoggedIn)
+                                      _InfoBanner(
+                                        icon: Icons.lock_rounded,
+                                        title: 'ملاحظة',
+                                        body: 'لا يمكنك طلب ترقية قبل تسجيل الدخول.',
+                                      ),
+
+                                    const SizedBox(height: 24),
+
+                                    Divider(color: scheme.outlineVariant.withValues(alpha: 0.5)),
+                                    const SizedBox(height: 10),
+
+                                    _InfoBanner(
+                                      icon: Icons.groups_rounded,
+                                      title: 'سياسة الموظفين',
+                                      body: _employeesPolicy.join('\n'),
+                                    ),
+
+                                    const SizedBox(height: 24),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+              ),
+            ),
+          ],
+        ),
       ),
-      body: Container(
+    );
+  }
+}
+
+class _PricingBackdrop extends StatelessWidget {
+  const _PricingBackdrop();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Positioned.fill(
+      child: DecoratedBox(
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [
               scheme.surface,
-              scheme.surfaceContainerHighest.withValues(alpha: 0.6),
+              scheme.surfaceContainerHighest.withValues(alpha: 0.55),
               scheme.surface,
             ],
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
           ),
         ),
-        child: SafeArea(
-          child: Padding(
-            padding: kScreenPadding,
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : _error != null
-                    ? Center(child: Text(_error!))
-                    : ListView(
-                        children: [
-                          _PlanHeader(
-                            currentPlan: _currentPlan,
-                            planEndAt: _planEndAt,
-                          ),
-                          const SizedBox(height: 16),
-                          ..._plans.map((plan) {
-                            final isCurrent = plan.code == _currentPlan;
-                            final isFree = plan.code == 'free';
-                            return _PlanTile3D(
-                              plan: plan,
-                              isCurrent: isCurrent,
-                              isFree: isFree,
-                              canUpgrade:
-                                  auth.isLoggedIn && !isCurrent && !isFree,
-                              priceLabel: isFree
-                                  ? 'مجانية'
-                                  : _currency.format(plan.priceUsd),
-                              onUpgrade: () => _startUpgrade(plan),
-                            );
-                          }),
-                          const SizedBox(height: 24),
-                        ],
-                      ),
+        child: Stack(
+          children: [
+            // دوائر ضبابية خفيفة لمظهر حديث
+            Positioned(
+              top: -80,
+              right: -60,
+              child: _BlurBlob(
+                size: 220,
+                color: scheme.primary.withValues(alpha: 0.22),
+              ),
+            ),
+            Positioned(
+              bottom: -90,
+              left: -70,
+              child: _BlurBlob(
+                size: 260,
+                color: scheme.tertiary.withValues(alpha: 0.18),
+              ),
+            ),
+            Positioned(
+              top: 180,
+              left: 40,
+              child: _BlurBlob(
+                size: 160,
+                color: scheme.secondary.withValues(alpha: 0.14),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BlurBlob extends StatelessWidget {
+  const _BlurBlob({
+    required this.size,
+    required this.color,
+  });
+
+  final double size;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: ClipOval(
+        child: BackdropFilter(
+          filter: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+          child: Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+            ),
           ),
         ),
       ),
@@ -147,62 +364,35 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
   }
 }
 
-class _PlanHeader extends StatelessWidget {
-  const _PlanHeader({
-    required this.currentPlan,
-    required this.planEndAt,
-  });
+class _SectionTitle extends StatelessWidget {
+  const _SectionTitle({required this.title, required this.subtitle});
 
-  final String currentPlan;
-  final DateTime? planEndAt;
+  final String title;
+  final String subtitle;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'خطتي الحالية',
+          title,
           style: TextStyle(
-            color: scheme.primary,
-            fontWeight: FontWeight.w800,
             fontSize: 18,
+            fontWeight: FontWeight.w900,
+            color: scheme.onSurface,
           ),
         ),
-        const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: scheme.primary.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: scheme.primary.withValues(alpha: 0.2),
-            ),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.stars_rounded, color: scheme.primary),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  currentPlan.toUpperCase(),
-                  style: TextStyle(
-                    color: scheme.primary,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-              if (planEndAt != null && currentPlan != 'free')
-                Text(
-                  'تنتهي: ${DateFormat('yyyy-MM-dd').format(planEndAt!)}',
-                  style: TextStyle(
-                    color: scheme.onSurface.withValues(alpha: 0.6),
-                    fontWeight: FontWeight.w600,
-                    fontSize: 12,
-                  ),
-                ),
-            ],
+        const SizedBox(height: 4),
+        Text(
+          subtitle,
+          style: TextStyle(
+            fontSize: 12.5,
+            height: 1.25,
+            color: scheme.onSurface.withValues(alpha: 0.65),
+            fontWeight: FontWeight.w600,
           ),
         ),
       ],
@@ -210,127 +400,587 @@ class _PlanHeader extends StatelessWidget {
   }
 }
 
-class _PlanTile3D extends StatelessWidget {
-  const _PlanTile3D({
-    required this.plan,
-    required this.isCurrent,
-    required this.isFree,
-    required this.canUpgrade,
-    required this.priceLabel,
-    required this.onUpgrade,
+class _PlanHeaderModern extends StatelessWidget {
+  const _PlanHeaderModern({
+    required this.currentPlanName,
+    required this.currentPlanCode,
+    required this.planEndAt,
   });
 
-  final SubscriptionPlan plan;
-  final bool isCurrent;
-  final bool isFree;
-  final bool canUpgrade;
-  final String priceLabel;
-  final VoidCallback onUpgrade;
+  final String currentPlanName;
+  final String currentPlanCode;
+  final DateTime? planEndAt;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final titleColor = isCurrent ? scheme.primary : scheme.onSurface;
-    final glow = isCurrent ? scheme.primary : scheme.secondary;
-    final gradient = isFree
-        ? [scheme.surface, scheme.surfaceContainerHighest]
-        : [scheme.surface, glow.withValues(alpha: 0.08)];
+    final isFree = currentPlanCode.toLowerCase() == 'free';
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(22),
-          gradient: LinearGradient(
-            colors: gradient,
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.55)),
+        color: scheme.surface.withValues(alpha: 0.85),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
-              offset: const Offset(0, 12),
-              blurRadius: 22,
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              gradient: LinearGradient(
+                colors: [
+                  scheme.primary.withValues(alpha: 0.18),
+                  scheme.secondary.withValues(alpha: 0.12),
+                ],
+                begin: Alignment.topRight,
+                end: Alignment.bottomLeft,
+              ),
+              border: Border.all(color: scheme.primary.withValues(alpha: 0.25)),
             ),
-            BoxShadow(
-              color: glow.withValues(alpha: 0.18),
-              offset: const Offset(-4, -4),
-              blurRadius: 12,
+            child: Icon(
+              Icons.workspace_premium_rounded,
+              color: scheme.primary,
             ),
-          ],
-          border: Border.all(
-            color: scheme.outlineVariant.withValues(alpha: 0.4),
           ),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      plan.name,
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        color: titleColor,
-                      ),
-                    ),
-                  ),
-                  if (isCurrent)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: scheme.primary.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        'الخطة الحالية',
-                        style: TextStyle(
-                          color: scheme.primary,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Icon(
-                    Icons.payments_rounded,
-                    size: 18,
-                    color: scheme.onSurface.withValues(alpha: 0.7),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    priceLabel,
-                    style: TextStyle(
-                      color: scheme.onSurface.withValues(alpha: 0.7),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              if (canUpgrade)
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: NeuButton.primary(
-                    label: 'طلب ترقية',
-                    onPressed: onUpgrade,
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'الخطة الحالية',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
+                    color: scheme.onSurface.withValues(alpha: 0.65),
                   ),
                 ),
-            ],
+                const SizedBox(height: 4),
+                Text(
+                  currentPlanName,
+                  style: TextStyle(
+                    fontSize: 16.5,
+                    fontWeight: FontWeight.w900,
+                    color: scheme.onSurface,
+                  ),
+                ),
+                if (!isFree && planEndAt != null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    'تنتهي: ${DateFormat('yyyy-MM-dd').format(planEndAt!)}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: scheme.onSurface.withValues(alpha: 0.6),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(999),
+              color: isFree
+                  ? scheme.secondary.withValues(alpha: 0.14)
+                  : scheme.primary.withValues(alpha: 0.14),
+              border: Border.all(
+                color: isFree
+                    ? scheme.secondary.withValues(alpha: 0.25)
+                    : scheme.primary.withValues(alpha: 0.25),
+              ),
+            ),
+            child: Text(
+              isFree ? 'مجانية' : 'مدفوعة',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w900,
+                color: isFree ? scheme.secondary : scheme.primary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PlanPricingCard extends StatelessWidget {
+  const _PlanPricingCard({
+    required this.planName,
+    required this.planCode,
+    required this.isCurrent,
+    required this.isFree,
+    required this.isAnnual,
+    required this.priceMain,
+    required this.priceSuffix,
+    required this.features,
+    required this.employeesPolicy,
+    required this.canUpgrade,
+    required this.onUpgrade,
+    required this.onNeedLogin,
+  });
+
+  final String planName;
+  final String planCode;
+
+  final bool isCurrent;
+  final bool isFree;
+  final bool isAnnual;
+
+  final String priceMain;
+  final String priceSuffix;
+
+  final List<String> features;
+  final List<String> employeesPolicy;
+
+  final bool canUpgrade;
+  final VoidCallback onUpgrade;
+  final VoidCallback onNeedLogin;
+
+  IconData get _planIcon {
+    if (isFree) return Icons.rocket_launch_rounded;
+    if (isAnnual) return Icons.auto_awesome_rounded;
+    return Icons.stars_rounded;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    final accent = isCurrent
+        ? scheme.primary
+        : (isFree ? scheme.secondary : scheme.tertiary);
+
+    final surface = scheme.surface.withValues(alpha: 0.86);
+
+    final badgeText = isCurrent
+        ? 'الخطة الحالية'
+        : (isAnnual && !isFree ? 'أفضل قيمة' : null);
+
+    final subtitle = isFree
+        ? 'ابدأ مجانًا واستكشف الأساسيات.'
+        : 'نفس مزايا السنوي — الاختلاف مدة الاشتراك فقط.';
+
+    final buttonLabel = isCurrent
+        ? 'الخطة الحالية'
+        : (isFree ? 'الخطة المجانية' : 'طلب ترقية');
+
+    final isButtonEnabled = !isCurrent && !isFree && canUpgrade;
+
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.55)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 22,
+            offset: const Offset(0, 14),
+          ),
+          BoxShadow(
+            color: accent.withValues(alpha: 0.12),
+            blurRadius: 18,
+            offset: const Offset(-6, -6),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(26),
+        child: Material(
+          color: surface,
+          child: InkWell(
+            onTap: isButtonEnabled ? onUpgrade : null,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(18),
+                          gradient: LinearGradient(
+                            colors: [
+                              accent.withValues(alpha: 0.20),
+                              scheme.secondary.withValues(alpha: 0.10),
+                            ],
+                            begin: Alignment.topRight,
+                            end: Alignment.bottomLeft,
+                          ),
+                          border: Border.all(color: accent.withValues(alpha: 0.22)),
+                        ),
+                        child: Icon(_planIcon, color: accent),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              planName,
+                              style: TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w900,
+                                color: scheme.onSurface,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              subtitle,
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                height: 1.25,
+                                fontWeight: FontWeight.w600,
+                                color: scheme.onSurface.withValues(alpha: 0.62),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (badgeText != null) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(999),
+                            color: accent.withValues(alpha: 0.14),
+                            border: Border.all(color: accent.withValues(alpha: 0.22)),
+                          ),
+                          child: Text(
+                            badgeText,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w900,
+                              color: accent,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+
+                  const SizedBox(height: 14),
+
+                  // Price
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(18),
+                      gradient: LinearGradient(
+                        colors: [
+                          accent.withValues(alpha: 0.14),
+                          scheme.surfaceContainerHighest.withValues(alpha: 0.40),
+                        ],
+                        begin: Alignment.topRight,
+                        end: Alignment.bottomLeft,
+                      ),
+                      border: Border.all(color: accent.withValues(alpha: 0.18)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.payments_rounded, color: scheme.onSurface.withValues(alpha: 0.7), size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: RichText(
+                            text: TextSpan(
+                              children: [
+                                TextSpan(
+                                  text: priceMain,
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w900,
+                                    color: scheme.onSurface,
+                                  ),
+                                ),
+                                if (priceSuffix.isNotEmpty)
+                                  TextSpan(
+                                    text: priceSuffix,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w800,
+                                      color: scheme.onSurface.withValues(alpha: 0.65),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 14),
+
+                  // Features (عمودي داخل كل كرت)
+                  _CardSectionLabel(
+                    icon: Icons.checklist_rounded,
+                    title: 'المزايا',
+                    accent: accent,
+                  ),
+                  const SizedBox(height: 10),
+                  ...features.map((f) => _FeatureRow(text: f, accent: accent)),
+
+                  if (employeesPolicy.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Divider(color: scheme.outlineVariant.withValues(alpha: 0.5)),
+                    const SizedBox(height: 10),
+                    _CardSectionLabel(
+                      icon: Icons.groups_rounded,
+                      title: 'سياسة الموظفين',
+                      accent: accent,
+                    ),
+                    const SizedBox(height: 10),
+                    ...employeesPolicy.map((p) => _FeatureRow(
+                          text: p,
+                          accent: accent,
+                          icon: Icons.info_rounded,
+                        )),
+                  ],
+
+                  const SizedBox(height: 14),
+
+                  // CTA
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: isButtonEnabled
+                          ? onUpgrade
+                          : (!isFree && !isCurrent && !canUpgrade)
+                              ? onNeedLogin
+                              : null,
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      child: Text(
+                        buttonLabel,
+                        style: const TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                    ),
+                  ),
+
+                  // Small note for non-current paid plan when user not logged in
+                  if (!isFree && !isCurrent && !canUpgrade) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      'سجّل الدخول لإرسال طلب الترقية.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: scheme.onSurface.withValues(alpha: 0.6),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
           ),
         ),
       ),
+    );
+  }
+}
+
+class _CardSectionLabel extends StatelessWidget {
+  const _CardSectionLabel({
+    required this.icon,
+    required this.title,
+    required this.accent,
+  });
+
+  final IconData icon;
+  final String title;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Row(
+      children: [
+        Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            color: accent.withValues(alpha: 0.14),
+            border: Border.all(color: accent.withValues(alpha: 0.22)),
+          ),
+          child: Icon(icon, size: 16, color: accent),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 13.5,
+            fontWeight: FontWeight.w900,
+            color: scheme.onSurface,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _FeatureRow extends StatelessWidget {
+  const _FeatureRow({
+    required this.text,
+    required this.accent,
+    this.icon = Icons.check_circle_rounded,
+  });
+
+  final String text;
+  final Color accent;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            icon,
+            size: 18,
+            color: accent.withValues(alpha: 0.9),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: 12.8,
+                height: 1.25,
+                fontWeight: FontWeight.w700,
+                color: scheme.onSurface.withValues(alpha: 0.80),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InfoBanner extends StatelessWidget {
+  const _InfoBanner({
+    required this.icon,
+    required this.title,
+    required this.body,
+  });
+
+  final IconData icon;
+  final String title;
+  final String body;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        color: scheme.surface.withValues(alpha: 0.82),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.55)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              color: scheme.secondary.withValues(alpha: 0.12),
+              border: Border.all(color: scheme.secondary.withValues(alpha: 0.20)),
+            ),
+            child: Icon(icon, size: 18, color: scheme.secondary),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w900,
+                    color: scheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  body,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    height: 1.3,
+                    fontWeight: FontWeight.w700,
+                    color: scheme.onSurface.withValues(alpha: 0.72),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ErrorState extends StatelessWidget {
+  const _ErrorState({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.error_outline_rounded, size: 40, color: scheme.error),
+        const SizedBox(height: 10),
+        Text(
+          message,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            color: scheme.onSurface.withValues(alpha: 0.75),
+          ),
+        ),
+        const SizedBox(height: 12),
+        FilledButton.icon(
+          onPressed: onRetry,
+          icon: const Icon(Icons.refresh_rounded),
+          label: const Text('إعادة المحاولة'),
+        ),
+      ],
     );
   }
 }
@@ -343,44 +993,112 @@ class _PaymentMethodPicker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'اختر وسيلة الدفع',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: scheme.primary,
-            ),
-          ),
-          const SizedBox(height: 12),
-          ...methods.map(
-            (m) => NeuCard(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              margin: const EdgeInsets.symmetric(vertical: 6),
-              child: ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: m.logoUrl == null || m.logoUrl!.isEmpty
-                    ? const Icon(Icons.account_balance_rounded)
-                    : Image.network(
-                        m.logoUrl!,
-                        width: 40,
-                        height: 40,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) =>
-                            const Icon(Icons.account_balance_rounded),
-                      ),
-                title: Text(m.name),
-                subtitle: Text('الحساب: ${m.bankAccount}'),
-                onTap: () => Navigator.of(context).pop(m),
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'اختر وسيلة الدفع',
+              style: TextStyle(
+                fontSize: 16.5,
+                fontWeight: FontWeight.w900,
+                color: scheme.onSurface,
               ),
             ),
-          ),
-        ],
+            const SizedBox(height: 6),
+            Text(
+              'اختر طريقة الدفع المناسبة لإرسال طلب الاشتراك.',
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: scheme.onSurface.withValues(alpha: 0.65),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Flexible(
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: methods.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 10),
+                itemBuilder: (context, i) {
+                  final m = methods[i];
+                  return Material(
+                    color: scheme.surface,
+                    borderRadius: BorderRadius.circular(18),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(18),
+                      onTap: () => Navigator.of(context).pop(m),
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(
+                            color: scheme.outlineVariant.withValues(alpha: 0.55),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(14),
+                                color: scheme.surfaceContainerHighest.withValues(alpha: 0.7),
+                                border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.45)),
+                              ),
+                              child: (m.logoUrl == null || m.logoUrl!.isEmpty)
+                                  ? Icon(Icons.account_balance_rounded, color: scheme.primary)
+                                  : ClipRRect(
+                                      borderRadius: BorderRadius.circular(14),
+                                      child: Image.network(
+                                        m.logoUrl!,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, __, ___) => Icon(
+                                          Icons.account_balance_rounded,
+                                          color: scheme.primary,
+                                        ),
+                                      ),
+                                    ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    m.name,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w900,
+                                      color: scheme.onSurface,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'الحساب: ${m.bankAccount}',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      color: scheme.onSurface.withValues(alpha: 0.65),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Icon(Icons.chevron_left_rounded, color: scheme.onSurface.withValues(alpha: 0.6)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
