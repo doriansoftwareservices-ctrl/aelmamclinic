@@ -48,7 +48,6 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
 
   bool _canAccess(AuthProvider auth) {
     if (auth.isSuperAdmin) return true;
-    if (!auth.isPro) return false;
     if (!auth.featureAllowed(FeatureKeys.employeeAccounts)) return false;
     final role = auth.role?.toLowerCase();
     return role == 'owner' || role == 'admin';
@@ -508,6 +507,10 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
     final scheme = Theme.of(context).colorScheme;
     final auth = context.watch<AuthProvider>();
     final canAccess = _canAccess(auth);
+    final hasFeature =
+        auth.isSuperAdmin || auth.featureAllowed(FeatureKeys.employeeAccounts);
+    final role = auth.role?.toLowerCase();
+    final roleAllowed = auth.isSuperAdmin || role == 'owner' || role == 'admin';
 
     return Directionality(
       textDirection: ui.TextDirection.rtl,
@@ -530,10 +533,10 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
         ),
         body: Builder(
           builder: (_) {
-            if (!auth.isPro && !auth.isSuperAdmin) {
+            if (!hasFeature) {
               return _buildLockedView(scheme);
             }
-            if (!canAccess) {
+            if (!roleAllowed || !canAccess) {
               return _buildNoAccess(scheme);
             }
             return RefreshIndicator(

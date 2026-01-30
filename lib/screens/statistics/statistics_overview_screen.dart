@@ -63,13 +63,6 @@ import 'package:aelmamclinic/screens/admin/admin_dashboard_screen.dart';
 /// false → إظهارها لكن تعطيل التفاعل مع تنبيه المستخدم.
 const bool kHideDeniedTabs = false;
 
-const Set<String> kFreePlanFeatures = {
-  FeatureKeys.dashboard,
-  FeatureKeys.patientNew,
-  FeatureKeys.patientsList,
-  FeatureKeys.employees,
-};
-
 class StatisticsOverviewScreen extends StatefulWidget {
   const StatisticsOverviewScreen({super.key});
 
@@ -619,9 +612,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
     if (kHideDeniedTabs && !allowed && !auth.isSuperAdmin) {
       return const SizedBox.shrink();
     }
-    final isFreePlan = auth.planCode == 'free' && !auth.isSuperAdmin;
-    final showProBadge =
-        isFreePlan && !kFreePlanFeatures.contains(featureKey);
+    final showProBadge = !auth.isSuperAdmin && !allowed;
 
     return _drawerItem(
       icon: icon,
@@ -643,14 +634,6 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
     // السوبر أدمن يرى الكل، والباقي عبر permissions/feature matrix
     bool allowed = auth.isSuperAdmin || auth.featureAllowed(featureKey);
 
-    final isFree = auth.planCode == 'free' && !auth.isSuperAdmin;
-    if (isFree && !kFreePlanFeatures.contains(featureKey)) {
-      allowed = false;
-    } else if (isFree && !auth.permissionsLoaded) {
-      // أظهر ميزات الخطة المجانية حتى تحميل الصلاحيات لتجنب إخفاء القائمة مؤقتًا.
-      allowed = kFreePlanFeatures.contains(featureKey);
-    }
-
     // تطبيق CRUD إذا طُلب (لمالك/سوبر نتجاوز، للموظف نطبّق)
     if (allowed && !auth.isSuperAdmin) {
       if (requireCreate) allowed = allowed && auth.canCreate;
@@ -663,7 +646,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
 
   bool _canManageEmployeeAccounts(AuthProvider auth) {
     if (auth.isSuperAdmin) return true;
-    if (!auth.isPro) return false;
+    if (!auth.featureAllowed(FeatureKeys.employeeAccounts)) return false;
     final role = auth.role?.toLowerCase();
     return role == 'owner' || role == 'admin';
   }
