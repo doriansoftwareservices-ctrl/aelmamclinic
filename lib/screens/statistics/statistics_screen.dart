@@ -536,6 +536,12 @@ class _StatisticsScreenState extends State<StatisticsScreen>
   }
 
   @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Directionality(
@@ -607,8 +613,10 @@ class _IncomeByDateWidgetState extends State<_IncomeByDateWidget> {
   }
 
   Future<void> _loadPatients() async {
-    _patients = await DBService.instance.getAllPatients();
-    _applyFilters();
+    final patients = await DBService.instance.getAllPatients();
+    if (!mounted) return;
+    _patients = patients;
+    await _applyFilters();
   }
 
   Future<void> _applyFilters() async {
@@ -627,6 +635,7 @@ class _IncomeByDateWidgetState extends State<_IncomeByDateWidget> {
       final k = df.format(p.registerDate);
       map[k] = (map[k] ?? 0) + p.paidAmount;
     }
+    if (!mounted) return;
     setState(() => _incomeByDate = map);
   }
 
@@ -667,8 +676,7 @@ class _IncomeByDateWidgetState extends State<_IncomeByDateWidget> {
   Future<pw.Document> _buildPdf() async {
     final (base, bold) = await _PdfUtils._loadFonts();
     final clinic = await ClinicProfileService.loadActiveOrFallback();
-    final logoBytes =
-        (await rootBundle.load('assets/images/logo2.png')).buffer.asUint8List();
+    final logoBytes = await ClinicProfileService.loadReportLogoBytes();
     final logo = pw.MemoryImage(logoBytes);
 
     final rows = _incomeByDate.entries.toList()
@@ -861,8 +869,10 @@ class _ConsumptionByDateWidgetState extends State<_ConsumptionByDateWidget> {
   }
 
   Future<void> _load() async {
-    _all = await DBService.instance.getAllConsumption();
-    _applyFilters();
+    final all = await DBService.instance.getAllConsumption();
+    if (!mounted) return;
+    _all = all;
+    await _applyFilters();
   }
 
   Future<void> _applyFilters() async {
@@ -881,6 +891,7 @@ class _ConsumptionByDateWidgetState extends State<_ConsumptionByDateWidget> {
       final k = df.format(c.date);
       m[k] = (m[k] ?? 0) + c.amount;
     }
+    if (!mounted) return;
     setState(() => _byDate = m);
   }
 
@@ -921,8 +932,7 @@ class _ConsumptionByDateWidgetState extends State<_ConsumptionByDateWidget> {
   Future<pw.Document> _buildPdf() async {
     final (base, bold) = await _PdfUtils._loadFonts();
     final clinic = await ClinicProfileService.loadActiveOrFallback();
-    final logoBytes =
-        (await rootBundle.load('assets/images/logo2.png')).buffer.asUint8List();
+    final logoBytes = await ClinicProfileService.loadReportLogoBytes();
     final logo = pw.MemoryImage(logoBytes);
 
     final rows = _byDate.entries.toList()
@@ -1111,8 +1121,10 @@ class _IncomeByDoctorWidgetState extends State<_IncomeByDoctorWidget> {
   }
 
   Future<void> _load() async {
-    _patients = await DBService.instance.getAllPatients();
-    _applyFilters();
+    final patients = await DBService.instance.getAllPatients();
+    if (!mounted) return;
+    _patients = patients;
+    await _applyFilters();
   }
 
   Future<void> _applyFilters() async {
@@ -1133,6 +1145,7 @@ class _IncomeByDoctorWidgetState extends State<_IncomeByDoctorWidget> {
           : nameRaw.trim();
       m[doc] = (m[doc] ?? 0) + p.paidAmount;
     }
+    if (!mounted) return;
     setState(() => _byDoctor = m);
   }
 
@@ -1173,8 +1186,7 @@ class _IncomeByDoctorWidgetState extends State<_IncomeByDoctorWidget> {
   Future<pw.Document> _buildPdf() async {
     final (base, bold) = await _PdfUtils._loadFonts();
     final clinic = await ClinicProfileService.loadActiveOrFallback();
-    final logoBytes =
-        (await rootBundle.load('assets/images/logo2.png')).buffer.asUint8List();
+    final logoBytes = await ClinicProfileService.loadReportLogoBytes();
     final logo = pw.MemoryImage(logoBytes);
 
     final rows = _byDoctor.entries.toList()
@@ -1362,8 +1374,10 @@ class _ConsumptionTypeWidgetState extends State<_ConsumptionTypeWidget> {
   }
 
   Future<void> _load() async {
-    _all = await DBService.instance.getAllConsumption();
-    _applyFilters();
+    final all = await DBService.instance.getAllConsumption();
+    if (!mounted) return;
+    _all = all;
+    await _applyFilters();
   }
 
   Future<void> _applyFilters() async {
@@ -1382,6 +1396,7 @@ class _ConsumptionTypeWidgetState extends State<_ConsumptionTypeWidget> {
       final type = noteRaw.isEmpty ? 'غير محدد' : noteRaw;
       m[type] = (m[type] ?? 0) + c.amount;
     }
+    if (!mounted) return;
     setState(() => _byType = m);
   }
 
@@ -1422,8 +1437,7 @@ class _ConsumptionTypeWidgetState extends State<_ConsumptionTypeWidget> {
   Future<pw.Document> _buildPdf() async {
     final (base, bold) = await _PdfUtils._loadFonts();
     final clinic = await ClinicProfileService.loadActiveOrFallback();
-    final logoBytes =
-        (await rootBundle.load('assets/images/logo2.png')).buffer.asUint8List();
+    final logoBytes = await ClinicProfileService.loadReportLogoBytes();
     final logo = pw.MemoryImage(logoBytes);
 
     final rows = _byType.entries.toList()
@@ -1611,20 +1625,15 @@ class _DoctorShareByDateWidgetState extends State<_DoctorShareByDateWidget> {
   }
 
   Future<void> _load() async {
-    _shareByDate = await DBService.instance.getDoctorShareByDateBetween(
-      DateTime(2000),
-      DateTime(2100),
-    );
-    _applyFilters();
+    await _applyFilters();
   }
 
   Future<void> _applyFilters() async {
     final from = _startDate ?? DateTime(2000);
     final to = _endDate ?? DateTime(2100);
-    DBService.instance.getDoctorShareByDateBetween(from, to).then((map) {
-      if (!mounted) return;
-      setState(() => _shareByDate = map);
-    });
+    final map = await DBService.instance.getDoctorShareByDateBetween(from, to);
+    if (!mounted) return;
+    setState(() => _shareByDate = map);
   }
 
   Future<void> _pickStart() async {
@@ -1664,8 +1673,7 @@ class _DoctorShareByDateWidgetState extends State<_DoctorShareByDateWidget> {
   Future<pw.Document> _buildPdf() async {
     final (base, bold) = await _PdfUtils._loadFonts();
     final clinic = await ClinicProfileService.loadActiveOrFallback();
-    final logoBytes =
-        (await rootBundle.load('assets/images/logo2.png')).buffer.asUint8List();
+    final logoBytes = await ClinicProfileService.loadReportLogoBytes();
     final logo = pw.MemoryImage(logoBytes);
 
     final rows = _shareByDate.entries.toList()
@@ -1819,9 +1827,15 @@ class _NetProfitWidgetState extends State<_NetProfitWidget> {
   }
 
   Future<void> _load() async {
-    _patients = await DBService.instance.getAllPatients();
-    _cons = await DBService.instance.getAllConsumption();
-    _discounts = await DBService.instance.getAllEmployeeDiscounts();
+    final patients = await DBService.instance.getAllPatients();
+    if (!mounted) return;
+    final cons = await DBService.instance.getAllConsumption();
+    if (!mounted) return;
+    final discounts = await DBService.instance.getAllEmployeeDiscounts();
+    if (!mounted) return;
+    _patients = patients;
+    _cons = cons;
+    _discounts = discounts;
     await _applyFilters();
   }
 
@@ -1925,8 +1939,7 @@ class _NetProfitWidgetState extends State<_NetProfitWidget> {
   Future<pw.Document> _buildPdf() async {
     final (base, bold) = await _PdfUtils._loadFonts();
     final clinic = await ClinicProfileService.loadActiveOrFallback();
-    final logoBytes =
-        (await rootBundle.load('assets/images/logo2.png')).buffer.asUint8List();
+    final logoBytes = await ClinicProfileService.loadReportLogoBytes();
     final logo = pw.MemoryImage(logoBytes);
 
     final rows = _netByDate.entries.toList()

@@ -29,11 +29,24 @@ class AdminBillingService {
         fetchPaymentStatsByMonth(),
         fetchPaymentStatsByDay(),
       ]);
-      return PaymentStatsBundle(
+      final bundle = PaymentStatsBundle(
         methods: results[0] as List<PaymentStat>,
         plans: results[1] as List<PaymentPlanStat>,
         monthly: results[2] as List<PaymentTimeStat>,
         daily: results[3] as List<PaymentTimeStat>,
+      );
+      final hasAny = bundle.methods.isNotEmpty ||
+          bundle.plans.isNotEmpty ||
+          bundle.monthly.isNotEmpty ||
+          bundle.daily.isNotEmpty;
+      if (hasAny) return bundle;
+      final requests = await _fetchApprovedRequestsForStats();
+      if (requests.isEmpty) return bundle;
+      return PaymentStatsBundle(
+        methods: _statsFromPayments(requests),
+        plans: _planStatsFromPayments(requests),
+        monthly: _timeStatsFromPayments(requests, byMonth: true),
+        daily: _timeStatsFromPayments(requests, byMonth: false),
       );
     } catch (_) {
       final payments = await _fetchPaymentsView();
@@ -522,6 +535,45 @@ class AdminBillingService {
         .whereType<Map>()
         .map((row) => Map<String, dynamic>.from(row))
         .toList();
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchApprovedRequestsForStats() async {
+    const query = r'''
+      query ApprovedSubscriptionRequests {
+        subscription_requests(where: {status: {_in: ["approved", "paid", "completed"]}}) {
+          amount
+          plan_code
+          payment_method_id
+          created_at
+        }
+      }
+    ''';
+    final res = await _gql.query(
+      QueryOptions(
+        document: gql(query),
+        fetchPolicy: FetchPolicy.noCache,
+        context: _superAdminContext(),
+      ),
+    );
+    if (res.hasException) throw res.exception!;
+    final rows =
+        (res.data?['subscription_requests'] as List?) ?? const [];
+    Map<String, String> methodNames = {};
+    try {
+      final methods = await fetchPaymentMethods();
+      methodNames = {
+        for (final m in methods) m.id: m.name,
+      };
+    } catch (_) {}
+    return rows.whereType<Map>().map((row) {
+      final methodId = row['payment_method_id']?.toString();
+      return {
+        'received_at': row['created_at'],
+        'plan_code': row['plan_code'],
+        'amount_usd': row['amount'],
+        'payment_method': methodNames[methodId] ?? methodId ?? '—',
+      };
+    }).toList();
   }
 
   static double _toDouble(Object? v) {

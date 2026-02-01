@@ -7,7 +7,9 @@ import 'package:aelmamclinic/screens/consumption/new_consumption_screen.dart';
 import 'package:aelmamclinic/screens/employees/finance/employees_finance_home_screen.dart';
 
 /* تصميم TBIAN */
+import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
+import 'package:aelmamclinic/widgets/feature_hub.dart';
 
 class PaymentsHomeScreen extends StatelessWidget {
   const PaymentsHomeScreen({super.key});
@@ -80,56 +82,41 @@ class PaymentsHomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
     return Directionality(
       textDirection: ui.TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
-          elevation: 4,
           centerTitle: true,
-          title: const Text('الشؤون المالية',
-              style: TextStyle(fontWeight: FontWeight.bold)),
-          flexibleSpace: Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [scheme.primaryContainer, scheme.primary],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
+          title: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Image.asset(
+                'assets/images/logo.png',
+                height: 24,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
               ),
-            ),
+              const SizedBox(width: 8),
+              const Text('ELMAM CLINIC'),
+            ],
           ),
         ),
-        body: Container(
-          width: double.infinity,
-          height: double.infinity,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                scheme.surfaceContainerHigh,
-                scheme.surface,
-                scheme.surfaceContainerHigh
-              ],
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-            ),
-          ),
-          child: Center(
-            child: Wrap(
-              alignment: WrapAlignment.center,
-              spacing: 16,
-              runSpacing: 18,
-              children: [
-                _ActionCard(
+        body: SafeArea(
+          child: Padding(
+            padding: kScreenPadding,
+            child: FeatureHubBody(
+              title: 'الشؤون المالية',
+              items: [
+                FeatureHubItem(
                   icon: Icons.inventory_2_rounded,
                   title: 'استهلاكات المرفق الطبي',
-                  subtitle: 'إضافة أو استعراض',
+                  subtitle: 'إضافة أو استعراض المصروفات والاستهلاكات.',
                   onTap: () => _showConsumptionMenu(context),
                 ),
-                _ActionCard(
+                FeatureHubItem(
                   icon: Icons.payments_rounded,
                   title: 'المالية',
-                  subtitle: 'ملخصات وحسابات',
+                  subtitle: 'ملخصات وحسابات الموظفين.',
                   onTap: () {
                     Navigator.push(
                       context,
@@ -141,79 +128,6 @@ class PaymentsHomeScreen extends StatelessWidget {
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-/* بطاقة إجراء بنمط TBIAN/Neumorphism */
-class _ActionCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String? subtitle;
-  final VoidCallback onTap;
-
-  const _ActionCard({
-    required this.icon,
-    required this.title,
-    this.subtitle,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
-    return NeuCard(
-      onTap: onTap,
-      padding: const EdgeInsets.all(16),
-      margin: const EdgeInsets.symmetric(vertical: 2),
-      child: SizedBox(
-        width: 260,
-        child: Row(
-          children: [
-            Container(
-              decoration: BoxDecoration(
-                color: scheme.primary.withValues(alpha: .10),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              padding: const EdgeInsets.all(12),
-              child: Icon(icon, color: scheme.primary, size: 26),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: scheme.onSurface.withValues(alpha: .90),
-                        fontWeight: FontWeight.w800,
-                        fontSize: 14.5,
-                      )),
-                  if (subtitle != null) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle!,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: scheme.onSurface.withValues(alpha: .65),
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            const SizedBox(width: 6),
-            Icon(Icons.chevron_left_rounded,
-                color: scheme.onSurface.withValues(alpha: .6)),
-          ],
         ),
       ),
     );

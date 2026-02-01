@@ -243,12 +243,16 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
         if (requestId.isEmpty) {
           throw Exception('request_not_found');
         }
+        final price = (request['price_usd'] as num?)?.toDouble() ??
+            double.tryParse(request['price_usd']?.toString() ?? '') ??
+            0;
         if (!mounted) return;
         final proceed = await Navigator.of(context).push<bool>(
           MaterialPageRoute(
             builder: (_) => EmployeeSeatPaymentScreen(
               requestId: requestId,
               employeeEmail: creds['email'] ?? '',
+              priceUsd: price,
             ),
           ),
         );
@@ -308,8 +312,14 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
     final title = isAwaiting
         ? 'لديك طلب لم يتم دفعه بعد'
         : 'تم إرسال طلب التفعيل للمراجعة';
+    final priceLine = latest.priceUsd > 0
+        ? 'المبلغ المطلوب: \$${latest.priceUsd.toStringAsFixed(0)}'
+        : null;
     final subtitle = isAwaiting
-        ? 'أكمل الدفع لإرسال الطلب للمراجعة.'
+        ? [
+            'أكمل الدفع لإرسال الطلب للمراجعة.',
+            if (priceLine != null) priceLine,
+          ].join('\n')
         : 'سيتم تفعيل الحساب بعد اعتماد السوبر أدمن.';
 
     return Padding(
@@ -351,6 +361,7 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
                             builder: (_) => EmployeeSeatPaymentScreen(
                               requestId: latest.id,
                               employeeEmail: latest.employeeEmail,
+                              priceUsd: latest.priceUsd,
                             ),
                           ),
                         );

@@ -7,8 +7,8 @@ import 'package:flutter/material.dart';
 
 /*── TBIAN ─*/
 import 'package:aelmamclinic/core/theme.dart';
-import 'package:aelmamclinic/core/neumorphism.dart';
 import 'finance_access_guard.dart';
+import 'package:aelmamclinic/widgets/feature_hub.dart';
 
 /*── شاشات الوجهات ─*/
 import 'employee_loan_home_screen.dart';
@@ -27,8 +27,6 @@ class EmployeesFinanceHomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
     return FinanceAccessGuard(
       child: Directionality(
         textDirection: ui.TextDirection.rtl,
@@ -50,127 +48,54 @@ class EmployeesFinanceHomeScreen extends StatelessWidget {
             ),
           ),
           body: SafeArea(
-            child: SingleChildScrollView(
+            child: Padding(
               padding: kScreenPadding,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    'المالية للموظفين',
-                    style: TextStyle(
-                      color: scheme.onSurface,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                    ),
+              child: FeatureHubBody(
+                title: 'المالية للموظفين',
+                items: [
+                  FeatureHubItem(
+                    icon: Icons.request_quote_outlined,
+                    title: 'إنشاء معاملة سُلَف',
+                    subtitle: 'تسجيل سلفة جديدة ومتابعة المستحقات.',
+                    onTap: () => _go(context, const EmployeeLoanHomeScreen()),
                   ),
-                  const SizedBox(height: 12),
-
-                  // شبكة بطاقات الإجراءات
-                  Directionality(
-                    textDirection: ui.TextDirection.rtl,
-                    child: Wrap(
-                      alignment: WrapAlignment.center,
-                      spacing: 16,
-                      runSpacing: 18,
-                      children: [
-                        _ActionCard(
-                          icon: Icons.request_quote_outlined,
-                          label: 'إنشاء معاملة سُلَف',
-                          onTap: () =>
-                              _go(context, const EmployeeLoanHomeScreen()),
-                        ),
-                        _ActionCard(
-                          icon: Icons.discount_outlined,
-                          label: 'إنشاء معاملة خصم',
-                          onTap: () =>
-                              _go(context, const EmployeeDiscountHomeScreen()),
-                        ),
-                        _ActionCard(
-                          icon: Icons.payments_outlined,
-                          label: 'إنشاء صرف الراتب',
-                          onTap: () =>
-                              _go(context, const CreateSalaryPaymentScreen()),
-                        ),
-                        _ActionCard(
-                          icon: Icons.insights_outlined,
-                          label: 'الاستعراض (ملخّص)',
-                          onTap: () => _go(
-                              context, const EmployeesFinanceSummaryScreen()),
-                        ),
-                        _ActionCard(
-                          icon: Icons.receipt_long_outlined,
-                          label: 'المعاملات',
-                          onTap: () =>
-                              _go(context, const EmployeesTransactionsScreen()),
-                        ),
-                        _ActionCard(
-                          icon: Icons.history_rounded,
-                          label: 'سجلات المعاملات',
-                          onTap: () =>
-                              _go(context, const FinancialLogsScreen()),
-                        ),
-                      ],
-                    ),
+                  FeatureHubItem(
+                    icon: Icons.discount_outlined,
+                    title: 'إنشاء معاملة خصم',
+                    subtitle: 'إضافة خصم وربطه بالموظف المعني.',
+                    onTap: () =>
+                        _go(context, const EmployeeDiscountHomeScreen()),
+                  ),
+                  FeatureHubItem(
+                    icon: Icons.payments_outlined,
+                    title: 'إنشاء صرف الراتب',
+                    subtitle: 'تسجيل صرف راتب مع تفاصيل المدفوعات.',
+                    onTap: () =>
+                        _go(context, const CreateSalaryPaymentScreen()),
+                  ),
+                  FeatureHubItem(
+                    icon: Icons.insights_outlined,
+                    title: 'الاستعراض (ملخّص)',
+                    subtitle: 'عرض ملخص الرواتب والسلف والخصومات.',
+                    onTap: () =>
+                        _go(context, const EmployeesFinanceSummaryScreen()),
+                  ),
+                  FeatureHubItem(
+                    icon: Icons.receipt_long_outlined,
+                    title: 'المعاملات',
+                    subtitle: 'استعراض الحركات المالية التفصيلية.',
+                    onTap: () =>
+                        _go(context, const EmployeesTransactionsScreen()),
+                  ),
+                  FeatureHubItem(
+                    icon: Icons.history_rounded,
+                    title: 'سجلات المعاملات',
+                    subtitle: 'سجل التعديلات والإجراءات المالية.',
+                    onTap: () => _go(context, const FinancialLogsScreen()),
                   ),
                 ],
               ),
             ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/*──────── بطاقة إجراء بنمط TBIAN/Neumorphism ────────*/
-class _ActionCard extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  const _ActionCard({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
-    return Semantics(
-      button: true,
-      label: label,
-      child: NeuCard(
-        onTap: onTap,
-        padding: const EdgeInsets.all(16),
-        child: SizedBox(
-          width: 220,
-          height: 110,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // أيقونة داخل حاوية أولية شبه شفافة
-              Container(
-                decoration: BoxDecoration(
-                  color: kPrimaryColor.withValues(alpha: .10),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                padding: const EdgeInsets.all(10),
-                child: Icon(icon, color: kPrimaryColor, size: 24),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                label,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: scheme.onSurface,
-                  fontSize: 14.5,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
           ),
         ),
       ),

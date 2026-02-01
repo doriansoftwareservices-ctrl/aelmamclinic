@@ -865,6 +865,7 @@ class AuthProvider extends ChangeNotifier {
       if (accId == null || accId.isEmpty) return;
       final data = await _auth.fetchClinicProfile(accountId: accId);
       if (data == null) return;
+      final existing = await DBService.instance.getClinicProfile(accId);
       final profile = ClinicProfile(
         accountId: data['id']?.toString() ?? accId,
         nameAr: data['name']?.toString() ?? '',
@@ -876,6 +877,7 @@ class AuthProvider extends ChangeNotifier {
         streetEn: data['street_en']?.toString() ?? '',
         nearEn: data['near_en']?.toString() ?? '',
         phone: data['phone']?.toString() ?? '',
+        logoPath: existing?.logoPath,
       );
       await DBService.instance.saveClinicProfile(profile);
     } catch (_) {}

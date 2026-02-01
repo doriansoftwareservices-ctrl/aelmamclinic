@@ -9,6 +9,7 @@ class ClinicProfile {
   final String streetEn;
   final String nearEn;
   final String phone;
+  final String? logoPath;
 
   const ClinicProfile({
     required this.accountId,
@@ -21,6 +22,7 @@ class ClinicProfile {
     required this.streetEn,
     required this.nearEn,
     required this.phone,
+    this.logoPath,
   });
 
   String get addressAr => _joinParts([cityAr, streetAr, nearAr]);
@@ -51,6 +53,7 @@ class ClinicProfile {
         'street_en': streetEn,
         'near_en': nearEn,
         'phone': phone,
+        if (logoPath != null) 'logo_path': logoPath,
       };
 
   factory ClinicProfile.fromMap(Map<String, dynamic> map) => ClinicProfile(
@@ -64,6 +67,7 @@ class ClinicProfile {
         streetEn: map['street_en']?.toString() ?? '',
         nearEn: map['near_en']?.toString() ?? '',
         phone: map['phone']?.toString() ?? '',
+        logoPath: map['logo_path']?.toString(),
       );
 
   factory ClinicProfile.fallback() => const ClinicProfile(
@@ -77,6 +81,7 @@ class ClinicProfile {
         streetEn: 'Address2',
         nearEn: 'Address3',
         phone: '12345678',
+        logoPath: null,
       );
 }
 

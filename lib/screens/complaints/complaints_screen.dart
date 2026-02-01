@@ -127,6 +127,7 @@ class _ComplaintsScreenState extends State<ComplaintsScreen> {
       );
     }
 
+    await DBService.instance.notifyTableChanged('complaints');
     await _load();
   }
 
@@ -140,6 +141,7 @@ class _ComplaintsScreenState extends State<ComplaintsScreen> {
       where: 'id = ?',
       whereArgs: [c['id']],
     );
+    await DBService.instance.notifyTableChanged('complaints');
     await _load();
   }
 
@@ -171,6 +173,7 @@ class _ComplaintsScreenState extends State<ComplaintsScreen> {
 
     final db = await DBService.instance.database;
     await db.delete('complaints', where: 'id = ?', whereArgs: [id]);
+    await DBService.instance.notifyTableChanged('complaints');
     await _load();
   }
 

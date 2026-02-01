@@ -15,10 +15,12 @@ class EmployeeSeatPaymentScreen extends StatefulWidget {
     super.key,
     required this.requestId,
     required this.employeeEmail,
+    required this.priceUsd,
   });
 
   final String requestId;
   final String employeeEmail;
+  final double priceUsd;
 
   @override
   State<EmployeeSeatPaymentScreen> createState() =>
@@ -37,7 +39,6 @@ class _EmployeeSeatPaymentScreenState extends State<EmployeeSeatPaymentScreen> {
   bool _submitting = false;
   String? _error;
 
-  static const int _priceUsd = 25;
 
   @override
   void initState() {
@@ -205,7 +206,9 @@ class _EmployeeSeatPaymentScreenState extends State<EmployeeSeatPaymentScreen> {
                           Text('الموظف: ${widget.employeeEmail}'),
                           const SizedBox(height: 6),
                           Text(
-                            'المبلغ المطلوب: \$$_priceUsd',
+                            widget.priceUsd > 0
+                                ? 'المبلغ المطلوب: \$${widget.priceUsd.toStringAsFixed(0)}'
+                                : 'المبلغ المطلوب: —',
                             style: TextStyle(
                               color: scheme.primary,
                               fontWeight: FontWeight.w700,

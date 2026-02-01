@@ -6,11 +6,13 @@ import 'dart:developer' as dev;
 
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:aelmamclinic/utils/toast_utils.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:window_manager/window_manager.dart';
 
 // SQLite (Windows/Linux/macOS via FFI)
 import 'package:sqlite3/open.dart';
@@ -80,6 +82,13 @@ bool get _pushSupported {
 
 /// مفاتيح ملاحة عامة لفتح الشاشات من الإشعارات
 final GlobalKey<NavigatorState> _navKey = GlobalKey<NavigatorState>();
+bool _f11Down = false;
+
+Future<void> _toggleFullscreen() async {
+  if (!(Platform.isWindows || Platform.isLinux || Platform.isMacOS)) return;
+  final isFull = await windowManager.isFullScreen();
+  await windowManager.setFullScreen(!isFull);
+}
 
 DynamicLibrary _loadWindowsSqliteLibrary() {
   final exeDir = File(Platform.resolvedExecutable).parent;
@@ -151,8 +160,31 @@ void main() {
       sq.databaseFactory = databaseFactoryFfi;
     }
 
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      await windowManager.ensureInitialized();
+      HardwareKeyboard.instance.addHandler((event) {
+        if (event.logicalKey == LogicalKeyboardKey.f11) {
+          if (event is KeyDownEvent && !_f11Down) {
+            _f11Down = true;
+            _toggleFullscreen();
+          } else if (event is KeyUpEvent) {
+            _f11Down = false;
+          }
+          return true;
+        }
+        return false;
+      });
+    }
+
     // التقاط أخطاء Flutter
     FlutterError.onError = (details) async {
+      final message = details.exceptionAsString();
+      if (message.contains('hardware_keyboard.dart') ||
+          message.contains('raw_keyboard.dart') ||
+          message.contains('keysPressed')) {
+        FlutterError.presentError(details);
+        return;
+      }
       debugPrint("FlutterError: ${details.exception}");
       AppErrorReporter.report('حدث خطأ غير متوقع. تم تسجيله.');
       await _logCrash(details.exceptionAsString(), details.stack.toString());

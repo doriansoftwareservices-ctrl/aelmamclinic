@@ -217,7 +217,7 @@ class DBService {
 
     return openDatabase(
       dbPath,
-      version: 33, // ↑ نسخة جديدة لدعم ردود الشكاوى
+      version: 34, // ↑ دعم شعار المرفق الصحي المحلي
       onConfigure: (db) async {
         // ✅ على أندرويد: بعض أوامر PRAGMA يجب تنفيذها بـ rawQuery
         await db.rawQuery('PRAGMA foreign_keys = ON');
@@ -633,20 +633,62 @@ class DBService {
         street_en TEXT,
         near_en TEXT,
         phone TEXT,
+        logo_path TEXT,
         updated_at TEXT
       )
     ''');
+    await _addColumnIfMissing(db, 'clinic_profile', 'logo_path', 'TEXT');
   }
 
   Future<void> saveClinicProfile(ClinicProfile profile) async {
     final db = await database;
     final data = profile.toMap();
+    if (profile.logoPath == null || profile.logoPath!.trim().isEmpty) {
+      final existing = await db.query(
+        'clinic_profile',
+        columns: const ['logo_path'],
+        where: 'account_id = ?',
+        whereArgs: [profile.accountId],
+        limit: 1,
+      );
+      if (existing.isNotEmpty) {
+        final logo = existing.first['logo_path']?.toString();
+        if (logo != null && logo.trim().isNotEmpty) {
+          data['logo_path'] = logo;
+        }
+      }
+    }
     data['updated_at'] = DateTime.now().toIso8601String();
     await db.insert(
       'clinic_profile',
       data,
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+  }
+
+  Future<void> updateClinicLogoPath(String accountId, String? path) async {
+    final trimmedId = accountId.trim();
+    if (trimmedId.isEmpty) return;
+    final db = await database;
+    final trimmedPath = path?.trim();
+    final updateData = <String, dynamic>{
+      'logo_path':
+          (trimmedPath == null || trimmedPath.isEmpty) ? null : trimmedPath,
+      'updated_at': DateTime.now().toIso8601String(),
+    };
+    final rows = await db.update(
+      'clinic_profile',
+      updateData,
+      where: 'account_id = ?',
+      whereArgs: [trimmedId],
+    );
+    if (rows == 0) {
+      await db.insert(
+        'clinic_profile',
+        {'account_id': trimmedId, ...updateData},
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
   }
 
   Future<ClinicProfile?> getClinicProfile(String accountId) async {
@@ -1400,6 +1442,10 @@ class DBService {
         );
       } catch (_) {}
     }
+
+    if (oldVersion < 34) {
+      await _addColumnIfMissing(db, 'clinic_profile', 'logo_path', 'TEXT');
+    }
   }
 
   /*─────────────────── المرفقات ───────────────────*/
@@ -1944,7 +1990,7 @@ class DBService {
       'doctors',
       columns: const ['userUid'],
       where:
-          'userUid IS NOT NULL AND TRIM(userUid) <> "" AND ifnull(isDeleted,0)=0',
+          "userUid IS NOT NULL AND TRIM(userUid) <> '' AND ifnull(isDeleted,0)=0",
     );
     final set = <String>{};
     for (final row in rows) {
@@ -2303,7 +2349,7 @@ class DBService {
       'employees',
       columns: const ['userUid'],
       where:
-          'userUid IS NOT NULL AND TRIM(userUid) <> "" AND ifnull(isDeleted,0)=0',
+          "userUid IS NOT NULL AND TRIM(userUid) <> '' AND ifnull(isDeleted,0)=0",
     );
     final set = <String>{};
     for (final row in rows) {

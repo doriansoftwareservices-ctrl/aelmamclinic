@@ -48,6 +48,7 @@ class ChatRoomScreen extends StatefulWidget {
 }
 
 class _ChatRoomScreenState extends State<ChatRoomScreen> {
+  static const bool _chatAttachmentsEnabled = false;
   final _textCtrl = TextEditingController();
   final _focusNode = FocusNode();
   final _listCtrl = ScrollController();
@@ -256,6 +257,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   /*──────────────────── Send / Attachments / Actions ────────────────────*/
 
   Future<void> _pickImages({bool fromCamera = false}) async {
+    if (!_chatAttachmentsEnabled) return;
     try {
       if (fromCamera) {
         final shot = await _picker.pickImage(
@@ -276,10 +278,13 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
     final text = _textCtrl.text.trim();
     final hasText = text.isNotEmpty;
-    final hasImages = _pickedImages.isNotEmpty;
+    if (!_chatAttachmentsEnabled && _pickedImages.isNotEmpty) {
+      _pickedImages.clear();
+    }
+    final hasImages = _chatAttachmentsEnabled && _pickedImages.isNotEmpty;
 
     if (!hasText && !hasImages) {
-      _snack('اكتب رسالة أو أرفق صورة.');
+      _snack(_chatAttachmentsEnabled ? 'اكتب رسالة أو أرفق صورة.' : 'اكتب رسالة.');
       return;
     }
 
@@ -460,6 +465,13 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
       // مرفقات (إن وُجدت)
       final atts = msg.attachments;
+      if (!_chatAttachmentsEnabled && atts.isNotEmpty && !hasText) {
+        if (mounted) {
+          Navigator.of(context).maybePop();
+          _snack('تم تعطيل إرسال المرفقات.');
+        }
+        return;
+      }
 
       for (final conv in targets) {
         // أرسل نصًا (بعنوان صغير) إن وُجد
@@ -472,7 +484,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         }
 
         // إن كانت هناك صور: نزّلها مؤقتًا ثم أعد رفعها كرسالة صور
-        if (atts.isNotEmpty) {
+        if (_chatAttachmentsEnabled && atts.isNotEmpty) {
           final files = <File>[];
           for (final a in atts) {
             var url = a.url.trim();
@@ -1316,13 +1328,14 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                 }
               },
             ),
-            IconButton(
-              tooltip: 'المرفقات',
-              onPressed: () async {
-                await _pickImages();
-              },
-              icon: const Icon(Icons.image_rounded),
-            ),
+            if (_chatAttachmentsEnabled)
+              IconButton(
+                tooltip: 'المرفقات',
+                onPressed: () async {
+                  await _pickImages();
+                },
+                icon: const Icon(Icons.image_rounded),
+              ),
           ],
         ),
         body: Container(
@@ -1564,7 +1577,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                 ),
 
                 // ---------- معاينة المرفقات المختارة ----------
-                if (_pickedImages.isNotEmpty)
+                if (_chatAttachmentsEnabled && _pickedImages.isNotEmpty)
                   SizedBox(
                     height: 96,
                     child: ListView.separated(
@@ -1645,6 +1658,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                   focusNode: _focusNode,
                   sending: _sending,
                   onChanged: _onTextChanged,
+                  attachmentsEnabled: _chatAttachmentsEnabled,
                   onAttachImages: () async {
                     // ضغطة قصيرة: الاستديو، ضغطة مطوّلة: الكاميرا
                     await _pickImages();
@@ -1807,6 +1821,7 @@ class _ComposerBar extends StatelessWidget {
   final FocusNode focusNode;
   final bool sending;
   final ValueChanged<String> onChanged;
+  final bool attachmentsEnabled;
   final VoidCallback onAttachImages;
   final VoidCallback? onAttachImagesLong;
   final VoidCallback onSend;
@@ -1816,6 +1831,7 @@ class _ComposerBar extends StatelessWidget {
     required this.focusNode,
     required this.sending,
     required this.onChanged,
+    required this.attachmentsEnabled,
     required this.onAttachImages,
     this.onAttachImagesLong,
     required this.onSend,
@@ -1831,22 +1847,24 @@ class _ComposerBar extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
         child: Row(
           children: [
-            // زر إرفاق داخل بطاقة زجاجية (ضغط مطوّل = كاميرا)
-            Container(
-              decoration: BoxDecoration(
-                color: scheme.surface.withValues(alpha: .55),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: GestureDetector(
-                onLongPress: sending ? null : onAttachImagesLong,
-                child: IconButton(
-                  icon: const Icon(Icons.attach_file_rounded),
-                  tooltip: 'إرفاق (اضغط مطولًا للكاميرا)',
-                  onPressed: sending ? null : onAttachImages,
+            if (attachmentsEnabled) ...[
+              // زر إرفاق داخل بطاقة زجاجية (ضغط مطوّل = كاميرا)
+              Container(
+                decoration: BoxDecoration(
+                  color: scheme.surface.withValues(alpha: .55),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: GestureDetector(
+                  onLongPress: sending ? null : onAttachImagesLong,
+                  child: IconButton(
+                    icon: const Icon(Icons.attach_file_rounded),
+                    tooltip: 'إرفاق (اضغط مطولًا للكاميرا)',
+                    onPressed: sending ? null : onAttachImages,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: 8),
+              const SizedBox(width: 8),
+            ],
 
             // حقل الإدخال (زجاجي)
             Expanded(

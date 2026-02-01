@@ -200,8 +200,7 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
       cairoBold = pw.Font.helveticaBold();
     }
     try {
-      final logoBytes = await rootBundle.load('assets/images/logo2.png');
-      logo = logoBytes.buffer.asUint8List();
+      logo = await ClinicProfileService.loadReportLogoBytes();
     } catch (_) {
       logo = null;
     }

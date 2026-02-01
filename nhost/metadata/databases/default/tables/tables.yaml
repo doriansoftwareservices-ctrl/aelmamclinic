@@ -395,6 +395,10 @@
     permission:
       check: {}
       columns: '*'
+  - role: user
+    permission:
+      check: {}
+      columns: '*'
   select_permissions:
   - role: me
     permission:
@@ -436,8 +440,16 @@
       columns: '*'
       filter: {}
       check: {}
+  - role: user
+    permission:
+      columns: '*'
+      filter: {}
+      check: {}
   delete_permissions:
   - role: superadmin
+    permission:
+      filter: {}
+  - role: user
     permission:
       filter: {}
 - table:

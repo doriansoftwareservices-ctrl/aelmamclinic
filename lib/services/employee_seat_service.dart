@@ -49,6 +49,7 @@ class EmployeeSeatService {
           status
           account_id
           employee_user_uid
+          price_usd
         }
       }
     ''';
@@ -80,6 +81,7 @@ class EmployeeSeatService {
           employee_user_uid
           employee_email
           status
+          price_usd
           receipt_file_id
           admin_note
           created_at
@@ -119,6 +121,7 @@ class EmployeeSeatService {
           employee_user_uid
           employee_email
           status
+          price_usd
           receipt_file_id
           admin_note
           created_at
@@ -179,6 +182,30 @@ class EmployeeSeatService {
     if (row == null || row['ok'] != true) {
       final msg = row?['error']?.toString() ?? 'review_failed';
       throw HttpException(msg);
+    }
+  }
+
+  Future<void> updateSeatPrice({
+    required String requestId,
+    required double priceUsd,
+  }) async {
+    const mutation = r'''
+      mutation UpdateSeatPrice($id: uuid!, $price: numeric!) {
+        update_employee_seat_requests_by_pk(
+          pk_columns: {id: $id},
+          _set: {price_usd: $price}
+        ) { id }
+      }
+    ''';
+    final res = await _gql.mutate(
+      MutationOptions(
+        document: gql(mutation),
+        variables: {'id': requestId, 'price': priceUsd},
+        fetchPolicy: FetchPolicy.noCache,
+      ),
+    );
+    if (res.hasException) {
+      throw res.exception!;
     }
   }
 

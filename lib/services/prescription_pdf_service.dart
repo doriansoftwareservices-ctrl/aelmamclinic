@@ -32,8 +32,7 @@ class PrescriptionPdfService {
     final cairo = pw.Font.ttf(fontData.buffer.asByteData());
 
     // الشعار
-    final logoData =
-        (await rootBundle.load('assets/images/logo2.png')).buffer.asUint8List();
+    final logoData = await ClinicProfileService.loadReportLogoBytes();
 
     final clinic = await ClinicProfileService.loadActiveOrFallback();
 

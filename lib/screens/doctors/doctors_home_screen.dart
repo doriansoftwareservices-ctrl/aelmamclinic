@@ -16,7 +16,7 @@ import 'package:aelmamclinic/services/doctors_services_home_screen.dart';
 
 // تصميم TBIAN
 import 'package:aelmamclinic/core/theme.dart';
-import 'package:aelmamclinic/core/neumorphism.dart';
+import 'package:aelmamclinic/widgets/feature_hub.dart';
 
 class DoctorsHomeScreen extends StatefulWidget {
   const DoctorsHomeScreen({super.key});
@@ -93,141 +93,41 @@ class _DoctorsHomeScreenState extends State<DoctorsHomeScreen>
             body: SafeArea(
               child: Padding(
                 padding: kScreenPadding,
-                child: LayoutBuilder(
-                  builder: (context, cons) {
-                    final width = cons.maxWidth;
-                    final cross = width >= 1200
-                        ? 4
-                        : width >= 900
-                            ? 3
-                            : 2;
-                    final aspect = width >= 1200
-                        ? 1.12
-                        : width >= 900
-                            ? 1.02
-                            : (width < 420 ? 0.90 : 0.86);
-
-                    return GridView.count(
-                      crossAxisCount: cross,
-                      mainAxisSpacing: 16,
-                      crossAxisSpacing: 16,
-                      childAspectRatio: aspect,
-                      children: [
-                        _HomeCard(
-                          icon: Icons.person_add_alt_1_rounded,
-                          title: 'إضافة طبيب',
-                          subtitle:
-                              'تسجيل طبيب جديد مع البيانات الأساسية ونسب الخدمات لاحقاً',
-                          primary: ('فتح', () => _go(const NewDoctorScreen())),
-                        ),
-                        _HomeCard(
-                          icon: Icons.list_alt_rounded,
-                          title: 'قائمة الأطباء',
-                          subtitle:
-                              'استعراض وتعديل بيانات الأطباء الحاليين في العيادة',
-                          primary: (
-                            'استعراض',
-                            () => _go(const ListDoctorsScreen())
-                          ),
-                        ),
-                        _HomeCard(
-                          icon: Icons.people_alt_rounded,
-                          title: 'مرضى الأطباء',
-                          subtitle:
-                              'عرض المرضى المرتبطين بالأطباء مع تفاصيل الخدمة',
-                          primary: (
-                            'فتح',
-                            () => _go(const DoctorsPatientsScreen()),
-                          ),
-                        ),
-                        // ✅ تمت إزالة بطاقة المختبر والأشعة
-                        _HomeCard(
-                          icon: Icons.medical_services_rounded,
-                          title: 'قوائم خدمات الأطباء',
-                          subtitle:
-                              'تحديد نسب الطبيب ونسبة المركز لخدمات محددة',
-                          primary: (
-                            'فتح',
-                            () => _go(const DoctorsServicesHomeScreen()),
-                          ),
-                        ),
-                      ],
-                    );
-                  },
+                child: FeatureHubBody(
+                  title: 'إدارة الأطباء',
+                  items: [
+                    FeatureHubItem(
+                      icon: Icons.person_add_alt_1_rounded,
+                      title: 'إضافة طبيب',
+                      subtitle:
+                          'تسجيل طبيب جديد مع البيانات الأساسية ونسب الخدمات لاحقاً',
+                      onTap: () => _go(const NewDoctorScreen()),
+                    ),
+                    FeatureHubItem(
+                      icon: Icons.list_alt_rounded,
+                      title: 'قائمة الأطباء',
+                      subtitle:
+                          'استعراض وتعديل بيانات الأطباء الحاليين في العيادة',
+                      onTap: () => _go(const ListDoctorsScreen()),
+                    ),
+                    FeatureHubItem(
+                      icon: Icons.people_alt_rounded,
+                      title: 'مرضى الأطباء',
+                      subtitle: 'عرض المرضى المرتبطين بالأطباء مع تفاصيل الخدمة',
+                      onTap: () => _go(const DoctorsPatientsScreen()),
+                    ),
+                    FeatureHubItem(
+                      icon: Icons.medical_services_rounded,
+                      title: 'قوائم خدمات الأطباء',
+                      subtitle: 'تحديد نسب الطبيب ونسبة المركز لخدمات محددة',
+                      onTap: () => _go(const DoctorsServicesHomeScreen()),
+                    ),
+                  ],
                 ),
               ),
             ),
           );
         },
-      ),
-    );
-  }
-}
-
-class _HomeCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final (String, VoidCallback) primary;
-
-  const _HomeCard({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.primary,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
-    return NeuCard(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: Container(
-              decoration: BoxDecoration(
-                color: kPrimaryColor.withValues(alpha: .1),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              padding: const EdgeInsets.all(10),
-              child: Icon(icon, color: kPrimaryColor, size: 26),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: scheme.onSurface,
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Flexible(
-            child: Text(
-              subtitle,
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: scheme.onSurface.withValues(alpha: .65),
-                fontSize: 13.2,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          NeuButton.primary(
-            label: primary.$1,
-            icon: Icons.open_in_new_rounded,
-            onPressed: primary.$2,
-          ),
-        ],
       ),
     );
   }

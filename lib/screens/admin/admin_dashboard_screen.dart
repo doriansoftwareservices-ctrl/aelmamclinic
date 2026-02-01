@@ -77,6 +77,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
 
   List<Complaint> _complaints = [];
   bool _loadingComplaints = false;
+  int _lastComplaintPending = 0;
 
   List<PaymentStat> _paymentStats = [];
   bool _loadingStats = false;
@@ -174,6 +175,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   int get _pendingSubscriptionCount =>
       _subscriptionRequests.where((r) => r.status == 'pending').length;
   int get _pendingSeatCount => _seatRequests.length;
+  int get _pendingComplaintCount => _complaints
+      .where((c) => (c.status.isEmpty || c.status == 'open' || c.status == 'in_progress'))
+      .length;
 
   Widget _navIconWithBadge(IconData icon, int count) {
     if (count <= 0) return Icon(icon);
@@ -224,6 +228,40 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(ctrl.text.trim()),
             child: const Text('متابعة'),
+          ),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    return result;
+  }
+
+  Future<double?> _askSeatPrice(double current) async {
+    final ctrl = TextEditingController(
+      text: current > 0 ? current.toStringAsFixed(0) : '',
+    );
+    final result = await showDialog<double>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('تحديد سعر المقعد'),
+        content: TextField(
+          controller: ctrl,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: 'السعر بالدولار',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(null),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final value = double.tryParse(ctrl.text.trim());
+              Navigator.of(ctx).pop(value);
+            },
+            child: const Text('حفظ'),
           ),
         ],
       ),
@@ -558,6 +596,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         _complaints = rows;
         _loadingComplaints = false;
       });
+      final pending = _pendingComplaintCount;
+      if (pending > _lastComplaintPending && _lastComplaintPending > 0) {
+        _snack('شكاوى جديدة بانتظار المراجعة.');
+      }
+      _lastComplaintPending = pending;
     } catch (e) {
       if (!mounted) return;
       setState(() => _loadingComplaints = false);
@@ -917,9 +960,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                             icon: Icon(Icons.account_balance_rounded),
                             label: Text('طرق الدفع'),
                           ),
-                          const NavigationRailDestination(
-                            icon: Icon(Icons.report_problem_rounded),
-                            label: Text('الشكاوى'),
+                          NavigationRailDestination(
+                            icon: _navIconWithBadge(
+                              Icons.report_problem_rounded,
+                              _pendingComplaintCount,
+                            ),
+                            label: const Text('الشكاوى'),
                           ),
                           const NavigationRailDestination(
                             icon: Icon(Icons.analytics_rounded),
@@ -1225,6 +1271,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       children: _seatRequests.map((req) {
         final status = req.status;
         final note = req.adminNote?.trim() ?? '';
+        final priceLabel =
+            req.priceUsd > 0 ? '\$${req.priceUsd.toStringAsFixed(0)}' : '—';
+        final hasReceipt = (req.receiptFileId ?? '').trim().isNotEmpty;
         return NeuCard(
           margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
           padding: const EdgeInsets.all(12),
@@ -1233,6 +1282,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             subtitle: Text(
               [
                 'الحساب: ${req.accountId}',
+                'المبلغ: $priceLabel',
                 'الحالة: $status',
                 if (note.isNotEmpty) 'ملاحظة: $note',
               ].join('\n'),
@@ -1244,9 +1294,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                       IconButton(
                         tooltip: 'عرض الوصل',
                         icon: const Icon(Icons.receipt_long_rounded),
-                        onPressed: () async {
-                          await _openSeatProof(req.receiptFileId ?? '');
-                        },
+                        onPressed: hasReceipt
+                            ? () async {
+                                await _openSeatProof(
+                                    req.receiptFileId ?? '');
+                              }
+                            : null,
                       ),
                       const SizedBox(width: 6),
                       NeuButton.primary(
@@ -1278,13 +1331,30 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                       ),
                     ],
                   )
-                : IconButton(
-                    tooltip: 'عرض الوصل',
-                    icon: const Icon(Icons.receipt_long_rounded),
-                    onPressed: () async {
-                      await _openSeatProof(req.receiptFileId ?? '');
-                    },
-                  ),
+                : status == 'awaiting_payment'
+                    ? IconButton(
+                        tooltip: 'تحديد السعر',
+                        icon: const Icon(Icons.edit_rounded),
+                        onPressed: () async {
+                          final next = await _askSeatPrice(req.priceUsd);
+                          if (next == null) return;
+                          await _seatService.updateSeatPrice(
+                            requestId: req.id,
+                            priceUsd: next,
+                          );
+                          await _fetchSeatRequests();
+                        },
+                      )
+                    : IconButton(
+                        tooltip: 'عرض الوصل',
+                        icon: const Icon(Icons.receipt_long_rounded),
+                        onPressed: hasReceipt
+                            ? () async {
+                                await _openSeatProof(
+                                    req.receiptFileId ?? '');
+                              }
+                            : null,
+                      ),
           ),
         );
       }).toList(),

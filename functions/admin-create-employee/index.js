@@ -25,20 +25,21 @@ const normalizeAuthUrl = (raw) => {
   if (!raw) return null;
   if (!raw.includes('nhost.run')) return null;
   let url = raw.replace(/\/+$/, '');
+  const base = url.replace(/\/v1(\/admin)?$/i, '');
   const isServiceUrl =
-    url.includes('.auth.') ||
-    url.includes('.graphql.') ||
-    url.includes('.functions.') ||
-    url.includes('.storage.');
-  if (!isServiceUrl && url.endsWith('.nhost.run')) {
+    base.includes('.auth.') ||
+    base.includes('.graphql.') ||
+    base.includes('.functions.') ||
+    base.includes('.storage.');
+  if (!isServiceUrl && base.endsWith('.nhost.run')) {
     const region = process.env.NHOST_REGION;
-    const subdomain = url.split('://')[1]?.split('.nhost.run')[0];
+    const subdomain = base.split('://')[1]?.split('.nhost.run')[0];
     if (subdomain && region) {
       return `https://${subdomain}.auth.${region}.nhost.run/v1`;
     }
     return null;
   }
-  url = url
+  url = base
     .replace('.graphql.', '.auth.')
     .replace('.functions.', '.auth.')
     .replace('.storage.', '.auth.');

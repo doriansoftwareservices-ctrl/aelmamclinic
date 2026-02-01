@@ -47,12 +47,16 @@ class _PatientsByDoctorScreenState extends State<PatientsByDoctorScreen> {
 
   Future<void> _loadPatientsByDoctor() async {
     final allPatients = await DBService.instance.getAllPatients();
-    final filtered =
-        allPatients.where((p) => p.doctorId == widget.doctor.id).toList();
-    setState(() {
-      _patients = filtered;
-      _filteredPatients = filtered;
-    });
+    final doctorName = widget.doctor.name.trim().toLowerCase();
+    final filtered = allPatients.where((p) {
+      final idMatch = p.doctorId == widget.doctor.id;
+      final nameMatch =
+          (p.doctorName ?? '').trim().toLowerCase() == doctorName;
+      return idMatch || nameMatch;
+    }).toList();
+    if (!mounted) return;
+    setState(() => _patients = filtered);
+    _filterPatients();
   }
 
   bool _isWithinDateRange(DateTime date) {

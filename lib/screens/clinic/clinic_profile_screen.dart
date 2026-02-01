@@ -1,6 +1,10 @@
+import 'dart:io';
 import 'dart:ui' as ui show TextDirection;
 
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 
 import 'package:aelmamclinic/core/features.dart';
@@ -31,6 +35,8 @@ class _ClinicProfileScreenState extends State<ClinicProfileScreen> {
   final _nearEnCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
 
+  String? _logoPath;
+  bool _logoBusy = false;
   bool _loading = true;
   bool _saving = false;
 
@@ -73,16 +79,18 @@ class _ClinicProfileScreenState extends State<ClinicProfileScreen> {
   }
 
   void _applyProfile(ClinicProfile? profile) {
-    final p = profile;
-    _nameArCtrl.text = p?.nameAr ?? '';
-    _cityArCtrl.text = p?.cityAr ?? '';
-    _streetArCtrl.text = p?.streetAr ?? '';
-    _nearArCtrl.text = p?.nearAr ?? '';
-    _nameEnCtrl.text = p?.nameEn ?? '';
-    _cityEnCtrl.text = p?.cityEn ?? '';
-    _streetEnCtrl.text = p?.streetEn ?? '';
-    _nearEnCtrl.text = p?.nearEn ?? '';
-    _phoneCtrl.text = p?.phone ?? '';
+    final profileData = profile;
+    _nameArCtrl.text = profileData?.nameAr ?? '';
+    _cityArCtrl.text = profileData?.cityAr ?? '';
+    _streetArCtrl.text = profileData?.streetAr ?? '';
+    _nearArCtrl.text = profileData?.nearAr ?? '';
+    _nameEnCtrl.text = profileData?.nameEn ?? '';
+    _cityEnCtrl.text = profileData?.cityEn ?? '';
+    _streetEnCtrl.text = profileData?.streetEn ?? '';
+    _nearEnCtrl.text = profileData?.nearEn ?? '';
+    _phoneCtrl.text = profileData?.phone ?? '';
+    final logo = profileData?.logoPath?.trim() ?? '';
+    _logoPath = (logo.isNotEmpty && File(logo).existsSync()) ? logo : null;
   }
 
   String? _req(String? v) =>
@@ -122,6 +130,55 @@ class _ClinicProfileScreenState extends State<ClinicProfileScreen> {
       );
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _pickLogo(AuthProvider auth) async {
+    if (_logoBusy) return;
+    final accountId = auth.accountId?.trim() ?? '';
+    if (accountId.isEmpty) return;
+    setState(() => _logoBusy = true);
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        allowMultiple: false,
+        type: FileType.image,
+      );
+      final path = result?.files.single.path;
+      if (path == null || path.trim().isEmpty) return;
+      final ext = p.extension(path).trim();
+      final dir = await getApplicationDocumentsDirectory();
+      final target = p.join(
+        dir.path,
+        ext.isEmpty ? 'clinic_logo.png' : 'clinic_logo$ext',
+      );
+      final copied = await File(path).copy(target);
+      await DBService.instance.updateClinicLogoPath(accountId, copied.path);
+      if (!mounted) return;
+      setState(() => _logoPath = copied.path);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('تعذّر حفظ الشعار: $e')));
+    } finally {
+      if (mounted) setState(() => _logoBusy = false);
+    }
+  }
+
+  Future<void> _clearLogo(AuthProvider auth) async {
+    if (_logoBusy) return;
+    final accountId = auth.accountId?.trim() ?? '';
+    if (accountId.isEmpty) return;
+    setState(() => _logoBusy = true);
+    try {
+      await DBService.instance.updateClinicLogoPath(accountId, null);
+      if (!mounted) return;
+      setState(() => _logoPath = null);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('تعذّر حذف الشعار: $e')));
+    } finally {
+      if (mounted) setState(() => _logoBusy = false);
     }
   }
 
@@ -167,6 +224,7 @@ class _ClinicProfileScreenState extends State<ClinicProfileScreen> {
       );
     }
     final canEdit = auth.isSuperAdmin ? false : auth.isOwnerOrAdmin;
+    final isPaid = auth.isPro;
     return Directionality(
       textDirection: ui.TextDirection.rtl,
       child: Scaffold(
@@ -200,6 +258,112 @@ class _ClinicProfileScreenState extends State<ClinicProfileScreen> {
                           child: const Text(
                             'حدّث بيانات المرفق الصحي لتظهر في كل تقارير PDF.',
                             style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        NeuCard(
+                          padding: const EdgeInsets.all(14),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'شعار المرفق الصحي',
+                                style: TextStyle(fontWeight: FontWeight.w800),
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  Container(
+                                    width: 84,
+                                    height: 84,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .outline
+                                            .withValues(alpha: .4),
+                                      ),
+                                    ),
+                                    child: _logoPath == null
+                                        ? const Icon(Icons.image_outlined)
+                                        : ClipRRect(
+                                            borderRadius:
+                                                BorderRadius.circular(10),
+                                            child: Image.file(
+                                              File(_logoPath!),
+                                              fit: BoxFit.contain,
+                                              errorBuilder: (_, __, ___) =>
+                                                  const Icon(
+                                                      Icons.broken_image),
+                                            ),
+                                          ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          _logoPath == null
+                                              ? 'لا يوجد شعار مخصص بعد.'
+                                              : p.basename(_logoPath!),
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.w700),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          isPaid
+                                              ? 'يظهر هذا الشعار في جميع تقارير PDF.'
+                                              : 'يظهر الشعار فقط للخطط الشهرية والسنوية.',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .onSurface
+                                                .withValues(alpha: .7),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Row(
+                                          children: [
+                                            FilledButton.tonal(
+                                              onPressed: canEdit && !_logoBusy
+                                                  ? () => _pickLogo(auth)
+                                                  : null,
+                                              child: _logoBusy
+                                                  ? const SizedBox(
+                                                      width: 16,
+                                                      height: 16,
+                                                      child:
+                                                          CircularProgressIndicator(
+                                                        strokeWidth: 2,
+                                                      ),
+                                                    )
+                                                  : const Text('اختيار شعار'),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            TextButton(
+                                              onPressed: canEdit &&
+                                                      _logoPath != null &&
+                                                      !_logoBusy
+                                                  ? () => _clearLogo(auth)
+                                                  : null,
+                                              child: const Text('إزالة'),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
                         ),
                         const SizedBox(height: 12),

@@ -6,6 +6,7 @@ class EmployeeSeatRequest {
   final String employeeUserUid;
   final String employeeEmail;
   final String status;
+  final double priceUsd;
   final String? receiptFileId;
   final String? adminNote;
   final DateTime? createdAt;
@@ -17,6 +18,7 @@ class EmployeeSeatRequest {
     required this.employeeUserUid,
     required this.employeeEmail,
     required this.status,
+    required this.priceUsd,
     required this.receiptFileId,
     required this.adminNote,
     required this.createdAt,
@@ -37,6 +39,9 @@ class EmployeeSeatRequest {
       employeeUserUid: (map['employee_user_uid'] ?? '').toString(),
       employeeEmail: (map['employee_email'] ?? '').toString(),
       status: (map['status'] ?? '').toString(),
+      priceUsd: (map['price_usd'] as num?)?.toDouble() ??
+          double.tryParse(map['price_usd']?.toString() ?? '') ??
+          0,
       receiptFileId: map['receipt_file_id']?.toString(),
       adminNote: map['admin_note']?.toString(),
       createdAt: createdAt,

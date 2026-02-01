@@ -240,8 +240,7 @@ class _DuplicatePatientsScreenState extends State<DuplicatePatientsScreen> {
     final fontData = await rootBundle.load('assets/fonts/Cairo-Regular.ttf');
     final cairo = pw.Font.ttf(fontData.buffer.asByteData());
     final clinic = await ClinicProfileService.loadActiveOrFallback();
-    final logoData =
-        (await rootBundle.load('assets/images/logo2.png')).buffer.asUint8List();
+    final logoData = await ClinicProfileService.loadReportLogoBytes();
 
     final pdf = pw.Document();
     final rows = <List<String>>[];

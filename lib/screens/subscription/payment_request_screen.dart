@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'dart:ui';
+import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -148,13 +148,14 @@ class _PaymentRequestScreenState extends State<PaymentRequestScreen> {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
+        backgroundColor: scheme.surface,
         appBar: AppBar(
           title: const Text('بيانات الدفع'),
           centerTitle: false,
         ),
         body: Stack(
           children: [
-            _Backdrop(scheme: scheme),
+            _AnimatedBubbleBackdrop(scheme: scheme),
             SafeArea(
               child: Padding(
                 padding: kScreenPadding,
@@ -262,77 +263,213 @@ class _PaymentRequestScreenState extends State<PaymentRequestScreen> {
   }
 }
 
-class _Backdrop extends StatelessWidget {
-  const _Backdrop({required this.scheme});
+class _AnimatedBubbleBackdrop extends StatefulWidget {
+  const _AnimatedBubbleBackdrop({required this.scheme});
   final ColorScheme scheme;
+
+  @override
+  State<_AnimatedBubbleBackdrop> createState() =>
+      _AnimatedBubbleBackdropState();
+}
+
+class _AnimatedBubbleBackdropState extends State<_AnimatedBubbleBackdrop>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final List<_BubbleParticle> _bubbles;
+  Size _size = Size.zero;
+  Duration? _lastTick;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 10),
+    )..repeat();
+    _bubbles = _createBubbles(widget.scheme);
+    _controller.addListener(_tick);
+  }
+
+  @override
+  void didUpdateWidget(covariant _AnimatedBubbleBackdrop oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.scheme != widget.scheme) {
+      _bubbles.clear();
+      _bubbles.addAll(_createBubbles(widget.scheme));
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  List<_BubbleParticle> _createBubbles(ColorScheme scheme) {
+    final rng = math.Random(42);
+    return List.generate(28, (i) {
+      final radius = 11 + rng.nextDouble() * 14;
+      final x = rng.nextDouble();
+      final y = rng.nextDouble();
+      final speed = 8 + rng.nextDouble() * 14;
+      final angle = rng.nextDouble() * math.pi * 2;
+      final vx = math.cos(angle) * speed;
+      final vy = math.sin(angle) * speed;
+      final color = (i % 3 == 0
+              ? scheme.primary
+              : (i % 3 == 1 ? scheme.secondary : scheme.tertiary))
+          .withValues(alpha: 0.18);
+      return _BubbleParticle(
+        pos: Offset(x, y),
+        vel: Offset(vx, vy),
+        radius: radius,
+        color: color,
+      );
+    });
+  }
+
+  void _ensureSize(Size size) {
+    if (_size == size || size.isEmpty) return;
+    _size = size;
+    for (final b in _bubbles) {
+      if (!b.initialized) {
+        b.pos = Offset(b.pos.dx * _size.width, b.pos.dy * _size.height);
+        b.initialized = true;
+      }
+    }
+  }
+
+  void _tick() {
+    if (!mounted || _size.isEmpty) return;
+    final elapsed = _controller.lastElapsedDuration;
+    if (elapsed == null) return;
+    final last = _lastTick ?? elapsed;
+    final dt = (elapsed - last).inMicroseconds / 1e6;
+    _lastTick = elapsed;
+    if (dt <= 0) return;
+    _step(dt.clamp(0.0, 0.05));
+  }
+
+  void _step(double dt) {
+    for (final b in _bubbles) {
+      b.pos = Offset(b.pos.dx + b.vel.dx * dt, b.pos.dy + b.vel.dy * dt);
+
+      if (b.pos.dx - b.radius < 0) {
+        b.pos = Offset(b.radius, b.pos.dy);
+        b.vel = Offset(-b.vel.dx, b.vel.dy);
+      } else if (b.pos.dx + b.radius > _size.width) {
+        b.pos = Offset(_size.width - b.radius, b.pos.dy);
+        b.vel = Offset(-b.vel.dx, b.vel.dy);
+      }
+      if (b.pos.dy - b.radius < 0) {
+        b.pos = Offset(b.pos.dx, b.radius);
+        b.vel = Offset(b.vel.dx, -b.vel.dy);
+      } else if (b.pos.dy + b.radius > _size.height) {
+        b.pos = Offset(b.pos.dx, _size.height - b.radius);
+        b.vel = Offset(b.vel.dx, -b.vel.dy);
+      }
+    }
+
+    for (var i = 0; i < _bubbles.length; i++) {
+      for (var j = i + 1; j < _bubbles.length; j++) {
+        final a = _bubbles[i];
+        final b = _bubbles[j];
+        final dx = b.pos.dx - a.pos.dx;
+        final dy = b.pos.dy - a.pos.dy;
+        final dist = math.sqrt(dx * dx + dy * dy);
+        final minDist = a.radius + b.radius;
+        if (dist == 0 || dist >= minDist) continue;
+
+        final nx = dx / dist;
+        final ny = dy / dist;
+        final rvx = b.vel.dx - a.vel.dx;
+        final rvy = b.vel.dy - a.vel.dy;
+        final velAlongNormal = rvx * nx + rvy * ny;
+
+        if (velAlongNormal < 0) {
+          final impulse = -velAlongNormal;
+          a.vel = Offset(a.vel.dx - impulse * nx, a.vel.dy - impulse * ny);
+          b.vel = Offset(b.vel.dx + impulse * nx, b.vel.dy + impulse * ny);
+        }
+
+        final overlap = minDist - dist;
+        if (overlap > 0) {
+          final correction = overlap / 2;
+          a.pos = Offset(a.pos.dx - nx * correction, a.pos.dy - ny * correction);
+          b.pos = Offset(b.pos.dx + nx * correction, b.pos.dy + ny * correction);
+        }
+      }
+    }
+
+    setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
     return Positioned.fill(
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              scheme.surface,
-              scheme.surfaceContainerHighest.withValues(alpha: 0.55),
-              scheme.surface,
-            ],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
-        ),
-        child: Stack(
-          children: [
-            Positioned(
-              top: -90,
-              right: -70,
-              child: _BlurBlob(
-                size: 240,
-                color: scheme.primary.withValues(alpha: 0.20),
-              ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          _ensureSize(constraints.biggest);
+          return CustomPaint(
+            painter: _BubblePainter(
+              bubbles: _bubbles,
+              scheme: widget.scheme,
             ),
-            Positioned(
-              bottom: -90,
-              left: -70,
-              child: _BlurBlob(
-                size: 260,
-                color: scheme.tertiary.withValues(alpha: 0.16),
-              ),
-            ),
-            Positioned(
-              top: 200,
-              left: 30,
-              child: _BlurBlob(
-                size: 170,
-                color: scheme.secondary.withValues(alpha: 0.12),
-              ),
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
 }
 
-class _BlurBlob extends StatelessWidget {
-  const _BlurBlob({required this.size, required this.color});
-  final double size;
+class _BubbleParticle {
+  _BubbleParticle({
+    required this.pos,
+    required this.vel,
+    required this.radius,
+    required this.color,
+  });
+
+  Offset pos;
+  Offset vel;
+  final double radius;
   final Color color;
+  bool initialized = false;
+}
+
+class _BubblePainter extends CustomPainter {
+  _BubblePainter({
+    required this.bubbles,
+    required this.scheme,
+  });
+
+  final List<_BubbleParticle> bubbles;
+  final ColorScheme scheme;
 
   @override
-  Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: ClipOval(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 26, sigmaY: 26),
-          child: Container(
-            width: size,
-            height: size,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-          ),
-        ),
-      ),
-    );
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final bgPaint = Paint()
+      ..shader = LinearGradient(
+        colors: [
+          scheme.surface,
+          scheme.surfaceContainerHighest.withValues(alpha: 0.55),
+          scheme.surface,
+        ],
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+      ).createShader(rect);
+    canvas.drawRect(rect, bgPaint);
+
+    for (final bubble in bubbles) {
+      final paint = Paint()..color = bubble.color;
+      canvas.drawCircle(bubble.pos, bubble.radius, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _BubblePainter oldDelegate) {
+    return oldDelegate.bubbles != bubbles || oldDelegate.scheme != scheme;
   }
 }
 
@@ -353,15 +490,11 @@ class _HeaderCard extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(22),
-        color: scheme.surface.withValues(alpha: 0.86),
-        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.55)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 18,
-            offset: const Offset(0, 12),
-          ),
-        ],
+        color: Colors.transparent,
+        border: Border.all(
+          color: scheme.outlineVariant.withValues(alpha: 0.25),
+          width: 0.7,
+        ),
       ),
       child: Row(
         children: [
@@ -443,8 +576,11 @@ class _MethodCard extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(22),
-        color: scheme.surface.withValues(alpha: 0.86),
-        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.55)),
+        color: Colors.transparent,
+        border: Border.all(
+          color: scheme.outlineVariant.withValues(alpha: 0.25),
+          width: 0.7,
+        ),
       ),
       child: Row(
         children: [

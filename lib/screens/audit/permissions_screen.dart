@@ -209,14 +209,14 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
             \$object: account_feature_permissions_insert_input!,
             \$update: [account_feature_permissions_update_column!]!
           ) {
-            insert_account_feature_permissions_one(
-              object: \$object,
+            insert_account_feature_permissions(
+              objects: [\$object],
               on_conflict: {
                 constraint: account_feature_permissions_uix,
                 update_columns: \$update
               }
             ) {
-              id
+              affected_rows
             }
           }
         ''';

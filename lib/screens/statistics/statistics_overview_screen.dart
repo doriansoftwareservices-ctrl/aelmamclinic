@@ -35,8 +35,6 @@ import 'package:aelmamclinic/screens/returns/new_return_screen.dart';
 import 'package:aelmamclinic/screens/statistics/statistics_screen.dart';
 
 /*── شاشة الأشعة والمختبرات ─*/
-import '/services/lab_and_radiology_home_screen.dart';
-
 /*── استيرادات لإدارة الحسابات ─*/
 import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:aelmamclinic/screens/users/employee_accounts_screen.dart';
@@ -297,6 +295,16 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
     );
   }
 
+  void _showUnderDevelopmentNotice() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('هذا القسم تحت التطوير حاليًا'),
+        behavior: SnackBarBehavior.floating,
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
   void _openMyPlanFromDrawer() {
     final auth = context.read<AuthProvider>();
     final isFree = auth.planCode == 'free' && !auth.isSuperAdmin;
@@ -490,9 +498,11 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
     bool enabled = true,
     bool showProBadge = false,
     bool showAlertDot = false,
+    String? badgeText,
   }) {
     final scheme = Theme.of(context).colorScheme;
     final isRtl = Directionality.of(context) == ui.TextDirection.rtl;
+    final badge = badgeText;
 
     final iconColor = enabled
         ? scheme.onSurface.withValues(alpha: .85)
@@ -529,6 +539,24 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
                     'PRO',
                     style: TextStyle(
                       color: scheme.tertiary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              if (badge != null && badge.trim().isNotEmpty)
+                Container(
+                  margin: const EdgeInsets.only(left: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: scheme.error.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    badge,
+                    style: TextStyle(
+                      color: scheme.error,
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
                     ),
@@ -790,8 +818,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                                builder: (_) =>
-                                    const EmployeeAccountsScreen()),
+                                builder: (_) => const EmployeeAccountsScreen()),
                           );
                         },
                       );
@@ -813,21 +840,14 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
                       },
                     ),
 
-                    // الاشعة والمختبرات
-                    _featureDrawerItem(
-                      auth: auth,
-                      featureKey: FeatureKeys.labRadiology,
+                    // الاشعة والمختبرات (مجمّد دائمًا)
+                    _drawerItem(
                       icon: Icons.biotech_rounded,
                       title: 'الأشعة والمختبرات',
-                      onTap: () {
-                        Navigator.pop(context);
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) =>
-                                  const LabAndRadiologyHomeScreen()),
-                        );
-                      },
+                      enabled: false,
+                      badgeText: 'تحت التطوير',
+                      onDenied: _showUnderDevelopmentNotice,
+                      onTap: () {},
                     ),
 
                     // الرسوم البيانية
@@ -918,7 +938,8 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
                         Navigator.pop(context);
                         Navigator.push(
                           context,
-                          MaterialPageRoute(builder: (_) => const UsersScreen()),
+                          MaterialPageRoute(
+                              builder: (_) => const UsersScreen()),
                         );
                       },
                     ),
