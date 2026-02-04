@@ -207,7 +207,7 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
         );
         return;
       }
-      PatientComplaint selected = complaints.first;
+      PatientComplaint? selected = complaints.first;
       if (complaints.length > 1 && mounted) {
         final picked = await showDialog<PatientComplaint>(
           context: context,
@@ -238,7 +238,7 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
           builder: (_) => ReportEditorScreen(
             patient: p,
             remotePatientId: remoteId,
-            complaint: selected,
+            complaint: selected!,
           ),
         ),
       );

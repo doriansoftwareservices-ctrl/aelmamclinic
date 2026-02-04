@@ -161,6 +161,23 @@ class ChatRepository {
         mentionsEmails: mentionsEmails,
       );
 
+  Future<List<ChatMessage>> sendFiles({
+    required String conversationId,
+    required List<File> files,
+    String? optionalText,
+    int? localSeq,
+    String? replyToMessageId,
+    List<String>? mentionsEmails,
+  }) =>
+      _svc.sendFiles(
+        conversationId: conversationId,
+        files: files,
+        optionalText: optionalText,
+        localSeq: localSeq,
+        replyToMessageId: replyToMessageId,
+        mentionsEmails: mentionsEmails,
+      );
+
   Future<void> editMessage({
     required String messageId,
     required String newBody,

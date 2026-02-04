@@ -30,6 +30,7 @@ import 'package:aelmamclinic/models/chat_invitation.dart';
 import 'package:aelmamclinic/models/chat_models.dart'
     show
         ChatAttachment,
+        ChatAttachmentType,
         ChatConversation,
         ChatMessage,
         ChatMessageKind,
@@ -720,6 +721,21 @@ class ChatService {
     if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
     if (lower.endsWith('.gif')) return 'image/gif';
     if (lower.endsWith('.webp')) return 'image/webp';
+    if (lower.endsWith('.pdf')) return 'application/pdf';
+    if (lower.endsWith('.doc')) return 'application/msword';
+    if (lower.endsWith('.docx')) {
+      return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    }
+    if (lower.endsWith('.xls')) return 'application/vnd.ms-excel';
+    if (lower.endsWith('.xlsx')) {
+      return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    }
+    if (lower.endsWith('.ppt')) return 'application/vnd.ms-powerpoint';
+    if (lower.endsWith('.pptx')) {
+      return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+    }
+    if (lower.endsWith('.txt')) return 'text/plain';
+    if (lower.endsWith('.csv')) return 'text/csv';
     return 'application/octet-stream';
   }
 
@@ -733,13 +749,17 @@ class ChatService {
       final url = (bucket != null && path != null)
           ? await _signedOrPublicUrl(bucket, path)
           : (e['url']?.toString() ?? '');
+      final mime = (e['mime_type'] ?? e['mimeType'])?.toString() ?? '';
+      final inferredType = mime.toLowerCase().startsWith('image/')
+          ? ChatAttachmentType.image.dbValue
+          : ChatAttachmentType.file.dbValue;
       result.add({
         'id': e['id']?.toString(),
-        'type': e['type']?.toString() ?? 'image',
+        'type': e['type']?.toString() ?? inferredType,
         'url': url,
         'bucket': bucket,
         'path': path,
-        'mime_type': e['mime_type'] ?? e['mimeType'],
+        'mime_type': mime,
         'size_bytes': e['size_bytes'],
         'width': e['width'],
         'height': e['height'],
@@ -757,6 +777,7 @@ class ChatService {
       return s.length > 64 ? '${s.substring(0, 64)}…' : s;
     }
     if (kind == ChatMessageKind.image) return '📷 صورة';
+    if (kind == ChatMessageKind.file) return '📎 ملف';
     return 'رسالة';
   }
 
@@ -2021,6 +2042,7 @@ class ChatService {
     required String conversationId,
     required String messageId,
     required File file,
+    required ChatAttachmentType attachmentType,
   }) async {
     final name = _friendlyFileName(file);
     final mime = _guessMime(name);
@@ -2039,7 +2061,7 @@ class ChatService {
     final stat = await file.stat();
 
     return {
-      'type': 'image',
+      'type': attachmentType.dbValue,
       'url': url,
       'bucket': attachmentsBucket,
       'path': storageName,
@@ -2219,6 +2241,7 @@ class ChatService {
               conversationId: conversationId,
               messageId: msg.id,
               file: f,
+              attachmentType: ChatAttachmentType.image,
             ),
           );
         }
@@ -2248,6 +2271,211 @@ class ChatService {
         conversationId: conversationId,
         lastAt: msg.createdAt,
         snippet: _buildSnippet(kind: ChatMessageKind.image),
+      );
+
+      sent.add(msg);
+    }
+
+    return sent;
+  }
+
+  /// إرسال ملفات — يأخذ account_id من المحادثة
+  Future<List<ChatMessage>> sendFiles({
+    required String conversationId,
+    required List<File> files,
+    String? optionalText,
+    int? localSeq,
+    String? clientMsgId,
+    String? replyToMessageId,
+    String? replyToSnippet,
+    List<String>? mentionsEmails,
+  }) async {
+    final uid = currentUserId;
+    if (uid == null) throw 'لا يوجد مستخدم مسجّل الدخول.';
+    if (files.isEmpty &&
+        (optionalText == null || optionalText.trim().isEmpty)) {
+      throw 'لا يوجد شيء لإرساله.';
+    }
+
+    final me = await _myAccountRow();
+    final senderEmail = _bestSenderEmail(me.email);
+    if (senderEmail == null || senderEmail.isEmpty) {
+      throw 'لا أستطيع تحديد بريد المرسل.';
+    }
+    final deviceId = await _determineDeviceId(me.deviceId);
+
+    final sent = <ChatMessage>[];
+
+    if (optionalText != null && optionalText.trim().isNotEmpty) {
+      final textMsg = await sendText(
+        conversationId: conversationId,
+        body: optionalText.trim(),
+        localSeq: null,
+        clientMsgId: clientMsgId == null
+            ? null
+            : '${clientMsgId}_text',
+        replyToMessageId: replyToMessageId,
+        replyToSnippet: replyToSnippet,
+        mentionsEmails: mentionsEmails,
+      );
+      sent.add(textMsg);
+    }
+
+    if (files.isNotEmpty) {
+      double totalBytes = 0;
+      const maxTotal = AppConstants.chatMaxAttachmentBytes;
+      const maxSingle = AppConstants.chatMaxSingleAttachmentBytes;
+      final oversized = <String>[];
+      for (final file in files) {
+        final friendlyName = _friendlyFileName(file);
+        try {
+          final size = await file.length();
+          totalBytes += size;
+          if (maxSingle != null && size > maxSingle) {
+            oversized.add(friendlyName);
+          }
+        } catch (_) {
+          oversized.add(friendlyName);
+        }
+      }
+      if (maxTotal != null && totalBytes > maxTotal) {
+        final kb = (totalBytes / 1024).toStringAsFixed(1);
+        final mbCap = (maxTotal / (1024 * 1024)).toStringAsFixed(1);
+        throw 'حجم المرفقات الحالي ($kb KB) يتجاوز الحد الأقصى ($mbCap MB).';
+      }
+      if (oversized.isNotEmpty) {
+        final joined = oversized.join(', ');
+        final cap = maxSingle == null
+            ? ''
+            : ' (${(maxSingle / (1024 * 1024)).toStringAsFixed(1)} MB لكل ملف)';
+        throw 'الملفات التالية كبيرة جداً: $joined$cap';
+      }
+
+      final now = DateTime.now().toUtc();
+      final seq = localSeq ??
+          (await _nextSeqForMe()) ??
+          DateTime.now().microsecondsSinceEpoch;
+
+      final convAcc = (await _conversationAccountId(conversationId)) ??
+          (me.accountId ?? '');
+
+      final payload = <String, dynamic>{
+        'conversation_id': conversationId,
+        'sender_uid': uid,
+        'sender_email': senderEmail,
+        'kind': ChatMessageKind.file.dbValue,
+        'body': null,
+        'text': null,
+        'created_at': now.toIso8601String(),
+        'device_id': deviceId,
+        'local_id': seq,
+        if (clientMsgId != null && clientMsgId.isNotEmpty)
+          'client_msg_id': clientMsgId,
+        if (convAcc.isNotEmpty) 'account_id': convAcc,
+        if (replyToMessageId != null) 'reply_to_message_id': replyToMessageId,
+        if (replyToSnippet != null && replyToSnippet.trim().isNotEmpty)
+          'reply_to_snippet': replyToSnippet.trim(),
+        if (mentionsEmails != null && mentionsEmails.isNotEmpty)
+          'mentions': mentionsEmails,
+      };
+
+      Map<String, dynamic>? row;
+      try {
+        final data = await _runMessageMutation((fields) => '''
+          mutation InsertFileMessage(\$object: ${_tblMsgs}_insert_input!) {
+            insert_${_tblMsgs}(
+              objects: [\$object],
+              on_conflict: {
+                constraint: chat_messages_conversation_client_msg_id_key,
+                update_columns: [edited, edited_at]
+              }
+            ) {
+              returning {
+                $fields
+              }
+            }
+          }
+        ''', {'object': payload});
+        final ret =
+            (data['insert_${_tblMsgs}'] as Map?)?['returning'] as List?;
+        if (ret != null && ret.isNotEmpty) {
+          row = Map<String, dynamic>.from(ret.first as Map);
+        }
+      } catch (_) {
+        final existing = await _findMessageByTriplet(
+          conversationId: conversationId,
+          deviceId: deviceId,
+          localId: seq,
+          accountId: convAcc.isNotEmpty ? convAcc : null,
+        );
+        row = existing;
+      }
+      if (row == null) throw 'تعذر إرسال الرسالة.';
+
+      var msg = await _messageFromRow(row);
+      if (msg.senderUid == uid) {
+        msg = msg.copyWith(status: ChatMessageStatus.sent);
+      }
+
+      final uploadedRows = <Map<String, dynamic>>[];
+      bool usedAttachmentsTable = true;
+      try {
+        for (final f in files) {
+          final att = await _uploadOneAttachmentRow(
+            conversationId: conversationId,
+            messageId: msg.id,
+            file: f,
+            accountId: convAcc.isNotEmpty ? convAcc : null,
+          );
+          uploadedRows.add(att);
+        }
+      } catch (_) {
+        usedAttachmentsTable = false;
+      }
+
+      if (usedAttachmentsTable) {
+        final normalized = await _normalizeAttachmentsToHttp(uploadedRows);
+        msg = msg.copyWith(
+          attachments: normalized.map(ChatAttachment.fromMap).toList(),
+        );
+      } else {
+        final inline = <Map<String, dynamic>>[];
+        for (final f in files) {
+          inline.add(
+            await _makeInlineAttachmentJson(
+              conversationId: conversationId,
+              messageId: msg.id,
+              file: f,
+              attachmentType: ChatAttachmentType.file,
+            ),
+          );
+        }
+        final updateMutation = '''
+          mutation UpdateMessageAttachments(\$id: uuid!, \$attachments: jsonb!) {
+            update_${_tblMsgs}_by_pk(
+              pk_columns: {id: \$id},
+              _set: {attachments: \$attachments}
+            ) {
+              id
+            }
+          }
+        ''';
+        try {
+          await _runMutation(updateMutation, {
+            'id': msg.id,
+            'attachments': inline,
+          });
+        } catch (_) {}
+        final normalized = await _normalizeAttachmentsToHttp(inline);
+        msg = msg.copyWith(
+          attachments: normalized.map(ChatAttachment.fromMap).toList(),
+        );
+      }
+
+      await _updateConversationLastSummary(
+        conversationId: conversationId,
+        lastAt: msg.createdAt,
+        snippet: _buildSnippet(kind: ChatMessageKind.file),
       );
 
       sent.add(msg);

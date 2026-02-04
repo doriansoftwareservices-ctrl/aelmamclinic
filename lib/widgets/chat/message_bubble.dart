@@ -30,6 +30,7 @@ import 'package:aelmamclinic/models/chat_models.dart';
 import 'package:aelmamclinic/models/chat_reaction.dart';
 import 'package:aelmamclinic/services/chat_service.dart';
 import 'package:aelmamclinic/services/attachment_cache.dart'; // ✅ جديد
+import 'package:open_file/open_file.dart';
 import 'package:aelmamclinic/utils/time.dart' as t;
 import 'package:aelmamclinic/utils/text_direction.dart' as bidi;
 
@@ -223,6 +224,27 @@ class MessageBubble extends StatelessWidget {
           onTapReplyTarget: onTapReplyTarget,
         );
 
+      case ChatMessageKind.file:
+        final fileAtt = _firstFileAttachmentOf(message);
+        final fileName =
+            fileAtt == null ? 'ملف' : _fileNameFromAttachment(fileAtt);
+        final sizeBytes = fileAtt?.sizeBytes;
+        final caption = _bodyOf(message).isEmpty ? null : _bodyOf(message);
+        return _FileBody(
+          fileName: fileName,
+          sizeBytes: sizeBytes,
+          caption: caption,
+          isMine: isMine,
+          edited: message.edited,
+          replySnippet: hasReply ? replySnip : null,
+          replyToMessageId: replyToMessageId,
+          replyThumbnailUrl: replyThumbnailUrl,
+          status: uiStatus,
+          onRetry: onRetry == null ? null : () => onRetry!(message),
+          onTapReplyTarget: onTapReplyTarget,
+          onOpen: () => _openAttachmentFile(context, fileAtt),
+        );
+
       case ChatMessageKind.text:
       default:
         return _TextBody(
@@ -292,6 +314,65 @@ class MessageBubble extends StatelessWidget {
     }
 
     return _ImageSource(remoteUrl: remote, localPath: local);
+  }
+
+  ChatAttachment? _firstFileAttachmentOf(ChatMessage m) {
+    if (m.attachments.isEmpty) return null;
+    for (final a in m.attachments) {
+      if (!a.isImage) return a;
+    }
+    return m.attachments.first;
+  }
+
+  String _fileNameFromAttachment(ChatAttachment att) {
+    final path = (att.path ?? '').trim();
+    if (path.isNotEmpty) {
+      try {
+        return path.split('/').last;
+      } catch (_) {}
+    }
+    final url = (att.url.isNotEmpty ? att.url : (att.signedUrl ?? '')).trim();
+    if (url.isNotEmpty) {
+      try {
+        final clean = url.split('?').first;
+        return clean.split('/').last;
+      } catch (_) {}
+    }
+    return 'ملف';
+  }
+
+  Future<void> _openAttachmentFile(
+    BuildContext context,
+    ChatAttachment? att,
+  ) async {
+    if (att == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('لا يوجد ملف لفتحه.')),
+      );
+      return;
+    }
+    try {
+      String? localPath;
+      final url =
+          (att.url.isNotEmpty ? att.url : (att.signedUrl ?? '')).trim();
+      if ((att.bucket ?? '').isNotEmpty && (att.path ?? '').isNotEmpty) {
+        localPath = await AttachmentCache.instance.ensureFileForStorage(
+          att.bucket!,
+          att.path!,
+          url: url.isEmpty ? null : url,
+        );
+      } else if (url.isNotEmpty) {
+        localPath = await AttachmentCache.instance.ensureFileFor(url);
+      }
+      if (localPath == null || localPath.isEmpty) {
+        throw 'تعذر تنزيل الملف';
+      }
+      await OpenFile.open(localPath);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذر فتح الملف: $e')),
+      );
+    }
   }
 
   _UiStatus _deriveUiStatus(ChatMessage m) {
@@ -371,6 +452,152 @@ class _TextBody extends StatelessWidget {
               height: 1.35,
             ),
           ),
+          if (edited)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                '(معدل)',
+                style: TextStyle(
+                  color: scheme.onSurface.withValues(alpha: .55),
+                  fontWeight: FontWeight.w700,
+                  fontSize: 11,
+                ),
+              ),
+            ),
+          if (failed && isMine && onRetry != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.refresh_rounded, size: 18),
+                  label: const Text('إعادة المحاولة'),
+                  onPressed: onRetry,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FileBody extends StatelessWidget {
+  final String fileName;
+  final int? sizeBytes;
+  final String? caption;
+  final bool isMine;
+  final bool edited;
+  final String? replySnippet;
+  final String? replyToMessageId;
+  final String? replyThumbnailUrl;
+  final _UiStatus status;
+  final VoidCallback? onRetry;
+  final void Function(String messageId)? onTapReplyTarget;
+  final VoidCallback onOpen;
+
+  const _FileBody({
+    required this.fileName,
+    required this.sizeBytes,
+    required this.caption,
+    required this.isMine,
+    required this.edited,
+    required this.replySnippet,
+    this.replyToMessageId,
+    this.replyThumbnailUrl,
+    required this.status,
+    this.onRetry,
+    this.onTapReplyTarget,
+    required this.onOpen,
+  });
+
+  String _fmtBytes(int b) {
+    const units = ['B', 'KB', 'MB', 'GB'];
+    double s = b.toDouble();
+    int i = 0;
+    while (s >= 1024 && i < units.length - 1) {
+      s /= 1024;
+      i++;
+    }
+    return '${s.toStringAsFixed(s >= 100 || i == 0 ? 0 : (s >= 10 ? 1 : 2))} ${units[i]}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final failed = status == _UiStatus.failed;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      child: Column(
+        crossAxisAlignment:
+            isMine ? CrossAxisAlignment.start : CrossAxisAlignment.end,
+        children: [
+          if (replySnippet != null) ...[
+            _ReplyPreview(
+              text: replySnippet!,
+              thumbnailUrl: replyThumbnailUrl,
+              messageId: replyToMessageId,
+              onTapReplyTarget: onTapReplyTarget,
+            ),
+            const SizedBox(height: 6),
+          ],
+          InkWell(
+            onTap: onOpen,
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerHighest.withValues(alpha: .6),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: scheme.outline.withValues(alpha: .25)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.insert_drive_file_rounded,
+                      color: scheme.primary, size: 26),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          fileName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 13.5,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          sizeBytes == null ? 'ملف' : _fmtBytes(sizeBytes!),
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: scheme.onSurface.withValues(alpha: .6),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (caption != null && caption!.trim().isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              caption!,
+              style: TextStyle(
+                color: scheme.onSurface,
+                fontWeight: FontWeight.w700,
+                fontSize: 13.5,
+                height: 1.3,
+              ),
+            ),
+          ],
           if (edited)
             Padding(
               padding: const EdgeInsets.only(top: 4),

@@ -1333,7 +1333,7 @@ class ChatProvider extends ChangeNotifier {
       }
 
       try {
-        if (kind == 'image') {
+        if (kind == 'image' || kind == 'file') {
           final raw = item['attachments_json']?.toString();
           final List<String> paths = raw == null || raw.isEmpty
               ? const []
@@ -1346,13 +1346,21 @@ class ChatProvider extends ChangeNotifier {
             await _local.deleteOutboxMessage(localId);
             continue;
           }
-          final sent = await _chat.sendImages(
-            conversationId: cid,
-            files: files,
-            optionalText: body.isEmpty ? null : body,
-            localSeq: _generateLocalSeq(),
-            clientMsgId: localId,
-          );
+          final sent = kind == 'file'
+              ? await _chat.sendFiles(
+                  conversationId: cid,
+                  files: files,
+                  optionalText: body.isEmpty ? null : body,
+                  localSeq: _generateLocalSeq(),
+                  clientMsgId: localId,
+                )
+              : await _chat.sendImages(
+                  conversationId: cid,
+                  files: files,
+                  optionalText: body.isEmpty ? null : body,
+                  localSeq: _generateLocalSeq(),
+                  clientMsgId: localId,
+                );
           if (sent.isNotEmpty) {
             await _local.deleteOutboxMessage(localId);
             final list = List<CM.ChatMessage>.from(
@@ -1601,6 +1609,101 @@ class ChatProvider extends ChangeNotifier {
       _setError('تعذّر إرسال الصور: $e');
       _safeNotify();
       rethrow;
+    }
+  }
+
+  Future<void> sendFiles({
+    required String conversationId,
+    required List<File> files,
+    String? optionalText,
+  }) async {
+    if (_disposed) return;
+    if (files.isEmpty &&
+        (optionalText == null || optionalText.trim().isEmpty)) {
+      return;
+    }
+
+    if ((optionalText ?? '').trim().isNotEmpty) {
+      _applyOutgoingToConversationList(conversationId, optionalText!.trim());
+    } else {
+      _applyOutgoingToConversationList(conversationId, '📎 ملف');
+    }
+
+    final optimistic = CM.ChatMessage.optimisticFiles(
+      conversationId: conversationId,
+      senderUid: currentUid,
+      senderEmail: myEmail,
+      files: files,
+      caption: optionalText,
+    );
+    final list = List<CM.ChatMessage>.from(
+      _messagesByConv[conversationId] ?? const [],
+    );
+    list.insert(0, optimistic);
+    _messagesByConv[conversationId] = list;
+    _safeNotify();
+    await _local.upsertMessages([optimistic]);
+
+    try {
+      final sent = await _chat.sendFiles(
+        conversationId: conversationId,
+        files: files,
+        optionalText: optionalText,
+        localSeq: _generateLocalSeq(),
+        clientMsgId: optimistic.localId,
+      );
+
+      if (sent.isNotEmpty) {
+        final list = List<CM.ChatMessage>.from(
+          _messagesByConv[conversationId] ?? const [],
+        );
+        final existingIds = list.map((m) => m.id).toSet();
+
+        list.removeWhere((m) => m.id == optimistic.id);
+
+        for (var m in sent.reversed) {
+          if (m.senderUid == currentUid &&
+              m.status != CM.ChatMessageStatus.read) {
+            m = m.copyWith(status: CM.ChatMessageStatus.sent);
+          }
+          if (!existingIds.contains(m.id)) list.insert(0, m);
+        }
+        _messagesByConv[conversationId] = list;
+        _safeNotify();
+
+        await _local.upsertMessages(sent);
+        await _local.deleteMessage(optimistic.id);
+      }
+
+      _scheduleConversationsRefresh();
+      await _applyReadsToOutgoing(conversationId);
+    } catch (e) {
+      final replaced = List<CM.ChatMessage>.from(
+        _messagesByConv[conversationId] ?? const [],
+      );
+      final idx = replaced.indexWhere((m) => m.id == optimistic.id);
+      if (idx != -1) {
+        replaced[idx] = replaced[idx].copyWith(
+          status: CM.ChatMessageStatus.failed,
+        );
+        _messagesByConv[conversationId] = replaced;
+        _safeNotify();
+      }
+      await _local.updateMessageStatus(
+        messageId: optimistic.id,
+        status: CM.ChatMessageStatus.failed,
+      );
+      try {
+        await _enqueueOutbox(
+          localId: optimistic.id,
+          conversationId: conversationId,
+          kind: 'file',
+          body: optionalText ?? '',
+          attachmentPaths: files.map((f) => f.path).toList(),
+        );
+      } catch (_) {}
+      _setError('تعذّر إرسال الملف: $e');
+      _safeNotify();
     }
   }
 

@@ -1049,6 +1049,42 @@ class ChatMessage {
       localSeq: localSeq,
     );
   }
+
+  /// منشئ تفاؤلي لملفات (قبل الرفع/التخزين).
+  static ChatMessage optimisticFiles({
+    required String conversationId,
+    required String senderUid,
+    required List<File> files,
+    String? senderEmail,
+    String? caption,
+    String? accountId,
+    String? deviceId,
+    int? localSeq,
+    String? replyToMessageId,
+    String? replyToSnippet,
+    List<String>? mentions,
+  }) {
+    final id = _randId(prefix: 'local');
+    files; // احتفاظ توافق مع الواجهات
+    return ChatMessage(
+      id: id,
+      localId: id,
+      conversationId: conversationId,
+      senderUid: senderUid,
+      senderEmail: senderEmail,
+      kind: ChatMessageKind.file,
+      body: (caption ?? '').trim().isEmpty ? null : caption!.trim(),
+      attachments: const [],
+      createdAt: DateTime.now().toUtc(),
+      status: ChatMessageStatus.sending,
+      replyToMessageId: replyToMessageId,
+      replyToSnippet: replyToSnippet,
+      mentions: mentions?.map(_lc).toList(),
+      accountId: accountId,
+      deviceId: deviceId,
+      localSeq: localSeq,
+    );
+  }
 }
 
 /// ─────────── ConversationListItem (Overview) ───────────
