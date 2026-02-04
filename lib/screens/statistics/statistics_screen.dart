@@ -39,6 +39,11 @@ double _safeTotal(Iterable<_ChartData> data) {
   });
 }
 
+double _safeNumber(double value) {
+  if (value.isNaN || value.isInfinite) return 0;
+  return value;
+}
+
 /*──────────────────────── أدوات PDF ────────────────────────*/
 class _PdfUtils {
   static Future<(pw.Font, pw.Font)> _loadFonts() async {
@@ -633,7 +638,7 @@ class _IncomeByDateWidgetState extends State<_IncomeByDateWidget> {
     final map = <String, double>{};
     for (final p in filtered) {
       final k = df.format(p.registerDate);
-      map[k] = (map[k] ?? 0) + p.paidAmount;
+      map[k] = (map[k] ?? 0) + _safeNumber(p.paidAmount);
     }
     if (!mounted) return;
     setState(() => _incomeByDate = map);
@@ -1143,7 +1148,7 @@ class _IncomeByDoctorWidgetState extends State<_IncomeByDoctorWidget> {
       final doc = (nameRaw == null || nameRaw.trim().isEmpty)
           ? 'الأشعة/المختبر'
           : nameRaw.trim();
-      m[doc] = (m[doc] ?? 0) + p.paidAmount;
+      m[doc] = (m[doc] ?? 0) + _safeNumber(p.paidAmount);
     }
     if (!mounted) return;
     setState(() => _byDoctor = m);
@@ -1851,7 +1856,7 @@ class _NetProfitWidgetState extends State<_NetProfitWidget> {
         p.registerDate.isAfter(from.subtract(const Duration(days: 1))) &&
         p.registerDate.isBefore(to.add(const Duration(days: 1))))) {
       final k = df.format(p.registerDate);
-      income[k] = (income[k] ?? 0) + p.paidAmount;
+      income[k] = (income[k] ?? 0) + _safeNumber(p.paidAmount);
     }
 
     final cons = <String, double>{};

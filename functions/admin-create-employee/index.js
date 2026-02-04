@@ -158,6 +158,41 @@ const adminUserEndpoints = (authUrl) => {
   return [...new Set(endpoints)];
 };
 
+async function createOrGetUser(email, password) {
+  let userId = await signUpUser(email, password);
+  if (userId) {
+    return { id: userId, existed: false };
+  }
+  userId = await lookupAuthUserId(email);
+  if (userId) {
+    return { id: userId, existed: true };
+  }
+  for (let i = 0; i < 6; i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    userId = await lookupAuthUserId(email);
+    if (userId) return { id: userId, existed: true };
+  }
+  throw new Error('Auth user not found after signup');
+}
+
+async function deleteUser(userId) {
+  const authUrl = resolveAuthUrl();
+  const adminSecret =
+    process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
+  if (!authUrl || !adminSecret || !userId) return;
+  const headers = {
+    'x-hasura-admin-secret': adminSecret,
+    Authorization: `Bearer ${adminSecret}`,
+  };
+  for (const endpoint of adminUserEndpoints(authUrl)) {
+    const res = await fetch(`${endpoint}/${userId}`, {
+      method: 'DELETE',
+      headers,
+    });
+    if (res.status !== 404) break;
+  }
+}
+
 const decodeJwtPayload = (authHeader) => {
   if (!authHeader) return null;
   const raw = authHeader.startsWith('Bearer ')
@@ -373,6 +408,7 @@ async function ensureAccountPaid(accountId, authHeader) {
 }
 
 module.exports = async function handler(req, res) {
+  let created = null;
   try {
     const body = await readBody(req);
     const authHeader = req.headers?.authorization;
@@ -397,7 +433,7 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    await ensureAuthUser(email, password);
+    created = await createOrGetUser(email, password);
     const result = await callAdminCreateEmployee(
       accountId,
       email,
@@ -407,6 +443,9 @@ module.exports = async function handler(req, res) {
     );
     res.json(result);
   } catch (err) {
+    if (created && created.id && created.existed === false) {
+      await deleteUser(created.id);
+    }
     const code = err?.statusCode ?? 500;
     res.status(code).json({ ok: false, error: err?.message ?? 'Failed' });
   }

@@ -395,10 +395,6 @@
     permission:
       check: {}
       columns: '*'
-  - role: user
-    permission:
-      check: {}
-      columns: '*'
   select_permissions:
   - role: me
     permission:
@@ -440,16 +436,8 @@
       columns: '*'
       filter: {}
       check: {}
-  - role: user
-    permission:
-      columns: '*'
-      filter: {}
-      check: {}
   delete_permissions:
   - role: superadmin
-    permission:
-      filter: {}
-  - role: user
     permission:
       filter: {}
 - table:
@@ -7610,6 +7598,19 @@
         - _and:
           - bucket_id:
               _eq: subscription-proofs
+          - _exists:
+              _table:
+                name: account_users
+                schema: public
+              _where:
+                user_uid:
+                  _eq: X-Hasura-User-Id
+                disabled:
+                  _eq: false
+                role:
+                  _in:
+                  - owner
+                  - admin
       set:
         uploaded_by_user_id: x-hasura-user-id
       columns: '*'
@@ -7622,6 +7623,19 @@
         - _and:
           - bucket_id:
               _eq: subscription-proofs
+          - _exists:
+              _table:
+                name: account_users
+                schema: public
+              _where:
+                user_uid:
+                  _eq: X-Hasura-User-Id
+                disabled:
+                  _eq: false
+                role:
+                  _in:
+                  - owner
+                  - admin
       set:
         uploaded_by_user_id: x-hasura-user-id
       columns: '*'
@@ -7634,6 +7648,19 @@
         - _and:
           - bucket_id:
               _eq: subscription-proofs
+          - _exists:
+              _table:
+                name: account_users
+                schema: public
+              _where:
+                user_uid:
+                  _eq: X-Hasura-User-Id
+                disabled:
+                  _eq: false
+                role:
+                  _in:
+                  - owner
+                  - admin
       set:
         uploaded_by_user_id: x-hasura-user-id
       columns: '*'
@@ -7646,6 +7673,19 @@
         - _and:
           - bucket_id:
               _eq: subscription-proofs
+          - _exists:
+              _table:
+                name: account_users
+                schema: public
+              _where:
+                user_uid:
+                  _eq: X-Hasura-User-Id
+                disabled:
+                  _eq: false
+                role:
+                  _in:
+                  - owner
+                  - admin
       set:
         uploaded_by_user_id: x-hasura-user-id
       columns: '*'
