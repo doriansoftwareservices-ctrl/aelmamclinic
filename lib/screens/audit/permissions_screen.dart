@@ -650,6 +650,8 @@ const List<_FeatureDef> _kFeatureDefs = [
   _FeatureDef(
       FeatureKeys.prescriptions, 'الوصفات الطبية', Icons.menu_book_rounded),
   _FeatureDef(
+      FeatureKeys.patientQuestions, 'نماذج الشكاوى', Icons.quiz_outlined),
+  _FeatureDef(
       FeatureKeys.clinicProfile, 'بيانات المرفق الصحي', Icons.local_hospital_outlined),
   _FeatureDef(FeatureKeys.chat, 'الدردشة', Icons.chat_bubble_outline_rounded),
   _FeatureDef(FeatureKeys.backup, 'النسخ الاحتياطي', Icons.backup_rounded),

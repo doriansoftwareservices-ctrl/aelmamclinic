@@ -13,18 +13,23 @@ import 'package:aelmamclinic/screens/patients/new_patient_screen.dart';
 import 'package:aelmamclinic/screens/patients/edit_patient_screen.dart';
 import 'package:aelmamclinic/screens/patients/view_patient_screen.dart';
 import 'package:aelmamclinic/screens/patients/duplicate_patients_screen.dart';
+import 'package:aelmamclinic/screens/patient_questions/report_editor_screen.dart';
+import 'package:aelmamclinic/screens/patient_questions/patient_reports_list_screen.dart';
 
 import 'package:aelmamclinic/core/formatters.dart';
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/core/tbian_ui.dart';
+import 'package:aelmamclinic/core/features.dart';
 
 import 'package:aelmamclinic/models/patient.dart';
 import 'package:aelmamclinic/models/patient_service.dart';
+import 'package:aelmamclinic/models/patient_complaint.dart';
 import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/services/export_service.dart';
 import 'package:aelmamclinic/services/save_file_service.dart';
+import 'package:aelmamclinic/services/patient_questions_service.dart';
 
 class ListPatientsScreen extends StatefulWidget {
   const ListPatientsScreen({super.key});
@@ -41,6 +46,10 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
   DateTime? _endDate;
 
   final Map<int, List<PatientService>> _servicesByPatient = {};
+  final PatientQuestionsService _questionsService = PatientQuestionsService();
+  final Map<int, String> _remotePatientIds = {};
+  final Map<int, int> _reportCounts = {};
+  bool _reportCountsLoading = false;
 
   bool _isLoading = false;
   Timer? _debounce;
@@ -126,6 +135,7 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
           ..addAll(svcMap);
       });
       _filterPatients();
+      unawaited(_loadReportCounts(patients));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -134,6 +144,132 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _loadReportCounts(List<Patient> patients) async {
+    if (_reportCountsLoading) return;
+    final auth = context.read<AuthProvider>();
+    final accountId = auth.accountId;
+    if (accountId == null || accountId.isEmpty) return;
+    setState(() => _reportCountsLoading = true);
+    try {
+      final mapping = await _questionsService.mapLocalPatientsToRemote(
+        patients: patients,
+        accountId: accountId,
+      );
+      final remoteIds = mapping.values.toList();
+      final counts = await _questionsService.countReportsByPatientIds(remoteIds);
+      final localCounts = <int, int>{};
+      for (final entry in mapping.entries) {
+        localCounts[entry.key] = counts[entry.value] ?? 0;
+      }
+      if (!mounted) return;
+      setState(() {
+        _remotePatientIds
+          ..clear()
+          ..addAll(mapping);
+        _reportCounts
+          ..clear()
+          ..addAll(localCounts);
+      });
+    } catch (_) {
+      if (!mounted) return;
+    } finally {
+      if (mounted) setState(() => _reportCountsLoading = false);
+    }
+  }
+
+  Future<void> _openReportEditor(Patient p) async {
+    final auth = context.read<AuthProvider>();
+    final accountId = auth.accountId;
+    if (accountId == null || accountId.isEmpty) return;
+    final localId = p.localId ?? p.id;
+    final remoteId = localId != null ? _remotePatientIds[localId] : null;
+    if (remoteId == null || remoteId.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('المريض غير مزامن على الخادم بعد.')),
+      );
+      return;
+    }
+    try {
+      final complaints =
+          await _questionsService.fetchPatientComplaints(patientId: remoteId);
+      final templates = await _questionsService.fetchTemplates(
+        accountId: accountId,
+        includeInactive: true,
+      );
+      final templateMap = {for (final t in templates) t.id: t.title};
+      if (complaints.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('لا توجد شكاوى مرتبطة بهذا المريض.')),
+        );
+        return;
+      }
+      PatientComplaint selected = complaints.first;
+      if (complaints.length > 1 && mounted) {
+        final picked = await showDialog<PatientComplaint>(
+          context: context,
+          builder: (ctx) {
+            return SimpleDialog(
+              title: const Text('اختر الشكوى'),
+              children: complaints
+                  .map(
+                    (c) => SimpleDialogOption(
+                      onPressed: () => Navigator.pop(ctx, c),
+                      child: Text(
+                        c.complaintTitleCustom ??
+                            templateMap[c.complaintId] ??
+                            'شكوى غير معنونة',
+                      ),
+                    ),
+                  )
+                  .toList(),
+            );
+          },
+        );
+        if (picked != null) selected = picked;
+      }
+      if (!mounted) return;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ReportEditorScreen(
+            patient: p,
+            remotePatientId: remoteId,
+            complaint: selected,
+          ),
+        ),
+      );
+      unawaited(_loadReportCounts(_patients));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذر فتح التقرير: $e')),
+      );
+    }
+  }
+
+  Future<void> _openReportsList(Patient p) async {
+    final localId = p.localId ?? p.id;
+    final remoteId = localId != null ? _remotePatientIds[localId] : null;
+    if (remoteId == null || remoteId.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('المريض غير مزامن على الخادم بعد.')),
+      );
+      return;
+    }
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PatientReportsListScreen(
+          patient: p,
+          remotePatientId: remoteId,
+        ),
+      ),
+    );
   }
 
   Future<void> _pickStartDate() async {
@@ -315,6 +451,10 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final dateFmt = DateFormat('yyyy-MM-dd');
+    final auth = context.watch<AuthProvider>();
+    final canUseQuestions = auth.isSuperAdmin ||
+        auth.isOwnerOrAdmin ||
+        auth.featureAllowed(FeatureKeys.patientQuestions);
 
     // تجميع حسب رقم الهاتف المُطبَّع لاكتشاف المكررات
     final grouped = <String, List<Patient>>{};
@@ -479,6 +619,14 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
                   final needsAttention = p.doctorReviewPending;
                   final pendingLabel =
                       needsAttention ? ' • بانتظار مقابلة الطبيب' : '';
+                  final localId = p.localId ?? p.id;
+                  final remoteId =
+                      localId != null ? _remotePatientIds[localId] : null;
+                  final reportCount =
+                      localId != null ? (_reportCounts[localId] ?? 0) : 0;
+                  final canViewReports =
+                      canUseQuestions && remoteId != null && reportCount > 0;
+                  final canCreateReport = canUseQuestions && remoteId != null;
 
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 10),
@@ -487,177 +635,211 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
                         horizontal: 8,
                         vertical: 6,
                       ),
-                      child: ListTile(
-                        onTap: () {
-                          // إذا مجموعة>1 → شاشة المكرّرات، وإلا شاشة عرض المريض
-                          final phoneKey =
-                              Formatters.normalizePhone(p.phoneNumber);
-                          if (grp.length > 1 && phoneKey.isNotEmpty) {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => DuplicatePatientsScreen(
-                                  phoneNumber: phoneKey,
-                                  patientName: p.name,
-                                ),
-                              ),
-                            ).then((_) => _loadPatients());
-                          } else {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => ViewPatientScreen(
-                                  patient: p,
-                                ),
-                              ),
-                            ).then((_) => _loadPatients());
-                          }
-                        },
-                        leading: CircleAvatar(
-                          radius: 22,
-                          backgroundColor: kPrimaryColor.withValues(alpha: .10),
-                          child: Stack(
-                            clipBehavior: Clip.none,
-                            children: [
-                              Align(
-                                alignment: Alignment.center,
-                                child: Text(
-                                  _avatarText(p.name),
-                                  style: const TextStyle(
-                                    color: kPrimaryColor,
-                                    fontWeight: FontWeight.w900,
+                      child: Column(
+                        children: [
+                          ListTile(
+                            onTap: () {
+                              // إذا مجموعة>1 → شاشة المكرّرات، وإلا شاشة عرض المريض
+                              final phoneKey =
+                                  Formatters.normalizePhone(p.phoneNumber);
+                              if (grp.length > 1 && phoneKey.isNotEmpty) {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => DuplicatePatientsScreen(
+                                      phoneNumber: phoneKey,
+                                      patientName: p.name,
+                                    ),
                                   ),
-                                ),
-                              ),
-                              if (needsAttention)
-                                Positioned(
-                                  top: -2,
-                                  left: -2,
-                                  child: Container(
-                                    width: 14,
-                                    height: 14,
-                                    decoration: BoxDecoration(
-                                      color: Colors.green,
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .surface,
-                                        width: 2,
+                                ).then((_) => _loadPatients());
+                              } else {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => ViewPatientScreen(
+                                      patient: p,
+                                    ),
+                                  ),
+                                ).then((_) => _loadPatients());
+                              }
+                            },
+                            leading: CircleAvatar(
+                              radius: 22,
+                              backgroundColor:
+                                  kPrimaryColor.withValues(alpha: .10),
+                              child: Stack(
+                                clipBehavior: Clip.none,
+                                children: [
+                                  Align(
+                                    alignment: Alignment.center,
+                                    child: Text(
+                                      _avatarText(p.name),
+                                      style: const TextStyle(
+                                        color: kPrimaryColor,
+                                        fontWeight: FontWeight.w900,
                                       ),
                                     ),
                                   ),
-                                ),
-                            ],
-                          ),
-                        ),
-                        title: Text(
-                          p.name,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        subtitle: Text(
-                          '$diagnosis  •  خدمات: $svcSummary  •  الإجمالي: ${totalCost.toStringAsFixed(2)}$pendingLabel',
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurface
-                                .withValues(
-                                  alpha: .75,
-                                ),
-                          ),
-                        ),
-                        trailing: PopupMenuButton<String>(
-                          icon: const Icon(Icons.more_vert),
-                          onSelected: (value) async {
-                            switch (value) {
-                              case 'call':
-                                if (p.phoneNumber.isNotEmpty) {
-                                  _makePhoneCall(p.phoneNumber);
-                                } else {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('لا يوجد رقم هاتف'),
+                                  if (needsAttention)
+                                    Positioned(
+                                      top: -2,
+                                      left: -2,
+                                      child: Container(
+                                        width: 14,
+                                        height: 14,
+                                        decoration: BoxDecoration(
+                                          color: Colors.green,
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .surface,
+                                            width: 2,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                            title: Text(
+                              p.name,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            subtitle: Text(
+                              '$diagnosis  •  خدمات: $svcSummary  •  الإجمالي: ${totalCost.toStringAsFixed(2)}$pendingLabel',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurface
+                                    .withValues(
+                                      alpha: .75,
+                                    ),
+                              ),
+                            ),
+                            trailing: PopupMenuButton<String>(
+                              icon: const Icon(Icons.more_vert),
+                              onSelected: (value) async {
+                                switch (value) {
+                                  case 'call':
+                                    if (p.phoneNumber.isNotEmpty) {
+                                      _makePhoneCall(p.phoneNumber);
+                                    } else {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('لا يوجد رقم هاتف'),
+                                        ),
+                                      );
+                                    }
+                                    break;
+                                  case 'add':
+                                    await Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => NewPatientScreen(
+                                          initialName: p.name,
+                                          initialPhone: p.phoneNumber,
+                                        ),
+                                      ),
+                                    );
+                                    await _loadPatients();
+                                    break;
+                                  case 'edit':
+                                    if (grp.length == 1) {
+                                      await Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => EditPatientScreen(
+                                            patient: p,
+                                          ),
+                                        ),
+                                      );
+                                      await _loadPatients();
+                                    }
+                                    break;
+                                  case 'delete':
+                                    if (p.id != null) {
+                                      await _deletePatient(p.id!);
+                                    }
+                                    break;
+                                }
+                              },
+                              itemBuilder: (ctx) {
+                                final items = <PopupMenuEntry<String>>[
+                                  const PopupMenuItem(
+                                    value: 'call',
+                                    child: ListTile(
+                                      leading: Icon(Icons.phone),
+                                      title: Text('اتصال'),
+                                    ),
+                                  ),
+                                  const PopupMenuItem(
+                                    value: 'add',
+                                    child: ListTile(
+                                      leading: Icon(Icons.add),
+                                      title: Text('إضافة سجل جديد'),
+                                    ),
+                                  ),
+                                ];
+                                if (grp.length == 1) {
+                                  items.add(
+                                    const PopupMenuItem(
+                                      value: 'edit',
+                                      child: ListTile(
+                                        leading: Icon(Icons.edit),
+                                        title: Text('تعديل'),
+                                      ),
                                     ),
                                   );
                                 }
-                                break;
-                              case 'add':
-                                await Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => NewPatientScreen(
-                                      initialName: p.name,
-                                      initialPhone: p.phoneNumber,
+                                items.add(
+                                  const PopupMenuItem(
+                                    value: 'delete',
+                                    child: ListTile(
+                                      leading:
+                                          Icon(Icons.delete, color: Colors.red),
+                                      title: Text('حذف'),
                                     ),
                                   ),
                                 );
-                                await _loadPatients();
-                                break;
-                              case 'edit':
-                                if (grp.length == 1) {
-                                  await Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => EditPatientScreen(
-                                        patient: p,
-                                      ),
-                                    ),
-                                  );
-                                  await _loadPatients();
-                                }
-                                break;
-                              case 'delete':
-                                if (p.id != null) {
-                                  await _deletePatient(p.id!);
-                                }
-                                break;
-                            }
-                          },
-                          itemBuilder: (ctx) {
-                            final items = <PopupMenuEntry<String>>[
-                              const PopupMenuItem(
-                                value: 'call',
-                                child: ListTile(
-                                  leading: Icon(Icons.phone),
-                                  title: Text('اتصال'),
-                                ),
-                              ),
-                              const PopupMenuItem(
-                                value: 'add',
-                                child: ListTile(
-                                  leading: Icon(Icons.add),
-                                  title: Text('إضافة سجل جديد'),
-                                ),
-                              ),
-                            ];
-                            if (grp.length == 1) {
-                              items.add(
-                                const PopupMenuItem(
-                                  value: 'edit',
-                                  child: ListTile(
-                                    leading: Icon(Icons.edit),
-                                    title: Text('تعديل'),
+                                return items;
+                              },
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: canCreateReport
+                                        ? () => _openReportEditor(p)
+                                        : null,
+                                    icon: const Icon(Icons.note_add_outlined),
+                                    label: const Text('إنشاء تقرير'),
                                   ),
                                 ),
-                              );
-                            }
-                            items.add(
-                              const PopupMenuItem(
-                                value: 'delete',
-                                child: ListTile(
-                                  leading:
-                                      Icon(Icons.delete, color: Colors.red),
-                                  title: Text('حذف'),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: canViewReports
+                                        ? () => _openReportsList(p)
+                                        : null,
+                                    icon: const Icon(Icons.article_outlined),
+                                    label: Text(
+                                      'استعرض التقرير'
+                                      '${reportCount > 0 ? ' ($reportCount)' : ''}',
+                                    ),
+                                  ),
                                 ),
-                              ),
-                            );
-                            return items;
-                          },
-                        ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   );

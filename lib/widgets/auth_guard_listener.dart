@@ -23,6 +23,7 @@ class _AuthGuardListenerState extends State<AuthGuardListener>
     with WidgetsBindingObserver {
   Timer? _timer;
   bool _checking = false;
+  bool _active = true;
 
   @override
   void initState() {
@@ -35,17 +36,27 @@ class _AuthGuardListenerState extends State<AuthGuardListener>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      _active = true;
+      _startTimer();
       _runCheck();
+      return;
+    }
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached) {
+      _active = false;
+      _timer?.cancel();
     }
   }
 
   void _startTimer() {
     _timer?.cancel();
+    if (!_active) return;
     _timer = Timer.periodic(widget.interval, (_) => _runCheck());
   }
 
   Future<void> _runCheck() async {
-    if (!mounted || _checking) return;
+    if (!mounted || _checking || !_active) return;
     final auth = context.read<AuthProvider>();
     if (!auth.isLoggedIn || auth.isSuperAdmin) return;
     _checking = true;

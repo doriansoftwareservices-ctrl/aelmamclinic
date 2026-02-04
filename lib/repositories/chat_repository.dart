@@ -28,7 +28,7 @@ class ChatRepository {
   }
 
   Stream<List<ConversationListItem>> watchConversationsOverview({
-    Duration interval = const Duration(seconds: 2),
+    Duration interval = const Duration(seconds: 5),
     bool emitCacheOnListen = true,
   }) {
     late final StreamController<List<ConversationListItem>> controller;

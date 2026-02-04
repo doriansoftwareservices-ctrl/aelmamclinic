@@ -72,6 +72,26 @@ const Set<String> _kSyncTables = {
   // ⚠️ 'attachments' مستبعدة عمدًا لأنها محلية فقط
 };
 
+// جداول تؤثر على إحصاءات الواجهة (لتمييز تحديث الإحصاءات بسرعة)
+const Set<String> _kStatsTables = {
+  'patients',
+  'returns',
+  'consumptions',
+  'prescriptions',
+  'prescription_items',
+  'appointments',
+  'doctors',
+  'medical_services',
+  'service_doctor_share',
+  'employees_loans',
+  'employees_discounts',
+  'employees_salaries',
+  'financial_logs',
+  'patient_services',
+  'items',
+  'item_types',
+};
+
 class DBService {
   DBService._();
   static final DBService instance = DBService._();
@@ -113,6 +133,10 @@ class DBService {
       // بثّ فوري للتغييرات (للاستخدامات الاختيارية داخل التطبيق)
       if (!_changeController.isClosed) {
         _changeController.add(table);
+      }
+
+      if (_kStatsTables.contains(table)) {
+        unawaited(markStatisticsDirty());
       }
 
       // 🛑 الدفع للمزامنة فقط للجداول المتزامنة (attachments تبقى خارج الدفع)

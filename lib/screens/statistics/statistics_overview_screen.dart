@@ -25,6 +25,7 @@ import 'package:aelmamclinic/screens/drugs/drug_list_screen.dart';
 import 'package:aelmamclinic/screens/employees/employees_home_screen.dart';
 import 'package:aelmamclinic/screens/patients/list_patients_screen.dart';
 import 'package:aelmamclinic/screens/patients/new_patient_screen.dart';
+import 'package:aelmamclinic/screens/patient_questions/complaint_templates_screen.dart';
 import 'package:aelmamclinic/screens/payments/payments_home_screen.dart';
 import 'package:aelmamclinic/screens/prescriptions/patient_prescriptions_screen.dart';
 import 'package:aelmamclinic/screens/prescriptions/prescription_list_screen.dart';
@@ -69,7 +70,8 @@ class StatisticsOverviewScreen extends StatefulWidget {
       _StatisticsOverviewScreenState();
 }
 
-class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
+class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
+    with WidgetsBindingObserver {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   final GraphQLClient _gql = NhostGraphqlService.buildClient();
   final BillingService _billing = BillingService();
@@ -89,6 +91,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final auth = context.read<AuthProvider>();
@@ -117,9 +120,31 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _restartUnreadPolling();
+      return;
+    }
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached) {
+      _unreadPollTimer?.cancel();
+    }
+  }
+
+  void _restartUnreadPolling() {
+    _unreadPollTimer?.cancel();
+    _refreshUnreadChatsCount();
+    _unreadPollTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      _refreshUnreadChatsCount();
+    });
+  }
+
+  @override
   void dispose() {
     _unreadPollTimer?.cancel();
     _dbChangesSub?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
@@ -766,6 +791,22 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen> {
                           context,
                           MaterialPageRoute(
                               builder: (_) => ListPatientsScreen()),
+                        );
+                      },
+                    ),
+                    _featureDrawerItem(
+                      auth: auth,
+                      featureKey: FeatureKeys.patientQuestions,
+                      icon: Icons.quiz_outlined,
+                      title: 'نماذج الشكاوى',
+                      requireUpdate: true,
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) =>
+                                  const ComplaintTemplatesScreen()),
                         );
                       },
                     ),

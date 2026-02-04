@@ -7,12 +7,15 @@ import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/core/validators.dart';
 import 'package:aelmamclinic/core/formatters.dart';
+import 'package:aelmamclinic/core/features.dart';
 
 import 'package:aelmamclinic/models/account_user_summary.dart';
 import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/services/nhost_employee_accounts_service.dart';
+import 'package:aelmamclinic/services/nhost_graphql_service.dart';
 import 'package:aelmamclinic/widgets/user_account_picker_dialog.dart';
+import 'package:graphql_flutter/graphql_flutter.dart';
 
 class NewEmployeeScreen extends StatefulWidget {
   const NewEmployeeScreen({super.key});
@@ -153,6 +156,13 @@ class _NewEmployeeScreenState extends State<NewEmployeeScreen> {
     try {
       await DBService.instance.insertEmployee(data);
 
+      if (_linkAccount &&
+          _isDoctor &&
+          _selectedAccount?.userUid != null &&
+          _selectedAccount!.userUid.isNotEmpty) {
+        await _grantDoctorFeature(_selectedAccount!.userUid);
+      }
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('تم إنشاء الموظف بنجاح')),
@@ -165,6 +175,94 @@ class _NewEmployeeScreenState extends State<NewEmployeeScreen> {
       );
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _grantDoctorFeature(String userUid) async {
+    final auth = context.read<AuthProvider>();
+    final accountId = auth.accountId;
+    if (accountId == null || accountId.isEmpty) return;
+
+    final client = NhostGraphqlService.client;
+    const query = r'''
+      query GetPerm($acc: uuid!, $uid: uuid!) {
+        account_feature_permissions(
+          where: {account_id: {_eq: $acc}, user_uid: {_eq: $uid}}
+          limit: 1
+        ) {
+          id
+          allow_all
+          allowed_features
+          can_create
+          can_update
+          can_delete
+        }
+      }
+    ''';
+
+    final res = await client.query(
+      QueryOptions(
+        document: gql(query),
+        variables: {'acc': accountId, 'uid': userUid},
+        fetchPolicy: FetchPolicy.noCache,
+      ),
+    );
+    if (res.hasException) {
+      throw res.exception!;
+    }
+    final rows = (res.data?['account_feature_permissions'] as List?) ?? const [];
+    final row = rows.isNotEmpty ? Map<String, dynamic>.from(rows.first) : null;
+    final allowAll = row?['allow_all'] == true;
+    if (allowAll) return;
+
+    final existing = (row?['allowed_features'] as List?)?.map((e) => '$e') ??
+        const <String>[];
+    final set = <String>{...existing, FeatureKeys.patientQuestions};
+
+    const upsert = r'''
+      mutation UpsertPerm(
+        $object: account_feature_permissions_insert_input!,
+        $update: [account_feature_permissions_update_column!]!
+      ) {
+        insert_account_feature_permissions(
+          objects: [$object],
+          on_conflict: {
+            constraint: account_feature_permissions_uix,
+            update_columns: $update
+          }
+        ) {
+          affected_rows
+        }
+      }
+    ''';
+
+    final obj = <String, dynamic>{
+      'account_id': accountId,
+      'user_uid': userUid,
+      'allow_all': false,
+      'allowed_features': set.toList(),
+      'can_create': row?['can_create'] ?? false,
+      'can_update': row?['can_update'] ?? false,
+      'can_delete': row?['can_delete'] ?? false,
+    };
+
+    final up = await client.mutate(
+      MutationOptions(
+        document: gql(upsert),
+        variables: {
+          'object': obj,
+          'update': [
+            'allow_all',
+            'allowed_features',
+            'can_create',
+            'can_update',
+            'can_delete',
+          ],
+        },
+      ),
+    );
+    if (up.hasException) {
+      throw up.exception!;
     }
   }
 

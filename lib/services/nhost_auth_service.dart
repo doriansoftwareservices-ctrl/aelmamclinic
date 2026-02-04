@@ -768,8 +768,9 @@ class NhostAuthService {
 
     _bindDbPush(_sync!);
 
-    await _sync!.pushAll();
     await _sync!.bootstrap(pull: pull, realtime: realtime);
+    // ادفع التغييرات المحلية في الخلفية لتسريع جاهزية الواجهة بعد الدخول.
+    unawaited(_sync!.pushAll());
   }
 
   void _bindDbPush(SyncService sync) {

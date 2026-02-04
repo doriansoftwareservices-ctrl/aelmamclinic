@@ -22,6 +22,7 @@ import 'package:aelmamclinic/models/patient_service.dart';
 import 'package:aelmamclinic/models/attachment.dart';
 import 'package:aelmamclinic/services/clinic_profile_service.dart';
 import 'package:aelmamclinic/services/db_service.dart';
+import 'package:aelmamclinic/screens/patient_questions/patient_details_questions_section.dart';
 
 class ViewPatientScreen extends StatefulWidget {
   final Patient patient;
@@ -865,6 +866,8 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
                     maxLines: 4,
                   ),
                 ),
+                const SizedBox(height: 14),
+                PatientDetailsQuestionsSection(patient: widget.patient),
                 const SizedBox(height: 14),
                 _SectionHeader(title: 'Attachments', color: scheme.primary),
                 NeuCard(

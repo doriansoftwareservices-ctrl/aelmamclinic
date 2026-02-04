@@ -15,14 +15,43 @@ class StatisticsProvider extends ChangeNotifier {
     final now = DateTime.now();
     _from = DateTime(now.year, now.month, 1);
     _to = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
-    _startPolling();
+    _startListeners();
     refresh();
   }
 
   Timer? _pollTimer;
+  Timer? _refreshDebounce;
+  StreamSubscription<String>? _dbChangesSub;
   bool _disposed = false;
-  void _startPolling() {
-    _pollTimer ??= Timer.periodic(const Duration(seconds: 5), (_) async {
+
+  static const Set<String> _statsTables = {
+    'patients',
+    'returns',
+    'consumptions',
+    'prescriptions',
+    'prescription_items',
+    'appointments',
+    'doctors',
+    'medical_services',
+    'service_doctor_share',
+    'employees_loans',
+    'employees_discounts',
+    'employees_salaries',
+    'financial_logs',
+    'patient_services',
+    'items',
+    'item_types',
+  };
+
+  void _startListeners() {
+    _dbChangesSub ??= DBService.instance.changes.listen((table) {
+      if (_disposed) return;
+      if (!_statsTables.contains(table)) return;
+      _scheduleRefresh();
+    });
+
+    // فحص احتياطي بطيء لتحديث الإحصاءات في حال عدم وصول تغييرات.
+    _pollTimer ??= Timer.periodic(const Duration(seconds: 60), (_) async {
       if (_disposed) return;
       final db = DBService.instance;
       if (await db.isStatisticsDirty()) {
@@ -32,10 +61,19 @@ class StatisticsProvider extends ChangeNotifier {
     });
   }
 
+  void _scheduleRefresh() {
+    _refreshDebounce?.cancel();
+    _refreshDebounce = Timer(const Duration(milliseconds: 400), () {
+      refresh();
+    });
+  }
+
   @override
   void dispose() {
     _disposed = true;
     _pollTimer?.cancel();
+    _refreshDebounce?.cancel();
+    _dbChangesSub?.cancel();
     super.dispose();
   }
 

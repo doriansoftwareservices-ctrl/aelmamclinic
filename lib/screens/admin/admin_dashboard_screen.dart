@@ -45,7 +45,7 @@ class AdminDashboardScreen extends StatefulWidget {
 }
 
 class _AdminDashboardScreenState extends State<AdminDashboardScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   // ---------- Services & Controllers ----------
   final NhostAdminService _authService = NhostAdminService();
   final AdminBillingService _billingService = AdminBillingService();
@@ -113,6 +113,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
 
     // حارس وصول: إن لم يكن المستخدم سوبر أدمن، لا يسمح بالبقاء هنا
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -148,8 +149,30 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      if (_pendingPollTimer == null && mounted) {
+        _pendingPollTimer =
+            Timer.periodic(const Duration(seconds: 30), (_) async {
+          if (_sectionIndex != 2) return;
+          await _fetchSubscriptionRequests();
+          await _fetchSeatRequests();
+        });
+      }
+      return;
+    }
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached) {
+      _pendingPollTimer?.cancel();
+      _pendingPollTimer = null;
+    }
+  }
+
+  @override
   void dispose() {
     _pendingPollTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     _tabController.dispose();
     _clinicNameCtrl.dispose();
     _ownerEmailCtrl.dispose();
