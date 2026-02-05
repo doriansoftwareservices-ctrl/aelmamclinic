@@ -662,10 +662,11 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
       requireUpdate: requireUpdate,
       requireDelete: requireDelete,
     );
-    if (kHideDeniedTabs && !allowed && !auth.isSuperAdmin) {
+    if (_hideDeniedTabs(auth) && !allowed && !auth.isSuperAdmin) {
       return const SizedBox.shrink();
     }
-    final showProBadge = !auth.isSuperAdmin && !allowed;
+    final showProBadge =
+        !auth.isSuperAdmin && !allowed && auth.planCode == 'free';
 
     return _drawerItem(
       icon: icon,
@@ -675,6 +676,11 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
       onDenied: _openMyPlanFromDrawer,
       showProBadge: showProBadge,
     );
+  }
+
+  bool _hideDeniedTabs(AuthProvider auth) {
+    if (kHideDeniedTabs) return true;
+    return !auth.isSuperAdmin && !auth.isOwnerOrAdmin;
   }
 
   bool _isFeatureAllowed(
@@ -843,7 +849,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                     Builder(builder: (_) {
                       final allowed = _canManageEmployeeAccounts(auth) &&
                           _isFeatureAllowed(auth, FeatureKeys.employeeAccounts);
-                      if (kHideDeniedTabs && !allowed && !auth.isSuperAdmin) {
+                      if (_hideDeniedTabs(auth) && !allowed && !auth.isSuperAdmin) {
                         return const SizedBox.shrink();
                       }
                       return _drawerItem(
@@ -1429,12 +1435,15 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
     final canPatients = _isFeatureAllowed(auth, FeatureKeys.patientsList);
     final canRepository = _isFeatureAllowed(auth, FeatureKeys.repository);
     final canChatLocal = canChat;
-    final showProPatients =
-        !canPatients && auth.planCode == 'free' && !auth.isSuperAdmin;
-    final showProRepo =
-        !canRepository && auth.planCode == 'free' && !auth.isSuperAdmin;
-    final showProChat =
-        !canChatLocal && auth.planCode == 'free' && !auth.isSuperAdmin;
+    final canQuestions = _isFeatureAllowed(auth, FeatureKeys.patientQuestions);
+    final canEmployees = _isFeatureAllowed(auth, FeatureKeys.employees);
+    final canReturns = _isFeatureAllowed(auth, FeatureKeys.returns);
+    final canPayments = _isFeatureAllowed(auth, FeatureKeys.payments);
+    final canCharts = _isFeatureAllowed(auth, FeatureKeys.charts);
+    final canPrescriptions = _isFeatureAllowed(auth, FeatureKeys.prescriptions);
+    final canClinicProfile = _isFeatureAllowed(auth, FeatureKeys.clinicProfile);
+    final canEmployeeAccounts = _canManageEmployeeAccounts(auth) &&
+        _isFeatureAllowed(auth, FeatureKeys.employeeAccounts);
 
     return FutureBuilder<bool>(
       future: _firstOpenFuture,
@@ -1520,61 +1529,142 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                                 );
                               },
                             ),
-                            OutlinedButton.icon(
-                              icon: const Icon(Icons.people_alt_rounded),
-                              label: _proLabel(
-                                'قائمة المرضى',
-                                showProPatients,
-                                scheme,
+                            if (canClinicProfile)
+                              OutlinedButton.icon(
+                                icon: const Icon(Icons.local_hospital_outlined),
+                                label: const Text('بيانات المرفق الصحي'),
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (_) =>
+                                            const ClinicProfileScreen()),
+                                  );
+                                },
                               ),
-                              onPressed: canPatients
-                                  ? () {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                            builder: (_) =>
-                                                ListPatientsScreen()),
-                                      );
-                                    }
-                                  : _handleDeniedAccess,
-                            ),
-                            OutlinedButton.icon(
-                              icon: const Icon(Icons.inventory_2_rounded),
-                              label: _proLabel(
-                                'قسم المستودع',
-                                showProRepo,
-                                scheme,
+                            if (canPatients)
+                              OutlinedButton.icon(
+                                icon: const Icon(Icons.people_alt_rounded),
+                                label: const Text('قائمة المرضى'),
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (_) =>
+                                            ListPatientsScreen()),
+                                  );
+                                },
                               ),
-                              onPressed: canRepository
-                                  ? () {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                            builder: (_) =>
-                                                const RepositoryMenuScreen()),
-                                      );
-                                    }
-                                  : _handleDeniedAccess,
-                            ),
-                            if (canChat || showProChat)
+                            if (canQuestions)
+                              OutlinedButton.icon(
+                                icon: const Icon(Icons.quiz_outlined),
+                                label: const Text('نماذج الشكاوى'),
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (_) =>
+                                            const ComplaintTemplatesScreen()),
+                                  );
+                                },
+                              ),
+                            if (canEmployees)
+                              OutlinedButton.icon(
+                                icon: const Icon(Icons.groups_rounded),
+                                label: const Text('شؤون الموظفين'),
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (_) =>
+                                            const EmployeesHomeScreen()),
+                                  );
+                                },
+                              ),
+                            if (canEmployeeAccounts)
+                              OutlinedButton.icon(
+                                icon: const Icon(Icons.badge_rounded),
+                                label: const Text('حسابات الموظفين'),
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (_) =>
+                                            const EmployeeAccountsScreen()),
+                                  );
+                                },
+                              ),
+                            if (canReturns)
+                              OutlinedButton.icon(
+                                icon: const Icon(Icons.assignment_return_outlined),
+                                label: const Text('العودات'),
+                                onPressed: () => _showReturnsMenu(context),
+                              ),
+                            if (canPayments)
+                              OutlinedButton.icon(
+                                icon: const Icon(Icons.payments_rounded),
+                                label: const Text('الشؤون المالية'),
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (_) =>
+                                            const PaymentsHomeScreen()),
+                                  );
+                                },
+                              ),
+                            if (canCharts)
+                              OutlinedButton.icon(
+                                icon: const Icon(Icons.bar_chart_rounded),
+                                label: const Text('الرسوم البيانية'),
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (_) =>
+                                            const StatisticsScreen()),
+                                  );
+                                },
+                              ),
+                            if (canRepository)
+                              OutlinedButton.icon(
+                                icon: const Icon(Icons.inventory_2_rounded),
+                                label: const Text('قسم المستودع'),
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (_) =>
+                                            const RepositoryMenuScreen()),
+                                  );
+                                },
+                              ),
+                            if (canPrescriptions)
+                              OutlinedButton.icon(
+                                icon: const Icon(Icons.menu_book_rounded),
+                                label: const Text('الوصفات الطبية'),
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (_) =>
+                                            const PatientPrescriptionsScreen()),
+                                  );
+                                },
+                              ),
+                            if (canChatLocal)
                               OutlinedButton.icon(
                                 icon: const Icon(
                                     Icons.chat_bubble_outline_rounded),
-                                label: _proLabel(
-                                  'الدردشة',
-                                  showProChat,
-                                  scheme,
-                                ),
-                                onPressed: canChatLocal
-                                    ? () {
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                              builder: (_) =>
-                                                  const ChatHomeScreen()),
-                                        );
-                                      }
-                                    : _handleDeniedAccess,
+                                label: const Text('الدردشة'),
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (_) =>
+                                            const ChatHomeScreen()),
+                                  );
+                                },
                               ),
                           ],
                         ),
