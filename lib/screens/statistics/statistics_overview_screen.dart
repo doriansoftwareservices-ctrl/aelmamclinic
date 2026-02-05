@@ -618,32 +618,6 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
     );
   }
 
-  Widget _proLabel(String label, bool showPro, ColorScheme scheme) {
-    if (!showPro) return Text(label);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(label),
-        const SizedBox(width: 6),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-          decoration: BoxDecoration(
-            color: scheme.tertiary.withValues(alpha: 0.18),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Text(
-            'PRO',
-            style: TextStyle(
-              color: scheme.tertiary,
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
   /// يبني عنصر Drawer مرتبط بمفتاح ميزة مع خيار الإخفاء عند المنع
   Widget _featureDrawerItem({
     required AuthProvider auth,

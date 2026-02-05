@@ -31,6 +31,7 @@ import 'package:aelmamclinic/models/chat_models.dart'
     show
         ChatAttachment,
         ChatAttachmentType,
+        ChatAttachmentTypeX,
         ChatConversation,
         ChatMessage,
         ChatMessageKind,
