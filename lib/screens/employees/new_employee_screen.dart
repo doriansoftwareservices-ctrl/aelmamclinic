@@ -15,7 +15,7 @@ import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/services/nhost_employee_accounts_service.dart';
 import 'package:aelmamclinic/services/nhost_graphql_service.dart';
 import 'package:aelmamclinic/widgets/user_account_picker_dialog.dart';
-import 'package:gql/language.dart' as gql_lang;
+import 'package:gql/language.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 
 class NewEmployeeScreen extends StatefulWidget {
@@ -204,7 +204,7 @@ class _NewEmployeeScreenState extends State<NewEmployeeScreen> {
 
     final res = await client.query(
       QueryOptions(
-        document: gql_lang.gql(query),
+        document: gql(query),
         variables: {'acc': accountId, 'uid': userUid},
         fetchPolicy: FetchPolicy.noCache,
       ),
@@ -250,7 +250,7 @@ class _NewEmployeeScreenState extends State<NewEmployeeScreen> {
 
     final up = await client.mutate(
       MutationOptions(
-        document: gql_lang.gql(upsert),
+        document: gql(upsert),
         variables: {
           'object': obj,
           'update': [
