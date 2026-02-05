@@ -181,6 +181,7 @@ class _NewEmployeeScreenState extends State<NewEmployeeScreen> {
 
   Future<void> _grantDoctorFeature(String userUid) async {
     final auth = context.read<AuthProvider>();
+    if (auth.planCode.toLowerCase() == 'free' && !auth.isSuperAdmin) return;
     final accountId = auth.accountId;
     if (accountId == null || accountId.isEmpty) return;
 

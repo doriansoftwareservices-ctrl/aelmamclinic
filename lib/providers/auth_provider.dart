@@ -178,6 +178,10 @@ class AuthProvider extends ChangeNotifier {
   bool featureAllowed(String featureKey) {
     if (isSuperAdmin) return true;
     if (!_permissionsLoaded) return false;
+    if (featureKey == FeatureKeys.patientQuestions &&
+        planCode.toLowerCase() == 'free') {
+      return false;
+    }
     if (_allowAllFeatures) return true;
     return _allowedFeatures.contains(featureKey);
   }
