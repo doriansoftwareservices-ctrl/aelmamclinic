@@ -1,13 +1,22 @@
 // lib/screens/employees/edit_employee_screen.dart
 import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/core/validators.dart';
 import 'package:aelmamclinic/core/formatters.dart';
+import 'package:aelmamclinic/core/features.dart';
 
+import 'package:aelmamclinic/models/account_user_summary.dart';
+import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:aelmamclinic/services/db_service.dart';
+import 'package:aelmamclinic/services/nhost_employee_accounts_service.dart';
+import 'package:aelmamclinic/services/nhost_graphql_service.dart';
+import 'package:aelmamclinic/widgets/user_account_picker_dialog.dart';
+import 'package:gql/language.dart' as gql_lang;
+import 'package:graphql_flutter/graphql_flutter.dart';
 
 class EditEmployeeScreen extends StatefulWidget {
   final int empId;
@@ -33,6 +42,15 @@ class _EditEmployeeScreenState extends State<EditEmployeeScreen> {
   bool _isDoctor = false;
   bool _loading = false;
   bool _saving = false;
+  bool _loadingAccounts = false;
+  bool _linkAccount = false;
+  bool _selectedAccountDisabled = false;
+  final NhostEmployeeAccountsService _accountsService =
+      NhostEmployeeAccountsService();
+  List<AccountUserSummary> _availableAccounts = const [];
+  AccountUserSummary? _selectedAccount;
+  String? _selectedUserUid;
+  String? _selectedUserEmail;
 
   @override
   void initState() {
@@ -75,6 +93,10 @@ class _EditEmployeeScreenState extends State<EditEmployeeScreen> {
       _basicSalaryCtrl.text = (emp['basicSalary'] ?? '').toString();
       _finalSalaryCtrl.text = (emp['finalSalary'] ?? '').toString();
       _isDoctor = (emp['isDoctor'] ?? 0) == 1;
+      _selectedUserUid = (emp['userUid'] ?? '').toString().trim();
+      if (_selectedUserUid != null && _selectedUserUid!.isNotEmpty) {
+        _linkAccount = true;
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -84,6 +106,7 @@ class _EditEmployeeScreenState extends State<EditEmployeeScreen> {
       return;
     } finally {
       if (mounted) setState(() => _loading = false);
+      await _loadAvailableAccounts();
     }
   }
 
@@ -97,10 +120,259 @@ class _EditEmployeeScreenState extends State<EditEmployeeScreen> {
     _finalSalaryCtrl.text = cleanNum(_finalSalaryCtrl.text);
   }
 
+  Future<void> _openAccountPicker() async {
+    final exclude = await DBService.instance.getLinkedUserUids();
+    if (_selectedUserUid != null && _selectedUserUid!.isNotEmpty) {
+      exclude.remove(_selectedUserUid);
+    }
+
+    final selection = await showDialog<UserAccountSelection>(
+      context: context,
+      builder: (_) => UserAccountPickerDialog(
+        excludeUserUids: exclude,
+        initialUserUid: _selectedUserUid,
+      ),
+    );
+
+    if (selection == null) return;
+    if (!mounted) return;
+    setState(() {
+      _selectedUserUid = selection.uid;
+      _selectedUserEmail =
+          selection.email.isEmpty ? selection.uid : selection.email;
+      _selectedAccountDisabled = selection.disabled;
+      _selectedAccount = AccountUserSummary(
+        userUid: selection.uid,
+        email: selection.email,
+        disabled: selection.disabled,
+      );
+    });
+  }
+
+  Future<void> _loadAvailableAccounts() async {
+    final accountId = context.read<AuthProvider>().accountId;
+    if (accountId == null || accountId.isEmpty) {
+      return;
+    }
+    setState(() => _loadingAccounts = true);
+    try {
+      final accounts =
+          await _accountsService.listEmployees(accountId: accountId);
+      final linkedEmployees = await DBService.instance.getEmployeeUserUids();
+      if (_selectedUserUid != null && _selectedUserUid!.isNotEmpty) {
+        linkedEmployees.remove(_selectedUserUid);
+      }
+      final filtered = accounts
+          .where((a) => _selectedUserUid == a.userUid || !a.disabled)
+          .where((a) => !linkedEmployees.contains(a.userUid))
+          .map((a) => AccountUserSummary(
+                userUid: a.userUid,
+                email: a.email,
+                disabled: a.disabled,
+              ))
+          .toList();
+
+      if (!mounted) return;
+      setState(() {
+        _availableAccounts = filtered;
+      });
+
+      if (_selectedUserUid != null && _selectedUserUid!.isNotEmpty) {
+        final current = accounts
+            .where((a) => a.userUid == _selectedUserUid)
+            .map((a) => AccountUserSummary(
+                  userUid: a.userUid,
+                  email: a.email,
+                  disabled: a.disabled,
+                ))
+            .toList();
+        if (current.isNotEmpty) {
+          final c = current.first;
+          _selectedAccount = c;
+          _selectedUserEmail = c.email.isEmpty ? c.userUid : c.email;
+          _selectedAccountDisabled = c.disabled;
+        } else {
+          _selectedUserEmail = _selectedUserUid;
+          _selectedAccountDisabled = false;
+        }
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذّر تحميل حسابات الموظفين: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _loadingAccounts = false);
+    }
+  }
+
+  Future<void> _pickAccount() async {
+    if (_loadingAccounts) return;
+    if (_availableAccounts.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('لا يوجد حسابات متاحة غير مرتبطة بموظفين.')),
+      );
+      return;
+    }
+
+    final chosen = await showModalBottomSheet<AccountUserSummary>(
+      context: context,
+      builder: (ctx) {
+        final scheme = Theme.of(ctx).colorScheme;
+        return Directionality(
+          textDirection: ui.TextDirection.rtl,
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  title: const Text('اختر حساب الموظف',
+                      style: TextStyle(fontWeight: FontWeight.w800)),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.refresh_rounded),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _loadAvailableAccounts();
+                    },
+                  ),
+                ),
+                const Divider(height: 1),
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: _availableAccounts.length,
+                    itemBuilder: (context, index) {
+                      final acc = _availableAccounts[index];
+                      return ListTile(
+                        title: Text(acc.email.isEmpty ? acc.userUid : acc.email,
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w700)),
+                        subtitle: acc.email.isEmpty
+                            ? Text(acc.userUid,
+                                style:
+                                    TextStyle(color: scheme.onSurfaceVariant))
+                            : Text(acc.userUid,
+                                style:
+                                    TextStyle(color: scheme.onSurfaceVariant)),
+                        trailing: const Icon(Icons.chevron_left_rounded),
+                        onTap: () => Navigator.pop(ctx, acc),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (chosen != null && mounted) {
+      setState(() {
+        _selectedAccount = chosen;
+        _selectedUserUid = chosen.userUid;
+        _selectedUserEmail =
+            chosen.email.isEmpty ? chosen.userUid : chosen.email;
+        _selectedAccountDisabled = chosen.disabled;
+      });
+    }
+  }
+
+  Future<void> _grantDoctorFeature(String userUid) async {
+    final auth = context.read<AuthProvider>();
+    if (auth.planCode.toLowerCase() == 'free' && !auth.isSuperAdmin) return;
+    final accountId = auth.accountId;
+    if (accountId == null || accountId.isEmpty) return;
+
+    final client = NhostGraphqlService.client;
+    const query = r'''
+      query GetPerm($acc: uuid!, $uid: uuid!) {
+        account_feature_permissions(
+          where: {account_id: {_eq: $acc}, user_uid: {_eq: $uid}}
+          limit: 1
+        ) {
+          id
+          allow_all
+          allowed_features
+          can_create
+          can_update
+          can_delete
+        }
+      }
+    ''';
+
+    final res = await client.query(
+      QueryOptions(
+        document: gql_lang.parseString(query),
+        variables: {'acc': accountId, 'uid': userUid},
+        fetchPolicy: FetchPolicy.noCache,
+      ),
+    );
+    if (res.hasException) {
+      throw res.exception!;
+    }
+    final rows = (res.data?['account_feature_permissions'] as List?) ?? const [];
+    final row = rows.isNotEmpty ? Map<String, dynamic>.from(rows.first) : null;
+    final allowAll = row?['allow_all'] == true;
+    if (allowAll) return;
+
+    final existing = (row?['allowed_features'] as List?)?.map((e) => '$e') ??
+        const <String>[];
+    final set = <String>{...existing, FeatureKeys.patientQuestions};
+
+    const upsert = r'''
+      mutation UpsertPerm(
+        $object: account_feature_permissions_insert_input!,
+        $update: [account_feature_permissions_update_column!]!
+      ) {
+        insert_account_feature_permissions(
+          objects: [$object],
+          on_conflict: {
+            constraint: account_feature_permissions_uix,
+            update_columns: $update
+          }
+        ) {
+          affected_rows
+        }
+      }
+    ''';
+
+    final obj = <String, dynamic>{
+      'account_id': accountId,
+      'user_uid': userUid,
+      'allow_all': false,
+      'allowed_features': set.toList(),
+      'can_create': row?['can_create'] ?? false,
+      'can_update': row?['can_update'] ?? false,
+      'can_delete': row?['can_delete'] ?? false,
+    };
+
+    final up = await client.mutate(
+      MutationOptions(
+        document: gql_lang.parseString(upsert),
+        variables: {
+          'object': obj,
+          'update': [
+            'allow_all',
+            'allowed_features',
+            'can_create',
+            'can_update',
+            'can_delete',
+          ],
+        },
+      ),
+    );
+    if (up.hasException) {
+      throw up.exception!;
+    }
+  }
+
   Future<void> _saveChanges() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _saving = true);
+    final auth = context.read<AuthProvider>();
 
     _normalizeSalaryInputs();
     final basicStr = Formatters.arabicToEnglishDigits(_basicSalaryCtrl.text);
@@ -113,14 +385,31 @@ class _EditEmployeeScreenState extends State<EditEmployeeScreen> {
     final updated = <String, dynamic>{
       'name': _nameCtrl.text.trim(),
       'identityNumber': _identityCtrl.text.trim(),
+      'phoneNumber': _phoneCtrl.text.trim(),
       'jobTitle': _jobTitleCtrl.text.trim(),
       'address': _addressCtrl.text.trim(),
       'maritalStatus': _maritalStatusCtrl.text.trim(),
       'basicSalary': basic,
       'finalSalary': fin,
       'isDoctor': _isDoctor ? 1 : 0,
-      // الهاتف غير قابل للتعديل هنا — لذا لا نحدّثه في employee لتفادي اللبس.
     };
+
+    if (_linkAccount && _selectedAccount == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('يرجى اختيار حساب الموظف أولًا.')),
+      );
+      if (mounted) setState(() => _saving = false);
+      return;
+    }
+    if (_selectedAccountDisabled) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('هذا الحساب مجمّد حالياً.')),
+      );
+      if (mounted) setState(() => _saving = false);
+      return;
+    }
+
+    updated['userUid'] = _linkAccount ? _selectedAccount?.userUid : null;
 
     try {
       await DBService.instance.updateEmployee(widget.empId, updated);
@@ -131,6 +420,31 @@ class _EditEmployeeScreenState extends State<EditEmployeeScreen> {
         'specialization': _jobTitleCtrl.text.trim(),
         'phoneNumber': _phoneCtrl.text.trim(), // للاتساق مع سجل الطبيب
       });
+
+      if (_linkAccount &&
+          _selectedAccount?.userUid != null &&
+          _selectedAccount!.userUid.isNotEmpty) {
+        final accountId = auth.accountId;
+        if (accountId != null && accountId.isNotEmpty) {
+          try {
+            await _accountsService.ensureEmployeeDoctorRow(
+              accountId: accountId,
+              userUid: _selectedAccount!.userUid,
+              isDoctor: _isDoctor,
+              name: _nameCtrl.text.trim().isEmpty ? null : _nameCtrl.text.trim(),
+            );
+          } catch (_) {
+            // Best-effort; sync will retry if this fails.
+          }
+        }
+      }
+
+      if (_linkAccount &&
+          _isDoctor &&
+          _selectedAccount?.userUid != null &&
+          _selectedAccount!.userUid.isNotEmpty) {
+        await _grantDoctorFeature(_selectedAccount!.userUid);
+      }
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -264,11 +578,12 @@ class _EditEmployeeScreenState extends State<EditEmployeeScreen> {
 
                             // رقم الهاتف — للعرض فقط (غير قابل للتعديل هنا)
                             NeuField(
-                              enabled: false,
+                              enabled: !_saving,
                               controller: _phoneCtrl,
                               hintText: 'رقم الهاتف',
                               keyboardType: TextInputType.phone,
                               prefix: const Icon(Icons.call_rounded),
+                              validator: (v) => Validators.phone(v),
                             ),
                             const SizedBox(height: 12),
 
@@ -296,34 +611,216 @@ class _EditEmployeeScreenState extends State<EditEmployeeScreen> {
                             ),
                             const SizedBox(height: 12),
 
-                            NeuField(
-                              enabled: !_saving,
-                              controller: _basicSalaryCtrl,
-                              hintText: 'الراتب الأساسي',
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                      decimal: true),
-                              prefix: const Icon(Icons.payments_outlined),
-                              onChanged: (v) {
-                                final latin =
-                                    Formatters.arabicToEnglishDigits(v);
-                                if ((_finalSalaryCtrl.text.trim().isEmpty) &&
-                                    latin.isNotEmpty) {
-                                  _finalSalaryCtrl.text = latin;
-                                }
-                              },
+                            NeuCard(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 10),
+                              child: Column(
+                                children: [
+                                  SwitchListTile.adaptive(
+                                    contentPadding: EdgeInsets.zero,
+                                    title: const Text(
+                                      'ربط الموظف بحساب دخول',
+                                      style:
+                                          TextStyle(fontWeight: FontWeight.w700),
+                                    ),
+                                    subtitle: const Text(
+                                      'يمكن تركه بدون حساب عند الحاجة.',
+                                    ),
+                                    value: _linkAccount,
+                                    onChanged: _saving
+                                        ? null
+                                        : (v) => setState(() {
+                                              _linkAccount = v;
+                                              if (!v) {
+                                                _selectedUserUid = null;
+                                                _selectedUserEmail = null;
+                                                _selectedAccountDisabled = false;
+                                                _selectedAccount = null;
+                                              }
+                                            }),
+                                  ),
+                                  if (_linkAccount) ...[
+                                    const Divider(height: 12),
+                                    ListTile(
+                                      contentPadding: EdgeInsets.zero,
+                                      leading: Container(
+                                        decoration: BoxDecoration(
+                                          color: kPrimaryColor.withValues(
+                                              alpha: .10),
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                        ),
+                                        padding: const EdgeInsets.all(10),
+                                        child: const Icon(
+                                          Icons.alternate_email_rounded,
+                                          color: kPrimaryColor,
+                                        ),
+                                      ),
+                                      title: Text(
+                                        _selectedUserEmail ?? 'اختيار حساب',
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.w800),
+                                      ),
+                                      subtitle: Text(
+                                        _selectedUserEmail == null
+                                            ? 'اضغط لاختيار حساب لربطه بالموظف'
+                                            : _selectedAccountDisabled
+                                                ? '⚠️ الحساب المحدد معطّل'
+                                                : 'سيُربط بالمعرّف ${_selectedUserUid ?? ''}',
+                                        style: TextStyle(
+                                          color: cs.onSurface
+                                              .withValues(alpha: .65),
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      trailing:
+                                          const Icon(Icons.search_rounded),
+                                      onTap: _saving ? null : _openAccountPicker,
+                                    ),
+                                    if ((context.read<AuthProvider>().uid ?? '')
+                                        .isNotEmpty)
+                                      Align(
+                                        alignment:
+                                            AlignmentDirectional.centerStart,
+                                        child: TextButton.icon(
+                                          onPressed: _saving
+                                              ? null
+                                              : () {
+                                                  final auth = context
+                                                      .read<AuthProvider>();
+                                                  setState(() {
+                                                    _selectedUserUid = auth.uid;
+                                                    _selectedUserEmail =
+                                                        (auth.email ?? '')
+                                                                .isEmpty
+                                                            ? auth.uid
+                                                            : auth.email;
+                                                    _selectedAccountDisabled =
+                                                        false;
+                                                    _selectedAccount =
+                                                        AccountUserSummary(
+                                                      userUid: auth.uid ?? '',
+                                                      email: auth.email ?? '',
+                                                      disabled: false,
+                                                    );
+                                                  });
+                                                },
+                                          icon: const Icon(Icons.person_rounded),
+                                          label: const Text('ربط حسابي'),
+                                        ),
+                                      ),
+                                    if (_loadingAccounts)
+                                      const Padding(
+                                        padding: EdgeInsets.only(top: 6),
+                                        child: LinearProgressIndicator(
+                                            minHeight: 2),
+                                      ),
+                                  ],
+                                ],
+                              ),
                             ),
                             const SizedBox(height: 12),
 
-                            NeuField(
-                              enabled: !_saving,
-                              controller: _finalSalaryCtrl,
-                              hintText: 'الراتب النهائي مع البدل',
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                      decimal: true),
-                              prefix: const Icon(
-                                  Icons.account_balance_wallet_outlined),
+                            if (_linkAccount) ...[
+                              NeuCard(
+                                onTap: _saving ? null : _pickAccount,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 10),
+                                child: ListTile(
+                                  contentPadding: EdgeInsets.zero,
+                                  leading: Container(
+                                    decoration: BoxDecoration(
+                                      color:
+                                          kPrimaryColor.withValues(alpha: .10),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    padding: const EdgeInsets.all(10),
+                                    child: const Icon(
+                                        Icons.account_circle_rounded,
+                                        color: kPrimaryColor),
+                                  ),
+                                  title: Text(
+                                    _selectedAccount == null
+                                        ? 'ربط حساب من القائمة'
+                                        : (_selectedAccount!.email.isNotEmpty
+                                            ? _selectedAccount!.email
+                                            : _selectedAccount!.userUid),
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.w800),
+                                  ),
+                                  subtitle: Text(
+                                    _loadingAccounts
+                                        ? 'جارٍ تحميل الحسابات…'
+                                        : _availableAccounts.isEmpty
+                                            ? 'لا توجد حسابات موظفين متاحة للربط'
+                                            : 'اضغط لاختيار حساب مرتبط بهذا الموظف',
+                                    style: TextStyle(
+                                      color:
+                                          cs.onSurface.withValues(alpha: .6),
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  trailing: _loadingAccounts
+                                      ? const SizedBox(
+                                          height: 20,
+                                          width: 20,
+                                          child: CircularProgressIndicator(
+                                              strokeWidth: 2),
+                                        )
+                                      : const Icon(Icons.chevron_left_rounded),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                            ],
+
+                            NeuCard(
+                              padding: const EdgeInsets.all(12),
+                              child: Column(
+                                children: [
+                                  Row(
+                                    children: const [
+                                      Icon(Icons.attach_money_rounded,
+                                          color: kPrimaryColor),
+                                      SizedBox(width: 8),
+                                      Text('الرواتب',
+                                          style: TextStyle(
+                                              fontWeight: FontWeight.w900)),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 10),
+                                  NeuField(
+                                    enabled: !_saving,
+                                    controller: _basicSalaryCtrl,
+                                    hintText: 'الراتب الأساسي',
+                                    keyboardType:
+                                        const TextInputType.numberWithOptions(
+                                            decimal: true),
+                                    prefix:
+                                        const Icon(Icons.payments_outlined),
+                                    onChanged: (v) {
+                                      final latin =
+                                          Formatters.arabicToEnglishDigits(v);
+                                      if ((_finalSalaryCtrl.text
+                                              .trim()
+                                              .isEmpty) &&
+                                          latin.isNotEmpty) {
+                                        _finalSalaryCtrl.text = latin;
+                                      }
+                                    },
+                                  ),
+                                  const SizedBox(height: 10),
+                                  NeuField(
+                                    enabled: !_saving,
+                                    controller: _finalSalaryCtrl,
+                                    hintText: 'الراتب النهائي مع البدل',
+                                    keyboardType:
+                                        const TextInputType.numberWithOptions(
+                                            decimal: true),
+                                    prefix: const Icon(
+                                        Icons.account_balance_wallet_outlined),
+                                  ),
+                                ],
+                              ),
                             ),
                             const SizedBox(height: 8),
 
@@ -340,7 +837,12 @@ class _EditEmployeeScreenState extends State<EditEmployeeScreen> {
                                 value: _isDoctor,
                                 onChanged: _saving
                                     ? null
-                                    : (v) => setState(() => _isDoctor = v),
+                                    : (v) {
+                                        setState(() => _isDoctor = v);
+                                        if (!v) {
+                                          _loadAvailableAccounts();
+                                        }
+                                      },
                               ),
                             ),
                             const SizedBox(height: 16),

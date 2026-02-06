@@ -15,6 +15,7 @@ import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/services/nhost_employee_accounts_service.dart';
 import 'package:aelmamclinic/services/nhost_graphql_service.dart';
 import 'package:aelmamclinic/widgets/user_account_picker_dialog.dart';
+import 'package:gql/language.dart' as gql_lang;
 import 'package:graphql_flutter/graphql_flutter.dart';
 
 class NewEmployeeScreen extends StatefulWidget {
@@ -114,6 +115,7 @@ class _NewEmployeeScreenState extends State<NewEmployeeScreen> {
 
     FocusScope.of(context).unfocus();
     setState(() => _saving = true);
+    final auth = context.read<AuthProvider>();
 
     // تطبيع الأرقام العربية قبل التحويل
     _normalizeSalaryInputs();
@@ -155,6 +157,24 @@ class _NewEmployeeScreenState extends State<NewEmployeeScreen> {
 
     try {
       await DBService.instance.insertEmployee(data);
+
+      if (_linkAccount &&
+          _selectedAccount?.userUid != null &&
+          _selectedAccount!.userUid.isNotEmpty) {
+        final accountId = auth.accountId;
+        if (accountId != null && accountId.isNotEmpty) {
+          try {
+            await _accountsService.ensureEmployeeDoctorRow(
+              accountId: accountId,
+              userUid: _selectedAccount!.userUid,
+              isDoctor: _isDoctor,
+              name: _nameCtrl.text.trim().isEmpty ? null : _nameCtrl.text.trim(),
+            );
+          } catch (_) {
+            // Best-effort; sync will retry if this fails.
+          }
+        }
+      }
 
       if (_linkAccount &&
           _isDoctor &&
@@ -203,7 +223,7 @@ class _NewEmployeeScreenState extends State<NewEmployeeScreen> {
 
     final res = await client.query(
       QueryOptions(
-        document: gql(query),
+        document: gql_lang.parseString(query),
         variables: {'acc': accountId, 'uid': userUid},
         fetchPolicy: FetchPolicy.noCache,
       ),
@@ -249,7 +269,7 @@ class _NewEmployeeScreenState extends State<NewEmployeeScreen> {
 
     final up = await client.mutate(
       MutationOptions(
-        document: gql(upsert),
+        document: gql_lang.parseString(upsert),
         variables: {
           'object': obj,
           'update': [

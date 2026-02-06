@@ -42,4 +42,50 @@ class NhostEmployeeAccountsService {
             EmployeeAccountRecord.fromMap(Map<String, dynamic>.from(row)))
         .toList();
   }
+
+  Future<void> ensureEmployeeDoctorRow({
+    required String accountId,
+    required String userUid,
+    required bool isDoctor,
+    String? name,
+  }) async {
+    if (accountId.isEmpty || userUid.isEmpty) return;
+    const mutation = r'''
+      mutation UpsertEmployeeDoctor(
+        $account: uuid!,
+        $uid: uuid!,
+        $isDoctor: Boolean!,
+        $name: String
+      ) {
+        insert_employees_one(
+          object: {
+            account_id: $account,
+            user_uid: $uid,
+            is_doctor: $isDoctor,
+            name: $name
+          },
+          on_conflict: {
+            constraint: employees_user_uid_key,
+            update_columns: [account_id, user_uid, is_doctor, name]
+          }
+        ) {
+          id
+        }
+      }
+    ''';
+    final res = await _gql.mutate(
+      MutationOptions(
+        document: gql(mutation),
+        variables: {
+          'account': accountId,
+          'uid': userUid,
+          'isDoctor': isDoctor,
+          'name': name,
+        },
+      ),
+    );
+    if (res.hasException) {
+      throw res.exception!;
+    }
+  }
 }

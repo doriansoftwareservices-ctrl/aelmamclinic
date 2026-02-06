@@ -3525,17 +3525,33 @@
   - role: user
     permission:
       check:
-        _exists:
-          _table:
-            name: employees
-            schema: public
-          _where:
-            account_id:
-              _ceq: account_id
-            user_uid:
-              _eq: X-Hasura-User-Id
-            is_doctor:
-              _eq: true
+        _or:
+        - _exists:
+            _table:
+              name: account_users
+              schema: public
+            _where:
+              account_id:
+                _ceq: account_id
+              user_uid:
+                _eq: X-Hasura-User-Id
+              disabled:
+                _eq: false
+              role:
+                _in:
+                - owner
+                - admin
+        - _exists:
+            _table:
+              name: employees
+              schema: public
+            _where:
+              account_id:
+                _ceq: account_id
+              user_uid:
+                _eq: X-Hasura-User-Id
+              is_doctor:
+                _eq: true
       columns: '*'
   select_permissions:
   - role: me
@@ -3690,17 +3706,33 @@
   - role: user
     permission:
       check:
-        _exists:
-          _table:
-            name: employees
-            schema: public
-          _where:
-            account_id:
-              _ceq: account_id
-            user_uid:
-              _eq: X-Hasura-User-Id
-            is_doctor:
-              _eq: true
+        _or:
+        - _exists:
+            _table:
+              name: account_users
+              schema: public
+            _where:
+              account_id:
+                _ceq: account_id
+              user_uid:
+                _eq: X-Hasura-User-Id
+              disabled:
+                _eq: false
+              role:
+                _in:
+                - owner
+                - admin
+        - _exists:
+            _table:
+              name: employees
+              schema: public
+            _where:
+              account_id:
+                _ceq: account_id
+              user_uid:
+                _eq: X-Hasura-User-Id
+              is_doctor:
+                _eq: true
       columns: '*'
   select_permissions:
   - role: me
@@ -3855,17 +3887,33 @@
   - role: user
     permission:
       check:
-        _exists:
-          _table:
-            name: employees
-            schema: public
-          _where:
-            account_id:
-              _ceq: account_id
-            user_uid:
-              _eq: X-Hasura-User-Id
-            is_doctor:
-              _eq: true
+        _or:
+        - _exists:
+            _table:
+              name: account_users
+              schema: public
+            _where:
+              account_id:
+                _ceq: account_id
+              user_uid:
+                _eq: X-Hasura-User-Id
+              disabled:
+                _eq: false
+              role:
+                _in:
+                - owner
+                - admin
+        - _exists:
+            _table:
+              name: employees
+              schema: public
+            _where:
+              account_id:
+                _ceq: account_id
+              user_uid:
+                _eq: X-Hasura-User-Id
+              is_doctor:
+                _eq: true
       columns: '*'
   select_permissions:
   - role: me
@@ -4061,17 +4109,33 @@
   - role: user
     permission:
       check:
-        _exists:
-          _table:
-            name: employees
-            schema: public
-          _where:
-            account_id:
-              _ceq: account_id
-            user_uid:
-              _eq: X-Hasura-User-Id
-            is_doctor:
-              _eq: true
+        _or:
+        - _exists:
+            _table:
+              name: account_users
+              schema: public
+            _where:
+              account_id:
+                _ceq: account_id
+              user_uid:
+                _eq: X-Hasura-User-Id
+              disabled:
+                _eq: false
+              role:
+                _in:
+                - owner
+                - admin
+        - _exists:
+            _table:
+              name: employees
+              schema: public
+            _where:
+              account_id:
+                _ceq: account_id
+              user_uid:
+                _eq: X-Hasura-User-Id
+              is_doctor:
+                _eq: true
       columns: '*'
   select_permissions:
   - role: me
@@ -4145,29 +4209,61 @@
     permission:
       columns: '*'
       filter:
-        _exists:
-          _table:
-            name: employees
-            schema: public
-          _where:
-            account_id:
-              _ceq: account_id
-            user_uid:
-              _eq: X-Hasura-User-Id
-            is_doctor:
-              _eq: true
+        _or:
+        - _exists:
+            _table:
+              name: account_users
+              schema: public
+            _where:
+              account_id:
+                _ceq: account_id
+              user_uid:
+                _eq: X-Hasura-User-Id
+              disabled:
+                _eq: false
+              role:
+                _in:
+                - owner
+                - admin
+        - _exists:
+            _table:
+              name: employees
+              schema: public
+            _where:
+              account_id:
+                _ceq: account_id
+              user_uid:
+                _eq: X-Hasura-User-Id
+              is_doctor:
+                _eq: true
       check:
-        _exists:
-          _table:
-            name: employees
-          schema: public
-          _where:
-            account_id:
-              _ceq: account_id
-            user_uid:
-              _eq: X-Hasura-User-Id
-            is_doctor:
-              _eq: true
+        _or:
+        - _exists:
+            _table:
+              name: account_users
+              schema: public
+            _where:
+              account_id:
+                _ceq: account_id
+              user_uid:
+                _eq: X-Hasura-User-Id
+              disabled:
+                _eq: false
+              role:
+                _in:
+                - owner
+                - admin
+        - _exists:
+            _table:
+              name: employees
+              schema: public
+            _where:
+              account_id:
+                _ceq: account_id
+              user_uid:
+                _eq: X-Hasura-User-Id
+              is_doctor:
+                _eq: true
   delete_permissions:
   - role: me
     permission:
@@ -4189,17 +4285,33 @@
   - role: user
     permission:
       filter:
-        _exists:
-          _table:
-            name: employees
-            schema: public
-          _where:
-            account_id:
-              _ceq: account_id
-            user_uid:
-              _eq: X-Hasura-User-Id
-            is_doctor:
-              _eq: true
+        _or:
+        - _exists:
+            _table:
+              name: account_users
+              schema: public
+            _where:
+              account_id:
+                _ceq: account_id
+              user_uid:
+                _eq: X-Hasura-User-Id
+              disabled:
+                _eq: false
+              role:
+                _in:
+                - owner
+                - admin
+        - _exists:
+            _table:
+              name: employees
+              schema: public
+            _where:
+              account_id:
+                _ceq: account_id
+              user_uid:
+                _eq: X-Hasura-User-Id
+              is_doctor:
+                _eq: true
 - table:
     name: employees_discounts
     schema: public
