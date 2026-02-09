@@ -146,6 +146,19 @@ async function ensureAuthUser(email, password) {
   throw new Error('Auth user not found after signup');
 }
 
+async function ensureAuthUserWithState(email, password) {
+  let userId = await signUpUser(email, password);
+  if (userId) {
+    return { id: userId, existed: false };
+  }
+  userId = await lookupAuthUserId(email);
+  if (userId) {
+    return { id: userId, existed: true };
+  }
+  userId = await ensureAuthUser(email, password);
+  return { id: userId, existed: true };
+}
+
 const adminUserEndpoints = (authUrl) => {
   if (!authUrl) return [];
   const raw = authUrl.replace(/\/+$/, '');
@@ -163,9 +176,7 @@ async function createOrGetUser(email, password) {
   const adminSecret =
     process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
   if (!authUrl || !adminSecret) {
-    throw new Error(
-      'Missing NHOST_AUTH_URL or NHOST_ADMIN_SECRET/HASURA_GRAPHQL_ADMIN_SECRET',
-    );
+    return ensureAuthUserWithState(email, password);
   }
 
   const adminHeaders = {
@@ -175,6 +186,7 @@ async function createOrGetUser(email, password) {
   };
 
   let lastErr = null;
+  let saw404 = false;
   for (const endpoint of adminUserEndpoints(authUrl)) {
     const createRes = await fetch(endpoint, {
       method: 'POST',
@@ -188,6 +200,7 @@ async function createOrGetUser(email, password) {
     });
 
     if (createRes.status === 404) {
+      saw404 = true;
       lastErr = new Error(`Auth create failed: ${createRes.status} 404`);
       continue;
     }
@@ -200,6 +213,7 @@ async function createOrGetUser(email, password) {
         },
       );
       if (listRes.status === 404) {
+        saw404 = true;
         lastErr = new Error(`Auth lookup failed: ${listRes.status} 404`);
         continue;
       }
@@ -226,9 +240,12 @@ async function createOrGetUser(email, password) {
     return { id: json.id, existed: false };
   }
   if (lastErr) {
+    if (saw404) {
+      return ensureAuthUserWithState(email, password);
+    }
     throw lastErr;
   }
-  throw new Error('Auth create failed');
+  return ensureAuthUserWithState(email, password);
 }
 
 async function deleteUser(userId) {
