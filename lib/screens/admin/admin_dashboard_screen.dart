@@ -15,6 +15,7 @@ import 'package:aelmamclinic/models/payment_plan_stat.dart';
 import 'package:aelmamclinic/models/payment_stat.dart';
 import 'package:aelmamclinic/models/payment_time_stat.dart';
 import 'package:aelmamclinic/models/provisioning_result.dart';
+import 'package:aelmamclinic/models/super_admin_account.dart';
 import 'package:aelmamclinic/models/subscription_request.dart';
 import 'package:aelmamclinic/models/employee_seat_request.dart';
 import 'package:aelmamclinic/services/admin_account_members_service.dart';
@@ -22,6 +23,7 @@ import 'package:aelmamclinic/services/admin_billing_service.dart';
 import 'package:aelmamclinic/services/employee_seat_service.dart';
 import 'package:aelmamclinic/services/nhost_storage_service.dart';
 import 'package:aelmamclinic/services/nhost_admin_service.dart';
+import 'package:aelmamclinic/services/super_admin_accounts_service.dart';
 import 'package:provider/provider.dart';
 import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -46,11 +48,45 @@ class AdminDashboardScreen extends StatefulWidget {
 
 class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+  static const String _rootSuperAdminEmail = 'elmam.clinic.c.s@elmam.com';
+  static const List<String> _baseAdminTabs = [
+    'clinics',
+    'chats',
+    'subscriptions',
+    'payments',
+    'complaints',
+    'stats',
+    'members',
+  ];
+  static const Map<String, String> _tabLabels = {
+    'clinics': 'العيادات',
+    'chats': 'الدردشات',
+    'subscriptions': 'الاشتراكات',
+    'payments': 'طرق الدفع',
+    'complaints': 'الشكاوى',
+    'stats': 'الإحصاءات',
+    'members': 'الأعضاء',
+    'superadmins': 'حسابات السوبر أدمن',
+  };
+  static const Map<String, IconData> _tabIcons = {
+    'clinics': Icons.local_hospital_outlined,
+    'chats': Icons.chat_bubble_outline,
+    'subscriptions': Icons.workspace_premium_rounded,
+    'payments': Icons.account_balance_rounded,
+    'complaints': Icons.report_problem_rounded,
+    'stats': Icons.analytics_rounded,
+    'members': Icons.groups_rounded,
+    'superadmins': Icons.security_rounded,
+  };
+
   // ---------- Services & Controllers ----------
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final NhostAdminService _authService = NhostAdminService();
   final AdminBillingService _billingService = AdminBillingService();
   final EmployeeSeatService _seatService = EmployeeSeatService();
   final NhostStorageService _storageService = NhostStorageService();
+  final SuperAdminAccountsService _superAdminService =
+      SuperAdminAccountsService();
   final AdminAccountMembersService _membersService =
       AdminAccountMembersService();
 
@@ -61,6 +97,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   // تبويبات
   late final TabController _tabController;
   int _sectionIndex = 0;
+  List<String> _visibleSectionKeys = List.of(_baseAdminTabs);
+  List<String> _allowedAdminTabs = List.of(_baseAdminTabs);
+  bool _loadingAdminTabs = true;
   Timer? _pendingPollTimer;
 
   // اشتراكات ودفع وشكاوى
@@ -106,6 +145,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   final TextEditingController _staffPassCtrl = TextEditingController();
   String? _createStaffPlanError;
 
+  // -------- حسابات السوبر أدمن --------
+  final TextEditingController _superAdminEmailCtrl = TextEditingController();
+  final TextEditingController _superAdminPassCtrl = TextEditingController();
+  List<SuperAdminAccount> _superAdminAccounts = [];
+  List<String> _newSuperAdminTabs = List.of(_baseAdminTabs);
+  bool _loadingSuperAdmins = false;
+  bool _creatingSuperAdmin = false;
+
   // حالة انشغال عامة لمنع النقرات المكررة
   bool _busy = false;
 
@@ -137,11 +184,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       }
     });
     if (auth.isSuperAdmin) {
+      _loadAdminTabs();
       _fetchClinics();
       _fetchSubscriptionRequests();
       _fetchSeatRequests();
       _pendingPollTimer = Timer.periodic(const Duration(seconds: 30), (_) async {
-        if (_sectionIndex != 2) return;
+        if (_activeSectionKey != 'subscriptions') return;
         await _fetchSubscriptionRequests();
         await _fetchSeatRequests();
       });
@@ -154,7 +202,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       if (_pendingPollTimer == null && mounted) {
         _pendingPollTimer =
             Timer.periodic(const Duration(seconds: 30), (_) async {
-          if (_sectionIndex != 2) return;
+          if (_activeSectionKey != 'subscriptions') return;
           await _fetchSubscriptionRequests();
           await _fetchSeatRequests();
         });
@@ -179,8 +227,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     _ownerPassCtrl.dispose();
     _staffEmailCtrl.dispose();
     _staffPassCtrl.dispose();
+    _superAdminEmailCtrl.dispose();
+    _superAdminPassCtrl.dispose();
     _storageService.dispose();
     _seatService.dispose();
+    _superAdminService.dispose();
     super.dispose();
   }
 
@@ -193,6 +244,59 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   void _snack(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  void _openDrawer() => _scaffoldKey.currentState?.openDrawer();
+
+  bool get _isRootSuperAdmin {
+    final auth = context.read<AuthProvider>();
+    final email = auth.email?.toLowerCase().trim();
+    return email != null && email == _rootSuperAdminEmail;
+  }
+
+  String get _activeSectionKey {
+    if (_visibleSectionKeys.isEmpty) return 'clinics';
+    if (_sectionIndex < 0 || _sectionIndex >= _visibleSectionKeys.length) {
+      return _visibleSectionKeys.first;
+    }
+    return _visibleSectionKeys[_sectionIndex];
+  }
+
+  void _rebuildVisibleSections() {
+    final keys = <String>[];
+    if (_isRootSuperAdmin) {
+      keys.addAll(_baseAdminTabs);
+      keys.add('superadmins');
+    } else {
+      keys.addAll(_allowedAdminTabs);
+    }
+    if (keys.isEmpty) {
+      keys.addAll(_baseAdminTabs);
+    }
+    _visibleSectionKeys = keys;
+    if (_sectionIndex >= _visibleSectionKeys.length) {
+      _sectionIndex = 0;
+    }
+  }
+
+  Future<void> _loadAdminTabs() async {
+    _loadingAdminTabs = true;
+    try {
+      if (_isRootSuperAdmin) {
+        _allowedAdminTabs = List.of(_baseAdminTabs);
+      } else {
+        final tabs = await _superAdminService.fetchMyAllowedTabs();
+        _allowedAdminTabs =
+            tabs.isEmpty ? List.of(_baseAdminTabs) : tabs.toList();
+      }
+    } catch (_) {
+      _allowedAdminTabs = List.of(_baseAdminTabs);
+    } finally {
+      _rebuildVisibleSections();
+      if (mounted) {
+        setState(() => _loadingAdminTabs = false);
+      }
+    }
   }
 
   int get _pendingSubscriptionCount =>
@@ -228,6 +332,104 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildDrawerHeader() {
+    return DrawerHeader(
+      margin: EdgeInsets.zero,
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      decoration: const BoxDecoration(color: Colors.transparent),
+      child: Row(
+        children: [
+          Image.asset(
+            'assets/images/logo.png',
+            height: 28,
+            fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+          ),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Text(
+              'لوحة تحكّم المشرف العام',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDrawerItem({
+    required int index,
+    required String label,
+    required Widget icon,
+  }) {
+    final selected = _sectionIndex == index;
+    return ListTile(
+      leading: icon,
+      title: Text(label),
+      selected: selected,
+      onTap: () async {
+        if (_sectionIndex != index) {
+          setState(() => _sectionIndex = index);
+          await _refreshCurrentSection();
+        }
+        if (!mounted) return;
+        Navigator.of(context).pop();
+      },
+    );
+  }
+
+  Widget _sectionIcon(String key) {
+    switch (key) {
+      case 'subscriptions':
+        return _navIconWithBadge(
+          Icons.workspace_premium_rounded,
+          _pendingSubscriptionCount + _pendingSeatCount,
+        );
+      case 'complaints':
+        return _navIconWithBadge(
+          Icons.report_problem_rounded,
+          _pendingComplaintCount,
+        );
+      default:
+        return Icon(_tabIcons[key] ?? Icons.dashboard_outlined);
+    }
+  }
+
+  Widget _buildDrawer() {
+    return Drawer(
+      child: SafeArea(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            _buildDrawerHeader(),
+            if (_loadingAdminTabs)
+              const ListTile(
+                leading: SizedBox(
+                  height: 18,
+                  width: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                title: Text('تحميل التبويبات...'),
+              )
+            else
+              ..._visibleSectionKeys.asMap().entries.map((entry) {
+                final index = entry.key;
+                final key = entry.value;
+                final label = _tabLabels[key] ?? key;
+                return _buildDrawerItem(
+                  index: index,
+                  label: label,
+                  icon: _sectionIcon(key),
+                );
+              }),
+          ],
+        ),
+      ),
     );
   }
 
@@ -912,20 +1114,43 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     return Stack(
       children: [
         Scaffold(
+          key: _scaffoldKey,
+          drawer: _buildDrawer(),
           appBar: AppBar(
             centerTitle: true,
-            title: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Image.asset(
-                  'assets/images/logo.png',
-                  height: 24,
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                ),
-                const SizedBox(width: 8),
-                const Text('لوحة تحكّم المشرف العام'),
-              ],
+            leading: IconButton(
+              tooltip: 'القائمة',
+              onPressed: _openDrawer,
+              icon: const Icon(Icons.menu_rounded),
+            ),
+            title: LayoutBuilder(
+              builder: (context, constraints) {
+                if (constraints.maxWidth < 140) {
+                  return const Text(
+                    'لوحة تحكّم المشرف العام',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  );
+                }
+                return Row(
+                  children: [
+                    Image.asset(
+                      'assets/images/logo.png',
+                      height: 24,
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                    ),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'لوحة تحكّم المشرف العام',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
             actions: [
               IconButton(
@@ -933,11 +1158,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                 onPressed: _refreshCurrentSection,
                 icon: const Icon(Icons.refresh),
               ),
-              TextButton.icon(
-                onPressed: _skipToStatistics,
-                icon: const Icon(Icons.skip_next),
-                label: const Text('تخطي'),
-              ),
+              if (_visibleSectionKeys.contains('stats'))
+                TextButton.icon(
+                  onPressed: _skipToStatistics,
+                  icon: const Icon(Icons.skip_next),
+                  label: const Text('تخطي'),
+                ),
               const SizedBox(width: 4),
               TextButton.icon(
                 onPressed: _logout,
@@ -954,56 +1180,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                 absorbing: _busy, // تعطيل كل الواجهات أثناء العمليات الحرجة
                 child: Opacity(
                   opacity: _busy ? 0.7 : 1,
-                  child: Row(
-                    children: [
-                      NavigationRail(
-                        selectedIndex: _sectionIndex,
-                        onDestinationSelected: (index) async {
-                          setState(() => _sectionIndex = index);
-                          await _refreshCurrentSection();
-                        },
-                        labelType: NavigationRailLabelType.all,
-                        destinations: [
-                          const NavigationRailDestination(
-                            icon: Icon(Icons.local_hospital_outlined),
-                            label: Text('العيادات'),
-                          ),
-                          const NavigationRailDestination(
-                            icon: Icon(Icons.chat_bubble_outline),
-                            label: Text('الدردشات'),
-                          ),
-                          NavigationRailDestination(
-                            icon: _navIconWithBadge(
-                              Icons.workspace_premium_rounded,
-                              _pendingSubscriptionCount + _pendingSeatCount,
-                            ),
-                            label: const Text('الاشتراكات'),
-                          ),
-                          const NavigationRailDestination(
-                            icon: Icon(Icons.account_balance_rounded),
-                            label: Text('طرق الدفع'),
-                          ),
-                          NavigationRailDestination(
-                            icon: _navIconWithBadge(
-                              Icons.report_problem_rounded,
-                              _pendingComplaintCount,
-                            ),
-                            label: const Text('الشكاوى'),
-                          ),
-                          const NavigationRailDestination(
-                            icon: Icon(Icons.analytics_rounded),
-                            label: Text('الإحصاءات'),
-                          ),
-                          const NavigationRailDestination(
-                            icon: Icon(Icons.groups_rounded),
-                            label: Text('الأعضاء'),
-                          ),
-                        ],
-                      ),
-                      const VerticalDivider(width: 18),
-                      Expanded(child: _buildSectionBody(scheme)),
-                    ],
-                  ),
+                  child: _buildSectionBody(scheme),
                 ),
               ),
             ),
@@ -1026,49 +1203,53 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   }
 
   Future<void> _refreshCurrentSection() async {
-    switch (_sectionIndex) {
-      case 0:
+    switch (_activeSectionKey) {
+      case 'clinics':
         await _fetchClinics();
         break;
-      case 1:
-        // chat screen handles its own loading
+      case 'chats':
         break;
-      case 2:
+      case 'subscriptions':
         await _fetchSubscriptionRequests();
         await _fetchSeatRequests();
         break;
-      case 3:
+      case 'payments':
         await _fetchPaymentMethods();
         break;
-      case 4:
+      case 'complaints':
         await _fetchComplaints();
         break;
-      case 5:
+      case 'stats':
         await _fetchPaymentStats();
         break;
-      case 6:
+      case 'members':
         await _fetchMemberCounts();
         await _fetchAccountMembers(accountId: _membersAccountId);
+        break;
+      case 'superadmins':
+        await _fetchSuperAdmins();
         break;
     }
   }
 
   Widget _buildSectionBody(ColorScheme scheme) {
-    switch (_sectionIndex) {
-      case 0:
+    switch (_activeSectionKey) {
+      case 'clinics':
         return _buildClinicsSection(scheme);
-      case 1:
+      case 'chats':
         return const ChatAdminInboxScreen();
-      case 2:
+      case 'subscriptions':
         return _buildSubscriptionRequestsSection();
-      case 3:
+      case 'payments':
         return _buildPaymentMethodsSection(scheme);
-      case 4:
+      case 'complaints':
         return _buildComplaintsSection(scheme);
-      case 5:
+      case 'stats':
         return _buildPaymentStatsSection(scheme);
-      case 6:
+      case 'members':
         return _buildAccountMembersSection(scheme);
+      case 'superadmins':
+        return _buildSuperAdminAccountsSection(scheme);
       default:
         return const SizedBox.shrink();
     }
@@ -1146,6 +1327,196 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     );
   }
 
+  Widget _buildSuperAdminAccountsSection(ColorScheme scheme) {
+    if (!_isRootSuperAdmin) {
+      return Center(
+        child: Text(
+          'هذه الشاشة متاحة للحساب الجذري فقط.',
+          style: TextStyle(color: scheme.error),
+        ),
+      );
+    }
+    return Column(
+      children: [
+        NeuCard(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'إضافة سوبر أدمن',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: scheme.onSurface,
+                ),
+              ),
+              const SizedBox(height: 12),
+              NeuField(
+                controller: _superAdminEmailCtrl,
+                labelText: 'البريد الإلكتروني',
+                keyboardType: TextInputType.emailAddress,
+                prefix: const Icon(Icons.alternate_email_rounded),
+                onChanged: (_) {},
+              ),
+              const SizedBox(height: 12),
+              NeuField(
+                controller: _superAdminPassCtrl,
+                labelText: 'كلمة المرور',
+                obscureText: true,
+                prefix: const Icon(Icons.lock_outline_rounded),
+                onChanged: (_) {},
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: _newSuperAdminTabs
+                    .map((key) => Chip(label: Text(_tabLabels[key] ?? key)))
+                    .toList(),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  NeuButton.flat(
+                    label: 'تعديل التبويبات',
+                    icon: Icons.tune_rounded,
+                    onPressed: () async {
+                      final selected = await _pickTabsDialog(
+                        title: 'تبويبات السوبر أدمن',
+                        initial: _newSuperAdminTabs,
+                      );
+                      if (selected == null) return;
+                      setState(() => _newSuperAdminTabs = selected);
+                    },
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: NeuButton.primary(
+                        label: _creatingSuperAdmin ? 'جارٍ الإنشاء...' : 'إنشاء',
+                        icon: Icons.person_add_alt_1,
+                        onPressed: _creatingSuperAdmin ? null : _createSuperAdmin,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        Expanded(child: _buildSuperAdminAccountsList(scheme)),
+      ],
+    );
+  }
+
+  Widget _buildSuperAdminAccountsList(ColorScheme scheme) {
+    if (_loadingSuperAdmins) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_superAdminAccounts.isEmpty) {
+      return const Center(child: Text('لا توجد حسابات سوبر أدمن.'));
+    }
+    return ListView.builder(
+      itemCount: _superAdminAccounts.length,
+      itemBuilder: (context, index) {
+        final account = _superAdminAccounts[index];
+        final isRoot = _isRootEmail(account.email);
+        final statusText = account.disabled ? 'مجمّد' : 'نشط';
+        final statusColor = account.disabled ? scheme.error : scheme.primary;
+        final created = account.createdAt;
+        final createdLabel =
+            created == null ? '' : DateFormat('yyyy/MM/dd').format(created);
+        return NeuCard(
+          padding: const EdgeInsets.all(12),
+          margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      account.email.isEmpty
+                          ? 'بلا بريد'
+                          : account.email,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  if (createdLabel.isNotEmpty)
+                    Text(
+                      createdLabel,
+                      style: TextStyle(
+                        color: scheme.onSurface.withValues(alpha: .6),
+                        fontSize: 12,
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Text(
+                    'الحالة: $statusText',
+                    style: TextStyle(
+                      color: statusColor,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  if (!account.hasUser)
+                    Text(
+                      'غير مرتبط بحساب بعد',
+                      style: TextStyle(
+                        color: scheme.onSurface.withValues(alpha: .6),
+                        fontSize: 12,
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: account.allowedTabs
+                    .map((key) => Chip(label: Text(_tabLabels[key] ?? key)))
+                    .toList(),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  NeuButton.flat(
+                    label: 'التبويبات',
+                    icon: Icons.tune_rounded,
+                    onPressed: isRoot
+                        ? null
+                        : () => _editSuperAdminTabs(account),
+                  ),
+                  const SizedBox(width: 8),
+                  NeuButton.flat(
+                    label: account.disabled ? 'تفعيل' : 'تجميد',
+                    icon: account.disabled
+                        ? Icons.lock_open_rounded
+                        : Icons.lock_outline_rounded,
+                    onPressed:
+                        isRoot ? null : () => _toggleSuperAdminDisabled(account),
+                  ),
+                  const Spacer(),
+                  NeuButton.flat(
+                    label: 'حذف',
+                    icon: Icons.delete_outline_rounded,
+                    onPressed: isRoot ? null : () => _deleteSuperAdmin(account),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Widget _statChip(String label, int value) {
     return Expanded(
       child: NeuCard(
@@ -1192,6 +1563,210 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       default:
         return role.isEmpty ? 'غير محدد' : role;
     }
+  }
+
+  bool _isRootEmail(String? email) {
+    if (email == null) return false;
+    return email.toLowerCase().trim() == _rootSuperAdminEmail;
+  }
+
+  Future<void> _fetchSuperAdmins() async {
+    if (!_isRootSuperAdmin) return;
+    setState(() => _loadingSuperAdmins = true);
+    try {
+      final rows = await _superAdminService.fetchSuperAdmins();
+      _superAdminAccounts = rows;
+    } catch (e) {
+      _snack('تعذّر تحميل حسابات السوبر أدمن: $e');
+    } finally {
+      if (mounted) setState(() => _loadingSuperAdmins = false);
+    }
+  }
+
+  Future<void> _createSuperAdmin() async {
+    if (_creatingSuperAdmin) return;
+    final email = _superAdminEmailCtrl.text.trim().toLowerCase();
+    final pass = _superAdminPassCtrl.text.trim();
+    if (!_looksLikeEmail(email)) {
+      _snack('يرجى إدخال بريد صحيح.');
+      return;
+    }
+    if (pass.length < 6) {
+      _snack('كلمة المرور قصيرة جدًا.');
+      return;
+    }
+    setState(() => _creatingSuperAdmin = true);
+    try {
+      final res = await _superAdminService.createSuperAdmin(
+        email: email,
+        password: pass,
+        allowedTabs: _newSuperAdminTabs.isEmpty
+            ? List.of(_baseAdminTabs)
+            : _newSuperAdminTabs,
+      );
+      if (res['ok'] == true) {
+        _superAdminEmailCtrl.clear();
+        _superAdminPassCtrl.clear();
+        _newSuperAdminTabs = List.of(_baseAdminTabs);
+        await _fetchSuperAdmins();
+        _snack('تم إنشاء حساب سوبر أدمن.');
+      } else {
+        _snack('تعذّر الإنشاء: ${res['error'] ?? 'خطأ غير معروف'}');
+      }
+    } catch (e) {
+      _snack('تعذّر الإنشاء: $e');
+    } finally {
+      if (mounted) setState(() => _creatingSuperAdmin = false);
+    }
+  }
+
+  Future<void> _toggleSuperAdminDisabled(SuperAdminAccount account) async {
+    if (_isRootEmail(account.email)) {
+      _snack('لا يمكن تعطيل الحساب الجذري.');
+      return;
+    }
+    final target = !account.disabled;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(target ? 'تجميد الحساب؟' : 'تفعيل الحساب؟'),
+        content: Text(
+          target
+              ? 'سيتم تعطيل الحساب: ${account.email}'
+              : 'سيتم تفعيل الحساب: ${account.email}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('متابعة'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    try {
+      await _superAdminService.setDisabled(
+        email: account.email,
+        disabled: target,
+      );
+      await _fetchSuperAdmins();
+      _snack(target ? 'تم تجميد الحساب.' : 'تم تفعيل الحساب.');
+    } catch (e) {
+      _snack('تعذّر تحديث الحالة: $e');
+    }
+  }
+
+  Future<void> _deleteSuperAdmin(SuperAdminAccount account) async {
+    if (_isRootEmail(account.email)) {
+      _snack('لا يمكن حذف الحساب الجذري.');
+      return;
+    }
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('حذف حساب سوبر أدمن'),
+        content: Text('هل تريد حذف الحساب: ${account.email} ؟'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('حذف'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    try {
+      await _superAdminService.deleteSuperAdmin(email: account.email);
+      await _fetchSuperAdmins();
+      _snack('تم حذف الحساب.');
+    } catch (e) {
+      _snack('تعذّر الحذف: $e');
+    }
+  }
+
+  Future<void> _editSuperAdminTabs(SuperAdminAccount account) async {
+    if (account.userUid.isEmpty) {
+      _snack('الحساب غير مرتبط بمستخدم بعد.');
+      return;
+    }
+    final selected = await _pickTabsDialog(
+      title: 'تبويبات لوحة التحكم',
+      initial: account.allowedTabs,
+    );
+    if (selected == null) return;
+    try {
+      await _superAdminService.setAllowedTabs(
+        userUid: account.userUid,
+        allowedTabs: selected,
+      );
+      await _fetchSuperAdmins();
+      _snack('تم تحديث التبويبات.');
+    } catch (e) {
+      _snack('تعذّر تحديث التبويبات: $e');
+    }
+  }
+
+  Future<List<String>?> _pickTabsDialog({
+    required String title,
+    required List<String> initial,
+  }) async {
+    final selected = initial.toSet();
+    return showDialog<List<String>>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setState) {
+            return AlertDialog(
+              title: Text(title),
+              content: SizedBox(
+                width: 360,
+                child: ListView(
+                  shrinkWrap: true,
+                  children: _baseAdminTabs.map((key) {
+                    final label = _tabLabels[key] ?? key;
+                    return CheckboxListTile(
+                      value: selected.contains(key),
+                      onChanged: (val) {
+                        setState(() {
+                          if (val == true) {
+                            selected.add(key);
+                          } else {
+                            selected.remove(key);
+                          }
+                          if (selected.isEmpty) {
+                            selected.add(key);
+                          }
+                        });
+                      },
+                      title: Text(label),
+                    );
+                  }).toList(),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(null),
+                  child: const Text('إلغاء'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(ctx).pop(selected.toList()),
+                  child: const Text('حفظ'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   Widget _buildSubscriptionRequestsList() {
@@ -1857,22 +2432,25 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          child: ToggleButtons(
-            isSelected: List.generate(
-              modeLabels.length,
-              (i) => i == _statsMode,
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: ToggleButtons(
+              isSelected: List.generate(
+                modeLabels.length,
+                (i) => i == _statsMode,
+              ),
+              onPressed: (i) => setState(() => _statsMode = i),
+              borderRadius: BorderRadius.circular(12),
+              children: modeLabels
+                  .map((label) => Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        child: Text(label),
+                      ))
+                  .toList(),
             ),
-            onPressed: (i) => setState(() => _statsMode = i),
-            borderRadius: BorderRadius.circular(12),
-            children: modeLabels
-                .map((label) => Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      child: Text(label),
-                    ))
-                .toList(),
           ),
         ),
         const SizedBox(height: 6),
