@@ -42,6 +42,7 @@ class NhostAuthService {
   SyncService? _sync;
   String? _boundAccountId;
   static const Duration _kGraphqlTimeout = Duration(seconds: 20);
+  static const String _rootSuperAdminEmail = 'elmam.clinic.c.s@elmam.com';
 
   NhostClient get client => _client;
 
@@ -165,6 +166,18 @@ class NhostAuthService {
     return result.data ?? <String, dynamic>{};
   }
 
+  bool _isTransientGraphqlError(Object error) {
+    if (error is TimeoutException) return true;
+    final msg = error.toString().toLowerCase();
+    return msg.contains('timeout') ||
+        msg.contains('timed out') ||
+        msg.contains('no stream event') ||
+        msg.contains('503') ||
+        msg.contains('bad gateway') ||
+        msg.contains('service temporarily unavailable') ||
+        msg.contains('connection');
+  }
+
   Future<String> selfCreateAccount({
     required ClinicProfileInput profile,
   }) async {
@@ -208,9 +221,20 @@ class NhostAuthService {
       'near_en': profile.nearEn.trim(),
       'phone': profile.phone.trim(),
     };
-    final data = await _runMutation(mutation, vars);
-    final rows = _rowsFromData(data, 'self_create_account');
-    return rows.isEmpty ? '' : (rows.first['id']?.toString() ?? '');
+    for (var attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        final data = await _runMutation(mutation, vars);
+        final rows = _rowsFromData(data, 'self_create_account');
+        return rows.isEmpty ? '' : (rows.first['id']?.toString() ?? '');
+      } catch (e) {
+        if (attempt == 0 && _isTransientGraphqlError(e)) {
+          await Future<void>.delayed(const Duration(milliseconds: 400));
+          continue;
+        }
+        rethrow;
+      }
+    }
+    return '';
   }
 
   Future<Map<String, dynamic>?> fetchClinicProfile({
@@ -499,10 +523,10 @@ class NhostAuthService {
         (user.defaultRole.toLowerCase() == 'superadmin');
     final metaRole =
         (user.metadata?['role']?.toString().toLowerCase() == 'superadmin');
-    final isSuper =
-        await _resolveSuperAdminFlag(fallbackEmail: user.email) ||
-            tokenIsSuper ||
-            metaRole;
+    final dbIsSuper = await _resolveSuperAdminFlag(fallbackEmail: user.email);
+    final emailLower = (user.email ?? '').toLowerCase().trim();
+    final isSuper = dbIsSuper ||
+        (emailLower == _rootSuperAdminEmail && (tokenIsSuper || metaRole));
     String? planCode;
     try {
       planCode = await fetchMyPlanCode() ?? 'free';
