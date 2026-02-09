@@ -152,58 +152,29 @@ async function ensureAuthUser(email, password) {
   return userId;
 }
 
-const parseJwtEmail = (authHeader) => {
+const parseJwtSub = (authHeader) => {
   if (!authHeader) return '';
   const token = authHeader.replace(/^Bearer\s+/i, '').trim();
   const parts = token.split('.');
   if (parts.length < 2) return '';
   try {
-    const raw = Buffer.from(parts[1], 'base64').toString('utf8');
+    const padded = parts[1]
+      .replace(/-/g, '+')
+      .replace(/_/g, '/')
+      .padEnd(parts[1].length + ((4 - (parts[1].length % 4)) % 4), '=');
+    const raw = Buffer.from(padded, 'base64').toString('utf8');
     const payload = JSON.parse(raw);
     const claims = payload['https://hasura.io/jwt/claims'] || {};
     return (
-      (claims['x-hasura-user-email'] ||
-        claims.email ||
-        payload.email ||
-        '') + ''
-    )
-      .toLowerCase()
-      .trim();
+      claims['x-hasura-user-id'] ||
+      payload.sub ||
+      claims.sub ||
+      ''
+    ).toString();
   } catch (_) {
     return '';
   }
 };
-
-async function ensureSuperAdmin(authHeader) {
-  const gqlUrl = process.env.NHOST_GRAPHQL_URL;
-  if (!gqlUrl) {
-    throw new Error('Missing NHOST_GRAPHQL_URL');
-  }
-  const query = 'query { fn_is_super_admin_gql { is_super_admin } }';
-  const res = await fetch(gqlUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: authHeader,
-    },
-    body: JSON.stringify({ query }),
-  });
-  if (!res.ok) {
-    throw new Error(`Auth check failed: ${res.status}`);
-  }
-  const json = await res.json();
-  if (json.errors?.length) {
-    throw new Error(json.errors.map((e) => e.message).join(' | '));
-  }
-  const rows = json.data?.fn_is_super_admin_gql;
-  const isSuper =
-    Array.isArray(rows) && rows.length > 0 && rows[0]?.is_super_admin === true;
-  if (!isSuper) {
-    const err = new Error('forbidden');
-    err.statusCode = 403;
-    throw err;
-  }
-}
 
 const sanitizeTabs = (tabs) => {
   const list = Array.isArray(tabs) ? tabs : [];
@@ -215,6 +186,34 @@ const sanitizeTabs = (tabs) => {
 
 const escapeLiteral = (value) => `${value}`.replace(/'/g, "''");
 
+const isUuid = (value) => /^[0-9a-f-]{36}$/i.test(`${value ?? ''}`);
+
+async function lookupAuthEmailById(userId) {
+  const safeId = escapeLiteral(userId);
+  const sql = `select email from auth.users where id='${safeId}' limit 1;`;
+  const json = await runSql(sql, true);
+  const row = Array.isArray(json?.result) ? json.result[1] : null;
+  return row ? `${row[0] ?? ''}`.toLowerCase().trim() : '';
+}
+
+async function isSuperAdminUser(userId, email) {
+  const safeId = escapeLiteral(userId);
+  const safeEmail = escapeLiteral(email);
+  const sql = `
+    select 1
+    from auth.user_roles
+    where user_id='${safeId}' and role='superadmin'
+    union all
+    select 1
+    from public.super_admins
+    where user_uid='${safeId}' or lower(email)=lower('${safeEmail}')
+    limit 1;
+  `;
+  const json = await runSql(sql, true);
+  const row = Array.isArray(json?.result) ? json.result[1] : null;
+  return !!row;
+}
+
 module.exports = async function handler(req, res) {
   try {
     const body = await readBody(req);
@@ -223,9 +222,18 @@ module.exports = async function handler(req, res) {
       res.status(401).json({ ok: false, error: 'Missing authorization' });
       return;
     }
-    await ensureSuperAdmin(authHeader);
-    const callerEmail = parseJwtEmail(authHeader);
+    const callerUid = parseJwtSub(authHeader);
+    if (!isUuid(callerUid)) {
+      res.status(401).json({ ok: false, error: 'Invalid token' });
+      return;
+    }
+    const callerEmail = await lookupAuthEmailById(callerUid);
     if (!callerEmail || callerEmail !== ROOT_EMAIL) {
+      res.status(403).json({ ok: false, error: 'forbidden' });
+      return;
+    }
+    const isSuper = await isSuperAdminUser(callerUid, callerEmail);
+    if (!isSuper) {
       res.status(403).json({ ok: false, error: 'forbidden' });
       return;
     }

@@ -30,7 +30,7 @@ DECLARE
   ]::text[];
 BEGIN
   BEGIN
-    v_uid := nullif((current_setting('request.jwt.claims', true)::json->>'sub'), '')::uuid;
+    v_uid := nullif(public.request_uid_text(), '')::uuid;
   EXCEPTION WHEN others THEN
     v_uid := NULL;
   END;
@@ -81,7 +81,7 @@ DECLARE
   ]::text[];
 BEGIN
   BEGIN
-    v_uid := nullif((current_setting('request.jwt.claims', true)::json->>'sub'), '')::uuid;
+    v_uid := nullif(public.request_uid_text(), '')::uuid;
   EXCEPTION WHEN others THEN
     v_uid := NULL;
   END;

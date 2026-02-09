@@ -78,6 +78,7 @@
 - "!include public_v_chat_reads_for_me.yaml"
 - "!include public_v_chat_typing_active.yaml"
 - "!include public_v_debug_auth_context.yaml"
+- "!include public_v_debug_superadmin_session.yaml"
 - "!include public_v_is_super_admin.yaml"
 - "!include public_v_list_employees_with_email.yaml"
 - "!include public_v_my_account_id.yaml"

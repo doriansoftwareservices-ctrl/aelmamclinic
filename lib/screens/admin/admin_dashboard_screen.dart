@@ -100,6 +100,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   List<String> _visibleSectionKeys = List.of(_baseAdminTabs);
   List<String> _allowedAdminTabs = List.of(_baseAdminTabs);
   bool _loadingAdminTabs = true;
+  bool _tabsLoadFailed = false;
+  String? _tabsError;
   Timer? _pendingPollTimer;
 
   // اشتراكات ودفع وشكاوى
@@ -255,7 +257,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   }
 
   String get _activeSectionKey {
-    if (_visibleSectionKeys.isEmpty) return 'clinics';
+    if (_visibleSectionKeys.isEmpty) return '';
     if (_sectionIndex < 0 || _sectionIndex >= _visibleSectionKeys.length) {
       return _visibleSectionKeys.first;
     }
@@ -270,9 +272,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     } else {
       keys.addAll(_allowedAdminTabs);
     }
-    if (keys.isEmpty) {
-      keys.addAll(_baseAdminTabs);
-    }
     _visibleSectionKeys = keys;
     if (_sectionIndex >= _visibleSectionKeys.length) {
       _sectionIndex = 0;
@@ -281,6 +280,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
 
   Future<void> _loadAdminTabs() async {
     _loadingAdminTabs = true;
+    _tabsLoadFailed = false;
+    _tabsError = null;
     try {
       if (_isRootSuperAdmin) {
         _allowedAdminTabs = List.of(_baseAdminTabs);
@@ -289,8 +290,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         _allowedAdminTabs =
             tabs.isEmpty ? List.of(_baseAdminTabs) : tabs.toList();
       }
-    } catch (_) {
-      _allowedAdminTabs = List.of(_baseAdminTabs);
+    } catch (e) {
+      _allowedAdminTabs = const [];
+      _tabsLoadFailed = true;
+      _tabsError = 'تعذّر تحميل التبويبات. يرجى إعادة المحاولة.';
     } finally {
       _rebuildVisibleSections();
       if (mounted) {
@@ -415,6 +418,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
                 title: Text('تحميل التبويبات...'),
+              )
+            else if (_visibleSectionKeys.isEmpty)
+              ListTile(
+                leading: const Icon(Icons.warning_amber_rounded),
+                title: Text(_tabsError ?? 'لا توجد تبويبات متاحة.'),
               )
             else
               ..._visibleSectionKeys.asMap().entries.map((entry) {
@@ -1203,6 +1211,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   }
 
   Future<void> _refreshCurrentSection() async {
+    if (_activeSectionKey.isEmpty) return;
     switch (_activeSectionKey) {
       case 'clinics':
         await _fetchClinics();
@@ -1233,6 +1242,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   }
 
   Widget _buildSectionBody(ColorScheme scheme) {
+    if (_activeSectionKey.isEmpty) {
+      return Center(
+        child: Text(
+          _tabsError ?? 'لا توجد تبويبات متاحة لهذا الحساب.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: scheme.error),
+        ),
+      );
+    }
     switch (_activeSectionKey) {
       case 'clinics':
         return _buildClinicsSection(scheme);

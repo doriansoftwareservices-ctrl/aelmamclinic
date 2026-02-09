@@ -1,0 +1,8 @@
+function:
+  name: debug_superadmin_session
+  schema: public
+configuration:
+  custom_root_fields: {}
+  exposed_as: query
+permissions:
+  - role: superadmin
