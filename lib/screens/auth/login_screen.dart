@@ -315,12 +315,11 @@ class _LoginScreenState extends State<LoginScreen> {
           return;
         }
         auth.setPendingClinicProfile(clinicProfile);
+        Object? createError;
         try {
           await auth.selfCreateAccount(clinicProfile);
         } catch (e) {
-          await auth.signOut();
-          setState(() => _error = 'تعذّر إنشاء الحساب: $e');
-          return;
+          createError = e;
         }
         final recheck = await auth.refreshAndValidateCurrentUser();
         if (!mounted) return;
@@ -329,8 +328,14 @@ class _LoginScreenState extends State<LoginScreen> {
               recheck.status == AuthSessionStatus.planUpgradeRequired) {
             await auth.signOut();
           }
-          setState(() => _error = _messageForStatus(recheck.status) ??
-              'تعذّر التحقق من الحساب. حاول مرة أخرى.');
+          final base = _messageForStatus(recheck.status) ??
+              'تعذّر التحقق من الحساب. حاول مرة أخرى.';
+          if (createError != null) {
+            final mapped = _mapLoginError(createError);
+            setState(() => _error = 'تعذّر إنشاء الحساب: $mapped');
+          } else {
+            setState(() => _error = base);
+          }
           return;
         }
       }
@@ -781,6 +786,15 @@ class _LoginScreenState extends State<LoginScreen> {
         lower.contains('network') ||
         lower.contains('connection')) {
       return 'تعذّر الاتصال بالخادم. تحقّق من الإنترنت وحاول مرة أخرى.';
+    }
+    if (lower.contains('timeout') ||
+        lower.contains('timed out') ||
+        lower.contains('no stream event') ||
+        lower.contains('503') ||
+        lower.contains('bad gateway') ||
+        lower.contains('temporarily unavailable') ||
+        lower.contains('service unavailable')) {
+      return 'الخادم غير متاح مؤقتًا. انتظر قليلًا ثم أعد المحاولة.';
     }
     return 'فشل تسجيل الدخول. حاول مرة أخرى.';
   }

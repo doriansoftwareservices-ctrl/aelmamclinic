@@ -41,6 +41,7 @@ class NhostAuthService {
 
   SyncService? _sync;
   String? _boundAccountId;
+  static const Duration _kGraphqlTimeout = Duration(seconds: 20);
 
   NhostClient get client => _client;
 
@@ -122,13 +123,15 @@ class NhostAuthService {
     String doc,
     Map<String, dynamic> variables,
   ) async {
-    final result = await _gql.query(
+    final result = await _gql
+        .query(
       QueryOptions(
         document: gql(doc),
         variables: variables,
         fetchPolicy: FetchPolicy.noCache,
       ),
-    );
+    )
+        .timeout(_kGraphqlTimeout);
     if (result.hasException) {
       final ex = result.exception!;
       if (_isSchemaError(ex)) {
@@ -143,13 +146,15 @@ class NhostAuthService {
     String doc,
     Map<String, dynamic> variables,
   ) async {
-    final result = await _gql.mutate(
+    final result = await _gql
+        .mutate(
       MutationOptions(
         document: gql(doc),
         variables: variables,
         fetchPolicy: FetchPolicy.noCache,
       ),
-    );
+    )
+        .timeout(_kGraphqlTimeout);
     if (result.hasException) {
       final ex = result.exception!;
       if (_isSchemaError(ex)) {
