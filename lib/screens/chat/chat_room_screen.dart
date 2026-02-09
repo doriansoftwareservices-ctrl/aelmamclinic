@@ -48,7 +48,7 @@ class ChatRoomScreen extends StatefulWidget {
 }
 
 class _ChatRoomScreenState extends State<ChatRoomScreen> {
-  static const bool _chatAttachmentsEnabled = true;
+  static const bool _chatAttachmentsEnabled = false;
   final _textCtrl = TextEditingController();
   final _focusNode = FocusNode();
   final _listCtrl = ScrollController();
