@@ -1,0 +1,40 @@
+table:
+  name: v_rpc_result
+  schema: public
+select_permissions:
+  - role: me
+    permission:
+      columns:
+        - ok
+        - error
+        - account_id
+        - user_uid
+        - owner_uid
+        - role
+        - frozen
+        - disabled
+      filter: {}
+  - role: superadmin
+    permission:
+      columns:
+        - ok
+        - error
+        - account_id
+        - user_uid
+        - owner_uid
+        - role
+        - frozen
+        - disabled
+      filter: {}
+  - role: user
+    permission:
+      columns:
+        - ok
+        - error
+        - account_id
+        - user_uid
+        - owner_uid
+        - role
+        - frozen
+        - disabled
+      filter: {}

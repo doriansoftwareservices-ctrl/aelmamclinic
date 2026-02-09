@@ -1,0 +1,11 @@
+function:
+  name: user_cancel_subscription_request
+  schema: public
+configuration:
+  custom_name: user_cancel_subscription_request
+  custom_root_fields: {}
+  exposed_as: mutation
+  session_argument: hasura_session
+permissions:
+  - role: user
+  - role: superadmin

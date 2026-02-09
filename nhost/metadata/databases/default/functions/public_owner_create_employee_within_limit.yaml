@@ -1,0 +1,12 @@
+function:
+  name: owner_create_employee_within_limit
+  schema: public
+configuration:
+  custom_name: owner_create_employee_within_limit
+  custom_root_fields: {}
+  exposed_as: mutation
+  session_argument: hasura_session
+permissions:
+  - role: me
+  - role: user
+  - role: superadmin

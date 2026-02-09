@@ -177,11 +177,10 @@ class AuthProvider extends ChangeNotifier {
   /// السماح يعتمد على allow_all أو على القائمة المخزنة فقط (fail-closed).
   bool featureAllowed(String featureKey) {
     if (isSuperAdmin) return true;
-    if (!_permissionsLoaded) return false;
-    if (featureKey == FeatureKeys.patientQuestions &&
-        planCode.toLowerCase() == 'free') {
-      return false;
+    if (featureKey == FeatureKeys.patientQuestions) {
+      return planCode.toLowerCase() != 'free';
     }
+    if (!_permissionsLoaded) return false;
     if (_allowAllFeatures) return true;
     return _allowedFeatures.contains(featureKey);
   }

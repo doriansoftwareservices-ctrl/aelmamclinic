@@ -188,6 +188,7 @@ class SyncService {
 
   final Map<String, Set<String>> _localColsCache = {};
   final Map<String, Map<String, String>> _localColTypeCache = {};
+  final Map<String, Set<String>> _localNotNullColsCache = {};
 
   /// قفل دفع مخصص لكل جدول لمنع تكرار الدفع بالتوازي
   final Map<String, bool> _pushBusy = {};
@@ -824,12 +825,18 @@ class SyncService {
     final cols = rows.map((r) => (r['name'] as String)).toSet();
     _localColsCache[table] = cols;
     final types = <String, String>{};
+    final notNullCols = <String>{};
     for (final r in rows) {
       final name = (r['name'] as String);
       final type = (r['type'] ?? '').toString().toUpperCase();
+      final notNullFlag = (r['notnull'] ?? 0) as int;
       types[name] = type;
+      if (notNullFlag == 1) {
+        notNullCols.add(name);
+      }
     }
     _localColTypeCache[table] = types;
+    _localNotNullColsCache[table] = notNullCols;
     return cols;
   }
 
@@ -838,6 +845,18 @@ class SyncService {
       await _getLocalColumns(table);
     }
     return _localColTypeCache[table]?[column];
+  }
+
+  Future<void> _dropNullsForNotNullCols(
+    String table,
+    Map<String, dynamic> values,
+  ) async {
+    if (!_localNotNullColsCache.containsKey(table)) {
+      await _getLocalColumns(table);
+    }
+    final notNullCols = _localNotNullColsCache[table] ?? const <String>{};
+    if (notNullCols.isEmpty) return;
+    values.removeWhere((key, value) => value == null && notNullCols.contains(key));
   }
 
   Future<_LocalSyncTriple?> _readLocalSyncTriple({
@@ -1631,18 +1650,58 @@ class SyncService {
     required int id,
   }) async {
     final updateMap = Map<String, dynamic>.from(row)..remove('id');
+    if (table == 'service_doctor_share') {
+      if (updateMap['serviceId'] == null ||
+          '${updateMap['serviceId']}'.toLowerCase() == 'null') {
+        updateMap.remove('serviceId');
+      }
+      if (updateMap['doctorId'] == null ||
+          '${updateMap['doctorId']}'.toLowerCase() == 'null') {
+        updateMap.remove('doctorId');
+      }
+      if (updateMap['service_id'] == null ||
+          '${updateMap['service_id']}'.toLowerCase() == 'null') {
+        updateMap.remove('service_id');
+      }
+      if (updateMap['doctor_id'] == null ||
+          '${updateMap['doctor_id']}'.toLowerCase() == 'null') {
+        updateMap.remove('doctor_id');
+      }
+    }
+    if (table == 'patient_services') {
+      if (updateMap['patientId'] == null ||
+          '${updateMap['patientId']}'.toLowerCase() == 'null') {
+        updateMap.remove('patientId');
+      }
+      if (updateMap['serviceId'] == null ||
+          '${updateMap['serviceId']}'.toLowerCase() == 'null') {
+        updateMap.remove('serviceId');
+      }
+      if (updateMap['patient_id'] == null ||
+          '${updateMap['patient_id']}'.toLowerCase() == 'null') {
+        updateMap.remove('patient_id');
+      }
+      if (updateMap['service_id'] == null ||
+          '${updateMap['service_id']}'.toLowerCase() == 'null') {
+        updateMap.remove('service_id');
+      }
+    }
 
-    final updated = await _db.update(
-      table,
-      updateMap,
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    await _dropNullsForNotNullCols(table, updateMap);
+    final updated = updateMap.isEmpty
+        ? 0
+        : await _db.update(
+            table,
+            updateMap,
+            where: 'id = ?',
+            whereArgs: [id],
+          );
 
     if (updated == 0) {
       // ⬇️ إصلاح هنا: لا يجوز استخدام cascade مع تعيين بواسطة الفهرس.
       final data = Map<String, dynamic>.from(row);
       data['id'] = id;
+      await _dropNullsForNotNullCols(table, data);
       await _db.insert(
         table,
         data,
@@ -2508,6 +2567,12 @@ class SyncService {
           if (filtered['service_id'] == null) filtered.remove('service_id');
           if (filtered['doctor_id'] == null) filtered.remove('doctor_id');
         }
+        if (localTable == 'patient_services') {
+          if (filtered['patientId'] == null) filtered.remove('patientId');
+          if (filtered['serviceId'] == null) filtered.remove('serviceId');
+          if (filtered['patient_id'] == null) filtered.remove('patient_id');
+          if (filtered['service_id'] == null) filtered.remove('service_id');
+        }
 
         final accCol = _col(allowedCols, 'accountId', 'account_id');
         final devCol = _col(allowedCols, 'deviceId', 'device_id');
@@ -2805,6 +2870,20 @@ class SyncService {
           }
         }
 
+        // لا تسمح بإرسال قيم NULL لأعمدة FK غير قابلة للإلغاء
+        if (localTable == 'service_doctor_share') {
+          if (filtered['serviceId'] == null) filtered.remove('serviceId');
+          if (filtered['doctorId'] == null) filtered.remove('doctorId');
+          if (filtered['service_id'] == null) filtered.remove('service_id');
+          if (filtered['doctor_id'] == null) filtered.remove('doctor_id');
+        }
+        if (localTable == 'patient_services') {
+          if (filtered['patientId'] == null) filtered.remove('patientId');
+          if (filtered['serviceId'] == null) filtered.remove('serviceId');
+          if (filtered['patient_id'] == null) filtered.remove('patient_id');
+          if (filtered['service_id'] == null) filtered.remove('service_id');
+        }
+
         final accCol = _col(allowedCols, 'accountId', 'account_id');
         final devCol = _col(allowedCols, 'deviceId', 'device_id');
         final locCol = _col(allowedCols, 'localId', 'local_id');
@@ -3036,6 +3115,12 @@ class SyncService {
       if (filtered['service_id'] == null) filtered.remove('service_id');
       if (filtered['doctor_id'] == null) filtered.remove('doctor_id');
     }
+    if (localTable == 'patient_services') {
+      if (filtered['patientId'] == null) filtered.remove('patientId');
+      if (filtered['serviceId'] == null) filtered.remove('serviceId');
+      if (filtered['patient_id'] == null) filtered.remove('patient_id');
+      if (filtered['service_id'] == null) filtered.remove('service_id');
+    }
 
     if (fkParentTables != null) {
       for (final entry in fkParentTables.entries) {
@@ -3063,6 +3148,18 @@ class SyncService {
           );
         }
       }
+    }
+    if (localTable == 'service_doctor_share') {
+      if (filtered['serviceId'] == null) filtered.remove('serviceId');
+      if (filtered['doctorId'] == null) filtered.remove('doctorId');
+      if (filtered['service_id'] == null) filtered.remove('service_id');
+      if (filtered['doctor_id'] == null) filtered.remove('doctor_id');
+    }
+    if (localTable == 'patient_services') {
+      if (filtered['patientId'] == null) filtered.remove('patientId');
+      if (filtered['serviceId'] == null) filtered.remove('serviceId');
+      if (filtered['patient_id'] == null) filtered.remove('patient_id');
+      if (filtered['service_id'] == null) filtered.remove('service_id');
     }
 
     final accCol = _col(allowedCols, 'accountId', 'account_id');

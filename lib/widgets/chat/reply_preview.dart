@@ -22,6 +22,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:aelmamclinic/core/nhost_manager.dart';
+import 'package:aelmamclinic/services/nhost_storage_service.dart';
 
 import 'package:aelmamclinic/models/chat_models.dart';
 import 'package:aelmamclinic/utils/text_direction.dart' as bidi;
@@ -217,7 +218,19 @@ class ReplyPreview extends StatelessWidget {
     if (m.kind == ChatMessageKind.image) {
       final t = _primaryText(m);
       final label = t.isNotEmpty ? '📷 $t' : '📷 صورة';
-      final url = m.attachments.isNotEmpty ? m.attachments.first.url : null;
+      String? url;
+      if (m.attachments.isNotEmpty) {
+        final a = m.attachments.first;
+        final b = (a.bucket ?? '').trim();
+        final p = (a.path ?? '').trim();
+        if (b.isNotEmpty && p.isNotEmpty) {
+          url = 'storage://$b/$p';
+        } else if (a.url.isNotEmpty) {
+          url = a.url;
+        } else if ((a.signedUrl ?? '').trim().isNotEmpty) {
+          url = a.signedUrl;
+        }
+      }
       return _SnippetMeta(
         snippet: label,
         kind: ChatMessageKind.image,
@@ -279,30 +292,9 @@ class _Thumb extends StatelessWidget {
         } else {
           child = ClipRRect(
             borderRadius: BorderRadius.circular(6),
-            child: Image.network(
-              url!,
-              width: size,
-              height: size,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => Icon(
-                Icons.broken_image_outlined,
-                size: size * .55,
-                color: cs.onSurfaceVariant.withValues(alpha: 0.8),
-              ),
-              loadingBuilder: (_, child, progress) {
-                if (progress == null) return child;
-                return Container(
-                  width: size,
-                  height: size,
-                  alignment: Alignment.center,
-                  color: Colors.black12,
-                  child: Icon(
-                    Icons.image_rounded,
-                    size: size * .55,
-                    color: cs.onSurfaceVariant.withValues(alpha: .6),
-                  ),
-                );
-              },
+            child: _ResolvedThumbImage(
+              url: url!,
+              size: size,
             ),
           );
         }
@@ -337,6 +329,104 @@ class _Thumb extends StatelessWidget {
         ),
       ),
       child: child,
+    );
+  }
+}
+
+class _ResolvedThumbImage extends StatefulWidget {
+  final String url;
+  final double size;
+
+  const _ResolvedThumbImage({
+    required this.url,
+    required this.size,
+  });
+
+  @override
+  State<_ResolvedThumbImage> createState() => _ResolvedThumbImageState();
+}
+
+class _ResolvedThumbImageState extends State<_ResolvedThumbImage> {
+  final NhostStorageService _storage = NhostStorageService();
+  late Future<String?> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _resolve();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ResolvedThumbImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.url != widget.url) {
+      _future = _resolve();
+    }
+  }
+
+  Future<String?> _resolve() async {
+    final raw = widget.url.trim();
+    if (raw.startsWith('http')) {
+      return await _storage.resolveSignedUrlFromUrl(raw) ?? raw;
+    }
+    if (!raw.startsWith('storage://')) return null;
+    final rest = raw.substring('storage://'.length);
+    final idx = rest.indexOf('/');
+    if (idx <= 0 || idx >= rest.length - 1) return null;
+    final bucket = rest.substring(0, idx);
+    final path = rest.substring(idx + 1);
+    if (bucket.isEmpty || path.isEmpty) return null;
+    return _storage.resolveSignedUrlForPath(bucket: bucket, path: path);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return FutureBuilder<String?>(
+      future: _future,
+      builder: (context, snap) {
+        final resolved = snap.data ?? '';
+        if (resolved.isEmpty) {
+          return Container(
+            width: widget.size,
+            height: widget.size,
+            alignment: Alignment.center,
+            color: Colors.black12,
+            child: Icon(
+              snap.connectionState == ConnectionState.waiting
+                  ? Icons.image_rounded
+                  : Icons.broken_image_outlined,
+              size: widget.size * .55,
+              color: cs.onSurfaceVariant.withValues(alpha: 0.8),
+            ),
+          );
+        }
+        return Image.network(
+          resolved,
+          width: widget.size,
+          height: widget.size,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Icon(
+            Icons.broken_image_outlined,
+            size: widget.size * .55,
+            color: cs.onSurfaceVariant.withValues(alpha: 0.8),
+          ),
+          loadingBuilder: (_, child, progress) {
+            if (progress == null) return child;
+            return Container(
+              width: widget.size,
+              height: widget.size,
+              alignment: Alignment.center,
+              color: Colors.black12,
+              child: Icon(
+                Icons.image_rounded,
+                size: widget.size * .55,
+                color: cs.onSurfaceVariant.withValues(alpha: .6),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }

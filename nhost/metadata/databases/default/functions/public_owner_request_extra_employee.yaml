@@ -1,0 +1,12 @@
+function:
+  name: owner_request_extra_employee
+  schema: public
+configuration:
+  custom_name: owner_request_extra_employee
+  custom_root_fields: {}
+  exposed_as: mutation
+  session_argument: hasura_session
+permissions:
+  - role: me
+  - role: user
+  - role: superadmin

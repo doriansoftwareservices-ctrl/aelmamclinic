@@ -1,0 +1,9 @@
+function:
+  name: expire_account_subscriptions
+  schema: public
+configuration:
+  custom_name: expire_account_subscriptions
+  custom_root_fields: {}
+  exposed_as: mutation
+permissions:
+  - role: superadmin

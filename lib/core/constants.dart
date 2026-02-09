@@ -117,6 +117,10 @@ class AppConstants {
   static const bool syncRealtime = true;
   static const Duration syncPushDebounce = Duration(seconds: 1);
 
+  // -------------------- تفعيل الترخيص --------------------
+  // أوقف شاشة التفعيل مؤقتًا مع إبقائها متاحة لإعادة التفعيل لاحقًا.
+  static const bool activationGateEnabled = false;
+
   // -------------------- دردشة/تخزين --------------------
   static const String chatBucketName = 'chat-attachments';
   static const int storageSignedUrlTTLSeconds = 60 * 60; // 1 ساعة

@@ -1,0 +1,23 @@
+table:
+  name: account_subscriptions
+  schema: public
+insert_permissions:
+  - role: superadmin
+    permission:
+      check: {}
+      columns: '*'
+select_permissions:
+  - role: superadmin
+    permission:
+      columns: '*'
+      filter: {}
+update_permissions:
+  - role: superadmin
+    permission:
+      columns: '*'
+      filter: {}
+      check: {}
+delete_permissions:
+  - role: superadmin
+    permission:
+      filter: {}

@@ -1,0 +1,34 @@
+table:
+  name: v_my_feature_permissions
+  schema: public
+select_permissions:
+  - role: me
+    permission:
+      columns:
+        - account_id
+        - allow_all
+        - allowed_features
+        - can_create
+        - can_update
+        - can_delete
+      filter: {}
+  - role: superadmin
+    permission:
+      columns:
+        - account_id
+        - allow_all
+        - allowed_features
+        - can_create
+        - can_update
+        - can_delete
+      filter: {}
+  - role: user
+    permission:
+      columns:
+        - account_id
+        - allow_all
+        - allowed_features
+        - can_create
+        - can_update
+        - can_delete
+      filter: {}

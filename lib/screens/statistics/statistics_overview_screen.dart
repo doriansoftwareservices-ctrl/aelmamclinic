@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:graphql_flutter/graphql_flutter.dart';
 
 /*── تصميم TBIAN ─*/
 import 'package:aelmamclinic/core/theme.dart';
@@ -38,10 +37,10 @@ import 'package:aelmamclinic/screens/statistics/statistics_screen.dart';
 /*── شاشة الأشعة والمختبرات ─*/
 /*── استيرادات لإدارة الحسابات ─*/
 import 'package:aelmamclinic/providers/auth_provider.dart';
+import 'package:aelmamclinic/providers/chat_provider.dart';
 import 'package:aelmamclinic/screens/users/employee_accounts_screen.dart';
 import 'package:aelmamclinic/screens/users/users_screen.dart';
 import 'package:aelmamclinic/core/nhost_manager.dart';
-import 'package:aelmamclinic/services/nhost_graphql_service.dart';
 
 /*── شاشات التدقيق والصلاحيات (جديدة في الـ Drawer للمالك فقط) ─*/
 import 'package:aelmamclinic/screens/audit/logs_screen.dart';
@@ -73,12 +72,9 @@ class StatisticsOverviewScreen extends StatefulWidget {
 class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
     with WidgetsBindingObserver {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
-  final GraphQLClient _gql = NhostGraphqlService.buildClient();
   final BillingService _billing = BillingService();
 
-  // عدّاد المحادثات غير المقروءة + مؤقّت تحديث دوري
-  int _unreadChatsCount = 0;
-  Timer? _unreadPollTimer;
+  // عدّاد المحادثات غير المقروءة (يأتي من ChatProvider)
   StreamSubscription<String>? _dbChangesSub;
   bool _hasComplaintReply = false;
 
@@ -105,11 +101,6 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
     if (auth.isSuperAdmin) {
       return;
     }
-    // ابدأ بحساب العدّاد فورًا ثم حدّثه دوريًا
-    _refreshUnreadChatsCount();
-    _unreadPollTimer = Timer.periodic(const Duration(seconds: 10), (_) {
-      _refreshUnreadChatsCount();
-    });
     _refreshComplaintsBadge();
     _dbChangesSub = DBService.instance.changes.listen((table) {
       if (table == 'complaints') {
@@ -121,81 +112,14 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _restartUnreadPolling();
-      return;
-    }
-    if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.detached) {
-      _unreadPollTimer?.cancel();
-    }
-  }
-
-  void _restartUnreadPolling() {
-    _unreadPollTimer?.cancel();
-    _refreshUnreadChatsCount();
-    _unreadPollTimer = Timer.periodic(const Duration(seconds: 10), (_) {
-      _refreshUnreadChatsCount();
-    });
+    if (state == AppLifecycleState.resumed) return;
   }
 
   @override
   void dispose() {
-    _unreadPollTimer?.cancel();
     _dbChangesSub?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
-  }
-
-  Future<Map<String, dynamic>> _runQuery(
-    String doc,
-    Map<String, dynamic> variables,
-  ) async {
-    final result = await _gql.query(
-      QueryOptions(
-        document: gql(doc),
-        variables: variables,
-        fetchPolicy: FetchPolicy.noCache,
-      ),
-    );
-    if (result.hasException) {
-      throw result.exception!;
-    }
-    return result.data ?? <String, dynamic>{};
-  }
-
-  /*────────────────── عدّاد الرسائل غير المقروءة ──────────────────*/
-  Future<void> _refreshUnreadChatsCount() async {
-    try {
-      final uid = NhostManager.client.auth.currentUser?.id;
-      if (uid == null || uid.isEmpty) {
-        if (mounted) setState(() => _unreadChatsCount = 0);
-        return;
-      }
-
-      // اعتمد على View الموحّد لضمان نفس منطق شاشة المحادثات (يحترم الأرشفة/الحذف)
-      final data = await _runQuery(
-        '''
-        query UnreadConversations {
-          v_chat_conversations_for_me {
-            unread_count
-          }
-        }
-        ''',
-        const {},
-      );
-      final rows = (data['v_chat_conversations_for_me'] as List?) ?? const [];
-      int cnt = 0;
-      for (final r in rows.whereType<Map>()) {
-        final raw = r['unread_count'];
-        final uc = raw is num ? raw.toInt() : 0;
-        if (uc > 0) cnt += uc;
-      }
-      if (mounted) setState(() => _unreadChatsCount = cnt);
-    } catch (_) {
-      // تجاهل بهدوء؛ لا نكسر الواجهة بسبب العدّاد
-    }
   }
 
   Future<void> _refreshComplaintsBadge() async {
@@ -778,15 +702,14 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                       auth: auth,
                       featureKey: FeatureKeys.patientQuestions,
                       icon: Icons.quiz_outlined,
-                      title: 'نماذج الشكاوى',
+                      title: 'أسئلة التشخيص للمرضى',
                       requireUpdate: true,
                       onTap: () {
                         Navigator.pop(context);
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                              builder: (_) =>
-                                  const ComplaintTemplatesScreen()),
+                              builder: (_) => const ComplaintTemplatesScreen()),
                         );
                       },
                     ),
@@ -823,7 +746,9 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                     Builder(builder: (_) {
                       final allowed = _canManageEmployeeAccounts(auth) &&
                           _isFeatureAllowed(auth, FeatureKeys.employeeAccounts);
-                      if (_hideDeniedTabs(auth) && !allowed && !auth.isSuperAdmin) {
+                      if (_hideDeniedTabs(auth) &&
+                          !allowed &&
+                          !auth.isSuperAdmin) {
                         return const SizedBox.shrink();
                       }
                       return _drawerItem(
@@ -1059,6 +984,10 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
         builder: (context, stats, auth, _) {
           final canViewDashboard = _canSeeDashboard(auth);
           final canChat = _canUseChat(auth);
+          final unreadChatsCount = context.select<ChatProvider, int>(
+            (p) =>
+                p.conversations.fold(0, (sum, c) => sum + (c.unreadCount ?? 0)),
+          );
 
           return Scaffold(
             key: _scaffoldKey,
@@ -1098,11 +1027,9 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                             MaterialPageRoute(
                                 builder: (_) => const ChatHomeScreen()),
                           );
-                          // حدّث العدّاد بعد العودة تحسبًا لتغيّر المقروئية
-                          _refreshUnreadChatsCount();
                         },
                       ),
-                      if (_unreadChatsCount > 0)
+                      if (unreadChatsCount > 0)
                         Positioned(
                           right: 6,
                           top: 6,
@@ -1116,9 +1043,9 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                             constraints: const BoxConstraints(
                                 minWidth: 18, minHeight: 16),
                             child: Text(
-                              _unreadChatsCount > 99
+                              unreadChatsCount > 99
                                   ? '99+'
-                                  : '$_unreadChatsCount',
+                                  : '$unreadChatsCount',
                               textAlign: TextAlign.center,
                               style: const TextStyle(
                                 color: Colors.white,
@@ -1193,7 +1120,6 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
       color: scheme.primary,
       onRefresh: () async {
         await stats.refresh();
-        _refreshUnreadChatsCount(); // حدّث العدّاد أيضًا عند السحب للتحديث
         _checkPlanExpiryNotice();
         _refreshComplaintsBadge();
       },
@@ -1263,7 +1189,6 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                   icon: Icons.refresh_rounded,
                   onPressed: () async {
                     await stats.refresh();
-                    _refreshUnreadChatsCount();
                   },
                 ),
               ],
@@ -1524,15 +1449,14 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                        builder: (_) =>
-                                            ListPatientsScreen()),
+                                        builder: (_) => ListPatientsScreen()),
                                   );
                                 },
                               ),
                             if (canQuestions)
                               OutlinedButton.icon(
                                 icon: const Icon(Icons.quiz_outlined),
-                                label: const Text('نماذج الشكاوى'),
+                                label: const Text('أسئلة التشخيص للمرضى'),
                                 onPressed: () {
                                   Navigator.push(
                                     context,
@@ -1570,7 +1494,8 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                               ),
                             if (canReturns)
                               OutlinedButton.icon(
-                                icon: const Icon(Icons.assignment_return_outlined),
+                                icon: const Icon(
+                                    Icons.assignment_return_outlined),
                                 label: const Text('العودات'),
                                 onPressed: () => _showReturnsMenu(context),
                               ),
@@ -1635,8 +1560,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                        builder: (_) =>
-                                            const ChatHomeScreen()),
+                                        builder: (_) => const ChatHomeScreen()),
                                   );
                                 },
                               ),

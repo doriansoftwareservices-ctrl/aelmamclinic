@@ -1,0 +1,9 @@
+function:
+  name: admin_approve_subscription_request
+  schema: public
+configuration:
+  custom_name: admin_approve_subscription_request
+  custom_root_fields: {}
+  exposed_as: mutation
+permissions:
+  - role: superadmin

@@ -1,0 +1,9 @@
+function:
+  name: admin_create_owner_full
+  schema: public
+configuration:
+  custom_name: admin_create_owner_full
+  custom_root_fields: {}
+  exposed_as: mutation
+permissions:
+  - role: superadmin

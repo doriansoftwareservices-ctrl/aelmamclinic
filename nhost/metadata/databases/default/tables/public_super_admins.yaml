@@ -1,0 +1,41 @@
+table:
+  name: super_admins
+  schema: public
+select_permissions:
+  - role: me
+    permission:
+      columns:
+        - local_id
+        - device_id
+        - email
+        - created_at
+        - account_id
+        - id
+        - user_uid
+      filter:
+        user_uid:
+          _eq: X-Hasura-User-Id
+  - role: superadmin
+    permission:
+      columns:
+        - local_id
+        - device_id
+        - email
+        - created_at
+        - account_id
+        - id
+        - user_uid
+      filter: {}
+  - role: user
+    permission:
+      columns:
+        - local_id
+        - device_id
+        - email
+        - created_at
+        - account_id
+        - id
+        - user_uid
+      filter:
+        user_uid:
+          _eq: X-Hasura-User-Id

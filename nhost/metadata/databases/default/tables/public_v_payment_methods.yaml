@@ -1,0 +1,49 @@
+table:
+  name: v_payment_methods
+  schema: public
+select_permissions:
+  - role: employee
+    permission:
+      columns:
+        - id
+        - name
+        - logo_url
+        - bank_account
+        - is_active
+      filter: {}
+  - role: me
+    permission:
+      columns:
+        - id
+        - name
+        - logo_url
+        - bank_account
+        - is_active
+      filter: {}
+  - role: owner
+    permission:
+      columns:
+        - id
+        - name
+        - logo_url
+        - bank_account
+        - is_active
+      filter: {}
+  - role: superadmin
+    permission:
+      columns:
+        - id
+        - name
+        - logo_url
+        - bank_account
+        - is_active
+      filter: {}
+  - role: user
+    permission:
+      columns:
+        - id
+        - name
+        - logo_url
+        - bank_account
+        - is_active
+      filter: {}

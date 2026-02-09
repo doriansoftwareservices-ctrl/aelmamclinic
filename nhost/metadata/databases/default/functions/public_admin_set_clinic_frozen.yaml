@@ -1,0 +1,9 @@
+function:
+  name: admin_set_clinic_frozen
+  schema: public
+configuration:
+  custom_name: admin_set_clinic_frozen
+  custom_root_fields: {}
+  exposed_as: mutation
+permissions:
+  - role: superadmin

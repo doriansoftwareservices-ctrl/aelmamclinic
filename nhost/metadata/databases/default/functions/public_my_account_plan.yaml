@@ -1,0 +1,12 @@
+function:
+  name: my_account_plan
+  schema: public
+configuration:
+  custom_name: my_account_plan
+  custom_root_fields: {}
+  exposed_as: query
+  session_argument: hasura_session
+permissions:
+  - role: me
+  - role: user
+  - role: superadmin

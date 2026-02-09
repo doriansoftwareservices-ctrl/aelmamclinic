@@ -1,0 +1,75 @@
+table:
+  name: chat_delivery_receipts
+  schema: public
+insert_permissions:
+  - role: me
+    permission:
+      check:
+        user_uid:
+          _eq: X-Hasura-User-Id
+      columns: '*'
+  - role: superadmin
+    permission:
+      check: {}
+      columns: '*'
+  - role: user
+    permission:
+      check:
+        user_uid:
+          _eq: X-Hasura-User-Id
+      columns: '*'
+select_permissions:
+  - role: me
+    permission:
+      columns: '*'
+      filter:
+        user_uid:
+          _eq: X-Hasura-User-Id
+  - role: superadmin
+    permission:
+      columns: '*'
+      filter: {}
+  - role: user
+    permission:
+      columns: '*'
+      filter:
+        user_uid:
+          _eq: X-Hasura-User-Id
+update_permissions:
+  - role: me
+    permission:
+      columns: '*'
+      filter:
+        user_uid:
+          _eq: X-Hasura-User-Id
+      check:
+        user_uid:
+          _eq: X-Hasura-User-Id
+  - role: superadmin
+    permission:
+      columns: '*'
+      filter: {}
+      check: {}
+  - role: user
+    permission:
+      columns: '*'
+      filter:
+        user_uid:
+          _eq: X-Hasura-User-Id
+      check:
+        user_uid:
+          _eq: X-Hasura-User-Id
+delete_permissions:
+  - role: me
+    permission:
+      filter:
+        user_uid:
+          _eq: X-Hasura-User-Id
+  - role: superadmin
+    permission:
+      filter: {}
+  - role: user
+    permission:
+      filter:
+        user_uid:
+          _eq: X-Hasura-User-Id

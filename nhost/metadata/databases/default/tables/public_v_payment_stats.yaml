@@ -1,0 +1,12 @@
+table:
+  name: v_payment_stats
+  schema: public
+select_permissions:
+  - role: superadmin
+    permission:
+      columns:
+        - payment_method_id
+        - payment_method_name
+        - total_amount
+        - payments_count
+      filter: {}

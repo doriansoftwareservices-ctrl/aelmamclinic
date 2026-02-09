@@ -1,0 +1,15 @@
+table:
+  name: v_super_admin_account
+  schema: public
+select_permissions:
+  - role: superadmin
+    permission:
+      columns:
+        - email
+        - user_uid
+        - created_at
+        - disabled
+        - default_role
+        - allowed_tabs
+        - has_user
+      filter: {}

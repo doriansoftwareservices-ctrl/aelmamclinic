@@ -5,11 +5,13 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:nhost_storage_dart/nhost_storage_dart.dart';
 import 'package:http_parser/http_parser.dart';
+import 'package:graphql_flutter/graphql_flutter.dart';
 
 import '../core/constants.dart';
 import '../core/nhost_config.dart';
 import '../core/nhost_manager.dart';
 import 'nhost_api_client.dart';
+import 'nhost_graphql_service.dart';
 
 /// Minimal storage wrapper for Nhost (REST).
 ///
@@ -20,11 +22,107 @@ class NhostStorageService {
   NhostStorageService({NhostApiClient? api}) : _api = api ?? NhostApiClient();
 
   final NhostApiClient _api;
+  final GraphQLClient _gql = NhostGraphqlService.client;
+  final Map<String, String> _fileIdCache = {};
 
   /// Returns a direct download URL for a file by its id.
   String publicFileUrl(String fileId) {
     final base = NhostConfig.storageUrl.replaceAll(RegExp(r'/+$'), '');
     return '$base/files/$fileId';
+  }
+
+  bool _looksLikeUuid(String value) {
+    final v = value.trim();
+    if (v.isEmpty) return false;
+    final re = RegExp(
+      r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+    );
+    return re.hasMatch(v);
+  }
+
+  String? extractFileIdFromUrl(String url) {
+    final v = url.trim();
+    if (v.isEmpty) return null;
+    final re = RegExp(
+      r'/files/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})',
+    );
+    final match = re.firstMatch(v);
+    if (match == null) return null;
+    final id = match.group(1);
+    return (id == null || id.isEmpty) ? null : id;
+  }
+
+  Future<String?> resolveSignedUrlFromUrl(String url,
+      {int? expiresInSeconds}) async {
+    final fileId = extractFileIdFromUrl(url);
+    if (fileId == null) return null;
+    final signed = await createSignedUrl(
+      fileId,
+      expiresInSeconds:
+          expiresInSeconds ?? AppConstants.storageSignedUrlTTLSeconds,
+    );
+    if (signed != null && signed.isNotEmpty) return signed;
+    return publicFileUrl(fileId);
+  }
+
+  /// Resolve storage file id by bucket+path using GraphQL (cached).
+  Future<String?> resolveFileId({
+    required String bucket,
+    required String path,
+  }) async {
+    final trimmedBucket = bucket.trim();
+    final trimmedPath = path.trim();
+    if (trimmedBucket.isEmpty || trimmedPath.isEmpty) return null;
+    if (_looksLikeUuid(trimmedPath)) return trimmedPath;
+
+    final cacheKey = '$trimmedBucket|$trimmedPath';
+    final cached = _fileIdCache[cacheKey];
+    if (cached != null && cached.isNotEmpty) return cached;
+
+    const query = r'''
+      query StorageFileId($bucket: String!, $name: String!) {
+        files(
+          where: {bucketId: {_eq: $bucket}, name: {_eq: $name}},
+          limit: 1
+        ) {
+          id
+        }
+      }
+    ''';
+    try {
+      final result = await _gql.query(
+        QueryOptions(
+          document: gql(query),
+          variables: {'bucket': trimmedBucket, 'name': trimmedPath},
+          fetchPolicy: FetchPolicy.noCache,
+        ),
+      );
+      if (result.hasException) return null;
+      final rows = (result.data?['files'] as List?) ?? const [];
+      if (rows.isEmpty) return null;
+      final id = (rows.first as Map?)?['id']?.toString();
+      if (id == null || id.isEmpty) return null;
+      _fileIdCache[cacheKey] = id;
+      return id;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Resolve a signed URL for bucket/path, similar to subscription proof flow.
+  Future<String?> resolveSignedUrlForPath({
+    required String bucket,
+    required String path,
+    int? expiresInSeconds,
+  }) async {
+    final fileId = await resolveFileId(bucket: bucket, path: path);
+    if (fileId == null || fileId.isEmpty) return null;
+    final signed = await createSignedUrl(
+      fileId,
+      expiresInSeconds: expiresInSeconds ?? AppConstants.storageSignedUrlTTLSeconds,
+    );
+    if (signed != null && signed.isNotEmpty) return signed;
+    return publicFileUrl(fileId);
   }
 
   /// Downloads a file as raw bytes using the current auth session.

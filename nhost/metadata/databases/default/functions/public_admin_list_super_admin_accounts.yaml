@@ -1,0 +1,9 @@
+function:
+  name: admin_list_super_admin_accounts
+  schema: public
+configuration:
+  custom_name: admin_list_super_admin_accounts
+  custom_root_fields: {}
+  exposed_as: query
+permissions:
+  - role: superadmin

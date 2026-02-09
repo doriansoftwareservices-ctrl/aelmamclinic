@@ -1,0 +1,12 @@
+function:
+  name: list_employees_with_email
+  schema: public
+configuration:
+  custom_name: list_employees_with_email
+  custom_root_fields: {}
+  exposed_as: query
+  session_argument: hasura_session
+permissions:
+  - role: me
+  - role: user
+  - role: superadmin

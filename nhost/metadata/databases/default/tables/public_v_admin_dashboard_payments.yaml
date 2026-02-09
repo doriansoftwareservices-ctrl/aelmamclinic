@@ -1,0 +1,19 @@
+table:
+  name: v_admin_dashboard_payments
+  schema: public
+select_permissions:
+  - role: superadmin
+    permission:
+      columns:
+        - payment_id
+        - received_at
+        - account_id
+        - account_name
+        - plan_code
+        - plan_name
+        - amount_usd
+        - payment_method
+        - request_id
+        - created_by
+        - created_by_email
+      filter: {}

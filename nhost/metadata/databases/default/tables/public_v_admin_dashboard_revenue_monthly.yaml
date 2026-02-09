@@ -1,0 +1,12 @@
+table:
+  name: v_admin_dashboard_revenue_monthly
+  schema: public
+select_permissions:
+  - role: superadmin
+    permission:
+      columns:
+        - month
+        - payments_count
+        - total_amount_usd
+        - avg_payment_usd
+      filter: {}

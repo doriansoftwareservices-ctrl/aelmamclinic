@@ -1,0 +1,11 @@
+function:
+  name: chat_mark_delivered
+  schema: public
+configuration:
+  custom_name: chat_mark_delivered
+  custom_root_fields: {}
+  exposed_as: mutation
+permissions:
+  - role: me
+  - role: user
+  - role: superadmin

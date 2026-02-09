@@ -1,0 +1,9 @@
+function:
+  name: admin_set_super_admin_disabled
+  schema: public
+configuration:
+  custom_name: admin_set_super_admin_disabled
+  custom_root_fields: {}
+  exposed_as: mutation
+permissions:
+  - role: superadmin

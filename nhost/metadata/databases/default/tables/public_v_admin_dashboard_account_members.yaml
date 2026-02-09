@@ -1,0 +1,15 @@
+table:
+  name: v_admin_dashboard_account_members
+  schema: public
+select_permissions:
+  - role: superadmin
+    permission:
+      columns:
+        - account_id
+        - account_name
+        - user_uid
+        - email
+        - role
+        - disabled
+        - created_at
+      filter: {}

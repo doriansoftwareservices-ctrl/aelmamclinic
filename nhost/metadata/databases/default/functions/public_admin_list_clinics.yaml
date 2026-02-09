@@ -1,0 +1,9 @@
+function:
+  name: admin_list_clinics
+  schema: public
+configuration:
+  custom_name: admin_list_clinics
+  custom_root_fields: {}
+  exposed_as: query
+permissions:
+  - role: superadmin

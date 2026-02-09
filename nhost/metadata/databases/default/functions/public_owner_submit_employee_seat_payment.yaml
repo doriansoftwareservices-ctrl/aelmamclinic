@@ -1,0 +1,12 @@
+function:
+  name: owner_submit_employee_seat_payment
+  schema: public
+configuration:
+  custom_name: owner_submit_employee_seat_payment
+  custom_root_fields: {}
+  exposed_as: mutation
+  session_argument: hasura_session
+permissions:
+  - role: me
+  - role: user
+  - role: superadmin

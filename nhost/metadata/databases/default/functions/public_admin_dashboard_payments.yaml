@@ -1,0 +1,9 @@
+function:
+  name: admin_dashboard_payments
+  schema: public
+configuration:
+  custom_name: admin_dashboard_payments
+  custom_root_fields: {}
+  session_argument: hasura_session
+permissions:
+  - role: superadmin

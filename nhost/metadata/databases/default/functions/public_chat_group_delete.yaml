@@ -1,0 +1,12 @@
+function:
+  name: chat_group_delete
+  schema: public
+configuration:
+  custom_name: chat_group_delete
+  custom_root_fields: {}
+  exposed_as: mutation
+permissions:
+  - role: user
+  - role: owner
+  - role: employee
+  - role: superadmin

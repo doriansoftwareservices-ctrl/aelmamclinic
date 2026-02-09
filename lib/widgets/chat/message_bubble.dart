@@ -25,12 +25,13 @@ import 'package:flutter/material.dart';
 import 'package:aelmamclinic/core/nhost_manager.dart';
 
 import 'package:aelmamclinic/core/neumorphism.dart';
+import 'package:aelmamclinic/core/constants.dart';
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/models/chat_models.dart';
 import 'package:aelmamclinic/models/chat_reaction.dart';
 import 'package:aelmamclinic/services/chat_service.dart';
 import 'package:aelmamclinic/services/attachment_cache.dart'; // ✅ جديد
-import 'package:open_file/open_file.dart';
+import 'package:aelmamclinic/services/nhost_storage_service.dart';
 import 'package:aelmamclinic/utils/time.dart' as t;
 import 'package:aelmamclinic/utils/text_direction.dart' as bidi;
 
@@ -97,8 +98,8 @@ class MessageBubble extends StatelessWidget {
     final radius = BorderRadius.only(
       topLeft: const Radius.circular(16),
       topRight: const Radius.circular(16),
-      bottomLeft: Radius.circular(isMine && showTail ? 4 : 16),
-      bottomRight: Radius.circular(!isMine && showTail ? 4 : 16),
+      bottomLeft: Radius.circular(!isMine && showTail ? 4 : 16),
+      bottomRight: Radius.circular(isMine && showTail ? 4 : 16),
     );
 
     final uiStatus = _deriveUiStatus(message);
@@ -109,8 +110,8 @@ class MessageBubble extends StatelessWidget {
       textDirection: ui.TextDirection.rtl,
       child: Align(
         alignment: isMine
-            ? AlignmentDirectional.centerStart // start=يمين في RTL
-            : AlignmentDirectional.centerEnd, // end=يسار في RTL
+            ? AlignmentDirectional.centerEnd // end=يسار في RTL
+            : AlignmentDirectional.centerStart, // start=يمين في RTL
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
           child: Column(
@@ -162,7 +163,7 @@ class MessageBubble extends StatelessWidget {
                     const EdgeInsetsDirectional.only(top: 4, start: 6, end: 6),
                 child: _ReactionsBar(
                   messageId: message.id,
-                  alignStart: isMine, // في RTL: start=يمين
+                  alignStart: !isMine, // في RTL: start=يمين
                   externalStream: reactionsStream,
                   onToggleExternal: onToggleReaction,
                 ),
@@ -174,7 +175,7 @@ class MessageBubble extends StatelessWidget {
                     const EdgeInsetsDirectional.only(top: 2, start: 6, end: 6),
                 child: Row(
                   mainAxisAlignment:
-                      isMine ? MainAxisAlignment.start : MainAxisAlignment.end,
+                      isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
                   children: [
                     if (isMine) _StatusIcon(status: uiStatus),
                     if (isMine) const SizedBox(width: 6),
@@ -208,10 +209,15 @@ class MessageBubble extends StatelessWidget {
       case ChatMessageKind.image:
         final src = _firstImageSourceOf(message);
         final caption = _bodyOf(message).isEmpty ? null : _bodyOf(message);
+        final firstAtt =
+            message.attachments.isNotEmpty ? message.attachments.first : null;
         return _ImageBody(
           heroTag: message.id, // ← ليتطابق مع ImageViewerScreen
           imageUrl: src.remoteUrl,
           localPath: src.localPath, // ✅ إن وجد سنعرض من الملف
+          bucket: firstAtt?.bucket,
+          path: firstAtt?.path,
+          fileId: _attachmentFileId(firstAtt),
           caption: caption,
           isMine: isMine,
           edited: message.edited,
@@ -225,24 +231,20 @@ class MessageBubble extends StatelessWidget {
         );
 
       case ChatMessageKind.file:
-        final fileAtt = _firstFileAttachmentOf(message);
-        final fileName =
-            fileAtt == null ? 'ملف' : _fileNameFromAttachment(fileAtt);
-        final sizeBytes = fileAtt?.sizeBytes;
-        final caption = _bodyOf(message).isEmpty ? null : _bodyOf(message);
-        return _FileBody(
-          fileName: fileName,
-          sizeBytes: sizeBytes,
-          caption: caption,
+        final caption = _bodyOf(message);
+        final display = caption.isEmpty
+            ? '📎 ملف غير مدعوم'
+            : '📎 ملف غير مدعوم\n$caption';
+        return _TextBody(
+          text: display,
           isMine: isMine,
           edited: message.edited,
           replySnippet: hasReply ? replySnip : null,
           replyToMessageId: replyToMessageId,
           replyThumbnailUrl: replyThumbnailUrl,
-          status: uiStatus,
           onRetry: onRetry == null ? null : () => onRetry!(message),
+          failed: uiStatus == _UiStatus.failed,
           onTapReplyTarget: onTapReplyTarget,
-          onOpen: () => _openAttachmentFile(context, fileAtt),
         );
 
       case ChatMessageKind.text:
@@ -284,12 +286,19 @@ class MessageBubble extends StatelessWidget {
     if (m.attachments.isNotEmpty) {
       final a = m.attachments.first;
 
-      // 1) رابط HTTP/موقّع
-      try {
-        final primaryUrl = a.url.isNotEmpty ? a.url : (a.signedUrl ?? '');
-        final url = primaryUrl.trim();
-        if (url.isNotEmpty) remote = url;
-      } catch (_) {}
+      // 1) لو لدينا bucket/path نفضّل إعادة التوقيع بدل الاعتماد على رابط قديم.
+      final b = (a.bucket ?? '').trim();
+      final p = (a.path ?? '').trim();
+      if (b.isNotEmpty && p.isNotEmpty) {
+        remote = 'storage://$b/$p';
+      } else {
+        // 2) رابط HTTP/موقّع إن لم يتوفر bucket/path
+        try {
+          final primaryUrl = a.url.isNotEmpty ? a.url : (a.signedUrl ?? '');
+          final url = primaryUrl.trim();
+          if (url.isNotEmpty) remote = url;
+        } catch (_) {}
+      }
 
       // 2) جرّب مسار محلي من extra['local_path']
       try {
@@ -301,6 +310,16 @@ class MessageBubble extends StatelessWidget {
           }
         }
       } catch (_) {}
+
+      // 2.5) إن كان path يشير لملف محلي صالح
+      if (local == null) {
+        try {
+          final p = (a.path ?? '').trim();
+          if (p.isNotEmpty && File(p).existsSync()) {
+            local = p;
+          }
+        } catch (_) {}
+      }
 
       // 3) إن لم يوجد في extra، اسأل الكاش بالـ URL (توقيع واحد فقط)
       if (local == null && remote.isNotEmpty) {
@@ -316,63 +335,17 @@ class MessageBubble extends StatelessWidget {
     return _ImageSource(remoteUrl: remote, localPath: local);
   }
 
-  ChatAttachment? _firstFileAttachmentOf(ChatMessage m) {
-    if (m.attachments.isEmpty) return null;
-    for (final a in m.attachments) {
-      if (!a.isImage) return a;
-    }
-    return m.attachments.first;
-  }
-
-  String _fileNameFromAttachment(ChatAttachment att) {
-    final path = (att.path ?? '').trim();
-    if (path.isNotEmpty) {
-      try {
-        return path.split('/').last;
-      } catch (_) {}
-    }
-    final url = (att.url.isNotEmpty ? att.url : (att.signedUrl ?? '')).trim();
-    if (url.isNotEmpty) {
-      try {
-        final clean = url.split('?').first;
-        return clean.split('/').last;
-      } catch (_) {}
-    }
-    return 'ملف';
-  }
-
-  Future<void> _openAttachmentFile(
-    BuildContext context,
-    ChatAttachment? att,
-  ) async {
-    if (att == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('لا يوجد ملف لفتحه.')),
-      );
-      return;
-    }
-    try {
-      String? localPath;
-      final url =
-          (att.url.isNotEmpty ? att.url : (att.signedUrl ?? '')).trim();
-      if ((att.bucket ?? '').isNotEmpty && (att.path ?? '').isNotEmpty) {
-        localPath = await AttachmentCache.instance.ensureFileForStorage(
-          att.bucket!,
-          att.path!,
-          url: url.isEmpty ? null : url,
-        );
-      } else if (url.isNotEmpty) {
-        localPath = await AttachmentCache.instance.ensureFileFor(url);
-      }
-      if (localPath == null || localPath.isEmpty) {
-        throw 'تعذر تنزيل الملف';
-      }
-      await OpenFile.open(localPath);
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذر فتح الملف: $e')),
-      );
-    }
+  String? _attachmentFileId(ChatAttachment? att) {
+    if (att == null) return null;
+    final extra = att.extra;
+    final map = extra is Map
+        ? Map<String, dynamic>.from(extra as Map)
+        : const <String, dynamic>{};
+    final v1 = map['file_id']?.toString();
+    if (v1 != null && v1.trim().isNotEmpty) return v1.trim();
+    final v2 = map['fileId']?.toString();
+    if (v2 != null && v2.trim().isNotEmpty) return v2.trim();
+    return null;
   }
 
   _UiStatus _deriveUiStatus(ChatMessage m) {
@@ -431,7 +404,7 @@ class _TextBody extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       child: Column(
         crossAxisAlignment:
-            isMine ? CrossAxisAlignment.start : CrossAxisAlignment.end,
+            isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
           if (replySnippet != null) ...[
             _ReplyPreview(
@@ -482,156 +455,13 @@ class _TextBody extends StatelessWidget {
   }
 }
 
-class _FileBody extends StatelessWidget {
-  final String fileName;
-  final int? sizeBytes;
-  final String? caption;
-  final bool isMine;
-  final bool edited;
-  final String? replySnippet;
-  final String? replyToMessageId;
-  final String? replyThumbnailUrl;
-  final _UiStatus status;
-  final VoidCallback? onRetry;
-  final void Function(String messageId)? onTapReplyTarget;
-  final VoidCallback onOpen;
-
-  const _FileBody({
-    required this.fileName,
-    required this.sizeBytes,
-    required this.caption,
-    required this.isMine,
-    required this.edited,
-    required this.replySnippet,
-    this.replyToMessageId,
-    this.replyThumbnailUrl,
-    required this.status,
-    this.onRetry,
-    this.onTapReplyTarget,
-    required this.onOpen,
-  });
-
-  String _fmtBytes(int b) {
-    const units = ['B', 'KB', 'MB', 'GB'];
-    double s = b.toDouble();
-    int i = 0;
-    while (s >= 1024 && i < units.length - 1) {
-      s /= 1024;
-      i++;
-    }
-    return '${s.toStringAsFixed(s >= 100 || i == 0 ? 0 : (s >= 10 ? 1 : 2))} ${units[i]}';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final failed = status == _UiStatus.failed;
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-      child: Column(
-        crossAxisAlignment:
-            isMine ? CrossAxisAlignment.start : CrossAxisAlignment.end,
-        children: [
-          if (replySnippet != null) ...[
-            _ReplyPreview(
-              text: replySnippet!,
-              thumbnailUrl: replyThumbnailUrl,
-              messageId: replyToMessageId,
-              onTapReplyTarget: onTapReplyTarget,
-            ),
-            const SizedBox(height: 6),
-          ],
-          InkWell(
-            onTap: onOpen,
-            borderRadius: BorderRadius.circular(12),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              decoration: BoxDecoration(
-                color: scheme.surfaceContainerHighest.withValues(alpha: .6),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: scheme.outline.withValues(alpha: .25)),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.insert_drive_file_rounded,
-                      color: scheme.primary, size: 26),
-                  const SizedBox(width: 8),
-                  Flexible(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          fileName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 13.5,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          sizeBytes == null ? 'ملف' : _fmtBytes(sizeBytes!),
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            color: scheme.onSurface.withValues(alpha: .6),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          if (caption != null && caption!.trim().isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text(
-              caption!,
-              style: TextStyle(
-                color: scheme.onSurface,
-                fontWeight: FontWeight.w700,
-                fontSize: 13.5,
-                height: 1.3,
-              ),
-            ),
-          ],
-          if (edited)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                '(معدل)',
-                style: TextStyle(
-                  color: scheme.onSurface.withValues(alpha: .55),
-                  fontWeight: FontWeight.w700,
-                  fontSize: 11,
-                ),
-              ),
-            ),
-          if (failed && isMine && onRetry != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: OutlinedButton.icon(
-                  icon: const Icon(Icons.refresh_rounded, size: 18),
-                  label: const Text('إعادة المحاولة'),
-                  onPressed: onRetry,
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
 class _ImageBody extends StatelessWidget {
   final String heroTag;
   final String imageUrl; // HTTP fallback
   final String? localPath; // ✅ مسار محلي إن وُجد
+  final String? bucket;
+  final String? path;
+  final String? fileId;
   final String? caption;
   final bool isMine;
   final bool edited;
@@ -647,6 +477,9 @@ class _ImageBody extends StatelessWidget {
     required this.heroTag,
     required this.imageUrl,
     required this.localPath,
+    required this.bucket,
+    required this.path,
+    required this.fileId,
     required this.caption,
     required this.isMine,
     required this.edited,
@@ -678,46 +511,11 @@ class _ImageBody extends StatelessWidget {
             const Center(child: Icon(Icons.broken_image_outlined)),
       );
     } else {
-      imageWidget = Image.network(
-        imageUrl,
-        fit: BoxFit.cover,
-        gaplessPlayback: true,
-        // Fade-in لطيف عند اكتمال أول إطار
-        frameBuilder: (_, child, frame, __) {
-          if (frame == null) {
-            return AnimatedOpacity(
-              opacity: 0,
-              duration: const Duration(milliseconds: 150),
-              child: child,
-            );
-          }
-          return AnimatedOpacity(
-            opacity: 1,
-            duration: const Duration(milliseconds: 220),
-            child: child,
-          );
-        },
-        loadingBuilder: (_, child, progress) {
-          if (progress == null) return child;
-          final total = progress.expectedTotalBytes ?? 0;
-          final loaded = progress.cumulativeBytesLoaded;
-          final v = (total > 0) ? loaded / total : null;
-          return Stack(
-            fit: StackFit.expand,
-            children: [
-              const Center(child: Icon(Icons.image_rounded, size: 42)),
-              Align(
-                alignment: Alignment.bottomCenter,
-                child: LinearProgressIndicator(
-                  value: v,
-                  minHeight: 2,
-                ),
-              ),
-            ],
-          );
-        },
-        errorBuilder: (_, __, ___) =>
-            const Center(child: Icon(Icons.broken_image_outlined)),
+      imageWidget = _ResolvedNetworkImage(
+        url: imageUrl,
+        bucket: bucket,
+        path: path,
+        fileId: fileId,
       );
     }
 
@@ -725,7 +523,7 @@ class _ImageBody extends StatelessWidget {
       borderRadius: BorderRadius.circular(16),
       child: Column(
         crossAxisAlignment:
-            isMine ? CrossAxisAlignment.start : CrossAxisAlignment.end,
+            isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
           if (replySnippet != null) ...[
             Padding(
@@ -760,7 +558,7 @@ class _ImageBody extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
               child: Column(
                 crossAxisAlignment:
-                    isMine ? CrossAxisAlignment.start : CrossAxisAlignment.end,
+                    isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                 children: [
                   if (caption?.isNotEmpty ?? false)
                     SelectableText(
@@ -808,6 +606,117 @@ class _ImageBody extends StatelessWidget {
   }
 }
 
+class _ResolvedNetworkImage extends StatefulWidget {
+  final String url;
+  final String? bucket;
+  final String? path;
+  final String? fileId;
+
+  const _ResolvedNetworkImage({
+    required this.url,
+    required this.bucket,
+    required this.path,
+    required this.fileId,
+  });
+
+  @override
+  State<_ResolvedNetworkImage> createState() => _ResolvedNetworkImageState();
+}
+
+class _ResolvedNetworkImageState extends State<_ResolvedNetworkImage> {
+  final NhostStorageService _storage = NhostStorageService();
+  Future<String?>? _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _resolve();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ResolvedNetworkImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.url != widget.url ||
+        oldWidget.bucket != widget.bucket ||
+        oldWidget.path != widget.path ||
+        oldWidget.fileId != widget.fileId) {
+      _future = _resolve();
+    }
+  }
+
+  Future<String?> _resolve() async {
+    final raw = widget.url.trim();
+    final explicitBucket = (widget.bucket ?? '').trim();
+    final explicitPath = (widget.path ?? '').trim();
+    final explicitFileId = (widget.fileId ?? '').trim();
+
+    if (explicitFileId.isNotEmpty) {
+      final signed = await _storage.createSignedUrl(
+        explicitFileId,
+        expiresInSeconds: AppConstants.storageSignedUrlTTLSeconds,
+      );
+      if (signed != null && signed.isNotEmpty) return signed;
+      return _storage.publicFileUrl(explicitFileId);
+    }
+
+    // لو لدينا bucket/path من المرفق، نفضّل إعادة توقيعها دائمًا.
+    if (explicitBucket.isNotEmpty && explicitPath.isNotEmpty) {
+      return _storage.resolveSignedUrlForPath(
+        bucket: explicitBucket,
+        path: explicitPath,
+      );
+    }
+
+    if (raw.startsWith('http')) {
+      return await _storage.resolveSignedUrlFromUrl(raw) ?? raw;
+    }
+    final storage = _parseStorageUrl(raw);
+    final bucket = storage?.bucket ?? '';
+    final path = storage?.path ?? '';
+    if (bucket.isEmpty || path.isEmpty) return null;
+    return _storage.resolveSignedUrlForPath(bucket: bucket, path: path);
+  }
+
+  _StorageRef? _parseStorageUrl(String raw) {
+    if (!raw.startsWith('storage://')) return null;
+    final rest = raw.substring('storage://'.length);
+    final idx = rest.indexOf('/');
+    if (idx <= 0 || idx >= rest.length - 1) return null;
+    final bucket = rest.substring(0, idx);
+    final path = rest.substring(idx + 1);
+    if (bucket.isEmpty || path.isEmpty) return null;
+    return _StorageRef(bucket: bucket, path: path);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<String?>(
+      future: _future,
+      builder: (context, snap) {
+        final resolved = snap.data ?? '';
+        if (resolved.isEmpty) {
+          if (snap.connectionState == ConnectionState.waiting) {
+            return const Center(child: Icon(Icons.image_rounded, size: 42));
+          }
+          return const Center(child: Icon(Icons.broken_image_outlined));
+        }
+        return AttachmentCacheImage(
+          url: resolved,
+          fit: BoxFit.cover,
+          placeholder: const Center(child: Icon(Icons.image_rounded, size: 42)),
+          errorWidget: const Center(child: Icon(Icons.broken_image_outlined)),
+        );
+      },
+    );
+  }
+}
+
+class _StorageRef {
+  final String bucket;
+  final String path;
+  const _StorageRef({required this.bucket, required this.path});
+}
+
 class _DeletedBody extends StatelessWidget {
   final bool isMine;
   const _DeletedBody({required this.isMine});
@@ -819,7 +728,7 @@ class _DeletedBody extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       child: Row(
         mainAxisAlignment:
-            isMine ? MainAxisAlignment.start : MainAxisAlignment.end,
+            isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
         children: [
           Icon(Icons.delete_outline_rounded,
               color: scheme.onSurface.withValues(alpha: .55), size: 18),

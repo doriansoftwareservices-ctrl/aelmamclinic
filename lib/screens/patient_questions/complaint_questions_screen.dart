@@ -3,9 +3,11 @@ import 'package:provider/provider.dart';
 
 import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/core/theme.dart';
+import 'package:aelmamclinic/core/features.dart';
 import 'package:aelmamclinic/models/patient_complaint_question.dart';
 import 'package:aelmamclinic/models/patient_complaint_template.dart';
 import 'package:aelmamclinic/providers/auth_provider.dart';
+import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/services/patient_questions_service.dart';
 
 class ComplaintQuestionsScreen extends StatefulWidget {
@@ -23,11 +25,31 @@ class _ComplaintQuestionsScreenState extends State<ComplaintQuestionsScreen> {
   bool _loading = true;
   bool _saving = false;
   bool _showInactive = false;
+  bool _isDoctor = false;
+  String? _doctorUid;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadDoctorFlag();
+    });
     _load();
+  }
+
+  Future<void> _loadDoctorFlag() async {
+    final auth = context.read<AuthProvider>();
+    final uid = auth.uid ?? '';
+    if (uid.isEmpty || uid == _doctorUid) return;
+    _doctorUid = uid;
+    try {
+      final emp = await DBService.instance.getEmployeeByUserUid(uid);
+      if (!mounted) return;
+      setState(() => _isDoctor = emp?.isDoctor ?? false);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isDoctor = false);
+    }
   }
 
   Future<void> _load() async {
@@ -49,7 +71,21 @@ class _ComplaintQuestionsScreenState extends State<ComplaintQuestionsScreen> {
 
   bool _canManage(AuthProvider auth) {
     if (auth.isSuperAdmin) return true;
-    return auth.isOwnerOrAdmin;
+    return _isDoctor && auth.featureAllowed(FeatureKeys.patientQuestions);
+  }
+
+  bool _isPermissionError(Object e) {
+    return e.toString().contains('permission-error');
+  }
+
+  String _permissionMessage(AuthProvider auth) {
+    if (!_isDoctor) {
+      return 'هذه الميزة متاحة للأطباء فقط.';
+    }
+    if (!auth.featureAllowed(FeatureKeys.patientQuestions)) {
+      return 'هذه الميزة متاحة للخطط المدفوعة فقط.';
+    }
+    return 'لا تملك صلاحية الحفظ. تأكد من ربط الحساب كطبيب ثم أعد المحاولة.';
   }
 
   Future<void> _openCreateDialog() async {
@@ -106,17 +142,33 @@ class _ComplaintQuestionsScreenState extends State<ComplaintQuestionsScreen> {
 
     setState(() => _saving = true);
     try {
-      await _svc.createQuestion(
-        accountId: accountId,
-        complaintId: widget.template.id,
-        questionText: ctrl.text.trim(),
-        createdBy: uid,
-      );
+      try {
+        await _svc.createQuestion(
+          accountId: accountId,
+          complaintId: widget.template.id,
+          questionText: ctrl.text.trim(),
+          createdBy: uid,
+        );
+      } catch (e) {
+        if (_isPermissionError(e)) {
+          await DBService.instance.notifyTableChanged('employees');
+          await Future<void>.delayed(const Duration(milliseconds: 500));
+          await _svc.createQuestion(
+            accountId: accountId,
+            complaintId: widget.template.id,
+            questionText: ctrl.text.trim(),
+            createdBy: uid,
+          );
+        } else {
+          rethrow;
+        }
+      }
       await _load();
     } catch (e) {
       if (!mounted) return;
+      final msg = _isPermissionError(e) ? _permissionMessage(auth) : '$e';
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('فشل الحفظ: $e')));
+          .showSnackBar(SnackBar(content: Text('فشل الحفظ: $msg')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -279,9 +331,13 @@ class _ComplaintQuestionsScreenState extends State<ComplaintQuestionsScreen> {
                 Expanded(
                   child: _loading
                       ? const Center(child: CircularProgressIndicator())
-                      : _questions.isEmpty
-                          ? const Center(child: Text('لا توجد أسئلة بعد'))
-                          : ReorderableListView.builder(
+                      : (!_isDoctor && !auth.isSuperAdmin)
+                          ? const Center(
+                              child: Text('هذه الميزة متاحة للأطباء فقط.'),
+                            )
+                          : _questions.isEmpty
+                              ? const Center(child: Text('لا توجد أسئلة بعد'))
+                              : ReorderableListView.builder(
                               itemCount: _questions.length,
                               onReorder: _reorder,
                               buildDefaultDragHandles: false,
@@ -356,15 +412,17 @@ class _ComplaintQuestionsScreenState extends State<ComplaintQuestionsScreen> {
                               },
                             ),
                 ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: _saving ? null : _openCreateDialog,
-                    icon: const Icon(Icons.add),
-                    label: const Text('إضافة سؤال'),
+                if (_isDoctor || auth.isSuperAdmin) ...[
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: _saving ? null : _openCreateDialog,
+                      icon: const Icon(Icons.add),
+                      label: const Text('إضافة سؤال'),
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),

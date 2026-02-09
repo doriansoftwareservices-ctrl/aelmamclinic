@@ -1,0 +1,11 @@
+function:
+  name: chat_start_dm
+  schema: public
+configuration:
+  custom_name: chat_start_dm
+  custom_root_fields: {}
+  exposed_as: mutation
+permissions:
+  - role: me
+  - role: user
+  - role: superadmin

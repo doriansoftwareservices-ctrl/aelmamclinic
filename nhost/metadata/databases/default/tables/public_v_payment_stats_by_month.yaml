@@ -1,0 +1,11 @@
+table:
+  name: v_payment_stats_by_month
+  schema: public
+select_permissions:
+  - role: superadmin
+    permission:
+      columns:
+        - month
+        - total_amount
+        - payments_count
+      filter: {}

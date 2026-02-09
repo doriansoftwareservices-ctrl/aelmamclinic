@@ -1,0 +1,9 @@
+table:
+  name: v_super_admin_tabs
+  schema: public
+select_permissions:
+  - role: superadmin
+    permission:
+      columns:
+        - allowed_tabs
+      filter: {}

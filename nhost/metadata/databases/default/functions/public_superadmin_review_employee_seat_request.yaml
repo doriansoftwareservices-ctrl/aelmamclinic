@@ -1,0 +1,9 @@
+function:
+  name: superadmin_review_employee_seat_request
+  schema: public
+configuration:
+  custom_name: superadmin_review_employee_seat_request
+  custom_root_fields: {}
+  exposed_as: mutation
+permissions:
+  - role: superadmin

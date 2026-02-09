@@ -1,0 +1,11 @@
+function:
+  name: chat_support_agent_gql
+  schema: public
+configuration:
+  custom_name: chat_support_agent
+  custom_root_fields: {}
+  exposed_as: query
+permissions:
+  - role: me
+  - role: user
+  - role: superadmin

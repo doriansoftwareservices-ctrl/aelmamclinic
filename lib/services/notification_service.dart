@@ -4,6 +4,7 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest_all.dart' as tz_data;
@@ -282,6 +283,12 @@ class NotificationService {
   }
 
   // -------- واجهات الإظهار --------
+  void _playFallbackSound() {
+    try {
+      SystemSound.play(SystemSoundType.alert);
+    } catch (_) {}
+  }
+
   Future<void> showChatNotification({
     required int id,
     required String title,
@@ -290,6 +297,7 @@ class NotificationService {
     String? threadKey, // تجميع أندرويد حسب المحادثة
   }) async {
     if (!_supportedPlatform) {
+      _playFallbackSound();
       debugPrint('🔕 showChatNotification skipped (unsupported platform).');
       return;
     }
@@ -354,6 +362,7 @@ class NotificationService {
     required String patientName,
   }) async {
     if (!_supportedPlatform) {
+      _playFallbackSound();
       debugPrint(
           '🔕 showPatientAssignmentNotification skipped (unsupported platform).');
       return;

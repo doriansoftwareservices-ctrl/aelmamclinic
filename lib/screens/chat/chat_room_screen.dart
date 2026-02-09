@@ -21,7 +21,6 @@ import 'dart:ui' as ui show TextDirection;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
@@ -56,7 +55,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   final _picker = ImagePicker();
 
   final List<XFile> _pickedImages = [];
-  final List<PlatformFile> _pickedFiles = [];
   bool _sending = false;
   bool _loadingMore = false;
   Timer? _scrollDebounce;
@@ -99,7 +97,22 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   int _pendingNewWhileAway = 0;
 
   String get _convId => widget.conversation.id;
-  String get _currentUid => NhostManager.client.auth.currentUser?.id ?? '';
+  String get _currentUid =>
+      _chat?.currentUid ?? NhostManager.client.auth.currentUser?.id ?? '';
+  String get _currentEmail =>
+      (NhostManager.client.auth.currentUser?.email ?? '').trim().toLowerCase();
+
+  bool _isMineMessage(ChatMessage m) {
+    final uid = _currentUid;
+    if (uid.isNotEmpty && m.senderUid == uid) return true;
+    final senderEmail = (m.senderEmail ?? '').trim().toLowerCase();
+    if (_currentEmail.isNotEmpty &&
+        senderEmail.isNotEmpty &&
+        senderEmail == _currentEmail) {
+      return true;
+    }
+    return false;
+  }
 
   @override
   void initState() {
@@ -275,19 +288,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     }
   }
 
-  Future<void> _pickFiles() async {
-    if (!_chatAttachmentsEnabled) return;
-    try {
-      final result = await FilePicker.platform.pickFiles(allowMultiple: true);
-      if (result == null || result.files.isEmpty) return;
-      final valid = result.files.where((f) => f.path != null).toList();
-      if (valid.isEmpty) return;
-      setState(() => _pickedFiles.addAll(valid));
-    } catch (e) {
-      _snack('تعذّر اختيار الملفات: $e');
-    }
-  }
-
   Future<void> _send() async {
     if (_sending) return;
 
@@ -296,15 +296,11 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     if (!_chatAttachmentsEnabled && _pickedImages.isNotEmpty) {
       _pickedImages.clear();
     }
-    if (!_chatAttachmentsEnabled && _pickedFiles.isNotEmpty) {
-      _pickedFiles.clear();
-    }
     final hasImages = _chatAttachmentsEnabled && _pickedImages.isNotEmpty;
-    final hasFiles = _chatAttachmentsEnabled && _pickedFiles.isNotEmpty;
 
-    if (!hasText && !hasImages && !hasFiles) {
+    if (!hasText && !hasImages) {
       _snack(_chatAttachmentsEnabled
-          ? 'اكتب رسالة أو أرفق صورة/ملف.'
+          ? 'اكتب رسالة أو أرفق صورة.'
           : 'اكتب رسالة.');
       return;
     }
@@ -342,19 +338,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
           HapticFeedback.lightImpact();
         } catch (_) {}
       }
-      if (hasFiles) {
-        final files = _pickedFiles
-            .map((x) => x.path == null ? null : File(x.path!))
-            .whereType<File>()
-            .toList();
-        if (files.isNotEmpty) {
-          await _chat?.sendFiles(conversationId: _convId, files: files);
-        }
-        _pickedFiles.clear();
-        try {
-          HapticFeedback.lightImpact();
-        } catch (_) {}
-      }
 
       // أطفئ حالة الكتابة محليًا
       _typingOffTimer?.cancel();
@@ -370,7 +353,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   }
 
   Future<void> _openMessageActions(ChatMessage m) async {
-    final isMine = m.senderUid == _currentUid;
+    final isMine = _isMineMessage(m);
     final isText = m.kind == ChatMessageKind.text;
     final canEdit = isMine && isText && !m.deleted;
 
@@ -661,240 +644,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
   bool _isAdminRole(String? role) =>
       role != null && (role == 'owner' || role == 'admin');
-
-  Future<void> _openGroupActions(ChatConversation conv) async {
-    final provider = context.read<ChatProvider>();
-    final myRole = provider.myRoleForConversation(_convId);
-    final isAdmin = _isAdminRole(myRole);
-    if (!isAdmin) {
-      _snack('ليست لديك صلاحية إدارة المجموعة.');
-      return;
-    }
-
-    await showModalBottomSheet<void>(
-      context: context,
-      builder: (_) => Directionality(
-        textDirection: ui.TextDirection.rtl,
-        child: SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.edit_rounded),
-                title: const Text('تغيير اسم المجموعة'),
-                onTap: () async {
-                  Navigator.of(context).pop();
-                  await _renameGroup(conv);
-                },
-              ),
-              ListTile(
-                leading: Icon(
-                  conv.isFrozen
-                      ? Icons.lock_open_rounded
-                      : Icons.lock_rounded,
-                ),
-                title: Text(conv.isFrozen ? 'فتح الدردشة' : 'قفل الدردشة'),
-                subtitle: const Text('عند القفل: الإرسال للمشرفين فقط'),
-                onTap: () async {
-                  Navigator.of(context).pop();
-                  await _toggleGroupLock(conv);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.group_rounded),
-                title: const Text('إدارة الأعضاء والمشرفين'),
-                onTap: () async {
-                  Navigator.of(context).pop();
-                  await _manageGroupMembers(conv);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.delete_outline_rounded),
-                title: const Text('حذف المجموعة'),
-                onTap: () async {
-                  Navigator.of(context).pop();
-                  await _deleteGroup(conv);
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _renameGroup(ChatConversation conv) async {
-    final controller = TextEditingController(text: conv.title ?? '');
-    final result = await showDialog<String>(
-      context: context,
-      builder: (_) => Directionality(
-        textDirection: ui.TextDirection.rtl,
-        child: AlertDialog(
-          title: const Text('تغيير اسم المجموعة'),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            decoration: const InputDecoration(hintText: 'اسم المجموعة'),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('إلغاء'),
-            ),
-            FilledButton(
-              onPressed: () =>
-                  Navigator.of(context).pop(controller.text.trim()),
-              child: const Text('حفظ'),
-            ),
-          ],
-        ),
-      ),
-    );
-    controller.dispose();
-    if (result == null || result.trim().isEmpty) return;
-    try {
-      await context.read<ChatProvider>().groupSetTitle(
-            conversationId: _convId,
-            title: result.trim(),
-          );
-    } catch (e) {
-      _snack('تعذّر تغيير الاسم: $e');
-    }
-  }
-
-  Future<void> _toggleGroupLock(ChatConversation conv) async {
-    final isFrozen = !conv.isFrozen;
-    try {
-      await context.read<ChatProvider>().groupSetFrozen(
-            conversationId: _convId,
-            isFrozen: isFrozen,
-            adminsOnly: isFrozen ? true : false,
-          );
-    } catch (e) {
-      _snack('تعذّر تحديث القفل: $e');
-    }
-  }
-
-  Future<void> _manageGroupMembers(ChatConversation conv) async {
-    final provider = context.read<ChatProvider>();
-    final myRole = provider.myRoleForConversation(_convId);
-    final isOwner = myRole == 'owner';
-    final isAdmin = _isAdminRole(myRole);
-    final parts = provider.participantsOf(_convId);
-
-    if (!isAdmin) {
-      _snack('ليست لديك صلاحية إدارة الأعضاء.');
-      return;
-    }
-
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      builder: (_) => Directionality(
-        textDirection: ui.TextDirection.rtl,
-        child: SafeArea(
-          child: SizedBox(
-            height: MediaQuery.of(context).size.height * 0.6,
-            child: ListView.separated(
-              padding: const EdgeInsets.all(12),
-              itemCount: parts.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
-              itemBuilder: (_, i) {
-                final p = parts[i];
-                final name = (p.nickname?.trim().isNotEmpty == true)
-                    ? p.nickname!
-                    : (p.email?.trim().isNotEmpty == true
-                        ? p.email!
-                        : p.userUid);
-                final roleLabel = p.role == 'owner'
-                    ? 'المنشئ'
-                    : (p.role == 'admin' ? 'مشرف' : 'عضو');
-                final canManageRole = isOwner && p.role != 'owner';
-                final canRemove =
-                    isAdmin && p.role != 'owner' && p.userUid != _currentUid;
-
-                return ListTile(
-                  leading: const Icon(Icons.person_rounded),
-                  title: Text(name, overflow: TextOverflow.ellipsis),
-                  subtitle: Text(roleLabel),
-                  trailing: Wrap(
-                    spacing: 8,
-                    children: [
-                      if (canManageRole)
-                        TextButton(
-                          onPressed: () async {
-                            final nextRole =
-                                (p.role == 'admin') ? 'member' : 'admin';
-                            try {
-                              await provider.groupSetMemberRole(
-                                conversationId: _convId,
-                                targetUid: p.userUid,
-                                role: nextRole,
-                              );
-                              _snack('تم تحديث الدور');
-                            } catch (e) {
-                              _snack('تعذّر تحديث الدور: $e');
-                            }
-                          },
-                          child: Text(
-                            p.role == 'admin' ? 'إلغاء مشرف' : 'ترقية مشرف',
-                          ),
-                        ),
-                      if (canRemove)
-                        TextButton(
-                          onPressed: () async {
-                            try {
-                              await provider.groupRemoveMember(
-                                conversationId: _convId,
-                                targetUid: p.userUid,
-                              );
-                              _snack('تم حذف العضو');
-                            } catch (e) {
-                              _snack('تعذّر حذف العضو: $e');
-                            }
-                          },
-                          child: const Text('حذف'),
-                        ),
-                    ],
-                  ),
-                );
-              },
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _deleteGroup(ChatConversation conv) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (_) => Directionality(
-        textDirection: ui.TextDirection.rtl,
-        child: AlertDialog(
-          title: const Text('حذف المجموعة'),
-          content: const Text('هل تريد حذف هذه المجموعة نهائيًا؟'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('إلغاء'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('حذف'),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (confirm != true) return;
-    try {
-      await context.read<ChatProvider>().groupDelete(_convId);
-      if (mounted) Navigator.of(context).pop();
-    } catch (e) {
-      _snack('تعذّر حذف المجموعة: $e');
-    }
-  }
 
   void _showProgress() {
     showDialog<void>(
@@ -1233,7 +982,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     if (newest.id == _lastSeenNewestId) return;
     _lastSeenNewestId = newest.id;
 
-    final fromMe = newest.senderUid == _currentUid;
+    final fromMe = _isMineMessage(newest);
     if (!fromMe) {
       if (_isNearBottom()) {
         _chat?.markConversationRead(_convId);
@@ -1339,12 +1088,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
             ],
           ),
           actions: [
-            if (conv.isGroup)
-              IconButton(
-                icon: const Icon(Icons.settings_rounded),
-                onPressed: () => _openGroupActions(conv),
-                tooltip: 'إدارة المجموعة',
-              ),
             IconButton(
               tooltip: 'بحث',
               icon: const Icon(Icons.search_rounded),
@@ -1367,12 +1110,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                 tooltip: 'المرفقات',
                 onPressed: () async => _pickImages(),
                 icon: const Icon(Icons.image_rounded),
-              ),
-            if (_chatAttachmentsEnabled)
-              IconButton(
-                tooltip: 'إرفاق ملف',
-                onPressed: () async => _pickFiles(),
-                icon: const Icon(Icons.attach_file_rounded),
               ),
           ],
         ),
@@ -1473,7 +1210,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                                     }
 
                                     final ChatMessage raw = msgs[index];
-                                    final mine = raw.senderUid == _currentUid;
+                                    final mine = _isMineMessage(raw);
 
                                     final effectiveStatus = mine
                                         ? context
@@ -1644,26 +1381,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                       },
                     ),
                   ),
-                if (_chatAttachmentsEnabled && _pickedFiles.isNotEmpty)
-                  SizedBox(
-                    height: 80,
-                    child: ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                      scrollDirection: Axis.horizontal,
-                      itemCount: _pickedFiles.length,
-                      separatorBuilder: (_, __) => const SizedBox(width: 8),
-                      itemBuilder: (_, i) {
-                        final f = _pickedFiles[i];
-                        return _FileAttachmentChip(
-                          name: f.name,
-                          sizeBytes: f.size,
-                          onRemove: () =>
-                              setState(() => _pickedFiles.removeAt(i)),
-                        );
-                      },
-                    ),
-                  ),
-
                 // ---------- شريط الكتابة + Reply Preview ----------
                 if (_suggestionKind != null)
                   _buildSuggestionsPanel(),
@@ -1723,9 +1440,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                   onAttachImagesLong: () async {
                     await _pickImages(fromCamera: true);
                   },
-                  onAttachFiles: () async {
-                    await _pickFiles();
-                  },
                   onSend: _send,
                 ),
               ],
@@ -1753,77 +1467,6 @@ class _ComposerSuggestion {
     required this.icon,
     this.subtitle,
   });
-}
-
-class _FileAttachmentChip extends StatelessWidget {
-  final String name;
-  final int sizeBytes;
-  final VoidCallback onRemove;
-
-  const _FileAttachmentChip({
-    required this.name,
-    required this.sizeBytes,
-    required this.onRemove,
-  });
-
-  String _fmtBytes(int b) {
-    const units = ['B', 'KB', 'MB', 'GB'];
-    double s = b.toDouble();
-    int i = 0;
-    while (s >= 1024 && i < units.length - 1) {
-      s /= 1024;
-      i++;
-    }
-    return '${s.toStringAsFixed(s >= 100 || i == 0 ? 0 : (s >= 10 ? 1 : 2))} ${units[i]}';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      width: 220,
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: scheme.surface.withValues(alpha: .75),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: scheme.outline.withValues(alpha: .25)),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.insert_drive_file_rounded,
-              color: scheme.primary, size: 28),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  _fmtBytes(sizeBytes),
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    color: scheme.onSurface.withValues(alpha: .6),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            tooltip: 'إزالة',
-            onPressed: onRemove,
-            icon: const Icon(Icons.close_rounded, size: 20),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class _DayDivider extends StatelessWidget {
@@ -1955,7 +1598,6 @@ class _ComposerBar extends StatelessWidget {
   final bool attachmentsEnabled;
   final VoidCallback onAttachImages;
   final VoidCallback? onAttachImagesLong;
-  final VoidCallback onAttachFiles;
   final VoidCallback onSend;
 
   const _ComposerBar({
@@ -1966,7 +1608,6 @@ class _ComposerBar extends StatelessWidget {
     required this.attachmentsEnabled,
     required this.onAttachImages,
     this.onAttachImagesLong,
-    required this.onAttachFiles,
     required this.onSend,
   });
 
@@ -1994,18 +1635,6 @@ class _ComposerBar extends StatelessWidget {
                     tooltip: 'إرفاق صورة (اضغط مطولًا للكاميرا)',
                     onPressed: sending ? null : onAttachImages,
                   ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                decoration: BoxDecoration(
-                  color: scheme.surface.withValues(alpha: .55),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: IconButton(
-                  icon: const Icon(Icons.attach_file_rounded),
-                  tooltip: 'إرفاق ملف',
-                  onPressed: sending ? null : onAttachFiles,
                 ),
               ),
               const SizedBox(width: 8),

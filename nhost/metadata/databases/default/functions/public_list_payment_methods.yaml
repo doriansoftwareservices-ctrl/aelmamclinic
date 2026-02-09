@@ -1,0 +1,11 @@
+function:
+  name: list_payment_methods
+  schema: public
+configuration:
+  custom_name: list_payment_methods
+  custom_root_fields: {}
+  exposed_as: query
+permissions:
+  - role: me
+  - role: user
+  - role: superadmin

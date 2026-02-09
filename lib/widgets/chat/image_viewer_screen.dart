@@ -67,6 +67,12 @@ class _ImageItem {
   }
 }
 
+class _StorageRef {
+  final String bucket;
+  final String path;
+  const _StorageRef({required this.bucket, required this.path});
+}
+
 class ImageViewerScreen extends StatefulWidget {
   /// عناصر الصور (مهيّأة مسبقًا)
   final List<_ImageItem> items;
@@ -160,13 +166,33 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
   Future<String> _resolveAt(int i) async {
     final item = widget.items[i];
     if (item.url != null && item.url!.startsWith('http')) {
-      return item.url!;
+      return await _storage.resolveSignedUrlFromUrl(item.url!) ?? item.url!;
+    }
+    final storage = _parseStorageUrl(item.storageUrl ?? '');
+    if (storage != null) {
+      final signed = await _storage.resolveSignedUrlForPath(
+        bucket: storage.bucket,
+        path: storage.path,
+      );
+      if (signed != null && signed.isNotEmpty) return signed;
     }
     final fileId = item.path;
     if (fileId != null && fileId.isNotEmpty) {
       return _storage.publicFileUrl(fileId);
     }
     throw Exception('No URL or file id to resolve.');
+  }
+
+  _StorageRef? _parseStorageUrl(String raw) {
+    final v = raw.trim();
+    if (!v.startsWith('storage://')) return null;
+    final rest = v.substring('storage://'.length);
+    final idx = rest.indexOf('/');
+    if (idx <= 0 || idx >= rest.length - 1) return null;
+    final bucket = rest.substring(0, idx);
+    final path = rest.substring(idx + 1);
+    if (bucket.isEmpty || path.isEmpty) return null;
+    return _StorageRef(bucket: bucket, path: path);
   }
 
   void _toggleChrome() => setState(() => _chromeVisible = !_chromeVisible);

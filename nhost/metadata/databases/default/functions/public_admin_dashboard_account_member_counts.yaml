@@ -1,0 +1,10 @@
+function:
+  name: admin_dashboard_account_member_counts
+  schema: public
+configuration:
+  custom_name: admin_dashboard_account_member_counts
+  custom_root_fields: {}
+  exposed_as: query
+  session_argument: hasura_session
+permissions:
+  - role: superadmin

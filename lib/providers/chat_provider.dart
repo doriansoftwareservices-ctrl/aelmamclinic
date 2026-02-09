@@ -91,10 +91,16 @@ class ChatProvider extends ChangeNotifier {
   List<CM.ChatMessage> messagesOf(String conversationId) =>
       List.unmodifiable(_messagesByConv[conversationId] ?? const []);
 
+  int get totalUnreadCount =>
+      _conversations.fold(0, (sum, c) => sum + (c.unreadCount ?? 0));
+
   final Map<String, DateTime?> _olderCursorByConv = {};
   final Map<String, DateTime?> _myLastReadByConv = {};
 
   String? _openedConversationId;
+  String? get openedConversationId => _openedConversationId;
+  bool isConversationOpen(String conversationId) =>
+      _openedConversationId == conversationId;
 
   final Map<String, Set<String>> _typingUidsByConv = {};
   Set<String> typingUids(String conversationId) =>
@@ -149,7 +155,8 @@ class ChatProvider extends ChangeNotifier {
   Future<void> _loadLocalSnapshot() async {
     try {
       final localConvs = await _local.getConversations();
-      final visibleConvs = localConvs.where((c) => !c.isDeleted).toList();
+      final visibleConvs =
+          localConvs.where((c) => !c.isDeleted && !c.isGroup).toList();
       if (visibleConvs.isEmpty) return;
 
       final tmpParts = <String, List<ChatParticipantLocal>>{};
@@ -182,6 +189,11 @@ class ChatProvider extends ChangeNotifier {
               : ((other.email?.isNotEmpty == true)
                   ? other.email!
                   : 'بدون بريد');
+        }
+
+        final lastRead = await _local.getLastRead(c.id);
+        if (lastRead != null) {
+          _myLastReadByConv[c.id] = lastRead;
         }
       }
 
@@ -510,8 +522,10 @@ class ChatProvider extends ChangeNotifier {
     final myRev = ++_listRev;
 
     try {
-      final List<CM.ConversationListItem> overview =
-          await _chat.fetchMyConversationsOverview();
+      final List<CM.ConversationListItem> overview = (await _chat
+              .fetchMyConversationsOverview())
+          .where((item) => !item.conversation.isGroup)
+          .toList();
       final convIds = overview
           .map((item) => item.conversation.id)
           .where((id) => id.isNotEmpty)
@@ -754,15 +768,9 @@ class ChatProvider extends ChangeNotifier {
 
   Future<void> refreshInvitations() async {
     if (_disposed) return;
-    try {
-      final list = await _chat.fetchMyGroupInvitations();
-      if (_disposed) return;
-      _invitations
-        ..clear()
-        ..addAll(list);
+    if (_invitations.isNotEmpty) {
+      _invitations.clear();
       _safeNotify();
-    } catch (e, st) {
-      _rpcWarn('fetchMyGroupInvitations failed', e, st);
     }
   }
 
@@ -1011,6 +1019,13 @@ class ChatProvider extends ChangeNotifier {
       }
     }
 
+    if (_openedConversationId == cid) {
+      uc = 0;
+      if (fromUid != currentUid) {
+        unawaited(markConversationRead(cid));
+      }
+    }
+
     c = c.copyWith(
       lastMsgAt: createdAt,
       lastMsgSnippet: snippet,
@@ -1066,8 +1081,9 @@ class ChatProvider extends ChangeNotifier {
     }
 
     _openedConversationId = conversationId;
+    unawaited(_rt.setActiveConversation(conversationId));
 
-    final cached = await _local.getMessages(conversationId, limit: 40);
+    final cached = await _local.getMessages(conversationId, limit: 500);
     if (_disposed) return;
     _messagesByConv[conversationId] = cached;
     _olderCursorByConv[conversationId] =
@@ -1076,8 +1092,12 @@ class ChatProvider extends ChangeNotifier {
 
     await _refreshReadStatesForConversation(conversationId);
 
-    // ✅ حمّل دفعة حديثة
-    await loadMoreMessages(conversationId);
+    // ✅ حمّل دفعة حديثة فقط إذا لا يوجد كاش محلي
+    if (cached.isEmpty) {
+      await loadMoreMessages(conversationId);
+    } else {
+      unawaited(_refreshLatestMessages(conversationId));
+    }
     if (_disposed) return;
 
     // ✅ Prefetch للرسائل الظاهرة (صور فقط غالبًا)
@@ -1089,15 +1109,10 @@ class ChatProvider extends ChangeNotifier {
     _roomMsgsSub = _chat.watchMessages(conversationId).listen(
       (remoteList) async {
         if (_disposed) return;
-        final latest = List<CM.ChatMessage>.from(remoteList.reversed);
-
+        final latest = List<CM.ChatMessage>.from(remoteList);
         await _local.upsertMessages(latest);
         if (_disposed) return;
-
-        _messagesByConv[conversationId] = latest;
-        _olderCursorByConv[conversationId] = latest.isNotEmpty
-            ? latest.last.createdAt
-            : _olderCursorByConv[conversationId];
+        _mergeIncomingMessages(conversationId, latest);
 
         _scheduleConversationsRefresh();
         _safeNotify();
@@ -1166,6 +1181,7 @@ class ChatProvider extends ChangeNotifier {
 
   Future<void> closeConversation() async {
     _openedConversationId = null;
+    unawaited(_rt.setActiveConversation(null));
     try {
       await _roomMsgsSub?.cancel();
       _roomMsgsSub = null;
@@ -1276,6 +1292,42 @@ class ChatProvider extends ChangeNotifier {
         _safeNotify();
       }
     }
+  }
+
+  Future<void> _refreshLatestMessages(String conversationId) async {
+    try {
+      final listDesc = await _fetchRecentBatchFromBackend(
+        conversationId: conversationId,
+        limit: 40,
+      );
+      final incoming = List<CM.ChatMessage>.from(listDesc.reversed);
+      await _local.upsertMessages(incoming);
+      _mergeIncomingMessages(conversationId, incoming);
+      _safeNotify();
+    } catch (_) {}
+  }
+
+  void _mergeIncomingMessages(
+    String conversationId,
+    List<CM.ChatMessage> incoming,
+  ) {
+    final existing =
+        List<CM.ChatMessage>.from(_messagesByConv[conversationId] ?? const []);
+    final map = <String, CM.ChatMessage>{};
+    for (final m in existing) {
+      if (m.id.isNotEmpty) map[m.id] = m;
+    }
+    for (final m in incoming) {
+      if (m.id.isNotEmpty) map[m.id] = m;
+    }
+    final merged = map.values.toList()
+      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    if (merged.length > 500) {
+      merged.removeRange(0, merged.length - 500);
+    }
+    _messagesByConv[conversationId] = merged;
+    _olderCursorByConv[conversationId] =
+        merged.isNotEmpty ? merged.first.createdAt : null;
   }
 
   // --------------------------------------------------------------------------
@@ -1522,11 +1574,12 @@ class ChatProvider extends ChangeNotifier {
       _applyOutgoingToConversationList(conversationId, '📷 صورة');
     }
 
+    final prepared = await _chat.prepareImageFiles(files);
     final optimistic = CM.ChatMessage.optimisticImages(
       conversationId: conversationId,
       senderUid: currentUid,
       senderEmail: myEmail,
-      files: files,
+      files: prepared,
       caption: optionalText,
     );
     final list = List<CM.ChatMessage>.from(
@@ -1540,7 +1593,7 @@ class ChatProvider extends ChangeNotifier {
     try {
       final sent = await _chat.sendImages(
         conversationId: conversationId,
-        files: files,
+        files: prepared,
         optionalText: optionalText,
         localSeq: _generateLocalSeq(),
         clientMsgId: optimistic.localId,
@@ -1617,94 +1670,7 @@ class ChatProvider extends ChangeNotifier {
     required List<File> files,
     String? optionalText,
   }) async {
-    if (_disposed) return;
-    if (files.isEmpty &&
-        (optionalText == null || optionalText.trim().isEmpty)) {
-      return;
-    }
-
-    if ((optionalText ?? '').trim().isNotEmpty) {
-      _applyOutgoingToConversationList(conversationId, optionalText!.trim());
-    } else {
-      _applyOutgoingToConversationList(conversationId, '📎 ملف');
-    }
-
-    final optimistic = CM.ChatMessage.optimisticFiles(
-      conversationId: conversationId,
-      senderUid: currentUid,
-      senderEmail: myEmail,
-      files: files,
-      caption: optionalText,
-    );
-    final list = List<CM.ChatMessage>.from(
-      _messagesByConv[conversationId] ?? const [],
-    );
-    list.insert(0, optimistic);
-    _messagesByConv[conversationId] = list;
-    _safeNotify();
-    await _local.upsertMessages([optimistic]);
-
-    try {
-      final sent = await _chat.sendFiles(
-        conversationId: conversationId,
-        files: files,
-        optionalText: optionalText,
-        localSeq: _generateLocalSeq(),
-        clientMsgId: optimistic.localId,
-      );
-
-      if (sent.isNotEmpty) {
-        final list = List<CM.ChatMessage>.from(
-          _messagesByConv[conversationId] ?? const [],
-        );
-        final existingIds = list.map((m) => m.id).toSet();
-
-        list.removeWhere((m) => m.id == optimistic.id);
-
-        for (var m in sent.reversed) {
-          if (m.senderUid == currentUid &&
-              m.status != CM.ChatMessageStatus.read) {
-            m = m.copyWith(status: CM.ChatMessageStatus.sent);
-          }
-          if (!existingIds.contains(m.id)) list.insert(0, m);
-        }
-        _messagesByConv[conversationId] = list;
-        _safeNotify();
-
-        await _local.upsertMessages(sent);
-        await _local.deleteMessage(optimistic.id);
-      }
-
-      _scheduleConversationsRefresh();
-      await _applyReadsToOutgoing(conversationId);
-    } catch (e) {
-      final replaced = List<CM.ChatMessage>.from(
-        _messagesByConv[conversationId] ?? const [],
-      );
-      final idx = replaced.indexWhere((m) => m.id == optimistic.id);
-      if (idx != -1) {
-        replaced[idx] = replaced[idx].copyWith(
-          status: CM.ChatMessageStatus.failed,
-        );
-        _messagesByConv[conversationId] = replaced;
-        _safeNotify();
-      }
-      await _local.updateMessageStatus(
-        messageId: optimistic.id,
-        status: CM.ChatMessageStatus.failed,
-      );
-      try {
-        await _enqueueOutbox(
-          localId: optimistic.id,
-          conversationId: conversationId,
-          kind: 'file',
-          body: optionalText ?? '',
-          attachmentPaths: files.map((f) => f.path).toList(),
-        );
-      } catch (_) {}
-      _setError('تعذّر إرسال الملف: $e');
-      _safeNotify();
-    }
+    throw 'تم إيقاف إرسال الملفات. يمكنك إرسال الصور فقط.';
   }
 
   // --------------------------------------------------------------------------
@@ -1835,6 +1801,8 @@ class ChatProvider extends ChangeNotifier {
     } catch (_) {}
     final ts = effective ?? DateTime.now().toUtc();
     _myLastReadByConv[conversationId] = ts;
+    unawaited(_local.upsertRead(conversationId, ts));
+    unawaited(_rt.setLastRead(conversationId, ts));
     final i = _conversations.indexWhere((c) => c.id == conversationId);
     if (i != -1) {
       _conversations[i] = _conversations[i].copyWith(unreadCount: 0);
@@ -2076,16 +2044,7 @@ class ChatProvider extends ChangeNotifier {
     required String title,
     required List<String> memberEmails,
   }) async {
-    final conv = await _chat.createGroup(
-      title: title,
-      memberEmails: memberEmails,
-    );
-    _ensureConversationVisible(
-      conv,
-      displayTitle: title.trim(),
-    );
-    _scheduleConversationsRefresh();
-    return conv;
+    throw 'تم إيقاف المحادثات الجماعية في هذا الإصدار.';
   }
 
   void _ensureConversationVisible(
@@ -2117,8 +2076,7 @@ class ChatProvider extends ChangeNotifier {
     required String conversationId,
     required String title,
   }) async {
-    await _chat.groupSetTitle(conversationId: conversationId, title: title);
-    _scheduleConversationsRefresh();
+    throw 'تم إيقاف المحادثات الجماعية في هذا الإصدار.';
   }
 
   Future<void> groupSetFrozen({
@@ -2126,12 +2084,7 @@ class ChatProvider extends ChangeNotifier {
     required bool isFrozen,
     required bool adminsOnly,
   }) async {
-    await _chat.groupSetFrozen(
-      conversationId: conversationId,
-      isFrozen: isFrozen,
-      adminsOnly: adminsOnly,
-    );
-    _scheduleConversationsRefresh();
+    throw 'تم إيقاف المحادثات الجماعية في هذا الإصدار.';
   }
 
   Future<void> groupSetMemberRole({
@@ -2139,29 +2092,18 @@ class ChatProvider extends ChangeNotifier {
     required String targetUid,
     required String role,
   }) async {
-    await _chat.groupSetMemberRole(
-      conversationId: conversationId,
-      targetUid: targetUid,
-      role: role,
-    );
-    _scheduleConversationsRefresh();
+    throw 'تم إيقاف المحادثات الجماعية في هذا الإصدار.';
   }
 
   Future<void> groupRemoveMember({
     required String conversationId,
     required String targetUid,
   }) async {
-    await _chat.groupRemoveMember(
-      conversationId: conversationId,
-      targetUid: targetUid,
-    );
-    _scheduleConversationsRefresh();
+    throw 'تم إيقاف المحادثات الجماعية في هذا الإصدار.';
   }
 
   Future<void> groupDelete(String conversationId) async {
-    await _chat.groupDelete(conversationId);
-    _conversations.removeWhere((c) => c.id == conversationId);
-    _safeNotify();
+    throw 'تم إيقاف المحادثات الجماعية في هذا الإصدار.';
   }
 
   // --------------------------------------------------------------------------

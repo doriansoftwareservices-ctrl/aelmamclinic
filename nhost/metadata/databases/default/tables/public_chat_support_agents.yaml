@@ -1,0 +1,39 @@
+table:
+  name: chat_support_agents
+  schema: public
+insert_permissions:
+  - role: superadmin
+    permission:
+      check: {}
+      columns: '*'
+select_permissions:
+  - role: me
+    permission:
+      columns:
+        - user_uid
+        - display_name
+      filter:
+        is_active:
+          _eq: true
+  - role: superadmin
+    permission:
+      columns: '*'
+      filter: {}
+  - role: user
+    permission:
+      columns:
+        - user_uid
+        - display_name
+      filter:
+        is_active:
+          _eq: true
+update_permissions:
+  - role: superadmin
+    permission:
+      columns: '*'
+      filter: {}
+      check: {}
+delete_permissions:
+  - role: superadmin
+    permission:
+      filter: {}

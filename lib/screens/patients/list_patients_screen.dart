@@ -52,6 +52,7 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
   bool _reportCountsLoading = false;
 
   bool _isLoading = false;
+  bool _isDoctorUser = false;
   Timer? _debounce;
   int? _activeDoctorId;
 
@@ -80,14 +81,18 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
     setState(() => _isLoading = true);
     try {
       final auth = context.read<AuthProvider>();
+      final isOwnerOrAdmin = auth.isOwnerOrAdmin;
       final uid = auth.uid;
       int? doctorId;
       if (uid != null && uid.isNotEmpty) {
+        final emp = await DBService.instance.getEmployeeByUserUid(uid);
+        _isDoctorUser = emp?.isDoctor ?? false;
         final doctor = await DBService.instance.getDoctorByUserUid(uid);
         doctorId = doctor?.id;
       }
       if (!mounted) return;
-      _activeDoctorId = doctorId;
+      // Owners/admins always see all patients, even if they are linked as doctors.
+      _activeDoctorId = isOwnerOrAdmin ? null : doctorId;
       await _loadPatients(showSpinner: false);
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -453,8 +458,7 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
     final dateFmt = DateFormat('yyyy-MM-dd');
     final auth = context.watch<AuthProvider>();
     final canUseQuestions = auth.isSuperAdmin ||
-        auth.isOwnerOrAdmin ||
-        auth.featureAllowed(FeatureKeys.patientQuestions);
+        (_isDoctorUser && auth.featureAllowed(FeatureKeys.patientQuestions));
 
     // تجميع حسب رقم الهاتف المُطبَّع لاكتشاف المكررات
     final grouped = <String, List<Patient>>{};

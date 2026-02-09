@@ -1,0 +1,24 @@
+table:
+  name: v_chat_messages_with_attachments
+  schema: public
+select_permissions:
+  - role: employee
+    permission:
+      columns: '*'
+      filter: {}
+  - role: me
+    permission:
+      columns: '*'
+      filter: {}
+  - role: owner
+    permission:
+      columns: '*'
+      filter: {}
+  - role: superadmin
+    permission:
+      columns: '*'
+      filter: {}
+  - role: user
+    permission:
+      columns: '*'
+      filter: {}

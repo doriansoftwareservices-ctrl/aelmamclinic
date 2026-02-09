@@ -37,6 +37,7 @@ import 'services/chat_realtime_notifier.dart';
 import 'services/db_service.dart';
 import 'widgets/activation_listener.dart';
 import 'widgets/auth_guard_listener.dart';
+import 'widgets/responsive_frame.dart';
 
 /*──────── شاشات ────────*/
 import 'screens/activation_screen.dart';
@@ -437,7 +438,7 @@ class MyApp extends StatelessWidget {
           child: AuthGuardListener(
             child: Directionality(
               textDirection: TextDirection.rtl,
-              child: child!,
+              child: ResponsiveFrame(child: child!),
             ),
           ),
         );
@@ -544,12 +545,17 @@ class _AppInitializerState extends State<AppInitializer> {
     final activation = context.watch<ActivationProvider>();
     final auth = context.watch<AuthProvider>();
 
-    _maybeNavigateOnActivation(
-      activated: activation.isActivated,
-      loggedIn: auth.isLoggedIn,
-    );
+    final activationEnabled = AppConstants.activationGateEnabled;
+    final isActivated = activationEnabled ? activation.isActivated : true;
 
-    if (!activation.isActivated) {
+    if (activationEnabled) {
+      _maybeNavigateOnActivation(
+        activated: activation.isActivated,
+        loggedIn: auth.isLoggedIn,
+      );
+    }
+
+    if (!isActivated) {
       return const ActivationScreen();
     }
     if (!auth.isLoggedIn) {

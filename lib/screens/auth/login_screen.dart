@@ -210,8 +210,9 @@ class _LoginScreenState extends State<LoginScreen> {
     final user = NhostManager.client.auth.currentUser;
     if (user == null) return;
 
-    if (!authProv.isLoggedIn ||
-        (!authProv.isSuperAdmin && (authProv.accountId ?? '').isEmpty)) {
+    if (force ||
+        !authProv.isLoggedIn ||
+        (authProv.accountId ?? '').isEmpty) {
       final result = await authProv.refreshAndValidateCurrentUser();
       if (!mounted) return;
       if (!result.isSuccess) {

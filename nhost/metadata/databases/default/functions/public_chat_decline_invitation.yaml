@@ -1,0 +1,11 @@
+function:
+  name: chat_decline_invitation
+  schema: public
+configuration:
+  custom_name: chat_decline_invitation
+  custom_root_fields: {}
+  exposed_as: mutation
+permissions:
+  - role: me
+  - role: user
+  - role: superadmin

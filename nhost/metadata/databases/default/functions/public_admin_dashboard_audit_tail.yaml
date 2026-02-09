@@ -1,0 +1,9 @@
+function:
+  name: admin_dashboard_audit_tail
+  schema: public
+configuration:
+  custom_name: admin_dashboard_audit_tail
+  custom_root_fields: {}
+  session_argument: hasura_session
+permissions:
+  - role: superadmin

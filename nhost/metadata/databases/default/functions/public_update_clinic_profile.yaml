@@ -1,0 +1,11 @@
+function:
+  name: update_clinic_profile
+  schema: public
+configuration:
+  custom_name: update_clinic_profile
+  custom_root_fields: {}
+  exposed_as: mutation
+permissions:
+  - role: me
+  - role: user
+  - role: superadmin

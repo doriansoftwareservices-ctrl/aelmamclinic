@@ -1027,9 +1027,17 @@ class ChatMessage {
     List<String>? mentions,
   }) {
     final id = _randId(prefix: 'local');
-    // نحتفظ بقيمة الملفات لضمان التوافق مع الواجهة القديمة التي كانت تمررها.
-    // ignore: unnecessary_statements
-    files;
+    final atts = <ChatAttachment>[];
+    for (final f in files) {
+      final path = f.path;
+      final name = path.split(RegExp(r'[\\/]+')).last;
+      atts.add(ChatAttachment(
+        type: ChatAttachmentType.image,
+        url: '',
+        path: name,
+        extra: {'local_path': path},
+      ));
+    }
     return ChatMessage(
       id: id,
       localId: id,
@@ -1038,7 +1046,7 @@ class ChatMessage {
       senderEmail: senderEmail,
       kind: ChatMessageKind.image,
       body: (caption ?? '').trim().isEmpty ? null : caption!.trim(),
-      attachments: const [],
+      attachments: atts,
       createdAt: DateTime.now().toUtc(),
       status: ChatMessageStatus.sending,
       replyToMessageId: replyToMessageId,
@@ -1065,7 +1073,17 @@ class ChatMessage {
     List<String>? mentions,
   }) {
     final id = _randId(prefix: 'local');
-    files; // احتفاظ توافق مع الواجهات
+    final atts = <ChatAttachment>[];
+    for (final f in files) {
+      final path = f.path;
+      final name = path.split(RegExp(r'[\\/]+')).last;
+      atts.add(ChatAttachment(
+        type: ChatAttachmentType.file,
+        url: '',
+        path: name,
+        extra: {'local_path': path},
+      ));
+    }
     return ChatMessage(
       id: id,
       localId: id,
@@ -1074,7 +1092,7 @@ class ChatMessage {
       senderEmail: senderEmail,
       kind: ChatMessageKind.file,
       body: (caption ?? '').trim().isEmpty ? null : caption!.trim(),
-      attachments: const [],
+      attachments: atts,
       createdAt: DateTime.now().toUtc(),
       status: ChatMessageStatus.sending,
       replyToMessageId: replyToMessageId,

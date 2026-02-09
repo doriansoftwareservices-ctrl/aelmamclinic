@@ -1,0 +1,41 @@
+table:
+  name: employee_seat_requests
+  schema: public
+insert_permissions:
+  - role: superadmin
+    permission:
+      check: {}
+      columns: '*'
+select_permissions:
+  - role: me
+    permission:
+      columns: '*'
+      filter:
+        _or:
+          - requested_by_uid:
+              _eq: X-Hasura-User-Id
+          - employee_user_uid:
+              _eq: X-Hasura-User-Id
+  - role: superadmin
+    permission:
+      columns: '*'
+      filter: {}
+  - role: user
+    permission:
+      columns: '*'
+      filter:
+        _or:
+          - requested_by_uid:
+              _eq: X-Hasura-User-Id
+          - employee_user_uid:
+              _eq: X-Hasura-User-Id
+update_permissions:
+  - role: superadmin
+    permission:
+      columns: '*'
+      filter: {}
+      check: {}
+delete_permissions:
+  - role: superadmin
+    permission:
+      filter: {}

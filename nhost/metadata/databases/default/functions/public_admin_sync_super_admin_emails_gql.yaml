@@ -1,0 +1,9 @@
+function:
+  name: admin_sync_super_admin_emails_gql
+  schema: public
+configuration:
+  custom_name: admin_sync_super_admin_emails_gql
+  custom_root_fields: {}
+  exposed_as: mutation
+permissions:
+  - role: superadmin

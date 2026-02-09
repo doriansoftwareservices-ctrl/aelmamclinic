@@ -1,0 +1,19 @@
+table:
+  name: v_is_super_admin
+  schema: public
+select_permissions:
+  - role: me
+    permission:
+      columns:
+        - is_super_admin
+      filter: {}
+  - role: superadmin
+    permission:
+      columns:
+        - is_super_admin
+      filter: {}
+  - role: user
+    permission:
+      columns:
+        - is_super_admin
+      filter: {}

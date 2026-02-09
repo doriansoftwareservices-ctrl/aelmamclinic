@@ -1,0 +1,8 @@
+table:
+  name: v_bool_result
+  schema: public
+select_permissions:
+  - role: superadmin
+    permission:
+      columns: '*'
+      filter: {}

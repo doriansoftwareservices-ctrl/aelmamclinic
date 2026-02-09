@@ -1,0 +1,16 @@
+table:
+  name: v_admin_dashboard_audit_tail
+  schema: public
+select_permissions:
+  - role: superadmin
+    permission:
+      columns:
+        - created_at
+        - account_id
+        - actor_uid
+        - actor_email
+        - table_name
+        - op
+        - row_pk
+        - diff
+      filter: {}

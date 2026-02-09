@@ -1,0 +1,14 @@
+table:
+  name: v_admin_dashboard_account_member_counts
+  schema: public
+select_permissions:
+  - role: superadmin
+    permission:
+      columns:
+        - account_id
+        - account_name
+        - owners_count
+        - admins_count
+        - employees_count
+        - total_members
+      filter: {}

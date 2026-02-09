@@ -1,0 +1,9 @@
+function:
+  name: admin_delete_clinic
+  schema: public
+configuration:
+  custom_name: admin_delete_clinic
+  custom_root_fields: {}
+  exposed_as: mutation
+permissions:
+  - role: superadmin

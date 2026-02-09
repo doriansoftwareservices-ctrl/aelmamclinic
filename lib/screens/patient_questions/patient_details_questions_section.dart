@@ -10,6 +10,7 @@ import 'package:aelmamclinic/models/patient_complaint_answer.dart';
 import 'package:aelmamclinic/models/patient_complaint_question.dart';
 import 'package:aelmamclinic/models/patient_complaint_template.dart';
 import 'package:aelmamclinic/providers/auth_provider.dart';
+import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/services/patient_questions_service.dart';
 import 'package:aelmamclinic/screens/patient_questions/complaint_questions_screen.dart';
 import 'package:aelmamclinic/screens/patient_questions/complaint_templates_screen.dart';
@@ -57,6 +58,8 @@ class _PatientDetailsQuestionsSectionState
   bool _loading = true;
   bool _saving = false;
   String? _error;
+  bool _isDoctor = false;
+  String? _doctorUid;
 
   List<PatientComplaintTemplate> _templates = [];
   List<_ComplaintBlock> _blocks = [];
@@ -64,6 +67,9 @@ class _PatientDetailsQuestionsSectionState
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadDoctorFlag();
+    });
     _load();
   }
 
@@ -77,10 +83,26 @@ class _PatientDetailsQuestionsSectionState
     super.dispose();
   }
 
+  Future<void> _loadDoctorFlag() async {
+    final auth = context.read<AuthProvider>();
+    final uid = auth.uid ?? '';
+    if (uid.isEmpty || uid == _doctorUid) return;
+    _doctorUid = uid;
+    try {
+      final emp = await DBService.instance.getEmployeeByUserUid(uid);
+      if (!mounted) return;
+      setState(() => _isDoctor = emp?.isDoctor ?? false);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isDoctor = false);
+    }
+  }
+
   Future<void> _load() async {
     final auth = context.read<AuthProvider>();
     final accountId = auth.accountId;
     if (accountId == null || accountId.isEmpty) {
+      if (!mounted) return;
       setState(() {
         _error = 'لا يوجد حساب مرتبط.';
         _loading = false;
@@ -88,6 +110,7 @@ class _PatientDetailsQuestionsSectionState
       return;
     }
 
+    if (!mounted) return;
     setState(() {
       _loading = true;
       _error = null;
@@ -98,6 +121,7 @@ class _PatientDetailsQuestionsSectionState
         patient: widget.patient,
         accountId: accountId,
       );
+      if (!mounted) return;
       if (remoteId == null || remoteId.isEmpty) {
         setState(() {
           _remotePatientId = null;
@@ -112,11 +136,13 @@ class _PatientDetailsQuestionsSectionState
         accountId: accountId,
         includeInactive: true,
       );
+      if (!mounted) return;
       final templateById = {
         for (final t in templates) t.id: t,
       };
 
       final complaints = await _svc.fetchPatientComplaints(patientId: remoteId);
+      if (!mounted) return;
 
       for (final block in _blocks) {
         for (final draft in block.drafts.values) {
@@ -158,11 +184,13 @@ class _PatientDetailsQuestionsSectionState
         ));
       }
 
+      if (!mounted) return;
       setState(() {
         _templates = templates;
         _blocks = blocks;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() => _error = 'تعذر تحميل أسئلة المريض: $e');
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -171,7 +199,7 @@ class _PatientDetailsQuestionsSectionState
 
   bool _canManageTemplates(AuthProvider auth) {
     if (auth.isSuperAdmin) return true;
-    return auth.isOwnerOrAdmin;
+    return _isDoctor && auth.featureAllowed(FeatureKeys.patientQuestions);
   }
 
   Future<void> _addComplaint() async {
@@ -195,7 +223,7 @@ class _PatientDetailsQuestionsSectionState
           shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(kRadius)),
           content: DropdownButtonFormField<PatientComplaintTemplate>(
-            value: selected,
+            initialValue: selected,
             items: _templates
                 .where((t) => t.isActive)
                 .map((t) => DropdownMenuItem(
@@ -235,6 +263,7 @@ class _PatientDetailsQuestionsSectionState
 
     if (ok != true || selected == null) return;
 
+    if (!mounted) return;
     setState(() => _saving = true);
     try {
       await _svc.ensurePatientComplaint(
@@ -278,10 +307,13 @@ class _PatientDetailsQuestionsSectionState
       });
     }
 
+    if (!mounted) return;
     setState(() => _saving = true);
     try {
       await _svc.upsertAnswers(objects: objects);
-      setState(() => block.lastSaved = DateTime.now());
+      if (mounted) {
+        setState(() => block.lastSaved = DateTime.now());
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
@@ -316,6 +348,7 @@ class _PatientDetailsQuestionsSectionState
     );
     if (ok != true) return;
 
+    if (!mounted) return;
     setState(() => _saving = true);
     try {
       await _svc.updatePatientComplaintStatus(
@@ -393,8 +426,7 @@ class _PatientDetailsQuestionsSectionState
     final auth = context.watch<AuthProvider>();
     final canManageTemplates = _canManageTemplates(auth);
     final canUseFeature = auth.isSuperAdmin ||
-        auth.isOwnerOrAdmin ||
-        auth.featureAllowed(FeatureKeys.patientQuestions);
+        (_isDoctor && auth.featureAllowed(FeatureKeys.patientQuestions));
 
     if (!canUseFeature) {
       return const SizedBox.shrink();

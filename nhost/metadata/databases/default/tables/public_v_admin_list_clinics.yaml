@@ -1,0 +1,31 @@
+table:
+  name: v_admin_list_clinics
+  schema: public
+select_permissions:
+  - role: me
+    permission:
+      columns:
+        - id
+        - name
+        - frozen
+        - created_at
+      filter: {}
+  - role: superadmin
+    permission:
+      columns:
+        - id
+        - name
+        - frozen
+        - created_at
+        - plan_code
+        - plan_status
+        - plan_end_at
+      filter: {}
+  - role: user
+    permission:
+      columns:
+        - id
+        - name
+        - frozen
+        - created_at
+      filter: {}

@@ -1,0 +1,12 @@
+function:
+  name: fn_is_super_admin_gql
+  schema: public
+configuration:
+  custom_name: fn_is_super_admin_gql
+  custom_root_fields: {}
+  exposed_as: query
+  session_argument: hasura_session
+permissions:
+  - role: me
+  - role: user
+  - role: superadmin

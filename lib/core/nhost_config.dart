@@ -5,7 +5,7 @@
 class NhostConfig {
   const NhostConfig._();
 
-  static const String _fallbackSubdomain = 'whfimjipnqbzjlyigbou';
+  static const String _fallbackSubdomain = 'ujxbrdbrjbujvlylpbbn';
   static const String _fallbackRegion = 'ap-southeast-1';
 
   static final String _defaultSubdomain = const String.fromEnvironment(
@@ -23,28 +23,28 @@ class NhostConfig {
   static final String _defaultGraphqlUrl = const String.fromEnvironment(
     'NHOST_GRAPHQL_URL',
     defaultValue:
-        'https://whfimjipnqbzjlyigbou.hasura.ap-southeast-1.nhost.run/v1/graphql',
+        'https://ujxbrdbrjbujvlylpbbn.hasura.ap-southeast-1.nhost.run/v1/graphql',
   );
   static String? _overrideGraphqlUrl;
 
   static final String _defaultAuthUrl = const String.fromEnvironment(
     'NHOST_AUTH_URL',
     defaultValue:
-        'https://whfimjipnqbzjlyigbou.auth.ap-southeast-1.nhost.run/v1',
+        'https://ujxbrdbrjbujvlylpbbn.auth.ap-southeast-1.nhost.run/v1',
   );
   static String? _overrideAuthUrl;
 
   static final String _defaultStorageUrl = const String.fromEnvironment(
     'NHOST_STORAGE_URL',
     defaultValue:
-        'https://whfimjipnqbzjlyigbou.storage.ap-southeast-1.nhost.run/v1',
+        'https://ujxbrdbrjbujvlylpbbn.storage.ap-southeast-1.nhost.run/v1',
   );
   static String? _overrideStorageUrl;
 
   static final String _defaultFunctionsUrl = const String.fromEnvironment(
     'NHOST_FUNCTIONS_URL',
     defaultValue:
-        'https://whfimjipnqbzjlyigbou.functions.ap-southeast-1.nhost.run/v1',
+        'https://ujxbrdbrjbujvlylpbbn.functions.ap-southeast-1.nhost.run/v1',
   );
   static String? _overrideFunctionsUrl;
 

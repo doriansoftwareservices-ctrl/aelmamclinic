@@ -1,0 +1,35 @@
+table:
+  name: subscription_plans
+  schema: public
+insert_permissions:
+  - role: superadmin
+    permission:
+      check: {}
+      columns: '*'
+select_permissions:
+  - role: me
+    permission:
+      columns: '*'
+      filter:
+        is_active:
+          _eq: true
+  - role: superadmin
+    permission:
+      columns: '*'
+      filter: {}
+  - role: user
+    permission:
+      columns: '*'
+      filter:
+        is_active:
+          _eq: true
+update_permissions:
+  - role: superadmin
+    permission:
+      columns: '*'
+      filter: {}
+      check: {}
+delete_permissions:
+  - role: superadmin
+    permission:
+      filter: {}

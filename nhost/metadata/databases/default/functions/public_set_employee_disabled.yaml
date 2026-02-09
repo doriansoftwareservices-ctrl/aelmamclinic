@@ -1,0 +1,11 @@
+function:
+  name: set_employee_disabled
+  schema: public
+configuration:
+  custom_name: set_employee_disabled
+  custom_root_fields: {}
+  exposed_as: mutation
+permissions:
+  - role: me
+  - role: user
+  - role: superadmin

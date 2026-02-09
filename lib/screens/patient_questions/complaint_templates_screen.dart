@@ -3,8 +3,10 @@ import 'package:provider/provider.dart';
 
 import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/core/theme.dart';
+import 'package:aelmamclinic/core/features.dart';
 import 'package:aelmamclinic/models/patient_complaint_template.dart';
 import 'package:aelmamclinic/providers/auth_provider.dart';
+import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/services/patient_questions_service.dart';
 import 'package:aelmamclinic/screens/patient_questions/complaint_questions_screen.dart';
 
@@ -12,7 +14,8 @@ class ComplaintTemplatesScreen extends StatefulWidget {
   const ComplaintTemplatesScreen({super.key});
 
   @override
-  State<ComplaintTemplatesScreen> createState() => _ComplaintTemplatesScreenState();
+  State<ComplaintTemplatesScreen> createState() =>
+      _ComplaintTemplatesScreenState();
 }
 
 class _ComplaintTemplatesScreenState extends State<ComplaintTemplatesScreen> {
@@ -21,11 +24,31 @@ class _ComplaintTemplatesScreenState extends State<ComplaintTemplatesScreen> {
   bool _loading = true;
   bool _saving = false;
   bool _showInactive = false;
+  bool _isDoctor = false;
+  String? _doctorUid;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadDoctorFlag();
+    });
     _load();
+  }
+
+  Future<void> _loadDoctorFlag() async {
+    final auth = context.read<AuthProvider>();
+    final uid = auth.uid ?? '';
+    if (uid.isEmpty || uid == _doctorUid) return;
+    _doctorUid = uid;
+    try {
+      final emp = await DBService.instance.getEmployeeByUserUid(uid);
+      if (!mounted) return;
+      setState(() => _isDoctor = emp?.isDoctor ?? false);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isDoctor = false);
+    }
   }
 
   Future<void> _load() async {
@@ -56,7 +79,21 @@ class _ComplaintTemplatesScreenState extends State<ComplaintTemplatesScreen> {
 
   bool _canManage(AuthProvider auth) {
     if (auth.isSuperAdmin) return true;
-    return auth.isOwnerOrAdmin;
+    return _isDoctor && auth.featureAllowed(FeatureKeys.patientQuestions);
+  }
+
+  bool _isPermissionError(Object e) {
+    return e.toString().contains('permission-error');
+  }
+
+  String _permissionMessage(AuthProvider auth) {
+    if (!_isDoctor) {
+      return 'هذه الميزة متاحة للأطباء فقط.';
+    }
+    if (!auth.featureAllowed(FeatureKeys.patientQuestions)) {
+      return 'هذه الميزة متاحة للخطط المدفوعة فقط.';
+    }
+    return 'لا تملك صلاحية الحفظ. تأكد من ربط الحساب كطبيب ثم أعد المحاولة.';
   }
 
   Future<void> _openCreateDialog() async {
@@ -127,12 +164,30 @@ class _ComplaintTemplatesScreenState extends State<ComplaintTemplatesScreen> {
 
     setState(() => _saving = true);
     try {
-      final id = await _svc.createTemplate(
-        accountId: accountId,
-        title: titleCtrl.text.trim(),
-        description: descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
-        createdBy: uid,
-      );
+      String id;
+      try {
+        id = await _svc.createTemplate(
+          accountId: accountId,
+          title: titleCtrl.text.trim(),
+          description:
+              descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
+          createdBy: uid,
+        );
+      } catch (e) {
+        if (_isPermissionError(e)) {
+          await DBService.instance.notifyTableChanged('employees');
+          await Future<void>.delayed(const Duration(milliseconds: 500));
+          id = await _svc.createTemplate(
+            accountId: accountId,
+            title: titleCtrl.text.trim(),
+            description:
+                descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
+            createdBy: uid,
+          );
+        } else {
+          rethrow;
+        }
+      }
       await _load();
       if (!mounted) return;
       final created = _templates.firstWhere(
@@ -154,8 +209,9 @@ class _ComplaintTemplatesScreenState extends State<ComplaintTemplatesScreen> {
       );
     } catch (e) {
       if (!mounted) return;
+      final msg = _isPermissionError(e) ? _permissionMessage(auth) : '$e';
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('فشل الحفظ: $e')));
+          .showSnackBar(SnackBar(content: Text('فشل الحفظ: $msg')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -292,7 +348,7 @@ class _ComplaintTemplatesScreenState extends State<ComplaintTemplatesScreen> {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('نماذج الشكاوى'),
+          title: const Text('أسئلة التشخيص للمرضى'),
           actions: [
             IconButton(
               tooltip: 'تحديث',
@@ -331,9 +387,13 @@ class _ComplaintTemplatesScreenState extends State<ComplaintTemplatesScreen> {
                 Expanded(
                   child: _loading
                       ? const Center(child: CircularProgressIndicator())
-                      : _templates.isEmpty
-                          ? const Center(child: Text('لا توجد شكاوى بعد'))
-                          : ReorderableListView.builder(
+                      : (!_isDoctor && !auth.isSuperAdmin)
+                          ? const Center(
+                              child: Text('هذه الميزة متاحة للأطباء فقط.'),
+                            )
+                          : _templates.isEmpty
+                              ? const Center(child: Text('لا توجد شكاوى بعد'))
+                              : ReorderableListView.builder(
                               itemCount: _templates.length,
                               onReorder: _reorder,
                               buildDefaultDragHandles: false,
@@ -414,11 +474,13 @@ class _ComplaintTemplatesScreenState extends State<ComplaintTemplatesScreen> {
                                               },
                                               icon: const Icon(
                                                   Icons.quiz_outlined),
-                                              label: const Text('إدارة الأسئلة'),
+                                              label:
+                                                  const Text('إدارة الأسئلة'),
                                             ),
                                             if (canManage)
                                               OutlinedButton.icon(
-                                                onPressed: () => _editTemplate(t),
+                                                onPressed: () =>
+                                                    _editTemplate(t),
                                                 icon: const Icon(Icons.edit),
                                                 label: const Text('تعديل'),
                                               ),
@@ -439,14 +501,15 @@ class _ComplaintTemplatesScreenState extends State<ComplaintTemplatesScreen> {
                             ),
                 ),
                 const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: _saving ? null : _openCreateDialog,
-                    icon: const Icon(Icons.add),
-                    label: const Text('إضافة شكوى'),
+                if (_isDoctor || auth.isSuperAdmin)
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: _saving ? null : _openCreateDialog,
+                      icon: const Icon(Icons.add),
+                      label: const Text('إضافة شكوى'),
+                    ),
                   ),
-                ),
               ],
             ),
           ),

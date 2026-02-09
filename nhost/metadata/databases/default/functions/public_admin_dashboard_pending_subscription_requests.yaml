@@ -1,0 +1,9 @@
+function:
+  name: admin_dashboard_pending_subscription_requests
+  schema: public
+configuration:
+  custom_name: admin_dashboard_pending_subscription_requests
+  custom_root_fields: {}
+  session_argument: hasura_session
+permissions:
+  - role: superadmin

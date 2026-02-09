@@ -150,7 +150,7 @@ class ConversationTile extends StatelessWidget {
                 ),
                 const SizedBox(width: 6),
                 if (clinicLabel != null && clinicLabel!.trim().isNotEmpty)
-                  _ClinicChip(text: clinicLabel!.trim()),
+                  Flexible(child: _ClinicChip(text: clinicLabel!.trim())),
               ],
             ),
             subtitle: Padding(
@@ -363,6 +363,9 @@ class _ClinicChip extends StatelessWidget {
       ),
       child: Text(
         text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        softWrap: false,
         style: TextStyle(
           color: scheme.onSurface.withValues(alpha: .85),
           fontWeight: FontWeight.w800,

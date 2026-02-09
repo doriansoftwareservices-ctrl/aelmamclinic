@@ -1,0 +1,9 @@
+function:
+  name: admin_payment_stats_by_plan
+  schema: public
+configuration:
+  custom_name: admin_payment_stats_by_plan
+  custom_root_fields: {}
+  exposed_as: query
+permissions:
+  - role: superadmin

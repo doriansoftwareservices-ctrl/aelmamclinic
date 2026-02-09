@@ -8,16 +8,17 @@ import 'package:aelmamclinic/models/patient_complaint_answer.dart';
 import 'package:aelmamclinic/models/patient_complaint_question.dart';
 import 'package:aelmamclinic/models/patient_complaint_template.dart';
 import 'package:aelmamclinic/models/patient_report.dart';
-import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/services/nhost_graphql_service.dart';
-import 'package:aelmamclinic/services/sync_service.dart';
+import 'package:aelmamclinic/services/sync_mapping_service.dart';
 import 'package:aelmamclinic/utils/device_id.dart';
 
 class PatientQuestionsService {
   PatientQuestionsService({GraphQLClient? client})
-      : _gql = client ?? NhostGraphqlService.client;
+      : _gql = client ?? NhostGraphqlService.client,
+        _mapping = SyncMappingService(client: client);
 
   final GraphQLClient _gql;
+  final SyncMappingService _mapping;
   static const int _maxQueryAttempts = 4;
 
   bool _isTransientException(OperationException ex) {
@@ -56,11 +57,12 @@ class PatientQuestionsService {
   }) async {
     final localId = patient.localId ?? patient.id ?? 0;
     if (localId <= 0) return null;
-    final deviceId = await DeviceId.get();
-    final db = await DBService.instance.database;
-    final mapper = RemoteIdMapper(db);
-    return mapper.remoteUuidForLocal(
-      tableName: 'patients',
+    final deviceId =
+        (patient.deviceId != null && patient.deviceId!.trim().isNotEmpty)
+            ? patient.deviceId!.trim()
+            : await DeviceId.get();
+    return _mapping.resolveRemoteId(
+      table: 'patients',
       accountId: accountId,
       deviceId: deviceId,
       localId: localId,
@@ -71,28 +73,23 @@ class PatientQuestionsService {
     required List<Patient> patients,
     required String accountId,
   }) async {
-    final deviceId = await DeviceId.get();
-    final ids = <int>[];
+    final refs = <LocalSyncRef>[];
     for (final p in patients) {
       final localId = p.localId ?? p.id;
-      if (localId != null && localId > 0) ids.add(localId);
+      if (localId != null && localId > 0) {
+        final deviceId =
+            (p.deviceId != null && p.deviceId!.trim().isNotEmpty)
+                ? p.deviceId!.trim()
+                : await DeviceId.get();
+        refs.add(LocalSyncRef(localId: localId, deviceId: deviceId));
+      }
     }
-    if (ids.isEmpty) return {};
-    final db = await DBService.instance.database;
-    final placeholders = List.filled(ids.length, '?').join(',');
-    final rows = await db.rawQuery(
-      'SELECT local_sync_id, uuid FROM sync_uuid_mapping '
-      'WHERE table_name = ? AND account_id = ? AND device_id = ? '
-      'AND local_sync_id IN ($placeholders)',
-      ['patients', accountId, deviceId, ...ids],
+    if (refs.isEmpty) return {};
+    return _mapping.mapLocalToRemote(
+      table: 'patients',
+      accountId: accountId,
+      refs: refs,
     );
-    final out = <int, String>{};
-    for (final row in rows) {
-      final local = (row['local_sync_id'] as num?)?.toInt() ?? 0;
-      final uuid = row['uuid']?.toString() ?? '';
-      if (local > 0 && uuid.isNotEmpty) out[local] = uuid;
-    }
-    return out;
   }
 
   // ---------------------------------------------------------------------------

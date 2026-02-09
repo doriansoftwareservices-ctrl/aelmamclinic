@@ -3,10 +3,10 @@
 // الشاشة الرئيسية للمحادثات للمستخدم النهائي. تعتمد على ChatProvider
 // لجلب المحادثات وعرضها مع دعم البحث وتصفية الرسائل غير المقروءة.
 
+import 'dart:async';
 import 'dart:ui' as ui show TextDirection;
 
 import 'package:aelmamclinic/core/theme.dart';
-import 'package:aelmamclinic/models/chat_invitation.dart';
 import 'package:aelmamclinic/models/chat_models.dart';
 import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:aelmamclinic/providers/chat_provider.dart';
@@ -25,15 +25,12 @@ class ChatHomeScreen extends StatefulWidget {
   State<ChatHomeScreen> createState() => _ChatHomeScreenState();
 }
 
-enum _NewConversationMode {
-  direct,
-  group,
-}
-
 class _ChatHomeScreenState extends State<ChatHomeScreen> {
   final TextEditingController _searchCtrl = TextEditingController();
+  Timer? _searchDebounce;
+  String _query = '';
   bool _unreadOnly = false;
-  String? _processingInvitationId;
+  String? _openingConversationId;
 
   @override
   void initState() {
@@ -43,6 +40,7 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -60,11 +58,13 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
     final isOwner = auth.role?.toLowerCase() == 'owner';
     if (isOwner) {
       await chat.ensureSupportConversation();
+      if (!mounted) return;
       await chat.refreshConversations();
     }
   }
 
   Future<void> _refresh() async {
+    FocusScope.of(context).unfocus();
     await context.read<ChatProvider>().refreshConversations();
   }
 
@@ -91,12 +91,24 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
     await chat.refreshConversations();
   }
 
+  ChatMessage? _latestMessageFor(ChatProvider chat, String conversationId) {
+    final list = chat.messagesOf(conversationId);
+    if (list.isEmpty) return null;
+    var latest = list.first;
+    for (final m in list) {
+      if (m.createdAt.isAfter(latest.createdAt)) {
+        latest = m;
+      }
+    }
+    return latest;
+  }
+
   @override
   Widget build(BuildContext context) {
     final chat = context.watch<ChatProvider>();
+    final auth = context.watch<AuthProvider>();
     final convs = chat.conversations;
-    final invites = chat.invitations;
-    final query = _searchCtrl.text.trim().toLowerCase();
+    final query = _query.trim().toLowerCase();
 
     final filtered = convs.where((conv) {
       if (_unreadOnly && (conv.unreadCount ?? 0) == 0) {
@@ -122,6 +134,7 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
     }
 
     final isBusy = chat.busy && !chat.ready;
+    final isRefreshing = chat.busy && chat.ready;
 
     return Directionality(
       textDirection: ui.TextDirection.rtl,
@@ -129,7 +142,7 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
         appBar: AppBar(
           title: const Text('المحادثات'),
           actions: [
-            if (context.read<AuthProvider>().role?.toLowerCase() == 'owner')
+            if (auth.role?.toLowerCase() == 'owner')
               IconButton(
                 tooltip: 'خدمة العملاء',
                 onPressed: _openSupportChat,
@@ -148,175 +161,137 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
           child: const Icon(Icons.chat_rounded),
         ),
         body: SafeArea(
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _searchCtrl,
-                        onChanged: (_) => setState(() {}),
-                        decoration: const InputDecoration(
-                          hintText: 'ابحث باسم الشخص أو محتوى الرسائل',
-                          prefixIcon: Icon(Icons.search_rounded),
-                          border: OutlineInputBorder(),
+          child: RefreshIndicator(
+            color: kPrimaryColor,
+            onRefresh: _refresh,
+            child: CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              slivers: [
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _searchCtrl,
+                            onChanged: (value) {
+                              _searchDebounce?.cancel();
+                              _searchDebounce = Timer(
+                                const Duration(milliseconds: 220),
+                                () {
+                                  if (!mounted) return;
+                                  setState(() => _query = value);
+                                },
+                              );
+                            },
+                            decoration: InputDecoration(
+                              hintText: 'ابحث باسم الشخص أو محتوى الرسائل',
+                              prefixIcon: const Icon(Icons.search_rounded),
+                              suffixIcon: _query.isEmpty
+                                  ? null
+                                  : IconButton(
+                                      onPressed: () {
+                                        _searchCtrl.clear();
+                                        setState(() => _query = '');
+                                      },
+                                      icon: const Icon(Icons.close_rounded),
+                                    ),
+                              border: const OutlineInputBorder(),
+                            ),
+                            textDirection: ui.TextDirection.rtl,
+                          ),
                         ),
-                        textDirection: ui.TextDirection.rtl,
-                      ),
+                        const SizedBox(width: 8),
+                        FilterChip(
+                          label: const Text('غير المقروءة'),
+                          avatar: const Icon(
+                            Icons.mark_chat_unread_rounded,
+                            size: 18,
+                          ),
+                          selected: _unreadOnly,
+                          onSelected: (value) =>
+                              setState(() => _unreadOnly = value),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 8),
-                    FilterChip(
-                      label: const Text('غير المقروءة'),
-                      avatar: const Icon(
-                        Icons.mark_chat_unread_rounded,
-                        size: 18,
-                      ),
-                      selected: _unreadOnly,
-                      onSelected: (value) =>
-                          setState(() => _unreadOnly = value),
-                    ),
-                  ],
-                ),
-              ),
-              if (invites.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: Text(
-                          'دعوات المجموعات',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      ...invites.map(
-                        (inv) => _InvitationCard(
-                          invitation: inv,
-                          busy: _processingInvitationId == inv.id,
-                          onAccept: () => _onAcceptInvitation(inv),
-                          onDecline: () => _onDeclineInvitation(inv),
-                        ),
-                      ),
-                    ],
                   ),
                 ),
-              Expanded(
-                child: RefreshIndicator(
-                  color: kPrimaryColor,
-                  onRefresh: _refresh,
-                  child: Builder(
-                    builder: (_) {
-                      if (isBusy) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
-                      if (filtered.isEmpty) {
-                        return ListView(
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          children: const [
-                            SizedBox(height: 120),
-                            Center(
-                              child: Text(
-                                'لا توجد محادثات متاحة.',
-                                style: TextStyle(fontWeight: FontWeight.w700),
-                              ),
-                            ),
-                          ],
-                        );
-                      }
-
-                      return ListView.separated(
-                        itemCount: filtered.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 6),
-                        padding: const EdgeInsets.fromLTRB(12, 6, 12, 18),
-                        itemBuilder: (context, index) {
+                if (isRefreshing)
+                  const SliverToBoxAdapter(
+                    child: LinearProgressIndicator(minHeight: 2),
+                  ),
+                if (isBusy)
+                  const SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (filtered.isEmpty)
+                  const SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Center(
+                      child: Text(
+                        'لا توجد محادثات متاحة.',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  )
+                else
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(12, 6, 12, 18),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) {
                           final conversation = filtered[index];
                           final displayTitle = chat.displayTitleOf(
                             conversation.id,
                           );
                           final isSupport =
                               chat.isSupportConversation(conversation.id);
-                          final snippet = conversation.lastMsgSnippet ?? '';
                           final typing = chat.typingUids(conversation.id);
-                          final subtitleOverride = typing.isNotEmpty
-                              ? 'جارٍ الكتابة...'
-                              : (snippet.trim().isEmpty
-                                  ? 'لا توجد رسائل بعد'
-                                  : snippet.trim());
+                          final lastMessage =
+                              _latestMessageFor(chat, conversation.id);
+                          final subtitleOverride =
+                              typing.isNotEmpty ? 'جارٍ الكتابة...' : null;
+                          final isOpen =
+                              chat.openedConversationId == conversation.id;
 
-                          return ConversationTile(
-                            conversation: conversation,
-                            titleOverride:
-                                isSupport ? chat.supportDisplayName : displayTitle,
-                            leadingIcon: isSupport
-                                ? Icons.support_agent_rounded
-                                : null,
-                            subtitleOverride: subtitleOverride,
-                            subtitleIsTyping: typing.isNotEmpty,
-                            unreadCount: conversation.unreadCount ?? 0,
-                            clinicLabel: null,
-                            isMuted: false,
-                            isOnline: null,
-                            showChevron: true,
-                            onTap: () => _openConversation(conversation.id),
-                            onLongPress: () =>
-                                _showConversationActions(context, conversation),
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 6),
+                            child: ConversationTile(
+                              conversation: conversation,
+                              titleOverride: isSupport
+                                  ? chat.supportDisplayName
+                                  : displayTitle,
+                              leadingIcon: isSupport
+                                  ? Icons.support_agent_rounded
+                                  : null,
+                              subtitleOverride: subtitleOverride,
+                              subtitleIsTyping: typing.isNotEmpty,
+                              lastMessage: lastMessage,
+                              unreadCount: conversation.unreadCount ?? 0,
+                              clinicLabel: null,
+                              isMuted: false,
+                              isOnline: null,
+                              showChevron: !isOpen,
+                              onTap: () => _openConversation(conversation.id),
+                              onLongPress: () => _showConversationActions(
+                                context,
+                                conversation,
+                              ),
+                            ),
                           );
                         },
-                      );
-                    },
+                        childCount: filtered.length,
+                      ),
+                    ),
                   ),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
     );
-  }
-
-  Future<void> _onAcceptInvitation(ChatGroupInvitation invitation) async {
-    if (_processingInvitationId != null) return;
-    setState(() => _processingInvitationId = invitation.id);
-    final chat = context.read<ChatProvider>();
-    try {
-      await chat.acceptGroupInvitation(invitation.id);
-      if (!mounted) return;
-      await _openConversation(invitation.conversationId);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('تعذر قبول الدعوة: $e')));
-      }
-    } finally {
-      if (mounted) setState(() => _processingInvitationId = null);
-    }
-  }
-
-  Future<void> _onDeclineInvitation(ChatGroupInvitation invitation) async {
-    if (_processingInvitationId != null) return;
-    setState(() => _processingInvitationId = invitation.id);
-    try {
-      await context.read<ChatProvider>().declineGroupInvitation(invitation.id);
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('تم رفض الدعوة')));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('تعذر رفض الدعوة: $e')));
-      }
-    } finally {
-      if (mounted) setState(() => _processingInvitationId = null);
-    }
   }
 
   Future<void> _showAliasDialog(ChatConversation conversation) async {
@@ -370,21 +345,31 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
   }
 
   Future<void> _openConversation(String conversationId) async {
+    if (_openingConversationId != null) return;
+    _openingConversationId = conversationId;
     final chat = context.read<ChatProvider>();
-    await chat.openConversation(conversationId);
-    await chat.markConversationRead(conversationId);
-    if (!mounted) return;
-    final conversation = chat.conversations.firstWhere(
-      (c) => c.id == conversationId,
-      orElse: () => chat.conversations.first,
-    );
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ChatRoomScreen(conversation: conversation),
-      ),
-    );
-    if (!mounted) return;
-    await chat.refreshConversations();
+    try {
+      await chat.openConversation(conversationId);
+      await chat.markConversationRead(conversationId);
+      if (!mounted) return;
+      final conversation = chat.conversations.firstWhere(
+        (c) => c.id == conversationId,
+        orElse: () => chat.conversations.first,
+      );
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ChatRoomScreen(conversation: conversation),
+        ),
+      );
+      if (!mounted) return;
+      await chat.refreshConversations();
+    } finally {
+      if (mounted && _openingConversationId == conversationId) {
+        setState(() => _openingConversationId = null);
+      } else {
+        _openingConversationId = null;
+      }
+    }
   }
 
   Future<void> _showConversationActions(
@@ -461,171 +446,45 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
   }
 
   Future<void> _showNewConversationDialog(BuildContext context) async {
-    final mode = await showDialog<_NewConversationMode>(
+    final emailCtrl = TextEditingController();
+    final result = await showDialog<String>(
       context: context,
       builder: (_) => Directionality(
         textDirection: ui.TextDirection.rtl,
         child: AlertDialog(
           title: const Text('بدء محادثة جديدة'),
-          content: const Text('اختر نوع المحادثة'),
+          content: TextField(
+            controller: emailCtrl,
+            keyboardType: TextInputType.emailAddress,
+            decoration: const InputDecoration(
+              hintText: 'أدخل البريد الإلكتروني',
+            ),
+            textDirection: ui.TextDirection.ltr,
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
               child: const Text('إلغاء'),
             ),
-            TextButton(
-              onPressed: () =>
-                  Navigator.of(context).pop(_NewConversationMode.direct),
-              child: const Text('محادثة مباشرة'),
-            ),
             FilledButton(
-              onPressed: () =>
-                  Navigator.of(context).pop(_NewConversationMode.group),
-              child: const Text('مجموعة'),
+              onPressed: () => Navigator.of(
+                context,
+              ).pop(emailCtrl.text.trim().toLowerCase()),
+              child: const Text('بدء'),
             ),
           ],
         ),
       ),
     );
 
-    if (mode == null) return;
-
-    if (mode == _NewConversationMode.direct) {
-      final emailCtrl = TextEditingController();
-      final result = await showDialog<String>(
-        context: context,
-        builder: (_) => Directionality(
-          textDirection: ui.TextDirection.rtl,
-          child: AlertDialog(
-            title: const Text('بدء محادثة جديدة'),
-            content: TextField(
-              controller: emailCtrl,
-              keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(
-                hintText: 'أدخل البريد الإلكتروني',
-              ),
-              textDirection: ui.TextDirection.ltr,
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('إلغاء'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(
-                  context,
-                ).pop(emailCtrl.text.trim().toLowerCase()),
-                child: const Text('بدء'),
-              ),
-            ],
-          ),
-        ),
-      );
-
-      if (result == null || result.isEmpty) {
-        emailCtrl.dispose();
-        return;
-      }
-
-      try {
-        final chat = context.read<ChatProvider>();
-        final conversation = await chat.startDirectByEmail(
-          result,
-        ); // will schedule refresh
-        await chat.openConversation(conversation.id);
-        await chat.markConversationRead(conversation.id);
-        if (!mounted) return;
-        await Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => ChatRoomScreen(conversation: conversation),
-          ),
-        );
-        await chat.refreshConversations();
-      } catch (e) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('تعذر إنشاء المحادثة: $e')));
-      } finally {
-        emailCtrl.dispose();
-      }
-      return;
-    }
-
-    final titleCtrl = TextEditingController();
-    final membersCtrl = TextEditingController();
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (_) => Directionality(
-        textDirection: ui.TextDirection.rtl,
-        child: AlertDialog(
-          title: const Text('إنشاء مجموعة جديدة'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: titleCtrl,
-                decoration: const InputDecoration(
-                  hintText: 'اسم المجموعة',
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: membersCtrl,
-                keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(
-                  hintText: 'أدخل الإيميلات (مفصولة بفواصل أو أسطر)',
-                ),
-                maxLines: 4,
-                textDirection: ui.TextDirection.ltr,
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('إلغاء'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('إنشاء'),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (result != true) {
-      titleCtrl.dispose();
-      membersCtrl.dispose();
-      return;
-    }
-
-    final title = titleCtrl.text.trim();
-    final rawMembers = membersCtrl.text.trim();
-    final members = rawMembers
-        .split(RegExp(r'[,\n\r;\s]+'))
-        .map((e) => e.trim().toLowerCase())
-        .where((e) => e.isNotEmpty)
-        .toSet()
-        .toList();
-
-    if (title.isEmpty || members.isEmpty) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('يرجى إدخال اسم المجموعة والإيميلات.')),
-      );
-      titleCtrl.dispose();
-      membersCtrl.dispose();
+    if (result == null || result.isEmpty) {
+      emailCtrl.dispose();
       return;
     }
 
     try {
       final chat = context.read<ChatProvider>();
-      final conversation = await chat.createGroup(
-        title: title,
-        memberEmails: members,
-      );
+      final conversation = await chat.startDirectByEmail(result);
       await chat.openConversation(conversation.id);
       await chat.markConversationRead(conversation.id);
       if (!mounted) return;
@@ -637,106 +496,11 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
       await chat.refreshConversations();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذر إنشاء المجموعة: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('تعذر إنشاء المحادثة: $e')));
     } finally {
-      titleCtrl.dispose();
-      membersCtrl.dispose();
+      emailCtrl.dispose();
     }
-  }
-}
-
-class _InvitationCard extends StatelessWidget {
-  final ChatGroupInvitation invitation;
-  final bool busy;
-  final VoidCallback onAccept;
-  final VoidCallback onDecline;
-
-  const _InvitationCard({
-    required this.invitation,
-    required this.busy,
-    required this.onAccept,
-    required this.onDecline,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final title = (invitation.conversationTitle ?? '').trim().isEmpty
-        ? 'مجموعة بدون عنوان'
-        : invitation.conversationTitle!.trim();
-    final actionable = invitation.isActionable && !busy;
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              title,
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-              textDirection: ui.TextDirection.rtl,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'الحالة الحالية: ${invitation.statusLabel}',
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
-              textDirection: ui.TextDirection.rtl,
-            ),
-            if (invitation.responseNote != null &&
-                invitation.responseNote!.trim().isNotEmpty) ...[
-              const SizedBox(height: 6),
-              Text(
-                'ملاحظة: ${invitation.responseNote}',
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(color: scheme.tertiary),
-                textDirection: ui.TextDirection.rtl,
-              ),
-            ],
-            const SizedBox(height: 6),
-            Text(
-              'تمت دعوتك للانضمام إلى هذه المجموعة. يمكنك القبول أو الرفض الآن.',
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
-              textDirection: ui.TextDirection.rtl,
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton(
-                    onPressed: actionable ? onAccept : null,
-                    child: busy
-                        ? const SizedBox(
-                            height: 18,
-                            width: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('قبول'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed:
-                        invitation.isActionable && !busy ? onDecline : null,
-                    child: const Text('رفض'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }

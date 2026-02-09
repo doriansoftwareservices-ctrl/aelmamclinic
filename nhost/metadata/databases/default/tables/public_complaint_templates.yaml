@@ -1,0 +1,313 @@
+table:
+  name: complaint_templates
+  schema: public
+array_relationships:
+  - name: questions
+    using:
+      foreign_key_constraint_on:
+        column: complaint_id
+        table:
+          name: complaint_questions
+          schema: public
+insert_permissions:
+  - role: me
+    permission:
+      check:
+        _and:
+          - _exists:
+              _table:
+                name: employees
+                schema: public
+              _where:
+                account_id:
+                  _ceq: account_id
+                is_doctor:
+                  _eq: true
+                user_uid:
+                  _eq: X-Hasura-User-Id
+          - _exists:
+              _table:
+                name: account_subscriptions
+                schema: public
+              _where:
+                account_id:
+                  _ceq: account_id
+                plan_code:
+                  _in:
+                    - month
+                    - year
+                status:
+                  _eq: active
+      columns: '*'
+  - role: superadmin
+    permission:
+      check: {}
+      columns: '*'
+  - role: user
+    permission:
+      check:
+        _and:
+          - _exists:
+              _table:
+                name: employees
+                schema: public
+              _where:
+                account_id:
+                  _ceq: account_id
+                is_doctor:
+                  _eq: true
+                user_uid:
+                  _eq: X-Hasura-User-Id
+          - _exists:
+              _table:
+                name: account_subscriptions
+                schema: public
+              _where:
+                account_id:
+                  _ceq: account_id
+                plan_code:
+                  _in:
+                    - month
+                    - year
+                status:
+                  _eq: active
+      columns: '*'
+select_permissions:
+  - role: me
+    permission:
+      columns: '*'
+      filter:
+        _and:
+          - _exists:
+              _table:
+                name: employees
+                schema: public
+              _where:
+                account_id:
+                  _ceq: account_id
+                is_doctor:
+                  _eq: true
+                user_uid:
+                  _eq: X-Hasura-User-Id
+          - _exists:
+              _table:
+                name: account_subscriptions
+                schema: public
+              _where:
+                account_id:
+                  _ceq: account_id
+                plan_code:
+                  _in:
+                    - month
+                    - year
+                status:
+                  _eq: active
+  - role: superadmin
+    permission:
+      columns: '*'
+      filter: {}
+  - role: user
+    permission:
+      columns: '*'
+      filter:
+        _and:
+          - _exists:
+              _table:
+                name: employees
+                schema: public
+              _where:
+                account_id:
+                  _ceq: account_id
+                is_doctor:
+                  _eq: true
+                user_uid:
+                  _eq: X-Hasura-User-Id
+          - _exists:
+              _table:
+                name: account_subscriptions
+                schema: public
+              _where:
+                account_id:
+                  _ceq: account_id
+                plan_code:
+                  _in:
+                    - month
+                    - year
+                status:
+                  _eq: active
+update_permissions:
+  - role: me
+    permission:
+      columns: '*'
+      filter:
+        _and:
+          - _exists:
+              _table:
+                name: employees
+                schema: public
+              _where:
+                account_id:
+                  _ceq: account_id
+                is_doctor:
+                  _eq: true
+                user_uid:
+                  _eq: X-Hasura-User-Id
+          - _exists:
+              _table:
+                name: account_subscriptions
+                schema: public
+              _where:
+                account_id:
+                  _ceq: account_id
+                plan_code:
+                  _in:
+                    - month
+                    - year
+                status:
+                  _eq: active
+      check:
+        _and:
+          - _exists:
+              _table:
+                name: employees
+                schema: public
+              _where:
+                account_id:
+                  _ceq: account_id
+                is_doctor:
+                  _eq: true
+                user_uid:
+                  _eq: X-Hasura-User-Id
+          - _exists:
+              _table:
+                name: account_subscriptions
+                schema: public
+              _where:
+                account_id:
+                  _ceq: account_id
+                plan_code:
+                  _in:
+                    - month
+                    - year
+                status:
+                  _eq: active
+  - role: superadmin
+    permission:
+      columns: '*'
+      filter: {}
+      check: {}
+  - role: user
+    permission:
+      columns: '*'
+      filter:
+        _and:
+          - _exists:
+              _table:
+                name: employees
+                schema: public
+              _where:
+                account_id:
+                  _ceq: account_id
+                is_doctor:
+                  _eq: true
+                user_uid:
+                  _eq: X-Hasura-User-Id
+          - _exists:
+              _table:
+                name: account_subscriptions
+                schema: public
+              _where:
+                account_id:
+                  _ceq: account_id
+                plan_code:
+                  _in:
+                    - month
+                    - year
+                status:
+                  _eq: active
+      check:
+        _and:
+          - _exists:
+              _table:
+                name: employees
+                schema: public
+              _where:
+                account_id:
+                  _ceq: account_id
+                is_doctor:
+                  _eq: true
+                user_uid:
+                  _eq: X-Hasura-User-Id
+          - _exists:
+              _table:
+                name: account_subscriptions
+                schema: public
+              _where:
+                account_id:
+                  _ceq: account_id
+                plan_code:
+                  _in:
+                    - month
+                    - year
+                status:
+                  _eq: active
+delete_permissions:
+  - role: me
+    permission:
+      filter:
+        _and:
+          - _exists:
+              _table:
+                name: employees
+                schema: public
+              _where:
+                account_id:
+                  _ceq: account_id
+                is_doctor:
+                  _eq: true
+                user_uid:
+                  _eq: X-Hasura-User-Id
+          - _exists:
+              _table:
+                name: account_subscriptions
+                schema: public
+              _where:
+                account_id:
+                  _ceq: account_id
+                plan_code:
+                  _in:
+                    - month
+                    - year
+                status:
+                  _eq: active
+  - role: superadmin
+    permission:
+      filter: {}
+  - role: user
+    permission:
+      filter:
+        _and:
+          - _exists:
+              _table:
+                name: employees
+                schema: public
+              _where:
+                account_id:
+                  _ceq: account_id
+                is_doctor:
+                  _eq: true
+                user_uid:
+                  _eq: X-Hasura-User-Id
+          - _exists:
+              _table:
+                name: account_subscriptions
+                schema: public
+              _where:
+                account_id:
+                  _ceq: account_id
+                plan_code:
+                  _in:
+                    - month
+                    - year
+                status:
+                  _eq: active

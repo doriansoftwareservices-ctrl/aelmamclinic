@@ -1,0 +1,11 @@
+function:
+  name: delete_employee
+  schema: public
+configuration:
+  custom_name: delete_employee
+  custom_root_fields: {}
+  exposed_as: mutation
+permissions:
+  - role: me
+  - role: user
+  - role: superadmin

@@ -20,8 +20,10 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 import 'package:aelmamclinic/core/constants.dart';
 import 'package:aelmamclinic/core/active_account_store.dart';
@@ -31,7 +33,6 @@ import 'package:aelmamclinic/models/chat_models.dart'
     show
         ChatAttachment,
         ChatAttachmentType,
-        ChatAttachmentTypeX,
         ChatConversation,
         ChatMessage,
         ChatMessageKind,
@@ -66,6 +67,9 @@ class ChatService {
   GraphQLClient get _gql => NhostGraphqlService.client;
   final NhostStorageService _storage = NhostStorageService();
   final Map<String, ({String url, DateTime expiresAt})> _signedUrlCache = {};
+  String _attachmentDbValue(ChatAttachmentType type) {
+    return type == ChatAttachmentType.image ? 'image' : 'file';
+  }
 
   // --------------------------------------------------------------
   // ثوابت
@@ -404,7 +408,24 @@ class ChatService {
     final copy = Map<String, dynamic>.from(row);
     final attRows = (copy['chat_attachments'] as List?) ?? const [];
     final legacyAtts = (copy['attachments'] as List?) ?? const [];
-    final attSource = attRows.isNotEmpty ? attRows : legacyAtts;
+    bool legacyHasFileId = false;
+    for (final item in legacyAtts) {
+      if (item is! Map) continue;
+      final direct = item['file_id']?.toString();
+      final url = item['url']?.toString();
+      final extra = item['extra'];
+      final extraId =
+          (extra is Map) ? extra['file_id']?.toString() : null;
+      if ((direct != null && direct.isNotEmpty) ||
+          (extraId != null && extraId.isNotEmpty) ||
+          (url != null && url.isNotEmpty)) {
+        legacyHasFileId = true;
+        break;
+      }
+    }
+    final attSource = (legacyHasFileId && legacyAtts.isNotEmpty)
+        ? legacyAtts
+        : (attRows.isNotEmpty ? attRows : legacyAtts);
     if (attSource.isNotEmpty) {
       copy['attachments'] = await _normalizeAttachmentsToHttp(attSource);
     }
@@ -696,7 +717,10 @@ class ChatService {
       return _storage.publicFileUrl(fileId);
     }
 
-    return _storage.publicFileUrl(path);
+    if (_looksLikeUuid(path)) {
+      return _storage.publicFileUrl(path);
+    }
+    return '';
   }
 
   String _safeFileName(String name) {
@@ -722,6 +746,9 @@ class ChatService {
     if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
     if (lower.endsWith('.gif')) return 'image/gif';
     if (lower.endsWith('.webp')) return 'image/webp';
+    if (lower.endsWith('.heic') || lower.endsWith('.heif')) {
+      return 'image/heic';
+    }
     if (lower.endsWith('.pdf')) return 'application/pdf';
     if (lower.endsWith('.doc')) return 'application/msword';
     if (lower.endsWith('.docx')) {
@@ -740,6 +767,38 @@ class ChatService {
     return 'application/octet-stream';
   }
 
+  Future<File> _ensureSupportedImageFile(File file) async {
+    final ext = p.extension(file.path).toLowerCase();
+    if (ext != '.heic' && ext != '.heif') return file;
+    try {
+      final dir = await getTemporaryDirectory();
+      final target = p.join(
+        dir.path,
+        'chat_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      );
+      final converted = await FlutterImageCompress.compressAndGetFile(
+        file.path,
+        target,
+        format: CompressFormat.jpeg,
+        quality: 85,
+      );
+      if (converted == null) {
+        throw 'صيغة HEIC غير مدعومة. رجاءً اختر صورة بصيغة JPG.';
+      }
+      return File(converted.path);
+    } catch (_) {
+      throw 'صيغة HEIC غير مدعومة. رجاءً اختر صورة بصيغة JPG.';
+    }
+  }
+
+  Future<List<File>> prepareImageFiles(List<File> files) async {
+    final prepared = <File>[];
+    for (final file in files) {
+      prepared.add(await _ensureSupportedImageFile(file));
+    }
+    return prepared;
+  }
+
   Future<List<Map<String, dynamic>>> _normalizeAttachmentsToHttp(
     List<dynamic> rawList,
   ) async {
@@ -747,13 +806,44 @@ class ChatService {
     for (final e in rawList.whereType<Map<String, dynamic>>()) {
       final bucket = e['bucket']?.toString();
       final path = e['path']?.toString();
-      final url = (bucket != null && path != null)
-          ? await _signedOrPublicUrl(bucket, path)
-          : (e['url']?.toString() ?? '');
+      String? fileId = e['file_id']?.toString();
+      final extra = e['extra'];
+      if ((fileId == null || fileId.isEmpty) && extra is Map) {
+        final v = extra['file_id']?.toString();
+        if (v != null && v.isNotEmpty) {
+          fileId = v;
+        }
+      }
+      String url = '';
+      if (fileId != null && fileId.isNotEmpty && _looksLikeUuid(fileId)) {
+        final signed = await _storage.createSignedUrl(
+          fileId,
+          expiresInSeconds: AppConstants.storageSignedUrlTTLSeconds,
+        );
+        url = (signed != null && signed.isNotEmpty)
+            ? signed
+            : _storage.publicFileUrl(fileId);
+      } else if (bucket != null && path != null) {
+        url = await _signedOrPublicUrl(bucket, path);
+      } else {
+        url = (e['url']?.toString() ?? '');
+      }
+      if (url.isEmpty && bucket != null && path != null) {
+        url = 'storage://$bucket/$path';
+      }
       final mime = (e['mime_type'] ?? e['mimeType'])?.toString() ?? '';
       final inferredType = mime.toLowerCase().startsWith('image/')
-          ? ChatAttachmentType.image.dbValue
-          : ChatAttachmentType.file.dbValue;
+          ? _attachmentDbValue(ChatAttachmentType.image)
+          : _attachmentDbValue(ChatAttachmentType.file);
+      Map<String, dynamic>? normalizedExtra;
+      if (extra is Map) {
+        normalizedExtra = Map<String, dynamic>.from(extra);
+      }
+      if (fileId != null && fileId.isNotEmpty) {
+        normalizedExtra ??= <String, dynamic>{};
+        normalizedExtra['file_id'] ??= fileId;
+      }
+
       result.add({
         'id': e['id']?.toString(),
         'type': e['type']?.toString() ?? inferredType,
@@ -765,7 +855,7 @@ class ChatService {
         'width': e['width'],
         'height': e['height'],
         'created_at': e['created_at'] ?? e['createdAt'],
-        'extra': e['extra'],
+        'extra': normalizedExtra,
       });
     }
     return result;
@@ -1547,7 +1637,7 @@ class ChatService {
     final data = await _runMessageQuery((fields) => '''
       query FetchMessages(\$cid: uuid!, \$limit: Int!) {
         $_tblMsgs(
-          where: {conversation_id: {_eq: \$cid}, deleted: {_neq: true}},
+          where: {conversation_id: {_eq: \$cid}},
           order_by: {created_at: asc},
           limit: \$limit
         ) {
@@ -1574,7 +1664,6 @@ class ChatService {
         $_tblMsgs(
           where: {
             conversation_id: {_eq: \$cid},
-            deleted: {_neq: true},
             created_at: {_lt: \$before}
           },
           order_by: {created_at: asc},
@@ -1822,7 +1911,7 @@ class ChatService {
       final query = '''
         subscription RoomMessages(\$cid: uuid!) {
           $_tblMsgs(
-            where: {conversation_id: {_eq: \$cid}, deleted: {_neq: true}},
+            where: {conversation_id: {_eq: \$cid}},
             order_by: {created_at: asc}
           ) {
             ${_messageSelectFields()}
@@ -1994,7 +2083,7 @@ class ChatService {
     final mime = _guessMime(name);
     final storageName = 'attachments/$conversationId/$messageId/$name';
 
-    await _uploadToStorage(
+    final fileId = await _uploadToStorage(
       name: storageName,
       file: file,
       mimeType: mime,
@@ -2033,9 +2122,19 @@ class ChatService {
     try {
       final data = await _runMutation(mutation, {'object': payload});
       final row = _rowFromData(data, 'insert_${_tblAtts}_one');
-      return row ?? payload;
+      final merged = row ?? Map<String, dynamic>.from(payload);
+      merged['file_id'] = fileId;
+      merged['extra'] = {
+        'file_id': fileId,
+      };
+      return merged;
     } catch (_) {
-      return payload;
+      final fallback = Map<String, dynamic>.from(payload);
+      fallback['file_id'] = fileId;
+      fallback['extra'] = {
+        'file_id': fileId,
+      };
+      return fallback;
     }
   }
 
@@ -2048,7 +2147,7 @@ class ChatService {
     final name = _friendlyFileName(file);
     final mime = _guessMime(name);
     final storageName = 'attachments/$conversationId/$messageId/$name';
-    await _uploadToStorage(
+    final fileId = await _uploadToStorage(
       name: storageName,
       file: file,
       mimeType: mime,
@@ -2058,18 +2157,26 @@ class ChatService {
       },
     );
 
-    final url = await _signedOrPublicUrl(attachmentsBucket, storageName);
+    final signed = await _storage.createSignedUrl(
+      fileId,
+      expiresInSeconds: AppConstants.storageSignedUrlTTLSeconds,
+    );
+    final url = (signed != null && signed.isNotEmpty)
+        ? signed
+        : _storage.publicFileUrl(fileId);
     final stat = await file.stat();
 
     return {
-      'type': attachmentType.dbValue,
+      'type': _attachmentDbValue(attachmentType),
       'url': url,
       'bucket': attachmentsBucket,
       'path': storageName,
       'mime_type': mime,
       'size_bytes': stat.size,
       'created_at': DateTime.now().toUtc().toIso8601String(),
-      'extra': const <String, dynamic>{},
+      'extra': <String, dynamic>{
+        'file_id': fileId,
+      },
     };
   }
 
@@ -2116,11 +2223,15 @@ class ChatService {
     }
 
     if (files.isNotEmpty) {
+      final preparedFiles = <File>[];
+      for (final file in files) {
+        preparedFiles.add(await _ensureSupportedImageFile(file));
+      }
       double totalBytes = 0;
       const maxTotal = AppConstants.chatMaxAttachmentBytes;
       const maxSingle = AppConstants.chatMaxSingleAttachmentBytes;
       final oversized = <String>[];
-      for (final file in files) {
+      for (final file in preparedFiles) {
         final friendlyName = _friendlyFileName(file);
         try {
           final size = await file.length();
@@ -2216,7 +2327,7 @@ class ChatService {
       final uploadedRows = <Map<String, dynamic>>[];
       bool usedAttachmentsTable = true;
       try {
-        for (final f in files) {
+        for (final f in preparedFiles) {
           final att = await _uploadOneAttachmentRow(
             conversationId: conversationId,
             messageId: msg.id,
@@ -2230,13 +2341,29 @@ class ChatService {
       }
 
       if (usedAttachmentsTable) {
+        try {
+          const updateMutation = '''
+            mutation UpdateMessageAttachments(\$id: uuid!, \$attachments: jsonb!) {
+              update_${_tblMsgs}_by_pk(
+                pk_columns: {id: \$id},
+                _set: {attachments: \$attachments}
+              ) {
+                id
+              }
+            }
+          ''';
+          await _runMutation(updateMutation, {
+            'id': msg.id,
+            'attachments': uploadedRows,
+          });
+        } catch (_) {}
         final normalized = await _normalizeAttachmentsToHttp(uploadedRows);
         msg = msg.copyWith(
           attachments: normalized.map(ChatAttachment.fromMap).toList(),
         );
       } else {
         final inline = <Map<String, dynamic>>[];
-        for (final f in files) {
+        for (final f in preparedFiles) {
           inline.add(
             await _makeInlineAttachmentJson(
               conversationId: conversationId,
@@ -2435,6 +2562,22 @@ class ChatService {
       }
 
       if (usedAttachmentsTable) {
+        try {
+          const updateMutation = '''
+            mutation UpdateMessageAttachments(\$id: uuid!, \$attachments: jsonb!) {
+              update_${_tblMsgs}_by_pk(
+                pk_columns: {id: \$id},
+                _set: {attachments: \$attachments}
+              ) {
+                id
+              }
+            }
+          ''';
+          await _runMutation(updateMutation, {
+            'id': msg.id,
+            'attachments': uploadedRows,
+          });
+        } catch (_) {}
         final normalized = await _normalizeAttachmentsToHttp(uploadedRows);
         msg = msg.copyWith(
           attachments: normalized.map(ChatAttachment.fromMap).toList(),

@@ -1,0 +1,34 @@
+table:
+  name: v_my_account_plan
+  schema: public
+select_permissions:
+  - role: employee
+    permission:
+      columns:
+        - plan_code
+        - plan_end_at
+      filter: {}
+  - role: me
+    permission:
+      columns:
+        - plan_code
+        - plan_end_at
+      filter: {}
+  - role: owner
+    permission:
+      columns:
+        - plan_code
+        - plan_end_at
+      filter: {}
+  - role: superadmin
+    permission:
+      columns:
+        - plan_code
+        - plan_end_at
+      filter: {}
+  - role: user
+    permission:
+      columns:
+        - plan_code
+        - plan_end_at
+      filter: {}

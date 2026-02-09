@@ -1,0 +1,9 @@
+function:
+  name: admin_reply_complaint
+  schema: public
+configuration:
+  custom_name: admin_reply_complaint
+  custom_root_fields: {}
+  exposed_as: mutation
+permissions:
+  - role: superadmin

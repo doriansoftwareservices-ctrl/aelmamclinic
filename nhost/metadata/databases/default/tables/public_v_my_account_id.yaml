@@ -1,0 +1,19 @@
+table:
+  name: v_my_account_id
+  schema: public
+select_permissions:
+  - role: me
+    permission:
+      columns:
+        - account_id
+      filter: {}
+  - role: superadmin
+    permission:
+      columns:
+        - account_id
+      filter: {}
+  - role: user
+    permission:
+      columns:
+        - account_id
+      filter: {}

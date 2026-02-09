@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:aelmamclinic/providers/activation_provider.dart';
+import 'package:aelmamclinic/core/constants.dart';
 
 class ActivationListener extends StatefulWidget {
   final Widget child;
@@ -65,6 +66,9 @@ class _ActivationListenerState extends State<ActivationListener>
   Widget build(BuildContext context) {
     return Consumer<ActivationProvider>(
       builder: (context, activation, _) {
+        if (!AppConstants.activationGateEnabled) {
+          return widget.child;
+        }
         if (!activation.isActivated) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;

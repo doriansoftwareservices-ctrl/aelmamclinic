@@ -18,8 +18,10 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show Platform;
 
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter/services.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
@@ -123,6 +125,12 @@ class NotificationsHelper {
 
   /// الاسم الجديد: إظهار إشعار فوري لصنف منخفض المخزون
   Future<void> showLowStock(Item item) async {
+    if (!(Platform.isAndroid || Platform.isIOS || Platform.isMacOS)) {
+      try {
+        SystemSound.play(SystemSoundType.alert);
+      } catch (_) {}
+      return;
+    }
     await init(); // تأكّد من التهيئة/الأذونات
 
     final (id, name, stock) = _extractItemInfo(item);
@@ -142,7 +150,11 @@ class NotificationsHelper {
       ),
     );
 
-    const darwinDetails = DarwinNotificationDetails();
+    const darwinDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+    );
 
     final payload = jsonEncode({
       'type': 'low_stock',

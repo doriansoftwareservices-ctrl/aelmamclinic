@@ -1,0 +1,16 @@
+table:
+  name: clinics
+  schema: public
+select_permissions:
+  - role: me
+    permission:
+      columns: '*'
+      filter: {}
+  - role: superadmin
+    permission:
+      columns: '*'
+      filter: {}
+  - role: user
+    permission:
+      columns: '*'
+      filter: {}

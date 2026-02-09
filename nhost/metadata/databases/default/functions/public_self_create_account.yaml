@@ -1,0 +1,11 @@
+function:
+  name: self_create_account
+  schema: public
+configuration:
+  custom_name: self_create_account
+  custom_root_fields: {}
+  exposed_as: mutation
+permissions:
+  - role: me
+  - role: user
+  - role: superadmin

@@ -1,0 +1,13 @@
+table:
+  name: v_auth_context
+  schema: public
+select_permissions:
+  - role: superadmin
+    permission:
+      columns:
+        - hasura_user
+        - jwt_claims
+        - jwt_claim_sub
+        - jwt_claim_role
+        - request_uid
+      filter: {}

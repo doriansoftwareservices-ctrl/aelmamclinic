@@ -126,6 +126,36 @@ class ChatRealtimeNotifier {
     return !curr;
   }
 
+  String _activeKey(String uid) => 'chp:$uid:active';
+  String _lastReadKey(String uid, String cid) => 'chp:$uid:$cid:last_read_at';
+
+  Future<void> setActiveConversation(String? conversationId) async {
+    final uid = _myUid;
+    if (uid == null) return;
+    _sp ??= await SharedPreferences.getInstance();
+    if (conversationId == null || conversationId.trim().isEmpty) {
+      await _sp!.remove(_activeKey(uid));
+      return;
+    }
+    await _sp!.setString(_activeKey(uid), conversationId);
+  }
+
+  Future<void> setLastRead(String conversationId, DateTime at) async {
+    final uid = _myUid;
+    if (uid == null || conversationId.trim().isEmpty) return;
+    _sp ??= await SharedPreferences.getInstance();
+    await _sp!.setString(
+      _lastReadKey(uid, conversationId),
+      at.toUtc().toIso8601String(),
+    );
+  }
+
+  DateTime? _readLastRead(String uid, String cid) {
+    final raw = _sp?.getString(_lastReadKey(uid, cid));
+    if (raw == null || raw.isEmpty) return null;
+    return DateTime.tryParse(raw)?.toUtc();
+  }
+
   Future<void> _loadConversationIds() async {
     final uid = _myUid;
     if (uid == null || uid.isEmpty) {
@@ -256,6 +286,18 @@ class ChatRealtimeNotifier {
       final sender = (row['sender_uid'] ?? '').toString();
       if (sender == uid) return;
     }
+
+    final active = _sp?.getString(_activeKey(uid ?? '')) ?? '';
+    if (active.isNotEmpty && active == cid) return;
+
+    final createdAt = DateTime.tryParse(
+          (row['created_at'] ?? '').toString(),
+        )?.toUtc() ??
+        DateTime.now().toUtc();
+    final lastRead = (uid == null || uid.isEmpty)
+        ? null
+        : _readLastRead(uid, cid);
+    if (lastRead != null && !createdAt.isAfter(lastRead)) return;
 
     final id = (row['id'] ?? '').toString();
     if (id.isEmpty || _seenMsgIds.contains(id)) return;

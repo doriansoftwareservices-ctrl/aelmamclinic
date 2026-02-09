@@ -1,0 +1,9 @@
+function:
+  name: admin_set_account_plan
+  schema: public
+configuration:
+  custom_name: admin_set_account_plan
+  custom_root_fields: {}
+  exposed_as: mutation
+permissions:
+  - role: superadmin

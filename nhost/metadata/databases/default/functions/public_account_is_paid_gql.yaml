@@ -1,0 +1,9 @@
+function:
+  name: account_is_paid_gql
+  schema: public
+configuration:
+  custom_name: account_is_paid_gql
+  custom_root_fields: {}
+  exposed_as: query
+permissions:
+  - role: superadmin
