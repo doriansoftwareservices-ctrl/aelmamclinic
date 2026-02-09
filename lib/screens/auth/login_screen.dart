@@ -304,7 +304,7 @@ class _LoginScreenState extends State<LoginScreen> {
       }
       await _persistRememberedCredentials(email: email, password: pass);
 
-      final result = await auth.refreshAndValidateCurrentUser();
+      var result = await auth.refreshAndValidateCurrentUser();
       if (!mounted) return;
 
       if (result.status == AuthSessionStatus.noAccount) {
@@ -338,6 +338,7 @@ class _LoginScreenState extends State<LoginScreen> {
           }
           return;
         }
+        result = recheck;
       }
 
       if (!result.isSuccess) {
