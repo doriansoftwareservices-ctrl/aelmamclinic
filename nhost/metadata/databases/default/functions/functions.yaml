@@ -38,8 +38,6 @@
 - "!include public_chat_start_dm.yaml"
 - "!include public_chat_support_agent_gql.yaml"
 - "!include public_create_subscription_request.yaml"
-- "!include public_debug_auth_context.yaml"
-- "!include public_debug_superadmin_session.yaml"
 - "!include public_delete_employee.yaml"
 - "!include public_expire_account_subscriptions.yaml"
 - "!include public_fn_is_super_admin_gql.yaml"

@@ -1,8 +1,0 @@
-table:
-  name: v_debug_auth_context
-  schema: public
-select_permissions:
-  - role: superadmin
-    permission:
-      columns: '*'
-      filter: {}
