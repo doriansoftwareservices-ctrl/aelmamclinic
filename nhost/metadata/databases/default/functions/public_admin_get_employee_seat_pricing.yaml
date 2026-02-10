@@ -1,0 +1,9 @@
+function:
+  name: admin_get_employee_seat_pricing
+  schema: public
+configuration:
+  custom_name: admin_get_employee_seat_pricing
+  custom_root_fields: {}
+  exposed_as: query
+permissions:
+  - role: superadmin

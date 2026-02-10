@@ -209,6 +209,65 @@ class EmployeeSeatService {
     }
   }
 
+  Future<double?> fetchDefaultSeatPrice() async {
+    const query = r'''
+      query SeatPricing {
+        admin_get_employee_seat_pricing {
+          seat_kind
+          price_usd
+        }
+      }
+    ''';
+    final res = await _gql.query(
+      QueryOptions(
+        document: gql(query),
+        fetchPolicy: FetchPolicy.noCache,
+      ),
+    );
+    if (res.hasException) {
+      throw res.exception!;
+    }
+    final rows = (res.data?['admin_get_employee_seat_pricing'] as List?) ??
+        const [];
+    if (rows.isEmpty) return null;
+    final row = Map<String, dynamic>.from(rows.first as Map);
+    final price = row['price_usd'];
+    if (price == null) return null;
+    return double.tryParse(price.toString());
+  }
+
+  Future<void> setDefaultSeatPrice({
+    required double priceUsd,
+  }) async {
+    const mutation = r'''
+      mutation SetSeatPrice($price: numeric!) {
+        admin_set_employee_seat_price(
+          args: {p_seat_kind: "extra", p_price: $price}
+        ) {
+          ok
+          error
+        }
+      }
+    ''';
+    final res = await _gql.mutate(
+      MutationOptions(
+        document: gql(mutation),
+        variables: {'price': priceUsd},
+        fetchPolicy: FetchPolicy.noCache,
+      ),
+    );
+    if (res.hasException) {
+      throw res.exception!;
+    }
+    final rows =
+        (res.data?['admin_set_employee_seat_price'] as List?) ?? const [];
+    final row = rows.isNotEmpty ? rows.first : null;
+    if (row == null || row['ok'] != true) {
+      final msg = row?['error']?.toString() ?? 'set_price_failed';
+      throw HttpException(msg);
+    }
+  }
+
   Future<void> submitSeatPayment({
     required String requestId,
     required String paymentMethodId,

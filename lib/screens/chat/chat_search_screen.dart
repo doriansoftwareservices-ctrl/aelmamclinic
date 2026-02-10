@@ -49,6 +49,7 @@ class ChatSearchScreen extends StatefulWidget {
 }
 
 class _ChatSearchScreenState extends State<ChatSearchScreen> {
+  static const bool _imagesFilterEnabled = false;
   final _controller = TextEditingController();
   final _scroll = ScrollController();
 
@@ -120,6 +121,9 @@ class _ChatSearchScreenState extends State<ChatSearchScreen> {
           case _KindFilter.texts:
             return m.kind == ChatMessageKind.text;
           case _KindFilter.images:
+            if (!_imagesFilterEnabled) {
+              return true;
+            }
             return m.kind == ChatMessageKind.image;
           case _KindFilter.all:
             return true;
@@ -258,8 +262,11 @@ class _ChatSearchScreenState extends State<ChatSearchScreen> {
         body: Column(
           children: [
             _FiltersRow(
-              kind: _kind,
+              kind: _imagesFilterEnabled && _kind == _KindFilter.images
+                  ? _KindFilter.images
+                  : _KindFilter.all,
               onlyMine: _onlyMine,
+              showImages: _imagesFilterEnabled,
               onKindChanged: (k) {
                 setState(() => _kind = k);
                 _onQueryChanged(_controller.text);
@@ -456,12 +463,14 @@ enum _KindFilter { all, texts, images }
 class _FiltersRow extends StatelessWidget {
   final _KindFilter kind;
   final bool onlyMine;
+  final bool showImages;
   final ValueChanged<_KindFilter> onKindChanged;
   final ValueChanged<bool> onOnlyMineChanged;
 
   const _FiltersRow({
     required this.kind,
     required this.onlyMine,
+    required this.showImages,
     required this.onKindChanged,
     required this.onOnlyMineChanged,
   });
@@ -488,12 +497,13 @@ class _FiltersRow extends StatelessWidget {
               icon: Icons.text_snippet_rounded,
               onTap: () => onKindChanged(_KindFilter.texts),
             ),
-            _Choice(
-              selected: kind == _KindFilter.images,
-              label: 'صور',
-              icon: Icons.image_rounded,
-              onTap: () => onKindChanged(_KindFilter.images),
-            ),
+            if (showImages)
+              _Choice(
+                selected: kind == _KindFilter.images,
+                label: 'صور',
+                icon: Icons.image_rounded,
+                onTap: () => onKindChanged(_KindFilter.images),
+              ),
             const SizedBox(width: 8),
             FilterChip(
               selected: onlyMine,

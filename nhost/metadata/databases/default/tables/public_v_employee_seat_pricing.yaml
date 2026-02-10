@@ -1,0 +1,12 @@
+table:
+  name: v_employee_seat_pricing
+  schema: public
+select_permissions:
+  - role: superadmin
+    permission:
+      columns:
+        - seat_kind
+        - price_usd
+        - updated_at
+        - updated_by
+      filter: {}

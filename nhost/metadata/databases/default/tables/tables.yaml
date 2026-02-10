@@ -71,6 +71,7 @@
 - "!include public_v_admin_list_clinics.yaml"
 - "!include public_v_bool_result.yaml"
 - "!include public_v_chat_conversations_for_me.yaml"
+- "!include public_v_employee_seat_pricing.yaml"
 - "!include public_v_chat_group_invitations_for_me.yaml"
 - "!include public_v_chat_last_message.yaml"
 - "!include public_v_chat_messages_with_attachments.yaml"

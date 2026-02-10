@@ -20,6 +20,8 @@
 - "!include public_admin_payment_stats_by_plan.yaml"
 - "!include public_admin_reject_subscription_request.yaml"
 - "!include public_admin_reply_complaint.yaml"
+- "!include public_admin_get_employee_seat_pricing.yaml"
+- "!include public_admin_set_employee_seat_price.yaml"
 - "!include public_admin_set_account_plan.yaml"
 - "!include public_admin_set_clinic_frozen.yaml"
 - "!include public_admin_set_super_admin_disabled.yaml"

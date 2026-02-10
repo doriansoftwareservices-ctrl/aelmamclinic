@@ -1,0 +1,9 @@
+function:
+  name: admin_set_employee_seat_price
+  schema: public
+configuration:
+  custom_name: admin_set_employee_seat_price
+  custom_root_fields: {}
+  exposed_as: mutation
+permissions:
+  - role: superadmin

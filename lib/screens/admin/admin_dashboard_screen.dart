@@ -111,6 +111,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
 
   List<EmployeeSeatRequest> _seatRequests = [];
   bool _loadingSeatRequests = false;
+  bool _loadingSeatPrice = false;
+  double? _seatDefaultPrice;
   int _lastSeatPending = 0;
 
   List<PaymentMethod> _paymentMethods = [];
@@ -787,6 +789,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     try {
       setState(() => _loadingSeatRequests = true);
       final rows = await _seatService.fetchPendingSeatRequests();
+      await _fetchSeatPrice();
       if (!mounted) return;
       final pending = rows.length;
       setState(() {
@@ -801,6 +804,22 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       if (!mounted) return;
       setState(() => _loadingSeatRequests = false);
       _snack('تعذّر تحميل طلبات الموظفين: $e');
+    }
+  }
+
+  Future<void> _fetchSeatPrice() async {
+    try {
+      setState(() => _loadingSeatPrice = true);
+      final price = await _seatService.fetchDefaultSeatPrice();
+      if (!mounted) return;
+      setState(() {
+        _seatDefaultPrice = price;
+        _loadingSeatPrice = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loadingSeatPrice = false);
+      _snack('تعذّر تحميل سعر المقعد الافتراضي: $e');
     }
   }
 
@@ -1880,11 +1899,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     if (_loadingSeatRequests) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (_seatRequests.isEmpty) {
-      return const Center(child: Text('لا توجد طلبات موظفين إضافيين حاليًا'));
-    }
-    return ListView(
-      children: _seatRequests.map((req) {
+    final children = <Widget>[
+      _buildSeatDefaultPriceCard(),
+      if (_seatRequests.isEmpty)
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 16),
+          child: Center(child: Text('لا توجد طلبات موظفين إضافيين حاليًا')),
+        ),
+      ..._seatRequests.map((req) {
         final status = req.status;
         final note = req.adminNote?.trim() ?? '';
         final priceLabel =
@@ -1974,6 +1996,34 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
           ),
         );
       }).toList(),
+    ];
+    return ListView(children: children);
+  }
+
+  Widget _buildSeatDefaultPriceCard() {
+    final price = _seatDefaultPrice;
+    final label =
+        price == null ? 'غير متاح' : '\$${price.toStringAsFixed(0)}';
+    return NeuCard(
+      margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+      padding: const EdgeInsets.all(12),
+      child: ListTile(
+        title: const Text('سعر المقعد الإضافي الافتراضي'),
+        subtitle:
+            _loadingSeatPrice ? const Text('جاري التحميل...') : Text(label),
+        trailing: NeuButton.primary(
+          label: 'تعديل السعر',
+          onPressed: _loadingSeatPrice
+              ? null
+              : () async {
+                  final current = price ?? 0;
+                  final next = await _askSeatPrice(current);
+                  if (next == null) return;
+                  await _seatService.setDefaultSeatPrice(priceUsd: next);
+                  await _fetchSeatPrice();
+                },
+        ),
+      ),
     );
   }
 
