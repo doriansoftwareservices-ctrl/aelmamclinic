@@ -1,0 +1,9 @@
+function:
+  name: debug_hasura_ctx
+  schema: public
+configuration:
+  custom_name: debug_hasura_ctx
+  custom_root_fields: {}
+  exposed_as: query
+permissions:
+  - role: superadmin

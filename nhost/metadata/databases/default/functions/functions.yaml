@@ -27,6 +27,7 @@
 - "!include public_admin_set_super_admin_disabled.yaml"
 - "!include public_admin_set_super_admin_tabs.yaml"
 - "!include public_admin_sync_super_admin_emails_gql.yaml"
+- "!include public_debug_hasura_ctx.yaml"
 - "!include public_chat_admin_start_dm.yaml"
 - "!include public_chat_mark_delivered.yaml"
 - "!include public_chat_set_support_agent_gql.yaml"
