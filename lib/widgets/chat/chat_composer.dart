@@ -24,6 +24,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import 'package:aelmamclinic/core/constants.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/providers/chat_provider.dart';
@@ -138,7 +139,9 @@ class _ChatComposerState extends State<ChatComposer> {
   }
 
   Future<void> _pickImages() async {
-    if (!widget.enableImages || widget.pickImages == null) {
+    if (!AppConstants.chatAllowAttachments ||
+        !widget.enableImages ||
+        widget.pickImages == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('اختيار الصور غير مُفعَّل في هذه الشاشة')),
       );
@@ -162,7 +165,8 @@ class _ChatComposerState extends State<ChatComposer> {
 
     final text = _ctrl.text.trim();
     final hasText = text.isNotEmpty;
-    final hasImages = _images.isNotEmpty;
+    final hasImages =
+        AppConstants.chatAllowAttachments && _images.isNotEmpty;
 
     if (!hasText && !hasImages) return;
 
@@ -180,7 +184,7 @@ class _ChatComposerState extends State<ChatComposer> {
         _ctrl.clear();
       }
 
-      // 2) صور
+      // 2) صور (معطلة في الخطة المجانية)
       if (hasImages) {
         // علّمها "uploading"
         setState(() {
@@ -226,7 +230,9 @@ class _ChatComposerState extends State<ChatComposer> {
     final text = _ctrl.text;
     final currentDir = bidi.textDirectionFor(text);
 
-    final canSendNow = _ctrl.text.trim().isNotEmpty || _images.isNotEmpty;
+    final allowAttachments = AppConstants.chatAllowAttachments;
+    final canSendNow =
+        _ctrl.text.trim().isNotEmpty || (allowAttachments && _images.isNotEmpty);
     final showSend = _sending ? true : canSendNow;
 
     return Directionality(
@@ -297,7 +303,7 @@ class _ChatComposerState extends State<ChatComposer> {
                     ),
 
                   // Selected attachments preview
-                  if (_images.isNotEmpty)
+                  if (allowAttachments && _images.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 8)
                           .copyWith(top: 8),
@@ -335,14 +341,15 @@ class _ChatComposerState extends State<ChatComposer> {
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           // Attach
-                          IconButton(
-                            tooltip: 'إرفاق صورة',
-                            onPressed: (_sending || !widget.enableImages)
-                                ? null
-                                : _pickImages,
-                            icon: const Icon(Icons.photo_library_rounded),
-                            color: scheme.onSurface.withValues(alpha: .85),
-                          ),
+                          if (allowAttachments)
+                            IconButton(
+                              tooltip: 'إرفاق صورة',
+                              onPressed: (_sending || !widget.enableImages)
+                                  ? null
+                                  : _pickImages,
+                              icon: const Icon(Icons.photo_library_rounded),
+                              color: scheme.onSurface.withValues(alpha: .85),
+                            ),
 
                           // TextField (مرن)
                           Expanded(

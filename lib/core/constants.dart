@@ -122,6 +122,8 @@ class AppConstants {
   static const bool activationGateEnabled = false;
 
   // -------------------- دردشة/تخزين --------------------
+  static const bool chatAllowAttachments = false;
+  static const bool chatAllowGroups = false;
   static const String chatBucketName = 'chat-attachments';
   static const int storageSignedUrlTTLSeconds = 60 * 60; // 1 ساعة
   static const int chatPageSize = 30;

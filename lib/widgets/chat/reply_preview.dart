@@ -25,6 +25,7 @@ import 'package:aelmamclinic/core/nhost_manager.dart';
 import 'package:aelmamclinic/services/nhost_storage_service.dart';
 
 import 'package:aelmamclinic/models/chat_models.dart';
+import 'package:aelmamclinic/core/constants.dart';
 import 'package:aelmamclinic/utils/text_direction.dart' as bidi;
 
 class ReplyPreview extends StatelessWidget {
@@ -210,6 +211,16 @@ class ReplyPreview extends StatelessWidget {
     if (m.deleted) {
       return _SnippetMeta(
         snippet: 'تم حذف هذه الرسالة',
+        kind: ChatMessageKind.text,
+        thumbUrl: null,
+      );
+    }
+
+    if (!AppConstants.chatAllowAttachments &&
+        (m.kind == ChatMessageKind.image || m.kind == ChatMessageKind.file)) {
+      final t = _primaryText(m);
+      return _SnippetMeta(
+        snippet: t.isNotEmpty ? t : 'مرفق غير متاح',
         kind: ChatMessageKind.text,
         thumbUrl: null,
       );

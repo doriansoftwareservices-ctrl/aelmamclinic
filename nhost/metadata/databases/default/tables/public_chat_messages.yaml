@@ -2,15 +2,6 @@ table:
   name: chat_messages
   schema: public
 array_relationships:
-  - name: chat_attachments
-    using:
-      manual_configuration:
-        column_mapping:
-          id: message_id
-        insertion_order: null
-        remote_table:
-          name: chat_attachments
-          schema: public
   - name: chat_delivery_receipts
     using:
       foreign_key_constraint_on:

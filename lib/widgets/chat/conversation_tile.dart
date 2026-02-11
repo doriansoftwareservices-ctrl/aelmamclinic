@@ -27,6 +27,7 @@
 import 'dart:ui' as ui show TextDirection;
 
 import 'package:flutter/material.dart';
+import 'package:aelmamclinic/core/constants.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/models/chat_models.dart';
@@ -269,6 +270,11 @@ class ConversationTile extends StatelessWidget {
     // لو لدينا رسالة أخيرة ممررة، استخدمها أولاً
     if (last != null) {
       if (last.deleted) return 'رسالة محذوفة';
+      if (!AppConstants.chatAllowAttachments &&
+          (last.kind == ChatMessageKind.image ||
+              last.kind == ChatMessageKind.file)) {
+        return 'رسالة';
+      }
       if (last.kind == ChatMessageKind.image) return '📷 صورة';
       if (last.kind == ChatMessageKind.file) return '📎 ملف';
       if (last.kind == ChatMessageKind.text) {

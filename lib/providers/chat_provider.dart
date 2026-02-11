@@ -1386,6 +1386,10 @@ class ChatProvider extends ChangeNotifier {
 
       try {
         if (kind == 'image' || kind == 'file') {
+          if (!AppConstants.chatAllowAttachments) {
+            await _local.deleteOutboxMessage(localId);
+            continue;
+          }
           final raw = item['attachments_json']?.toString();
           final List<String> paths = raw == null || raw.isEmpty
               ? const []
@@ -1563,6 +1567,9 @@ class ChatProvider extends ChangeNotifier {
     String? optionalText,
   }) async {
     if (_disposed) return;
+    if (!AppConstants.chatAllowAttachments) {
+      throw 'تم إيقاف إرسال المرفقات في هذا الإصدار.';
+    }
     if (files.isEmpty &&
         (optionalText == null || optionalText.trim().isEmpty)) {
       return;
@@ -1670,7 +1677,7 @@ class ChatProvider extends ChangeNotifier {
     required List<File> files,
     String? optionalText,
   }) async {
-    throw 'تم إيقاف إرسال الملفات. يمكنك إرسال الصور فقط.';
+    throw 'تم إيقاف إرسال المرفقات في هذا الإصدار.';
   }
 
   // --------------------------------------------------------------------------

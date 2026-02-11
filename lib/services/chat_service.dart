@@ -280,7 +280,7 @@ class ChatService {
   }
 
   bool _messageSchemaChecked = false;
-  bool _includeChatAttachments = true;
+  bool _includeChatAttachments = AppConstants.chatAllowAttachments;
   bool _includeDeliveryReceipts = true;
 
   String _messageSelectFields() {
@@ -335,6 +335,11 @@ class ChatService {
 
   Future<void> _ensureMessageSchemaSupport() async {
     if (_messageSchemaChecked) return;
+    if (!AppConstants.chatAllowAttachments) {
+      _includeChatAttachments = false;
+      _messageSchemaChecked = true;
+      return;
+    }
     _messageSchemaChecked = true;
     try {
       const query = '''
@@ -406,6 +411,11 @@ class ChatService {
 
   Future<ChatMessage> _messageFromRow(Map<String, dynamic> row) async {
     final copy = Map<String, dynamic>.from(row);
+    if (!AppConstants.chatAllowAttachments) {
+      copy.remove('attachments');
+      copy.remove('chat_attachments');
+      return ChatMessage.fromMap(copy, currentUid: currentUserId);
+    }
     final attRows = (copy['chat_attachments'] as List?) ?? const [];
     final legacyAtts = (copy['attachments'] as List?) ?? const [];
     bool legacyHasFileId = false;
@@ -1167,10 +1177,19 @@ class ChatService {
     });
   }
 
+  void _ensureGroupsEnabled() {
+    if (!AppConstants.chatAllowGroups) {
+      throw ChatInvitationException(
+        'تم إيقاف المحادثات الجماعية في هذا الإصدار.',
+      );
+    }
+  }
+
   Future<ChatConversation> createGroup({
     required String title,
     required List<String> memberEmails,
   }) async {
+    _ensureGroupsEnabled();
     final uid = currentUserId;
     if (uid == null) throw 'لا يوجد مستخدم مسجّل الدخول.';
     if (title.trim().isEmpty) throw 'اكتب اسم المجموعة.';
@@ -1343,6 +1362,7 @@ class ChatService {
     required String conversationId,
     required String title,
   }) async {
+    _ensureGroupsEnabled();
     final mutation = '''
       mutation GroupSetTitle(\$cid: uuid!, \$title: String!) {
         chat_group_set_title(args: {p_conversation_id: \$cid, p_title: \$title}) {
@@ -1363,6 +1383,7 @@ class ChatService {
     required bool isFrozen,
     required bool adminsOnly,
   }) async {
+    _ensureGroupsEnabled();
     final mutation = '''
       mutation GroupSetFrozen(\$cid: uuid!, \$frozen: Boolean!, \$adminsOnly: Boolean!) {
         chat_group_set_frozen(args: {
@@ -1388,6 +1409,7 @@ class ChatService {
     required String targetUid,
     required String role,
   }) async {
+    _ensureGroupsEnabled();
     final mutation = '''
       mutation GroupSetMemberRole(\$cid: uuid!, \$uid: uuid!, \$role: String!) {
         chat_group_set_member_role(args: {
@@ -1412,6 +1434,7 @@ class ChatService {
     required String conversationId,
     required String targetUid,
   }) async {
+    _ensureGroupsEnabled();
     final mutation = '''
       mutation GroupRemoveMember(\$cid: uuid!, \$uid: uuid!) {
         chat_group_remove_member(args: {
@@ -1431,6 +1454,7 @@ class ChatService {
   }
 
   Future<void> groupDelete(String conversationId) async {
+    _ensureGroupsEnabled();
     final mutation = '''
       mutation GroupDelete(\$cid: uuid!) {
         chat_group_delete(args: {p_conversation_id: \$cid}) {
@@ -1686,6 +1710,9 @@ class ChatService {
   Future<List<ChatGroupInvitation>> fetchMyGroupInvitations({
     bool pendingOnly = true,
   }) async {
+    if (!AppConstants.chatAllowGroups) {
+      return const <ChatGroupInvitation>[];
+    }
     try {
       final query = '''
         query MyInvitations {
@@ -1717,6 +1744,7 @@ class ChatService {
   }
 
   Future<void> acceptGroupInvitation(String invitationId) async {
+    _ensureGroupsEnabled();
     if (invitationId.isEmpty) return;
     try {
       final mutation = '''
@@ -1739,6 +1767,7 @@ class ChatService {
     String invitationId, {
     String? note,
   }) async {
+    _ensureGroupsEnabled();
     if (invitationId.isEmpty) return;
     try {
       final mutation = '''
@@ -2191,6 +2220,9 @@ class ChatService {
     String? replyToSnippet,
     List<String>? mentionsEmails,
   }) async {
+    if (!AppConstants.chatAllowAttachments) {
+      throw ChatAttachmentUploadException('المرفقات معطّلة في هذا الإصدار.');
+    }
     final uid = currentUserId;
     if (uid == null) throw 'لا يوجد مستخدم مسجّل الدخول.';
     if (files.isEmpty &&
@@ -2418,6 +2450,9 @@ class ChatService {
     String? replyToSnippet,
     List<String>? mentionsEmails,
   }) async {
+    if (!AppConstants.chatAllowAttachments) {
+      throw ChatAttachmentUploadException('المرفقات معطّلة في هذا الإصدار.');
+    }
     final uid = currentUserId;
     if (uid == null) throw 'لا يوجد مستخدم مسجّل الدخول.';
     if (files.isEmpty &&

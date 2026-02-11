@@ -205,6 +205,22 @@ class MessageBubble extends StatelessWidget {
     final replySnip = _replySnippetOf(message);
     final hasReply = replySnip.isNotEmpty;
 
+    if (!AppConstants.chatAllowAttachments &&
+        (message.kind == ChatMessageKind.image ||
+            message.kind == ChatMessageKind.file)) {
+      return _TextBody(
+        text: 'المرفقات معطّلة في هذا الإصدار.',
+        isMine: isMine,
+        edited: message.edited,
+        replySnippet: hasReply ? replySnip : null,
+        replyToMessageId: replyToMessageId,
+        replyThumbnailUrl: replyThumbnailUrl,
+        onRetry: onRetry == null ? null : () => onRetry!(message),
+        failed: uiStatus == _UiStatus.failed,
+        onTapReplyTarget: onTapReplyTarget,
+      );
+    }
+
     switch (message.kind) {
       case ChatMessageKind.image:
         final src = _firstImageSourceOf(message);
