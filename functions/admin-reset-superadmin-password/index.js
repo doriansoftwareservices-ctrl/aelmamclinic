@@ -22,15 +22,6 @@ const readBody = (req) =>
   });
 
 const ROOT_EMAIL = 'elmam.clinic.c.s@elmam.com';
-const ALLOWED_TABS = [
-  'clinics',
-  'chats',
-  'subscriptions',
-  'payments',
-  'complaints',
-  'stats',
-  'members',
-];
 
 const normalizeAuthUrl = (raw) => {
   if (!raw) return null;
@@ -116,41 +107,7 @@ async function runSql(sql, readOnly = false) {
   return res.json();
 }
 
-async function lookupAuthUserId(email) {
-  const sql = `select id from auth.users where lower(email)=lower('${email}') limit 1;`;
-  const json = await runSql(sql, true);
-  const row = Array.isArray(json?.result) ? json.result[1] : null;
-  return row ? row[0] : null;
-}
-
-async function signUpUser(email, password) {
-  const authUrl = resolveAuthUrl();
-  if (!authUrl) throw new Error('Missing NHOST_AUTH_URL');
-  const res = await fetch(`${authUrl}/signup/email-password`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
-  });
-  if (res.status === 409) return null;
-  if (!res.ok) {
-    const txt = await res.text();
-    if (txt.includes('already') || txt.includes('exists')) return null;
-    throw new Error(`Auth signup failed: ${res.status} ${txt}`);
-  }
-  const json = await res.json();
-  return json?.user?.id || json?.session?.user?.id || null;
-}
-
-async function ensureAuthUser(email, password) {
-  let userId = await signUpUser(email, password);
-  if (!userId) {
-    userId = await lookupAuthUserId(email);
-  }
-  if (!userId) {
-    throw new Error('Auth user not found after signup');
-  }
-  return userId;
-}
+const escapeLiteral = (value) => `${value}`.replace(/'/g, "''");
 
 const parseJwtSub = (authHeader) => {
   if (!authHeader) return '';
@@ -175,16 +132,6 @@ const parseJwtSub = (authHeader) => {
     return '';
   }
 };
-
-const sanitizeTabs = (tabs) => {
-  const list = Array.isArray(tabs) ? tabs : [];
-  const normalized = list
-    .map((t) => `${t ?? ''}`.trim().toLowerCase())
-    .filter((t) => ALLOWED_TABS.includes(t));
-  return normalized.length > 0 ? Array.from(new Set(normalized)) : ALLOWED_TABS;
-};
-
-const escapeLiteral = (value) => `${value}`.replace(/'/g, "''");
 
 const isUuid = (value) => /^[0-9a-f-]{36}$/i.test(`${value ?? ''}`);
 
@@ -214,14 +161,12 @@ async function isSuperAdminUser(userId, email) {
   return !!row;
 }
 
-async function ensureWhitelistEmail(email) {
+async function lookupAuthUserId(email) {
   const safeEmail = escapeLiteral(email);
-  const sql = `
-    insert into public.superadmin_whitelist(email)
-    values (lower('${safeEmail}'))
-    on conflict (email) do nothing;
-  `;
-  await runSql(sql, false);
+  const sql = `select id from auth.users where lower(email)=lower('${safeEmail}') limit 1;`;
+  const json = await runSql(sql, true);
+  const row = Array.isArray(json?.result) ? json.result[1] : null;
+  return row ? row[0] : null;
 }
 
 module.exports = async function handler(req, res) {
@@ -232,16 +177,19 @@ module.exports = async function handler(req, res) {
       res.status(401).json({ ok: false, error: 'Missing authorization' });
       return;
     }
+
     const callerUid = parseJwtSub(authHeader);
     if (!isUuid(callerUid)) {
       res.status(401).json({ ok: false, error: 'Invalid token' });
       return;
     }
+
     const callerEmail = await lookupAuthEmailById(callerUid);
     if (!callerEmail || callerEmail !== ROOT_EMAIL) {
       res.status(403).json({ ok: false, error: 'forbidden' });
       return;
     }
+
     const isSuper = await isSuperAdminUser(callerUid, callerEmail);
     if (!isSuper) {
       res.status(403).json({ ok: false, error: 'forbidden' });
@@ -249,49 +197,56 @@ module.exports = async function handler(req, res) {
     }
 
     const email = `${body.email ?? ''}`.trim().toLowerCase();
-    const password = `${body.password ?? ''}`;
-    if (!email || !password) {
+    const newPassword = `${body.new_password ?? ''}`.trim();
+    if (!email || !newPassword) {
       res.status(400).json({ ok: false, error: 'Missing fields' });
       return;
     }
+    if (newPassword.length < 9) {
+      res.status(400).json({ ok: false, error: 'Password too short' });
+      return;
+    }
 
-    const allowedTabs = sanitizeTabs(body.allowed_tabs);
-    const userId = await ensureAuthUser(email, password);
+    const targetId = await lookupAuthUserId(email);
+    if (!targetId) {
+      res.status(404).json({ ok: false, error: 'User not found' });
+      return;
+    }
 
-    await ensureWhitelistEmail(email);
-
-    const safeEmail = escapeLiteral(email);
+    const safePass = escapeLiteral(newPassword);
+    const safeId = escapeLiteral(targetId);
     const sql = `
-      BEGIN;
-      INSERT INTO auth.roles(role)
-      VALUES ('superadmin')
-      ON CONFLICT DO NOTHING;
+      DO $$
+      BEGIN
+        BEGIN
+          EXECUTE 'create extension if not exists pgcrypto';
+        EXCEPTION WHEN insufficient_privilege THEN
+          NULL;
+        END;
 
-      INSERT INTO auth.user_roles(user_id, role)
-      VALUES ('${userId}', 'superadmin')
-      ON CONFLICT DO NOTHING;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema='auth' AND table_name='users' AND column_name='password_hash'
+        ) THEN
+          RAISE EXCEPTION 'password_hash_missing';
+        END IF;
 
-      INSERT INTO public.super_admins(email, user_uid)
-      VALUES (lower('${safeEmail}'), '${userId}')
-      ON CONFLICT (email) DO UPDATE SET user_uid = excluded.user_uid;
+        UPDATE auth.users
+        SET password_hash = crypt('${safePass}', gen_salt('bf')),
+            updated_at = now()
+        WHERE id='${safeId}';
 
-      INSERT INTO public.super_admin_tab_permissions(user_uid, allowed_tabs)
-      VALUES ('${userId}', ARRAY[${allowedTabs
-        .map((t) => `'${t}'`)
-        .join(',')}]::text[])
-      ON CONFLICT (user_uid) DO UPDATE
-      SET allowed_tabs = excluded.allowed_tabs,
-          updated_at = now();
-      COMMIT;
+        IF to_regclass('auth.refresh_tokens') IS NOT NULL THEN
+          DELETE FROM auth.refresh_tokens WHERE user_id='${safeId}';
+        END IF;
+        IF to_regclass('auth.sessions') IS NOT NULL THEN
+          DELETE FROM auth.sessions WHERE user_id='${safeId}';
+        END IF;
+      END $$;
     `;
     await runSql(sql, false);
 
-    res.json({
-      ok: true,
-      user_uid: userId,
-      email,
-      allowed_tabs: allowedTabs,
-    });
+    res.json({ ok: true, email, user_uid: targetId });
   } catch (err) {
     const code = err?.statusCode ?? 500;
     res.status(code).json({ ok: false, error: err?.message ?? 'Failed' });

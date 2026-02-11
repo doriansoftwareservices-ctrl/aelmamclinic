@@ -1532,6 +1532,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                   ),
                   const SizedBox(width: 8),
                   NeuButton.flat(
+                    label: 'كلمة المرور',
+                    icon: Icons.password_rounded,
+                    onPressed: isRoot
+                        ? null
+                        : () => _resetSuperAdminPassword(account),
+                  ),
+                  const SizedBox(width: 8),
+                  NeuButton.flat(
                     label: account.disabled ? 'تفعيل' : 'تجميد',
                     icon: account.disabled
                         ? Icons.lock_open_rounded
@@ -1628,8 +1636,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       _snack('يرجى إدخال بريد صحيح.');
       return;
     }
-    if (pass.length < 6) {
-      _snack('كلمة المرور قصيرة جدًا.');
+    if (pass.length < 9) {
+      _snack('كلمة المرور يجب ألا تقل عن 9 أحرف.');
       return;
     }
     setState(() => _creatingSuperAdmin = true);
@@ -1749,6 +1757,53 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       _snack('تم تحديث التبويبات.');
     } catch (e) {
       _snack('تعذّر تحديث التبويبات: $e');
+    }
+  }
+
+  Future<void> _resetSuperAdminPassword(SuperAdminAccount account) async {
+    if (_isRootEmail(account.email)) {
+      _snack('لا يمكن تغيير كلمة مرور الحساب الجذري.');
+      return;
+    }
+    final ctrl = TextEditingController();
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('تغيير كلمة المرور'),
+        content: TextField(
+          controller: ctrl,
+          obscureText: true,
+          decoration: const InputDecoration(
+            labelText: 'كلمة المرور الجديدة',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('حفظ'),
+          ),
+        ],
+      ),
+    );
+    final pass = ctrl.text.trim();
+    ctrl.dispose();
+    if (confirm != true) return;
+    if (pass.length < 9) {
+      _snack('كلمة المرور يجب ألا تقل عن 9 أحرف.');
+      return;
+    }
+    try {
+      await _superAdminService.resetSuperAdminPassword(
+        email: account.email,
+        newPassword: pass,
+      );
+      _snack('تم تغيير كلمة المرور.');
+    } catch (e) {
+      _snack('تعذّر تغيير كلمة المرور: $e');
     }
   }
 
