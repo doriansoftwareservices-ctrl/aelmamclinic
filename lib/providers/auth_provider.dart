@@ -233,7 +233,12 @@ class AuthProvider extends ChangeNotifier {
 
         // لأي حدث آخر: نحدّث من الشبكة عند الدخول أو عند حلول موعد الفحص
         final due = await _isNetCheckDue();
-        if (event == AuthenticationState.signedIn || due) {
+        if (event == AuthenticationState.signedIn) {
+          // Reset role header before any post-login GraphQL requests.
+          AuthRoleState.clear();
+          NhostGraphqlService.refreshClient();
+          await _networkRefreshAndMark();
+        } else if (due) {
           await _networkRefreshAndMark();
         } else {
           await _loadFromStorage();

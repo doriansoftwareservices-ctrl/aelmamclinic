@@ -18,11 +18,14 @@ class NhostGraphqlService {
       );
 
   static bool _isSuperAdmin(NhostClient client) {
-    if (AuthRoleState.isSuperAdmin) {
-      return true;
+    final user = client.auth.currentUser;
+    if (user != null) {
+      final roles = user.roles;
+      final hasRole =
+          roles.any((role) => role.toLowerCase() == 'superadmin');
+      return hasRole || user.defaultRole.toLowerCase() == 'superadmin';
     }
-    final roles = client.auth.currentUser?.roles ?? const [];
-    return roles.any((role) => role.toLowerCase() == 'superadmin');
+    return AuthRoleState.isSuperAdmin;
   }
 
   static WebSocketLink _buildWebSocketLink(NhostClient client) {
