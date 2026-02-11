@@ -9,8 +9,10 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'package:aelmamclinic/models/clinic_profile.dart';
 import 'package:aelmamclinic/providers/auth_provider.dart';
+import 'package:aelmamclinic/core/auth_role_state.dart';
 import 'package:aelmamclinic/core/nhost_manager.dart';
 import 'package:aelmamclinic/services/clinic_profile_service.dart';
+import 'package:aelmamclinic/services/nhost_graphql_service.dart';
 
 // تصميم TBIAN
 import 'package:aelmamclinic/core/theme.dart';
@@ -202,6 +204,11 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
+  bool _isValidEmail(String email) {
+    final re = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
+    return re.hasMatch(email);
+  }
+
   /// يقرر التوجيه حسب المستخدم الحالي (سوبر أدمن أو لا) ويضمن تشغيل المزامنة.
   Future<void> _checkAndRouteIfSignedIn({bool force = false}) async {
     if (_navigating || (!force && _loading) || !mounted) return;
@@ -243,6 +250,11 @@ class _LoginScreenState extends State<LoginScreen> {
     final isSuper = authProv.isSuperAdmin;
     final hasAccount = (authProv.accountId ?? '').isNotEmpty;
     if (!isSuper && !hasAccount) {
+      await authProv.signOut();
+      setState(() {
+        _error = 'فشل إنشاء الحساب.';
+        _loading = false;
+      });
       return;
     }
 
@@ -283,8 +295,9 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => _error = 'من فضلك أدخل البريد الإلكتروني وكلمة المرور.');
       return;
     }
-    if (pass.length < 9) {
-      setState(() => _error = 'كلمة المرور يجب ألا تقل عن 9 أحرف.');
+    if (!_isValidEmail(email) || pass.length < 9) {
+      setState(() =>
+          _error = '⚠️ إدخال كلمة مرور أقل من 9 أحرف أو بريد غير صحيح.');
       return;
     }
 
@@ -296,13 +309,21 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       final signInResp = await auth.signIn(email, pass);
       if (signInResp.session == null) {
-        setState(
-          () => _error =
-              'تعذّر تسجيل الدخول. تأكد من البريد وكلمة المرور أو فعّل حسابك عبر البريد.',
-        );
-        return;
+        // Fallback: sometimes SDK returns null session while token is present.
+        final token = auth.accessToken;
+        if (token == null || token.isEmpty) {
+          setState(
+            () => _error =
+                'تعذّر تسجيل الدخول. تأكد من البريد وكلمة المرور أو فعّل حسابك عبر البريد.',
+          );
+          return;
+        }
       }
       await _persistRememberedCredentials(email: email, password: pass);
+
+      // Ensure stale superadmin header does not leak into user session.
+      AuthRoleState.clear();
+      NhostGraphqlService.refreshClient();
 
       var result = await auth.refreshAndValidateCurrentUser();
       if (!mounted) return;
@@ -367,6 +388,12 @@ class _LoginScreenState extends State<LoginScreen> {
         }
       }
 
+      if (!auth.isSuperAdmin && (auth.accountId ?? '').isEmpty) {
+        await auth.signOut();
+        setState(() => _error = 'فشل إنشاء الحساب.');
+        return;
+      }
+
       await _ensureClinicProfileComplete(auth);
 
       if (auth.isLoggedIn) {
@@ -398,8 +425,9 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => _error = 'أدخل البريد وكلمة المرور أولًا.');
       return;
     }
-    if (pass.length < 9) {
-      setState(() => _error = 'كلمة المرور يجب ألا تقل عن 9 أحرف.');
+    if (!_isValidEmail(email) || pass.length < 9) {
+      setState(() =>
+          _error = '⚠️ إدخال كلمة مرور أقل من 9 أحرف أو بريد غير صحيح.');
       return;
     }
 
@@ -419,14 +447,22 @@ class _LoginScreenState extends State<LoginScreen> {
           signUpResp = await auth.signIn(email, pass);
         } catch (_) {}
         if (signUpResp.session == null) {
-          setState(
-            () => _error =
-                'تم إنشاء الحساب. يرجى تأكيد البريد الإلكتروني ثم تسجيل الدخول.',
-          );
-          return;
+          final token = auth.accessToken;
+          if (token != null && token.isNotEmpty) {
+            // Continue; token exists even if session is null.
+          } else {
+            setState(
+              () => _error =
+                  'تم إنشاء الحساب. يرجى تأكيد البريد الإلكتروني ثم تسجيل الدخول.',
+            );
+            return;
+          }
         }
       }
       await _persistRememberedCredentials(email: email, password: pass);
+      // Ensure stale superadmin header does not leak into user session.
+      AuthRoleState.clear();
+      NhostGraphqlService.refreshClient();
       if (clinicProfile != null) {
         await auth.selfCreateAccount(clinicProfile);
       } else {
@@ -437,6 +473,11 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       if (!result.isSuccess) {
         setState(() => _error = _messageForStatus(result.status));
+        return;
+      }
+      if (!auth.isSuperAdmin && (auth.accountId ?? '').isEmpty) {
+        await auth.signOut();
+        setState(() => _error = 'فشل إنشاء الحساب.');
         return;
       }
       await auth.bootstrapSync(
@@ -933,6 +974,16 @@ class _LoginScreenState extends State<LoginScreen> {
                                     if (_error != null)
                                       setState(() => _error = null);
                                   },
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  '⚠️ إدخال كلمة مرور أقل من 9 أحرف أو بريد غير صحيح.',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 11,
+                                    color:
+                                        scheme.onSurface.withValues(alpha: 0.6),
+                                  ),
                                 ),
                                 const SizedBox(height: 8),
                                 Row(
