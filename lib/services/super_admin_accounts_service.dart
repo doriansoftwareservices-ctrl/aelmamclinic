@@ -24,7 +24,7 @@ class SuperAdminAccountsService {
   Future<List<SuperAdminAccount>> fetchSuperAdmins() async {
     const query = r'''
       query SuperAdmins {
-        admin_list_super_admin_accounts {
+        admin_list_super_admin_accounts(args: {}) {
           email
           user_uid
           created_at
@@ -192,6 +192,26 @@ class SuperAdminAccountsService {
         'password': password,
         'allowed_tabs': allowedTabs,
       });
+    } on HttpException {
+      rethrow;
+    } catch (e) {
+      throw Exception('Functions call failed: $e');
+    }
+  }
+
+  Future<void> resetSuperAdminPassword({
+    required String email,
+    required String newPassword,
+  }) async {
+    final base = NhostConfig.functionsUrl.replaceAll(RegExp(r'/+$'), '');
+    final url = Uri.parse('$base/admin-reset-superadmin-password');
+    try {
+      final res = await _api.postJson(url, {
+        'email': email,
+        'new_password': newPassword,
+      });
+      if (res['ok'] == true) return;
+      throw Exception(res['error'] ?? 'تعذّر تغيير كلمة المرور.');
     } on HttpException {
       rethrow;
     } catch (e) {
