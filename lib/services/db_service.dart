@@ -1606,7 +1606,9 @@ class DBService {
   //=============================== patient_services ===============================
   Future<int> insertPatientService(PatientService ps) async {
     final db = await database;
-    final id = await db.insert(PatientService.table, ps.toMap());
+    final data = ps.toMap();
+    data.remove('id'); // always autoincrement to avoid UNIQUE conflicts
+    final id = await db.insert(PatientService.table, data);
     await _markChanged(PatientService.table);
     return id;
   }
