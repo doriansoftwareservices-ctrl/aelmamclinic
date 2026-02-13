@@ -3,7 +3,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/models/alert_setting.dart';
@@ -41,6 +40,7 @@ class StatisticsProvider extends ChangeNotifier {
     'patient_services',
     'items',
     'item_types',
+    'alert_settings',
   };
 
   void _startListeners() {
@@ -168,17 +168,17 @@ class StatisticsProvider extends ChangeNotifier {
       final tower = await db.getSumAllTowerShareBetween(_from, _to);
       // 6) سلف مصروفة
       final loansRaw = await db.database.then((d) => d.rawQuery(
-          'SELECT SUM(loanAmount) AS total FROM employees_loans WHERE loanDateTime BETWEEN ? AND ?',
+          'SELECT SUM(loanAmount) AS total FROM employees_loans WHERE loanDateTime BETWEEN ? AND ? AND ifnull(isDeleted,0)=0',
           [_from.toIso8601String(), _to.toIso8601String()]));
       final loans = (loansRaw.first['total'] as num?)?.toDouble() ?? 0.0;
       // 7) خصومات
       final discRaw = await db.database.then((d) => d.rawQuery(
-          'SELECT SUM(amount) AS total FROM employees_discounts WHERE discountDateTime BETWEEN ? AND ?',
+          'SELECT SUM(amount) AS total FROM employees_discounts WHERE discountDateTime BETWEEN ? AND ? AND ifnull(isDeleted,0)=0',
           [_from.toIso8601String(), _to.toIso8601String()]));
       final discounts = (discRaw.first['total'] as num?)?.toDouble() ?? 0.0;
       // 8) رواتب
       final salRaw = await db.database.then((d) => d.rawQuery(
-          'SELECT SUM(netPay) AS total FROM employees_salaries WHERE paymentDate BETWEEN ? AND ?',
+          'SELECT SUM(netPay) AS total FROM employees_salaries WHERE paymentDate BETWEEN ? AND ? AND ifnull(isDeleted,0)=0',
           [_from.toIso8601String(), _to.toIso8601String()]));
       final salaries = (salRaw.first['total'] as num?)?.toDouble() ?? 0.0;
       // صافي الربح
@@ -188,19 +188,14 @@ class StatisticsProvider extends ChangeNotifier {
       final monthlyPts = await _countPatientsBetween(_from, _to);
       // 10) تنبيهات المخزون المنخفض
       final lowStock = await _getLowStockCount();
-      // 11) استرجاع جميع العودات وحساب اليوم
+      // 11) عودات اليوم (مؤكدة/أتت اليوم) من الخادم عبر المزامنة
       final allReturns = await db.getAllReturns();
       final now = DateTime.now();
-      final dueReturns = allReturns
-          .where((r) => r.date.isBefore(now) || r.date.isAtSameMomentAs(now))
-          .toList();
-      final todayConf = dueReturns.length;
-      // 12) حساب المتابعات حسب SharedPreferences
-      final prefs = await SharedPreferences.getInstance();
-      final seenIds = (prefs.getStringList('seen_reminder_ids') ?? [])
-          .map((e) => int.tryParse(e) ?? 0)
-          .toSet();
-      final todayFoll = dueReturns.where((r) => seenIds.contains(r.id)).length;
+      bool sameDay(DateTime a, DateTime b) =>
+          a.year == b.year && a.month == b.month && a.day == b.day;
+      final todayReturns = allReturns.where((r) => sameDay(r.date, now)).toList();
+      final todayConf = todayReturns.length;
+      final todayFoll = todayReturns.where((r) => r.isAttended).length;
 
       // 13) بيانات إضافية
       final totalPts = await db.getTotalPatients();
@@ -243,6 +238,8 @@ class StatisticsProvider extends ChangeNotifier {
         JOIN ${Item.table}         AS i ON i.id = a.item_id
        WHERE a.is_enabled = 1
          AND i.stock      <= a.threshold
+         AND ifnull(a.isDeleted,0)=0
+         AND ifnull(i.isDeleted,0)=0
     ''';
     final raw =
         await DBService.instance.database.then((db) => db.rawQuery(sql));
@@ -251,7 +248,7 @@ class StatisticsProvider extends ChangeNotifier {
 
   Future<int> _countPatientsBetween(DateTime f, DateTime t) async {
     final raw = await DBService.instance.database.then((db) => db.rawQuery(
-          'SELECT COUNT(*) AS cnt FROM patients WHERE registerDate BETWEEN ? AND ?',
+          'SELECT COUNT(*) AS cnt FROM patients WHERE registerDate BETWEEN ? AND ? AND ifnull(isDeleted,0)=0',
           [f.toIso8601String(), t.toIso8601String()],
         ));
     return raw.isEmpty ? 0 : (raw.first['cnt'] as int? ?? 0);
@@ -259,7 +256,7 @@ class StatisticsProvider extends ChangeNotifier {
 
   Future<int> _getOutOfStockCount() async {
     final raw = await DBService.instance.database.then((db) => db.rawQuery(
-          'SELECT COUNT(*) AS cnt FROM ${Item.table} WHERE stock = 0',
+          'SELECT COUNT(*) AS cnt FROM ${Item.table} WHERE stock = 0 AND ifnull(isDeleted,0)=0',
         ));
     return raw.isEmpty ? 0 : (raw.first['cnt'] as int? ?? 0);
   }

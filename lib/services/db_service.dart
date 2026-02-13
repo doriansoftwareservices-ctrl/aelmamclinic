@@ -90,6 +90,7 @@ const Set<String> _kStatsTables = {
   'patient_services',
   'items',
   'item_types',
+  'alert_settings',
 };
 
 class DBService {
@@ -160,6 +161,9 @@ class DBService {
     try {
       if (!_changeController.isClosed) {
         _changeController.add(table);
+      }
+      if (_kStatsTables.contains(table)) {
+        unawaited(markStatisticsDirty());
       }
     } catch (_) {}
   }
@@ -626,6 +630,12 @@ class DBService {
     }
   }
 
+  Future<void> _ensureReturnsAttendanceColumns(Database db) async {
+    await _addColumnIfMissing(
+        db, 'returns', 'isAttended', 'INTEGER NOT NULL DEFAULT 0');
+    await _addColumnIfMissing(db, 'returns', 'attendedAt', 'TEXT');
+  }
+
   Future<void> _ensureSyncFkMappingTable(Database db) async {
     await db.execute('''
   CREATE TABLE IF NOT EXISTS sync_fk_mapping (
@@ -839,6 +849,7 @@ class DBService {
     await _ensureAlertSettingsColumns(db);
     await _ensureSoftDeleteColumns(db);
     await _ensureSyncMetaColumns(db); // ← snake_case (متوافق مع parity v3)
+    await _ensureReturnsAttendanceColumns(db);
     await _ensureSyncFkMappingTable(db);
     await _ensureCommonIndexes(db);
   }
@@ -886,7 +897,9 @@ class DBService {
     remaining REAL,
     age INTEGER DEFAULT 0,
     doctor TEXT DEFAULT '',
-    notes TEXT DEFAULT ''
+    notes TEXT DEFAULT '',
+    isAttended INTEGER NOT NULL DEFAULT 0,
+    attendedAt TEXT
   );
 ''');
 
@@ -1864,6 +1877,37 @@ class DBService {
         where: 'id = ?', whereArgs: [entry.id]);
     await _markChanged('returns');
     return rows;
+  }
+
+  Future<int> setReturnAttended(int id, bool attended) async {
+    final db = await database;
+    final rows = await db.update(
+      'returns',
+      {
+        'isAttended': attended ? 1 : 0,
+        'attendedAt': attended ? DateTime.now().toIso8601String() : null,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    await _markChanged('returns');
+    return rows;
+  }
+
+  Future<void> setReturnsAttendedBulk(
+      List<int> ids, bool attended) async {
+    if (ids.isEmpty) return;
+    final db = await database;
+    final batch = db.batch();
+    final payload = {
+      'isAttended': attended ? 1 : 0,
+      'attendedAt': attended ? DateTime.now().toIso8601String() : null,
+    };
+    for (final id in ids) {
+      batch.update('returns', payload, where: 'id = ?', whereArgs: [id]);
+    }
+    await batch.commit(noResult: true);
+    await _markChanged('returns');
   }
 
   Future<int> deleteReturn(int id) async {

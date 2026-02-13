@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:aelmamclinic/utils/toast_utils.dart';
 import 'package:intl/intl.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:aelmamclinic/models/return_entry.dart';
 import 'package:aelmamclinic/services/db_service.dart';
@@ -24,7 +23,6 @@ class _ReminderScreenState extends State<ReminderScreen> {
   List<ReturnEntry> _todayReturns = [];
   List<ReturnEntry> _filtered = [];
 
-  final Set<int> _seenIds = {};
   bool _onlyUnseen = false;
   bool _loading = true;
 
@@ -43,25 +41,8 @@ class _ReminderScreenState extends State<ReminderScreen> {
   }
 
   Future<void> _init() async {
-    await Future.wait([_loadSeenIds(), _loadTodayReturns()]);
+    await _loadTodayReturns();
     _applyFilter();
-  }
-
-  /*──────── تحميل قائمة المُشاهَد اليوم ────────*/
-  Future<void> _loadSeenIds() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getStringList('seen_reminder_ids') ?? const <String>[];
-    _seenIds
-      ..clear()
-      ..addAll(raw.map((e) => int.tryParse(e) ?? -1).where((e) => e > 0));
-  }
-
-  Future<void> _saveSeenIds() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(
-      'seen_reminder_ids',
-      _seenIds.map((e) => e.toString()).toList(),
-    );
   }
 
   /*──────── إحضار عودات تاريخ اليوم فقط ────────*/
@@ -86,8 +67,8 @@ class _ReminderScreenState extends State<ReminderScreen> {
     final q = _searchCtrl.text.trim().toLowerCase();
     setState(() {
       _filtered = _todayReturns.where((r) {
-        final seen = r.id != null && _seenIds.contains(r.id);
-        if (_onlyUnseen && seen) return false;
+        final attended = r.isAttended;
+        if (_onlyUnseen && attended) return false;
 
         final name = r.patientName.toLowerCase();
         final diag = r.diagnosis.toLowerCase();
@@ -99,35 +80,22 @@ class _ReminderScreenState extends State<ReminderScreen> {
   }
 
   Future<void> _refresh() async {
-    await _loadSeenIds();
     await _loadTodayReturns();
     _applyFilter();
   }
 
-  void _toggleSeen(ReturnEntry r) {
+  Future<void> _toggleSeen(ReturnEntry r) async {
     final id = r.id;
     if (id == null) return;
-    setState(() {
-      if (_seenIds.contains(id)) {
-        _seenIds.remove(id);
-      } else {
-        _seenIds.add(id);
-      }
-    });
-    _saveSeenIds();
+    await DBService.instance.setReturnAttended(id, !r.isAttended);
+    await _loadTodayReturns();
     _applyFilter();
   }
 
-  void _markAll(bool seen) {
-    final ids = _todayReturns.map((e) => e.id).whereType<int>();
-    setState(() {
-      if (seen) {
-        _seenIds.addAll(ids);
-      } else {
-        _seenIds.removeAll(ids);
-      }
-    });
-    _saveSeenIds();
+  Future<void> _markAll(bool attended) async {
+    final ids = _todayReturns.map((e) => e.id).whereType<int>().toList();
+    await DBService.instance.setReturnsAttendedBulk(ids, attended);
+    await _loadTodayReturns();
     _applyFilter();
   }
 
@@ -174,23 +142,27 @@ class _ReminderScreenState extends State<ReminderScreen> {
             ),
             PopupMenuButton<String>(
               onSelected: (v) {
-                if (v == 'mark_all_seen') _markAll(true);
-                if (v == 'mark_all_unseen') _markAll(false);
+                if (v == 'mark_all_seen') {
+                  _markAll(true);
+                }
+                if (v == 'mark_all_unseen') {
+                  _markAll(false);
+                }
               },
               itemBuilder: (_) => const [
                 PopupMenuItem(
                   value: 'mark_all_seen',
                   child: ListTile(
                     dense: true,
-                    leading: Icon(Icons.visibility),
-                    title: Text('تحديد الكل كمُشاهَد'),
+                    leading: Icon(Icons.check_circle),
+                    title: Text('تحديد الكل كـ حضر'),
                   ),
                 ),
                 PopupMenuItem(
                   value: 'mark_all_unseen',
                   child: ListTile(
                     dense: true,
-                    leading: Icon(Icons.visibility_off),
+                    leading: Icon(Icons.radio_button_unchecked),
                     title: Text('إلغاء تحديد الكل'),
                   ),
                 ),
@@ -236,14 +208,14 @@ class _ReminderScreenState extends State<ReminderScreen> {
                     ),
                     const SizedBox(width: 8),
                     Tooltip(
-                      message: 'غير المُشاهَد فقط',
+                      message: 'غير الحاضرين فقط',
                       child: FilterChip(
                         selected: _onlyUnseen,
                         onSelected: (v) {
                           setState(() => _onlyUnseen = v);
                           _applyFilter();
                         },
-                        label: const Text('غير مُشاهَد'),
+                        label: const Text('لم يحضر'),
                         showCheckmark: false,
                         selectedColor: scheme.primary.withValues(alpha: .15),
                         labelStyle: TextStyle(
@@ -298,8 +270,7 @@ class _ReminderScreenState extends State<ReminderScreen> {
                                 itemCount: _filtered.length,
                                 itemBuilder: (ctx, i) {
                                   final r = _filtered[i];
-                                  final seen =
-                                      r.id != null && _seenIds.contains(r.id);
+                                  final attended = r.isAttended;
                                   final dateStr =
                                       _dateTime.format(r.date.toLocal());
 
@@ -324,7 +295,7 @@ class _ReminderScreenState extends State<ReminderScreen> {
                                             child: Icon(Icons.person,
                                                 color: scheme.primary),
                                           ),
-                                          if (!seen)
+                                          if (!attended)
                                             Positioned(
                                               right: -2,
                                               top: -2,
@@ -361,12 +332,12 @@ class _ReminderScreenState extends State<ReminderScreen> {
                                                 _call(r.phoneNumber),
                                           ),
                                           IconButton(
-                                            tooltip: seen
-                                                ? 'إلغاء كمشاهَد'
-                                                : 'تحديد كمشاهَد',
-                                            icon: Icon(seen
-                                                ? Icons.visibility_off
-                                                : Icons.visibility),
+                                            tooltip: attended
+                                                ? 'إلغاء الحضور'
+                                                : 'تحديد كـ حضر',
+                                            icon: Icon(attended
+                                                ? Icons.check_circle
+                                                : Icons.radio_button_unchecked),
                                             color: scheme.primary,
                                             onPressed: () => _toggleSeen(r),
                                           ),

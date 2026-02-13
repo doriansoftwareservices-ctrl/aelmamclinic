@@ -10,7 +10,6 @@
 import 'dart:async';
 
 import 'package:graphql_flutter/graphql_flutter.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'notification_service.dart';
 import 'nhost_graphql_service.dart';
@@ -35,11 +34,13 @@ class ChatRealtimeNotifier {
   String? _myUid;
 
   final Set<String> _convIds = <String>{};
+  final Map<String, _ParticipantPrefs> _convPrefs =
+      <String, _ParticipantPrefs>{};
   final Set<String> _seenMsgIds = <String>{};
   static const int _seenCap = 6000;
 
-  SharedPreferences? _sp;
   bool _started = false;
+  String? _activeConversationId;
 
   StreamSubscription<QueryResult>? _messageSub;
   StreamSubscription<QueryResult>? _participantsSub;
@@ -68,8 +69,6 @@ class ChatRealtimeNotifier {
       return;
     }
 
-    _sp ??= await SharedPreferences.getInstance();
-
     try {
       await NotificationService().initialize();
     } catch (_) {}
@@ -88,6 +87,8 @@ class ChatRealtimeNotifier {
     _messageSub = null;
     _participantsSub = null;
     _convIds.clear();
+    _convPrefs.clear();
+    _activeConversationId = null;
     _pruneSeenIfNeeded(force: true);
   }
 
@@ -104,20 +105,19 @@ class ChatRealtimeNotifier {
     } catch (_) {}
   }
 
-  String _muteKey(String uid, String cid) => 'chp:$uid:$cid:muted';
-
   Future<void> setMuted(String conversationId, bool muted) async {
     final uid = _myUid;
     if (uid == null) return;
-    _sp ??= await SharedPreferences.getInstance();
-    await _sp!.setBool(_muteKey(uid, conversationId), muted);
+    await _updateParticipantPrefs(
+      conversationId,
+      uid,
+      muted: muted,
+    );
   }
 
   Future<bool> isMuted(String conversationId) async {
-    final uid = _myUid;
-    if (uid == null) return false;
-    _sp ??= await SharedPreferences.getInstance();
-    return _sp!.getBool(_muteKey(uid, conversationId)) ?? false;
+    final prefs = _convPrefs[conversationId];
+    return prefs?.muted ?? false;
   }
 
   Future<bool> toggleMuted(String conversationId) async {
@@ -126,40 +126,29 @@ class ChatRealtimeNotifier {
     return !curr;
   }
 
-  String _activeKey(String uid) => 'chp:$uid:active';
-  String _lastReadKey(String uid, String cid) => 'chp:$uid:$cid:last_read_at';
-
   Future<void> setActiveConversation(String? conversationId) async {
-    final uid = _myUid;
-    if (uid == null) return;
-    _sp ??= await SharedPreferences.getInstance();
     if (conversationId == null || conversationId.trim().isEmpty) {
-      await _sp!.remove(_activeKey(uid));
+      _activeConversationId = null;
       return;
     }
-    await _sp!.setString(_activeKey(uid), conversationId);
+    _activeConversationId = conversationId;
   }
 
   Future<void> setLastRead(String conversationId, DateTime at) async {
     final uid = _myUid;
     if (uid == null || conversationId.trim().isEmpty) return;
-    _sp ??= await SharedPreferences.getInstance();
-    await _sp!.setString(
-      _lastReadKey(uid, conversationId),
-      at.toUtc().toIso8601String(),
+    await _updateParticipantPrefs(
+      conversationId,
+      uid,
+      lastReadAt: at.toUtc(),
     );
-  }
-
-  DateTime? _readLastRead(String uid, String cid) {
-    final raw = _sp?.getString(_lastReadKey(uid, cid));
-    if (raw == null || raw.isEmpty) return null;
-    return DateTime.tryParse(raw)?.toUtc();
   }
 
   Future<void> _loadConversationIds() async {
     final uid = _myUid;
     if (uid == null || uid.isEmpty) {
       _convIds.clear();
+      _convPrefs.clear();
       return;
     }
     try {
@@ -167,6 +156,8 @@ class ChatRealtimeNotifier {
         query MyConversationIds(\$uid: uuid!) {
           chat_participants(where: {user_uid: {_eq: \$uid}}) {
             conversation_id
+            muted
+            last_read_at
           }
         }
       ''';
@@ -186,8 +177,17 @@ class ChatRealtimeNotifier {
               .map((e) => (e['conversation_id'] ?? '').toString())
               .where((c) => c.isNotEmpty),
         );
+      _convPrefs
+        ..clear()
+        ..addEntries(
+          rows.whereType<Map>().map((row) {
+            final cid = (row['conversation_id'] ?? '').toString();
+            return MapEntry(cid, _ParticipantPrefs.fromRow(row));
+          }).where((e) => e.key.isNotEmpty),
+        );
     } catch (_) {
       _convIds.clear();
+      _convPrefs.clear();
     }
   }
 
@@ -199,6 +199,8 @@ class ChatRealtimeNotifier {
       subscription MyParticipants(\$uid: uuid!) {
         chat_participants(where: {user_uid: {_eq: \$uid}}) {
           conversation_id
+          muted
+          last_read_at
         }
       }
     ''';
@@ -220,6 +222,14 @@ class ChatRealtimeNotifier {
               .whereType<Map>()
               .map((e) => (e['conversation_id'] ?? '').toString())
               .where((c) => c.isNotEmpty),
+        );
+      _convPrefs
+        ..clear()
+        ..addEntries(
+          rows.whereType<Map>().map((row) {
+            final cid = (row['conversation_id'] ?? '').toString();
+            return MapEntry(cid, _ParticipantPrefs.fromRow(row));
+          }).where((e) => e.key.isNotEmpty),
         );
       if (!_participantsCtrl.isClosed) _participantsCtrl.add(null);
       if (!_conversationsCtrl.isClosed) _conversationsCtrl.add(null);
@@ -287,16 +297,14 @@ class ChatRealtimeNotifier {
       if (sender == uid) return;
     }
 
-    final active = _sp?.getString(_activeKey(uid ?? '')) ?? '';
+    final active = _activeConversationId ?? '';
     if (active.isNotEmpty && active == cid) return;
 
     final createdAt = DateTime.tryParse(
           (row['created_at'] ?? '').toString(),
         )?.toUtc() ??
         DateTime.now().toUtc();
-    final lastRead = (uid == null || uid.isEmpty)
-        ? null
-        : _readLastRead(uid, cid);
+    final lastRead = _convPrefs[cid]?.lastReadAt;
     if (lastRead != null && !createdAt.isAfter(lastRead)) return;
 
     final id = (row['id'] ?? '').toString();
@@ -304,7 +312,7 @@ class ChatRealtimeNotifier {
     _seenMsgIds.add(id);
     _pruneSeenIfNeeded();
 
-    final muted = _sp?.getBool(_muteKey(uid ?? '', cid)) ?? false;
+    final muted = _convPrefs[cid]?.muted ?? false;
     if (muted) return;
 
     final kind = (row['kind']?.toString() ?? 'text').toLowerCase();
@@ -335,5 +343,68 @@ class ChatRealtimeNotifier {
         ..clear()
         ..addAll(keep);
     }
+  }
+
+  Future<void> _updateParticipantPrefs(
+    String conversationId,
+    String uid, {
+    bool? muted,
+    DateTime? lastReadAt,
+  }) async {
+    if (conversationId.trim().isEmpty) return;
+    final mutation = '''
+      mutation UpdateParticipant(\$cid: uuid!, \$uid: uuid!, \$set: chat_participants_set_input!) {
+        update_chat_participants(
+          where: {conversation_id: {_eq: \$cid}, user_uid: {_eq: \$uid}},
+          _set: \$set
+        ) {
+          affected_rows
+        }
+      }
+    ''';
+    final set = <String, dynamic>{};
+    if (muted != null) set['muted'] = muted;
+    if (lastReadAt != null) {
+      set['last_read_at'] = lastReadAt.toUtc().toIso8601String();
+    }
+    if (set.isEmpty) return;
+    try {
+      await _gql.mutate(MutationOptions(
+        document: gql(mutation),
+        variables: {'cid': conversationId, 'uid': uid, 'set': set},
+        fetchPolicy: FetchPolicy.noCache,
+      ));
+    } catch (_) {}
+
+    final prev = _convPrefs[conversationId] ?? _ParticipantPrefs();
+    _convPrefs[conversationId] = prev.copyWith(
+      muted: muted,
+      lastReadAt: lastReadAt,
+    );
+  }
+}
+
+class _ParticipantPrefs {
+  final bool muted;
+  final DateTime? lastReadAt;
+
+  const _ParticipantPrefs({
+    this.muted = false,
+    this.lastReadAt,
+  });
+
+  static _ParticipantPrefs fromRow(Map row) {
+    final muted = row['muted'] == true;
+    final lastReadRaw = row['last_read_at']?.toString();
+    final lastReadAt =
+        (lastReadRaw == null || lastReadRaw.isEmpty) ? null : DateTime.tryParse(lastReadRaw)?.toUtc();
+    return _ParticipantPrefs(muted: muted, lastReadAt: lastReadAt);
+  }
+
+  _ParticipantPrefs copyWith({bool? muted, DateTime? lastReadAt}) {
+    return _ParticipantPrefs(
+      muted: muted ?? this.muted,
+      lastReadAt: lastReadAt ?? this.lastReadAt,
+    );
   }
 }

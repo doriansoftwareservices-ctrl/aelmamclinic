@@ -13,7 +13,6 @@ import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/core/features.dart';
 
-import 'package:aelmamclinic/models/return_entry.dart';
 import 'package:aelmamclinic/providers/statistics_provider.dart';
 import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/services/billing_service.dart';
@@ -30,6 +29,7 @@ import 'package:aelmamclinic/screens/prescriptions/patient_prescriptions_screen.
 import 'package:aelmamclinic/screens/prescriptions/prescription_list_screen.dart';
 import 'package:aelmamclinic/screens/reminders/reminder_screen.dart';
 import 'package:aelmamclinic/screens/repository/menu/repository_menu_screen.dart';
+import 'package:aelmamclinic/screens/help/user_guide_screen.dart';
 import 'package:aelmamclinic/screens/returns/list_returns_screen.dart';
 import 'package:aelmamclinic/screens/returns/new_return_screen.dart';
 import 'package:aelmamclinic/screens/statistics/statistics_screen.dart';
@@ -196,25 +196,6 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
         ],
       ),
     );
-  }
-
-  /*────────────────── عودات اليوم ──────────────────*/
-  Future<List<ReturnEntry>> _getTodayReturns() async {
-    final all = await DBService.instance.getAllReturns();
-    final t = DateTime.now();
-    return all
-        .where((r) =>
-            r.date.year == t.year &&
-            r.date.month == t.month &&
-            r.date.day == t.day)
-        .toList();
-  }
-
-  /*────────────────── مُعرّفات التذكيرات التي عُلِّمَت كمشاهَدة اليوم ──────────────────*/
-  Future<Set<int>> _getSeenIdsToday() async {
-    final prefs = await SharedPreferences.getInstance();
-    final seen = prefs.getStringList('seen_reminder_ids') ?? [];
-    return seen.map((e) => int.tryParse(e) ?? 0).toSet();
   }
 
   void _showNotAllowedSnack() {
@@ -931,6 +912,18 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                         );
                       },
                     ),
+                    _drawerItem(
+                      icon: Icons.help_outline_rounded,
+                      title: 'دليل الاستخدام',
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const UserGuideScreen()),
+                        );
+                      },
+                    ),
                   ],
                 ),
               ),
@@ -1063,40 +1056,33 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                   icon: const Icon(Icons.logout_rounded),
                   tooltip: 'تسجيل الخروج',
                 ),
-                FutureBuilder<List<ReturnEntry>>(
-                  future: _getTodayReturns(),
-                  builder: (_, snap) {
-                    final has = snap.hasData && snap.data!.isNotEmpty;
-                    return Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        IconButton(
-                          tooltip: 'التذكيرات',
-                          icon: Image.asset(
-                            has
-                                ? 'assets/images/bell_icon1.png'
-                                : 'assets/images/bell_icon2.png',
-                            width: 22,
-                            height: 22,
-                          ),
-                          onPressed: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) => const ReminderScreen()),
-                          ),
+                Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    IconButton(
+                      tooltip: 'التذكيرات',
+                      icon: Image.asset(
+                        stats.todayConfirmed > 0
+                            ? 'assets/images/bell_icon1.png'
+                            : 'assets/images/bell_icon2.png',
+                        width: 22,
+                        height: 22,
+                      ),
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const ReminderScreen()),
+                      ),
+                    ),
+                    if (stats.todayConfirmed > 0)
+                      const Positioned(
+                        right: 8,
+                        top: 8,
+                        child: CircleAvatar(
+                          radius: 5,
+                          backgroundColor: Colors.red,
                         ),
-                        if (has)
-                          const Positioned(
-                            right: 8,
-                            top: 8,
-                            child: CircleAvatar(
-                              radius: 5,
-                              backgroundColor: Colors.red,
-                            ),
-                          ),
-                      ],
-                    );
-                  },
+                      ),
+                  ],
                 ),
               ],
             ),
@@ -1260,47 +1246,25 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                         MaterialPageRoute(builder: (_) => ListPatientsScreen()),
                       ),
                     ),
-                    FutureBuilder<List<ReturnEntry>>(
-                      future: _getTodayReturns(),
-                      builder: (_, snap) {
-                        final count = snap.hasData ? snap.data!.length : 0;
-                        return _StatCard(
-                          title: 'مواعيد مؤكدة اليوم',
-                          value: '$count',
-                          icon: Icons.event_available_outlined,
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) => const ReminderScreen()),
-                          ),
-                        );
-                      },
+                    _StatCard(
+                      title: 'مواعيد مؤكدة اليوم',
+                      value: '${stats.todayConfirmed}',
+                      icon: Icons.event_available_outlined,
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const ReminderScreen()),
+                      ),
                     ),
-                    FutureBuilder<List<ReturnEntry>>(
-                      future: _getTodayReturns(),
-                      builder: (_, snap) {
-                        final todayReturns =
-                            snap.hasData ? snap.data! : <ReturnEntry>[];
-                        return FutureBuilder<Set<int>>(
-                          future: _getSeenIdsToday(),
-                          builder: (_, seenSnap) {
-                            final seen = seenSnap.data ?? {};
-                            final count = todayReturns
-                                .where((r) => seen.contains(r.id))
-                                .length;
-                            return _StatCard(
-                              title: 'أتت لموعدها اليوم',
-                              value: '$count',
-                              icon: Icons.event_repeat_outlined,
-                              onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                    builder: (_) => const ReminderScreen()),
-                              ),
-                            );
-                          },
-                        );
-                      },
+                    _StatCard(
+                      title: 'أتت لموعدها اليوم',
+                      value: '${stats.todayFollowUps}',
+                      icon: Icons.event_repeat_outlined,
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const ReminderScreen()),
+                      ),
                     ),
                     _StatCard(
                       title: 'أصناف منخفضة',

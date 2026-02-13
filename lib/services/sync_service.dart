@@ -238,6 +238,8 @@ class SyncService {
       'age',
       'doctor',
       'notes',
+      'is_attended',
+      'attended_at',
     },
     'consumptions': {
       'patient_id',
@@ -2933,6 +2935,10 @@ class SyncService {
   bool _realtimeEnabled = false;
   bool _realtimeSupported = true;
   bool _realtimeUnsupportedNotified = false;
+  Timer? _periodicPullTimer;
+  DateTime? _lastRealtimeEventAt;
+  DateTime? _lastPullAt;
+  bool _pullInProgress = false;
   VoidCallback? _clientListener;
 
   bool _remoteRowIsDeleted(Map<String, dynamic> row) {
@@ -2952,6 +2958,7 @@ class SyncService {
     Map<String, String>? fkParentTables,
   }) async {
     if (rows.isEmpty) return;
+    _lastRealtimeEventAt = DateTime.now();
     final versions =
         _realtimeRowVersions.putIfAbsent(remoteTable, () => <String, String>{});
 
@@ -3202,6 +3209,7 @@ class SyncService {
     Map<String, dynamic>? oldRecord,
   ) async {
     if (oldRecord == null || !_hasAccount) return;
+    _lastRealtimeEventAt = DateTime.now();
 
     final allowedCols = await _getLocalColumns(localTable);
     final myDeviceId = _safeDeviceId;
@@ -3282,6 +3290,8 @@ class SyncService {
         recordId: resolvedLocalId,
       );
     }
+
+    DBService.instance.emitPassiveChange(localTable);
   }
 
   Future<void> _queueRealtimeOp(Future<void> Function() action) {
@@ -3380,12 +3390,14 @@ class SyncService {
     );
 
     await _subscribeTableRealtime('financial_logs', 'financial_logs');
-    await _subscribeTableRealtime(
-      'patient_services',
-      'patient_services',
-      fkParentTables: _fkMap['patient_services'],
-    );
+      await _subscribeTableRealtime(
+        'patient_services',
+        'patient_services',
+        fkParentTables: _fkMap['patient_services'],
+      );
       _realtimeEnabled = true;
+      _ensurePeriodicPull();
+      await _triggerPullIfStale();
     });
   }
 
@@ -3395,6 +3407,8 @@ class SyncService {
   }
 
   Future<void> _stopRealtimeInternal() async {
+    _periodicPullTimer?.cancel();
+    _periodicPullTimer = null;
     final subs = _subscriptions.values.toList(growable: false);
     _subscriptions.clear();
     for (final sub in subs) {
@@ -3421,6 +3435,7 @@ class SyncService {
     if (realtime) {
       await startRealtime();
     }
+    _ensurePeriodicPull();
   }
 
   /// إعادة ربط الخدمة عند تغيّر الحساب/الجهاز
@@ -3456,10 +3471,13 @@ class SyncService {
     if (restartRealtime) {
       await startRealtime();
     }
+    _ensurePeriodicPull();
   }
 
   /// تنظيف سريع
   Future<void> dispose() async {
+    _periodicPullTimer?.cancel();
+    _periodicPullTimer = null;
     await stopRealtime();
     if (_clientListener != null) {
       NhostGraphqlService.buildNotifier().removeListener(_clientListener!);
@@ -3480,6 +3498,29 @@ class SyncService {
   Future<void> _restartRealtimeForClientRefresh() async {
     await stopRealtime();
     await startRealtime();
+    await _triggerPullIfStale(force: true);
+  }
+
+  void _ensurePeriodicPull() {
+    if (_periodicPullTimer != null) return;
+    _periodicPullTimer =
+        Timer.periodic(const Duration(minutes: 1), (_) async {
+      if (!_hasAccount) return;
+      await _triggerPullIfStale();
+    });
+  }
+
+  Future<void> _triggerPullIfStale({bool force = false}) async {
+    if (!_hasAccount) return;
+    final now = DateTime.now();
+    final lastRt = _lastRealtimeEventAt;
+    final lastPull = _lastPullAt;
+    final recentRt =
+        lastRt != null && now.difference(lastRt) < const Duration(minutes: 2);
+    final recentPull = lastPull != null &&
+        now.difference(lastPull) < const Duration(minutes: 2);
+    if (!force && (recentRt || recentPull)) return;
+    await pullAll();
   }
 
   /*──────────────────── جداول محددة (واجهات علنية) ───────────────────*/
@@ -3658,35 +3699,43 @@ class SyncService {
   }
 
   Future<void> pullAll() async {
+    if (_pullInProgress) return;
+    _pullInProgress = true;
     // أسس
-    await pullItemTypes();
-    await pullItems();
-    await pullDrugs();
-    await pullMedicalServices();
-    await pullEmployees();
-    await pullDoctors();
+    try {
+      await pullItemTypes();
+      await pullItems();
+      await pullDrugs();
+      await pullMedicalServices();
+      await pullEmployees();
+      await pullDoctors();
 
-    // نسب الأطباء
-    await pullServiceDoctorShares();
+      // نسب الأطباء
+      await pullServiceDoctorShares();
 
-    // معاملات مرضى
-    await pullPatients();
-    await pullPatientServices();
-    await pullReturns();
-    await pullAppointments();
-    await pullPrescriptions();
-    await pullPrescriptionItems();
-    await pullConsumptions();
-    await pullPurchases();
-    await pullAlertSettings();
+      // معاملات مرضى
+      await pullPatients();
+      await pullPatientServices();
+      await pullReturns();
+      await pullAppointments();
+      await pullPrescriptions();
+      await pullPrescriptionItems();
+      await pullConsumptions();
+      await pullPurchases();
+      await pullAlertSettings();
 
-    // مالية/موارد بشرية إضافية
-    await pullEmployeeLoans();
-    await pullEmployeeSalaries();
-    await pullEmployeeDiscounts();
+      // مالية/موارد بشرية إضافية
+      await pullEmployeeLoans();
+      await pullEmployeeSalaries();
+      await pullEmployeeDiscounts();
 
-    await pullComplaints();
-    await pullFinancialLogs();
+      await pullComplaints();
+      await pullFinancialLogs();
+      _lastPullAt = DateTime.now();
+      unawaited(DBService.instance.markStatisticsDirty());
+    } finally {
+      _pullInProgress = false;
+    }
   }
 
   /*──────────────────── Triggered Push (لـ onLocalChange) ───────────────────*/

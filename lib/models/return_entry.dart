@@ -16,6 +16,8 @@ class ReturnEntry {
   final int age;
   final String doctor;
   final String notes;
+  final bool isAttended;
+  final DateTime? attendedAt;
 
   /* ─── حقول مزامنة اختيارية (للسحابة) ─── */
   final String? accountId; // Remote → accounts.id
@@ -33,6 +35,8 @@ class ReturnEntry {
     required this.age,
     required this.doctor,
     required this.notes,
+    this.isAttended = false,
+    this.attendedAt,
     this.accountId,
     this.deviceId,
     this.localId,
@@ -51,7 +55,9 @@ class ReturnEntry {
     remaining    REAL    NOT NULL,
     age          INTEGER NOT NULL DEFAULT 0,
     doctor       TEXT    NOT NULL DEFAULT '',
-    notes        TEXT    NOT NULL DEFAULT ''
+    notes        TEXT    NOT NULL DEFAULT '',
+    isAttended   INTEGER NOT NULL DEFAULT 0,
+    attendedAt   TEXT
   );
   ''';
 
@@ -114,6 +120,14 @@ class ReturnEntry {
     return _toDate(v);
   }
 
+  static bool _toBool(dynamic v, {bool fallback = false}) {
+    if (v is bool) return v;
+    if (v is num) return v != 0;
+    final s = v?.toString().trim().toLowerCase();
+    if (s == null || s.isEmpty) return fallback;
+    return s == '1' || s == 'true' || s == 't' || s == 'yes';
+  }
+
   /*──────────────── تحويل ↔︎ خريطة ────────────────*/
   /// يدعم مفاتيح camelCase (محلي) و snake_case (سحابي)
   factory ReturnEntry.fromMap(Map<String, dynamic> map) => ReturnEntry(
@@ -128,6 +142,8 @@ class ReturnEntry {
         // في السحابة أبقينا الحقل "doctor"، وندعم doctor_name احتياطًا
         doctor: _toStr(map['doctor'] ?? map['doctor_name']),
         notes: _toStr(map['notes']),
+        isAttended: _toBool(map['isAttended'] ?? map['is_attended']),
+        attendedAt: _toDateN(map['attendedAt'] ?? map['attended_at']),
         // حقول المزامنة (camel + snake)
         accountId: _toStrN(map['accountId'] ?? map['account_id']),
         deviceId: _toStrN(map['deviceId'] ?? map['device_id']),
@@ -146,6 +162,8 @@ class ReturnEntry {
         'age': age,
         'doctor': doctor,
         'notes': notes,
+        'isAttended': isAttended ? 1 : 0,
+        'attendedAt': attendedAt?.toIso8601String(),
       };
 
   /// خريطة سحابية (snake_case) للمزامنة عبر SyncService
@@ -163,6 +181,8 @@ class ReturnEntry {
         'age': age,
         'doctor': doctor, // متروك كما هو، وندعم doctor_name عند القراءة
         'notes': notes,
+        'is_attended': isAttended,
+        'attended_at': attendedAt?.toIso8601String(),
         'updated_at': updatedAt?.toIso8601String(),
       }..removeWhere((k, v) => v == null);
 
@@ -179,6 +199,8 @@ class ReturnEntry {
     int? age,
     String? doctor,
     String? notes,
+    bool? isAttended,
+    DateTime? attendedAt,
     String? accountId,
     String? deviceId,
     int? localId,
@@ -194,6 +216,8 @@ class ReturnEntry {
         age: age ?? this.age,
         doctor: doctor ?? this.doctor,
         notes: notes ?? this.notes,
+        isAttended: isAttended ?? this.isAttended,
+        attendedAt: attendedAt ?? this.attendedAt,
         accountId: accountId ?? this.accountId,
         deviceId: deviceId ?? this.deviceId,
         localId: localId ?? this.localId,
@@ -220,6 +244,8 @@ class ReturnEntry {
           age == other.age &&
           doctor == other.doctor &&
           notes == other.notes &&
+          isAttended == other.isAttended &&
+          attendedAt == other.attendedAt &&
           accountId == other.accountId &&
           deviceId == other.deviceId &&
           localId == other.localId &&
@@ -232,13 +258,15 @@ class ReturnEntry {
         patientName,
         phoneNumber,
         diagnosis,
-        remaining,
-        age,
-        doctor,
-        notes,
-        accountId,
-        deviceId,
-        localId,
-        updatedAt,
+      remaining,
+      age,
+      doctor,
+      notes,
+      isAttended,
+      attendedAt,
+      accountId,
+      deviceId,
+      localId,
+      updatedAt,
       );
 }
