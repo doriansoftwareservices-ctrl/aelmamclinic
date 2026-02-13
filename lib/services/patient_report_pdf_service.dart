@@ -18,50 +18,156 @@ class PatientReportPdfService {
     required Patient patient,
     required PatientReport report,
   }) async {
-    final fontData = await rootBundle.load('assets/fonts/Cairo-Regular.ttf');
-    final fontBold = await rootBundle.load('assets/fonts/Cairo-Bold.ttf');
-    final cairo = pw.Font.ttf(fontData.buffer.asByteData());
-    final cairoBold = pw.Font.ttf(fontBold.buffer.asByteData());
+    pw.Font cairo;
+    pw.Font cairoBold;
+    try {
+      final fontData = await rootBundle.load('assets/fonts/Cairo-Regular.ttf');
+      final fontBold = await rootBundle.load('assets/fonts/Cairo-Bold.ttf');
+      cairo = pw.Font.ttf(fontData.buffer.asByteData());
+      cairoBold = pw.Font.ttf(fontBold.buffer.asByteData());
+    } catch (_) {
+      cairo = pw.Font.helvetica();
+      cairoBold = pw.Font.helveticaBold();
+    }
 
-    final logoData = await ClinicProfileService.loadReportLogoBytes();
+    Uint8List? logoData;
+    try {
+      logoData = await ClinicProfileService.loadReportLogoBytes();
+    } catch (_) {
+      logoData = null;
+    }
     final clinic = await ClinicProfileService.loadActiveOrFallback();
 
     final snapshot = report.snapshot;
     final complaint = (snapshot['complaint'] as Map?) ?? const {};
     final complaintTitle = (complaint['title'] ?? '').toString().trim();
-    final questions = (snapshot['questions'] as List?) ?? const [];
 
     final doc = pw.Document();
+    final baseText = pw.TextStyle(font: cairo, fontSize: 12, height: 1.35);
+    final boldText = pw.TextStyle(font: cairoBold, fontSize: 12, height: 1.35);
+    final pageTheme = pw.PageTheme(
+      pageFormat: PdfPageFormat.a4,
+      margin: const pw.EdgeInsets.all(20),
+      textDirection: pw.TextDirection.rtl,
+      theme: pw.ThemeData.withFont(base: cairo, bold: cairoBold),
+    );
+
+    pw.Widget thinDivider([double v = 6]) => pw.Padding(
+          padding: pw.EdgeInsets.symmetric(vertical: v),
+          child: pw.Container(height: 0.7, color: PdfColors.grey300),
+        );
+
+    pw.Widget infoRow(String labelEn, String value) => pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Expanded(
+                child: pw.Text(value,
+                    style: baseText, textAlign: pw.TextAlign.right)),
+            pw.SizedBox(width: 14),
+            pw.Text(labelEn, style: boldText, textAlign: pw.TextAlign.left),
+          ],
+        );
+
     doc.addPage(
       pw.MultiPage(
-        pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.all(20),
-        build: (_) => [
-          pw.Directionality(
-            textDirection: pw.TextDirection.rtl,
-            child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+        pageTheme: pageTheme,
+        header: (_) => pw.Column(
+          children: [
+            pw.Row(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                _buildHeader(logoData, cairo, cairoBold, clinic),
-                pw.SizedBox(height: 14),
-                _buildTitleRow(cairoBold, report),
-                pw.SizedBox(height: 8),
-                _buildPatientInfo(cairo, cairoBold, patient),
-                if (complaintTitle.isNotEmpty) ...[
-                  pw.SizedBox(height: 10),
-                  pw.Text('ما يعاني منه المريض: $complaintTitle',
-                      style: pw.TextStyle(
-                          font: cairoBold, fontSize: 12, color: kReportAccent)),
-                ],
-                pw.SizedBox(height: 12),
-                _buildReportText(cairo, cairoBold, report.reportText),
-                pw.SizedBox(height: 16),
-                _buildQuestionsTable(cairo, cairoBold, questions),
-                pw.SizedBox(height: 24),
-                _buildFooter(cairo, clinic),
+                pw.Expanded(
+                  child: pw.Padding(
+                    padding: const pw.EdgeInsets.only(right: 12),
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text(clinic.nameAr,
+                            style: pw.TextStyle(
+                                font: cairoBold,
+                                fontSize: 14,
+                                color: PdfColors.blueGrey)),
+                        pw.Text(clinic.addressAr,
+                            style: pw.TextStyle(font: cairo, fontSize: 9)),
+                        pw.Text('الهاتف: ${clinic.phone}',
+                            style: pw.TextStyle(font: cairo, fontSize: 9)),
+                      ],
+                    ),
+                  ),
+                ),
+                pw.Container(
+                  width: 100,
+                  height: 60,
+                  alignment: pw.Alignment.topCenter,
+                  child: logoData == null
+                      ? pw.SizedBox()
+                      : pw.Image(pw.MemoryImage(logoData), width: 56, height: 56),
+                ),
+                pw.Expanded(
+                  child: pw.Padding(
+                    padding: const pw.EdgeInsets.only(left: 12),
+                    child: pw.Directionality(
+                      textDirection: pw.TextDirection.ltr,
+                      child: pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Text(clinic.nameEn,
+                              textAlign: pw.TextAlign.left,
+                              style: pw.TextStyle(
+                                  font: cairoBold,
+                                  fontSize: 14,
+                                  color: PdfColors.blueGrey)),
+                          pw.Text(clinic.addressEn,
+                              textAlign: pw.TextAlign.left,
+                              style: pw.TextStyle(font: cairo, fontSize: 9)),
+                          pw.Text('Tel: ${clinic.phone}',
+                              textAlign: pw.TextAlign.left,
+                              style: pw.TextStyle(font: cairo, fontSize: 9)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
+            pw.SizedBox(height: 8),
+            pw.Container(height: 1, color: PdfColors.grey500),
+          ],
+        ),
+        footer: (ctx) => pw.Container(
+          alignment: pw.Alignment.center,
+          padding: const pw.EdgeInsets.only(top: 6),
+          decoration: const pw.BoxDecoration(
+            border:
+                pw.Border(top: pw.BorderSide(width: 0.6, color: PdfColors.grey300)),
           ),
+          child: pw.Text(
+            '${clinic.nameAr} - ${clinic.addressAr} "هاتف : ${clinic.phone}  •  Page ${ctx.pageNumber}/${ctx.pagesCount}',
+            style: pw.TextStyle(
+                font: cairo, fontSize: 9, color: PdfColors.blueGrey),
+            textAlign: pw.TextAlign.center,
+          ),
+        ),
+        build: (_) => [
+          pw.SizedBox(height: 10),
+          _buildTitleRow(cairoBold, report),
+          pw.SizedBox(height: 10),
+          infoRow('Patient Name', patient.name),
+          thinDivider(),
+          infoRow('Age', '${patient.age}'),
+          if (complaintTitle.isNotEmpty) ...[
+            thinDivider(),
+            infoRow('Complaint', complaintTitle),
+          ],
+          pw.SizedBox(height: 14),
+          pw.Center(
+            child: pw.Container(
+              width: 420,
+              child: _buildReportText(cairo, cairoBold, report.reportText),
+            ),
+          ),
+          pw.SizedBox(height: 18),
+          _buildFooter(cairo, clinic),
         ],
       ),
     );
@@ -107,19 +213,25 @@ class PatientReportPdfService {
         ),
         pw.Image(pw.MemoryImage(logo), width: 60, height: 60),
         pw.Expanded(
-          child: pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.end,
-            children: [
-              pw.Text(clinic.nameEn,
-                  style: pw.TextStyle(
-                      font: cairoBold,
-                      fontSize: 14,
-                      color: kReportAccent)),
-              pw.Text(clinic.addressEn,
-                  style: pw.TextStyle(font: cairo, fontSize: 9)),
-              pw.Text('Tel: ${clinic.phone}',
-                  style: pw.TextStyle(font: cairo, fontSize: 9)),
-            ],
+          child: pw.Directionality(
+            textDirection: pw.TextDirection.ltr,
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text(clinic.nameEn,
+                    textAlign: pw.TextAlign.left,
+                    style: pw.TextStyle(
+                        font: cairoBold,
+                        fontSize: 14,
+                        color: kReportAccent)),
+                pw.Text(clinic.addressEn,
+                    textAlign: pw.TextAlign.left,
+                    style: pw.TextStyle(font: cairo, fontSize: 9)),
+                pw.Text('Tel: ${clinic.phone}',
+                    textAlign: pw.TextAlign.left,
+                    style: pw.TextStyle(font: cairo, fontSize: 9)),
+              ],
+            ),
           ),
         ),
       ],
@@ -135,7 +247,7 @@ class PatientReportPdfService {
       children: [
         pw.Text('التاريخ: $date',
             style: pw.TextStyle(font: bold, fontSize: 11)),
-        pw.Text('تقرير طبي',
+        pw.Text('',
             style: pw.TextStyle(font: bold, fontSize: 16, color: kReportAccent)),
       ],
     );
@@ -180,13 +292,11 @@ class PatientReportPdfService {
         borderRadius: pw.BorderRadius.circular(6),
       ),
       child: pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        crossAxisAlignment: pw.CrossAxisAlignment.center,
         children: [
-          pw.Text('نص التقرير',
-              style: pw.TextStyle(font: bold, fontSize: 12)),
-          pw.SizedBox(height: 6),
           pw.Text(reportText.isEmpty ? '—' : reportText,
-              style: pw.TextStyle(font: base, fontSize: 11, height: 1.4)),
+              style: pw.TextStyle(font: base, fontSize: 11, height: 1.4),
+              textAlign: pw.TextAlign.center),
         ],
       ),
     );
@@ -217,19 +327,61 @@ class PatientReportPdfService {
       data.add(['—', '—', '—']);
     }
 
-    return pw.TableHelper.fromTextArray(
-      headers: headers,
-      data: data,
-      headerStyle:
-          pw.TextStyle(font: bold, fontSize: 11, color: PdfColors.white),
-      cellStyle: pw.TextStyle(font: base, fontSize: 10),
-      headerDecoration: pw.BoxDecoration(color: kReportAccent),
-      cellAlignment: pw.Alignment.centerRight,
-      columnWidths: {
-        0: const pw.FlexColumnWidth(4),
-        1: const pw.FlexColumnWidth(1.3),
-        2: const pw.FlexColumnWidth(2.2),
+    return pw.Table(
+      columnWidths: const <int, pw.TableColumnWidth>{
+        0: pw.FlexColumnWidth(3.6),
+        1: pw.FlexColumnWidth(1.3),
+        2: pw.FlexColumnWidth(2.1),
       },
+      border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+      children: [
+        pw.TableRow(
+          decoration: const pw.BoxDecoration(color: PdfColors.grey300),
+          children: [
+            pw.Padding(
+              padding: const pw.EdgeInsets.all(8),
+              child: pw.Text(headers[0],
+                  style: pw.TextStyle(font: bold, fontSize: 11),
+                  textAlign: pw.TextAlign.right),
+            ),
+            pw.Padding(
+              padding: const pw.EdgeInsets.all(8),
+              child: pw.Text(headers[1],
+                  style: pw.TextStyle(font: bold, fontSize: 11),
+                  textAlign: pw.TextAlign.center),
+            ),
+            pw.Padding(
+              padding: const pw.EdgeInsets.all(8),
+              child: pw.Text(headers[2],
+                  style: pw.TextStyle(font: bold, fontSize: 11),
+                  textAlign: pw.TextAlign.right),
+            ),
+          ],
+        ),
+        for (final row in data)
+          pw.TableRow(
+            children: [
+              pw.Padding(
+                padding: const pw.EdgeInsets.all(8),
+                child: pw.Text(row[0],
+                    style: pw.TextStyle(font: base, fontSize: 10),
+                    textAlign: pw.TextAlign.right),
+              ),
+              pw.Padding(
+                padding: const pw.EdgeInsets.all(8),
+                child: pw.Text(row[1],
+                    style: pw.TextStyle(font: base, fontSize: 10),
+                    textAlign: pw.TextAlign.center),
+              ),
+              pw.Padding(
+                padding: const pw.EdgeInsets.all(8),
+                child: pw.Text(row[2],
+                    style: pw.TextStyle(font: base, fontSize: 10),
+                    textAlign: pw.TextAlign.right),
+              ),
+            ],
+          ),
+      ],
     );
   }
 

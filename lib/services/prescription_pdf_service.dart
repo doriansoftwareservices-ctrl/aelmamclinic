@@ -200,20 +200,26 @@ class PrescriptionPdfService {
 
           // ——— الكتلة الإنجليزية أصبحت على اليمين (نهاية السطر) ———
           pw.Expanded(
-            child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.end,
-              children: [
-                pw.Text(clinic.nameEn,
-                    style: pw.TextStyle(
-                        font: cairo,
-                        fontSize: 14,
-                        fontWeight: pw.FontWeight.bold,
-                        color: kAccent)),
-                pw.Text(clinic.addressEn,
-                    style: pw.TextStyle(font: cairo, fontSize: 9)),
-                pw.Text('Tel: ${clinic.phone}',
-                    style: pw.TextStyle(font: cairo, fontSize: 9)),
-              ],
+            child: pw.Directionality(
+              textDirection: pw.TextDirection.ltr,
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(clinic.nameEn,
+                      textAlign: pw.TextAlign.left,
+                      style: pw.TextStyle(
+                          font: cairo,
+                          fontSize: 14,
+                          fontWeight: pw.FontWeight.bold,
+                          color: kAccent)),
+                  pw.Text(clinic.addressEn,
+                      textAlign: pw.TextAlign.left,
+                      style: pw.TextStyle(font: cairo, fontSize: 9)),
+                  pw.Text('Tel: ${clinic.phone}',
+                      textAlign: pw.TextAlign.left,
+                      style: pw.TextStyle(font: cairo, fontSize: 9)),
+                ],
+              ),
             ),
           ),
         ],

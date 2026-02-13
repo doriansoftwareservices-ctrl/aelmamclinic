@@ -465,21 +465,27 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
                   child: pw.Padding(
                     padding:
                         const pw.EdgeInsets.only(left: 12), // إبعاد عن الشعار
-                    child: pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.end,
-                      children: [
-                        pw.Text(clinic.nameEn,
-                            style: pw.TextStyle(
-                                font: cairoBold,
-                                fontSize: 14,
-                                color: PdfColors.blueGrey)),
-                        pw.Text(clinic.addressEn,
-                            style:
-                                pw.TextStyle(font: cairoRegular, fontSize: 9)),
-                        pw.Text('Tel: ${clinic.phone}',
-                            style:
-                                pw.TextStyle(font: cairoRegular, fontSize: 9)),
-                      ],
+                    child: pw.Directionality(
+                      textDirection: pw.TextDirection.ltr,
+                      child: pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Text(clinic.nameEn,
+                              textAlign: pw.TextAlign.left,
+                              style: pw.TextStyle(
+                                  font: cairoBold,
+                                  fontSize: 14,
+                                  color: PdfColors.blueGrey)),
+                          pw.Text(clinic.addressEn,
+                              textAlign: pw.TextAlign.left,
+                              style: pw.TextStyle(
+                                  font: cairoRegular, fontSize: 9)),
+                          pw.Text('Tel: ${clinic.phone}',
+                              textAlign: pw.TextAlign.left,
+                              style: pw.TextStyle(
+                                  font: cairoRegular, fontSize: 9)),
+                        ],
+                      ),
                     ),
                   ),
                 ),
