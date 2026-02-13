@@ -115,7 +115,18 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
       if (ids.isNotEmpty) {
         final placeholders = List.filled(ids.length, '?').join(',');
         final rows = await db.rawQuery(
-          'SELECT * FROM ${PatientService.table} WHERE patientId IN ($placeholders)',
+          '''
+          SELECT
+            ps.*,
+            COALESCE(ps.serviceName, ms.name) AS serviceName,
+            COALESCE(ps.serviceCost, ms.cost, 0) AS serviceCost
+          FROM ${PatientService.table} ps
+          LEFT JOIN medical_services ms
+            ON ms.id = ps.serviceId
+          WHERE ps.patientId IN ($placeholders)
+            AND ifnull(ps.isDeleted,0)=0
+            AND (ps.serviceId IS NULL OR ifnull(ms.isDeleted,0)=0)
+          ''',
           ids,
         );
         for (final r in rows) {
@@ -126,7 +137,7 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
                   patientId: pid,
                   serviceId: (r['serviceId'] as num?)?.toInt(),
                   serviceName: (r['serviceName'] as String?) ?? '',
-                  serviceCost: (r['serviceCost'] as num).toDouble(),
+                  serviceCost: (r['serviceCost'] as num?)?.toDouble() ?? 0.0,
                 ),
               );
         }
