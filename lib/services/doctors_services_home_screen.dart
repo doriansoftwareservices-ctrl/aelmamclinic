@@ -8,7 +8,6 @@ import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/widgets/feature_hub.dart';
 
 import 'doctors_services_list_screen.dart';
-import 'doctors_shares_list_screen.dart';
 
 class DoctorsServicesHomeScreen extends StatelessWidget {
   const DoctorsServicesHomeScreen({super.key});
@@ -55,14 +54,10 @@ class DoctorsServicesHomeScreen extends StatelessWidget {
                 FeatureHubItem(
                   icon: Icons.percent_rounded,
                   title: 'النِّسب الخاصة بالأطباء',
-                  subtitle: 'تحديث نسب المشاركة ونسبة المركز الطبي',
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const DoctorsSharesListScreen()),
-                    );
-                  },
+                  subtitle:
+                      'تحديث نسب المشاركة ونسبة الأطباء من الأشعة والمختبرات',
+                  badgeText: 'تحت التطوير',
+                  disabled: true,
                 ),
               ],
             ),

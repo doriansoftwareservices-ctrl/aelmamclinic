@@ -34,6 +34,7 @@ class _ClinicProfileScreenState extends State<ClinicProfileScreen> {
   final _streetEnCtrl = TextEditingController();
   final _nearEnCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
+  final _phone2Ctrl = TextEditingController();
 
   String? _logoPath;
   bool _logoBusy = false;
@@ -57,6 +58,7 @@ class _ClinicProfileScreenState extends State<ClinicProfileScreen> {
     _streetEnCtrl.dispose();
     _nearEnCtrl.dispose();
     _phoneCtrl.dispose();
+    _phone2Ctrl.dispose();
     super.dispose();
   }
 
@@ -89,6 +91,7 @@ class _ClinicProfileScreenState extends State<ClinicProfileScreen> {
     _streetEnCtrl.text = profileData?.streetEn ?? '';
     _nearEnCtrl.text = profileData?.nearEn ?? '';
     _phoneCtrl.text = profileData?.phone ?? '';
+    _phone2Ctrl.text = profileData?.phone2 ?? '';
     final logo = profileData?.logoPath?.trim() ?? '';
     _logoPath = (logo.isNotEmpty && File(logo).existsSync()) ? logo : null;
   }
@@ -111,6 +114,7 @@ class _ClinicProfileScreenState extends State<ClinicProfileScreen> {
         streetEn: _streetEnCtrl.text.trim(),
         nearEn: _nearEnCtrl.text.trim(),
         phone: _phoneCtrl.text.trim(),
+        phone2: _phone2Ctrl.text.trim(),
       );
       await auth.updateClinicProfile(profile);
       await auth.refreshAndValidateCurrentUser();
@@ -437,6 +441,13 @@ class _ClinicProfileScreenState extends State<ClinicProfileScreen> {
                           controller: _phoneCtrl,
                           labelText: 'رقم الهاتف',
                           validator: _req,
+                          keyboardType: TextInputType.phone,
+                          enabled: canEdit,
+                        ),
+                        const SizedBox(height: 8),
+                        NeuField(
+                          controller: _phone2Ctrl,
+                          labelText: 'رقم هاتف إضافي (اختياري)',
                           keyboardType: TextInputType.phone,
                           enabled: canEdit,
                         ),

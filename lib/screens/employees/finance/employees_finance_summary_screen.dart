@@ -40,6 +40,7 @@ class _EmployeesFinanceSummaryScreenState
   double _loansPaid = 0;
   double _discountsTaken = 0;
   double _salariesPaid = 0;
+  double _returnsRemaining = 0;
   double _netProfit = 0;
 
   bool _busy = false;
@@ -156,6 +157,8 @@ class _EmployeesFinanceSummaryScreenState
                           Icons.discount_outlined),
                       _statCard('مبالغ الرواتب والمستحقات المصروفة',
                           _salariesPaid, Icons.account_balance_wallet_outlined),
+                      _statCard('مبالغ متبقية للمرتجعات', _returnsRemaining,
+                          Icons.assignment_return_outlined),
                       _statCard('الصافي/الأرباح', _netProfit,
                           Icons.attach_money_outlined,
                           emphasize: true),
@@ -286,6 +289,8 @@ class _EmployeesFinanceSummaryScreenState
           _asDouble(await DBService.instance.getSumPatientsBetween(from, to));
       final consumptionVal = _asDouble(
           await DBService.instance.getSumConsumptionBetween(from, to));
+      final returnsVal = _asDouble(
+          await DBService.instance.getSumReturnsRemainingBetween(from, to));
 
       // نسب/مدخلات/حصة المركز الطبي
       double ratiosVal = 0, inputsVal = 0, towerVal = 0;
@@ -328,7 +333,12 @@ class _EmployeesFinanceSummaryScreenState
       }
 
       // صافي مبسّط وفق منطقك الحالي
-      final net = collectedVal - salariesVal - consumptionVal;
+      final net = collectedVal -
+          salariesVal -
+          consumptionVal -
+          loansVal -
+          discountsVal -
+          returnsVal;
 
       // سجل تشغيلي
       LoggingService().logTransaction(
@@ -349,6 +359,7 @@ class _EmployeesFinanceSummaryScreenState
         _loansPaid = loansVal;
         _discountsTaken = discountsVal;
         _salariesPaid = salariesVal;
+        _returnsRemaining = returnsVal;
         _netProfit = net;
       });
     } catch (e) {

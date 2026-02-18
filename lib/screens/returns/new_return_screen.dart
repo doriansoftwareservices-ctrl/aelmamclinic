@@ -5,8 +5,10 @@ import 'package:intl/intl.dart';
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/core/tbian_ui.dart';
+import 'package:aelmamclinic/core/formatters.dart';
 import 'package:aelmamclinic/models/return_entry.dart';
 import 'package:aelmamclinic/models/patient.dart';
+import 'package:aelmamclinic/models/doctor.dart';
 import 'package:aelmamclinic/services/db_service.dart';
 import 'list_returns_screen.dart';
 
@@ -171,6 +173,22 @@ class _NewReturnScreenState extends State<NewReturnScreen> {
       _diagnosisCtrl.text = selected.diagnosis.trim();
       _ageCtrl.text = selected.age.toString();
       _doctorCtrl.text = (selected.doctorName ?? '').trim();
+      _remainingCtrl.text = selected.remaining.toStringAsFixed(2);
+    }
+  }
+
+  Future<void> _selectDoctor() async {
+    final selected = await showModalBottomSheet<Doctor>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (_) => const _DoctorSearchSheet(),
+    );
+    if (selected != null) {
+      _doctorCtrl.text = selected.name;
     }
   }
 
@@ -271,16 +289,23 @@ class _NewReturnScreenState extends State<NewReturnScreen> {
                             enabled: false,
                           ),
                           const SizedBox(height: 10),
-                          NeuField(
-                            controller: _doctorCtrl,
-                            labelText: 'الطبيب',
-                            enabled: false,
+                          InkWell(
+                            onTap: _selectDoctor,
+                            borderRadius: BorderRadius.circular(14),
+                            child: AbsorbPointer(
+                              child: NeuField(
+                                controller: _doctorCtrl,
+                                labelText: 'الطبيب',
+                                hintText: 'اضغط للاختيار…',
+                                suffix:
+                                    const Icon(Icons.chevron_left_rounded),
+                              ),
+                            ),
                           ),
                           const SizedBox(height: 10),
                           NeuField(
                             controller: _diagnosisCtrl,
                             labelText: 'حالة المريض',
-                            enabled: false,
                             maxLines: 2,
                           ),
                         ],
@@ -357,6 +382,155 @@ class _PatientSearchSheet extends StatefulWidget {
   State<_PatientSearchSheet> createState() => _PatientSearchSheetState();
 }
 
+/*──────── BottomSheet: البحث عن طبيب ────────*/
+class _DoctorSearchSheet extends StatefulWidget {
+  const _DoctorSearchSheet();
+
+  @override
+  State<_DoctorSearchSheet> createState() => _DoctorSearchSheetState();
+}
+
+class _DoctorSearchSheetState extends State<_DoctorSearchSheet> {
+  final _searchCtrl = TextEditingController();
+  List<Doctor> _all = [];
+  List<Doctor> _filtered = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+    _searchCtrl.addListener(() => _apply(_searchCtrl.text));
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final list = await DBService.instance.getAllDoctors();
+    if (!mounted) return;
+    setState(() {
+      _all = list;
+      _filtered = list;
+    });
+  }
+
+  void _apply(String v) {
+    final q = v.toLowerCase().trim();
+    setState(() {
+      _filtered = _all.where((d) {
+        final name = d.name.toLowerCase();
+        final spec = d.specialization.toLowerCase();
+        final phone = d.phoneNumber.toLowerCase();
+        return q.isEmpty ||
+            name.contains(q) ||
+            spec.contains(q) ||
+            phone.contains(q);
+      }).toList();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Directionality(
+      textDirection: ui.TextDirection.rtl,
+      child: DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.7,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        builder: (ctx, scrollController) {
+          return SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+              child: Column(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: BoxDecoration(
+                      color: scheme.outlineVariant,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  TSearchField(
+                    controller: _searchCtrl,
+                    hint: 'ابحث عن الطبيب (الاسم/التخصص/الهاتف)…',
+                    onChanged: (_) {},
+                    onClear: () {
+                      _searchCtrl.clear();
+                      _apply('');
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  Expanded(
+                    child: _filtered.isEmpty
+                        ? const Center(child: Text('لا توجد نتائج'))
+                        : ListView.builder(
+                            controller: scrollController,
+                            itemCount: _filtered.length,
+                            itemBuilder: (_, i) {
+                              final d = _filtered[i];
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: NeuCard(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 6),
+                                  onTap: () => Navigator.pop(context, d),
+                                  child: ListTile(
+                                    contentPadding: const EdgeInsets.symmetric(
+                                        horizontal: 6),
+                                    leading: Container(
+                                      decoration: BoxDecoration(
+                                        color: kPrimaryColor.withValues(
+                                            alpha: .10),
+                                        borderRadius: BorderRadius.circular(14),
+                                      ),
+                                      padding: const EdgeInsets.all(8),
+                                      child: const Icon(Icons.medical_services,
+                                          color: kPrimaryColor, size: 20),
+                                    ),
+                                    title: Text(
+                                      d.name,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.w800),
+                                    ),
+                                    subtitle: Text(
+                                      d.specialization.isEmpty
+                                          ? '—'
+                                          : d.specialization,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                          color: scheme.onSurface
+                                              .withValues(alpha: .75)),
+                                    ),
+                                    trailing: const Icon(
+                                        Icons.chevron_left_rounded),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
 class _PatientSearchSheetState extends State<_PatientSearchSheet> {
   final _searchCtrl = TextEditingController();
   List<Patient> _all = [];
@@ -377,10 +551,22 @@ class _PatientSearchSheetState extends State<_PatientSearchSheet> {
 
   Future<void> _load() async {
     final list = await DBService.instance.getAllPatients();
+    final map = <String, Patient>{};
+    for (final p in list) {
+      final key =
+          '${Formatters.normalizePhone(p.phoneNumber)}|${p.name.trim().toLowerCase()}';
+      final existing = map[key];
+      if (existing == null ||
+          p.registerDate.isAfter(existing.registerDate)) {
+        map[key] = p;
+      }
+    }
+    final deduped = map.values.toList()
+      ..sort((a, b) => b.registerDate.compareTo(a.registerDate));
     if (!mounted) return; // حماية عند الإغلاق السريع
     setState(() {
-      _all = list;
-      _filtered = list;
+      _all = deduped;
+      _filtered = deduped;
     });
   }
 

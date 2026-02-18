@@ -8,6 +8,7 @@ import 'package:aelmamclinic/core/tbian_ui.dart';
 
 import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/services/logging_service.dart';
+import 'package:aelmamclinic/models/doctor.dart';
 import 'employee_salary_detail_screen.dart';
 import 'non_doctor_salary_detail_screen.dart';
 import 'finance_access_guard.dart';
@@ -441,8 +442,7 @@ class _CreateSalaryPaymentScreenState extends State<CreateSalaryPaymentScreen> {
     final isDoc = (emp['isDoctor'] ?? 0) == 1;
 
     if (isDoc) {
-      final doctorId =
-          await _resolveDoctorIdByEmployee((emp['id'] as num).toInt());
+      final doctorId = await _ensureDoctorForEmployee(emp);
       if (doctorId == null) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -495,6 +495,34 @@ class _CreateSalaryPaymentScreenState extends State<CreateSalaryPaymentScreen> {
     } catch (_) {
       return null;
     }
+  }
+
+  Future<int?> _ensureDoctorForEmployee(Map<String, dynamic> emp) async {
+    final empId = (emp['id'] as num).toInt();
+    final existing = await _resolveDoctorIdByEmployee(empId);
+    if (existing != null) return existing;
+
+    try {
+      final name = (emp['name'] ?? '').toString().trim();
+      final specialization = (emp['jobTitle'] ?? '').toString().trim();
+      final phone = (emp['phoneNumber'] ?? '').toString().trim();
+      final userUid = (emp['userUid'] ?? '').toString().trim();
+
+      final doctor = Doctor(
+        employeeId: empId,
+        userUid: userUid.isEmpty ? null : userUid,
+        name: name.isEmpty ? 'طبيب' : name,
+        specialization: specialization.isEmpty ? 'عام' : specialization,
+        phoneNumber: phone,
+        startTime: '08:00',
+        endTime: '16:00',
+      );
+      await DBService.instance.insertDoctor(doctor);
+    } catch (_) {
+      // ignore
+    }
+
+    return _resolveDoctorIdByEmployee(empId);
   }
 
   void _handleSalaryPaid(int empId) {

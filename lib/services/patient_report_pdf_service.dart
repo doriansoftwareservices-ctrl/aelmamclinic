@@ -10,6 +10,7 @@ import 'package:aelmamclinic/models/patient.dart';
 import 'package:aelmamclinic/models/patient_report.dart';
 import 'package:aelmamclinic/models/clinic_profile.dart';
 import 'package:aelmamclinic/services/clinic_profile_service.dart';
+import 'package:aelmamclinic/utils/pdf_text.dart';
 
 const PdfColor kReportAccent = PdfColor.fromInt(0xFF004A61);
 
@@ -41,6 +42,7 @@ class PatientReportPdfService {
     final snapshot = report.snapshot;
     final complaint = (snapshot['complaint'] as Map?) ?? const {};
     final complaintTitle = (complaint['title'] ?? '').toString().trim();
+    final clinicPhones = _clinicPhones(clinic);
 
     final doc = pw.Document();
     final baseText = pw.TextStyle(font: cairo, fontSize: 12, height: 1.35);
@@ -61,7 +63,7 @@ class PatientReportPdfService {
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           children: [
             pw.Expanded(
-                child: pw.Text(value,
+                child: pw.Text(pdfText(value),
                     style: baseText, textAlign: pw.TextAlign.right)),
             pw.SizedBox(width: 14),
             pw.Text(labelEn, style: boldText, textAlign: pw.TextAlign.left),
@@ -82,14 +84,14 @@ class PatientReportPdfService {
                     child: pw.Column(
                       crossAxisAlignment: pw.CrossAxisAlignment.start,
                       children: [
-                        pw.Text(clinic.nameAr,
+                        pw.Text(pdfText(clinic.nameAr),
                             style: pw.TextStyle(
                                 font: cairoBold,
                                 fontSize: 14,
                                 color: PdfColors.blueGrey)),
-                        pw.Text(clinic.addressAr,
+                        pw.Text(pdfText(clinic.addressAr),
                             style: pw.TextStyle(font: cairo, fontSize: 9)),
-                        pw.Text('الهاتف: ${clinic.phone}',
+                        pw.Text(pdfText('الهاتف: $clinicPhones'),
                             style: pw.TextStyle(font: cairo, fontSize: 9)),
                       ],
                     ),
@@ -120,7 +122,7 @@ class PatientReportPdfService {
                           pw.Text(clinic.addressEn,
                               textAlign: pw.TextAlign.left,
                               style: pw.TextStyle(font: cairo, fontSize: 9)),
-                          pw.Text('Tel: ${clinic.phone}',
+                          pw.Text('Tel: $clinicPhones',
                               textAlign: pw.TextAlign.left,
                               style: pw.TextStyle(font: cairo, fontSize: 9)),
                         ],
@@ -142,7 +144,9 @@ class PatientReportPdfService {
                 pw.Border(top: pw.BorderSide(width: 0.6, color: PdfColors.grey300)),
           ),
           child: pw.Text(
-            '${clinic.nameAr} - ${clinic.addressAr} "هاتف : ${clinic.phone}  •  Page ${ctx.pageNumber}/${ctx.pagesCount}',
+            pdfText(
+              '${clinic.nameAr} - ${clinic.addressAr} "هاتف : $clinicPhones  •  Page ${ctx.pageNumber}/${ctx.pagesCount}',
+            ),
             style: pw.TextStyle(
                 font: cairo, fontSize: 9, color: PdfColors.blueGrey),
             textAlign: pw.TextAlign.center,
@@ -152,18 +156,19 @@ class PatientReportPdfService {
           pw.SizedBox(height: 10),
           _buildTitleRow(cairoBold, report),
           pw.SizedBox(height: 10),
-          infoRow('Patient Name', patient.name),
+          infoRow('Patient Name', pdfText(patient.name)),
           thinDivider(),
           infoRow('Age', '${patient.age}'),
           if (complaintTitle.isNotEmpty) ...[
             thinDivider(),
-            infoRow('Complaint', complaintTitle),
+            infoRow('Complaint', pdfText(complaintTitle)),
           ],
           pw.SizedBox(height: 14),
           pw.Center(
             child: pw.Container(
               width: 420,
-              child: _buildReportText(cairo, cairoBold, report.reportText),
+              child:
+                  _buildReportText(cairo, cairoBold, pdfText(report.reportText)),
             ),
           ),
           pw.SizedBox(height: 18),
@@ -187,57 +192,6 @@ class PatientReportPdfService {
     );
   }
 
-  static pw.Widget _buildHeader(
-    Uint8List logo,
-    pw.Font cairo,
-    pw.Font cairoBold,
-    ClinicProfile clinic,
-  ) {
-    return pw.Row(
-      children: [
-        pw.Expanded(
-          child: pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Text(clinic.nameAr,
-                  style: pw.TextStyle(
-                      font: cairoBold,
-                      fontSize: 14,
-                      color: kReportAccent)),
-              pw.Text(clinic.addressAr,
-                  style: pw.TextStyle(font: cairo, fontSize: 9)),
-              pw.Text('هاتف: ${clinic.phone}',
-                  style: pw.TextStyle(font: cairo, fontSize: 9)),
-            ],
-          ),
-        ),
-        pw.Image(pw.MemoryImage(logo), width: 60, height: 60),
-        pw.Expanded(
-          child: pw.Directionality(
-            textDirection: pw.TextDirection.ltr,
-            child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Text(clinic.nameEn,
-                    textAlign: pw.TextAlign.left,
-                    style: pw.TextStyle(
-                        font: cairoBold,
-                        fontSize: 14,
-                        color: kReportAccent)),
-                pw.Text(clinic.addressEn,
-                    textAlign: pw.TextAlign.left,
-                    style: pw.TextStyle(font: cairo, fontSize: 9)),
-                pw.Text('Tel: ${clinic.phone}',
-                    textAlign: pw.TextAlign.left,
-                    style: pw.TextStyle(font: cairo, fontSize: 9)),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
   static pw.Widget _buildTitleRow(pw.Font bold, PatientReport report) {
     final date = report.createdAt != null
         ? DateFormat('yyyy-MM-dd • HH:mm').format(report.createdAt!.toLocal())
@@ -249,33 +203,6 @@ class PatientReportPdfService {
             style: pw.TextStyle(font: bold, fontSize: 11)),
         pw.Text('',
             style: pw.TextStyle(font: bold, fontSize: 16, color: kReportAccent)),
-      ],
-    );
-  }
-
-  static pw.Widget _buildPatientInfo(
-    pw.Font base,
-    pw.Font bold,
-    Patient patient,
-  ) {
-    pw.Widget row(String label, String value) => pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-          children: [
-            pw.Expanded(
-                child: pw.Text(value,
-                    style: pw.TextStyle(font: base, fontSize: 11))),
-            pw.SizedBox(width: 12),
-            pw.Text(label, style: pw.TextStyle(font: bold, fontSize: 11)),
-          ],
-        );
-
-    return pw.Column(
-      children: [
-        row('اسم المريض', patient.name),
-        pw.SizedBox(height: 4),
-        row('رقم الهاتف', patient.phoneNumber.isEmpty ? '—' : patient.phoneNumber),
-        pw.SizedBox(height: 4),
-        row('العمر', '${patient.age}'),
       ],
     );
   }
@@ -302,87 +229,11 @@ class PatientReportPdfService {
     );
   }
 
-  static pw.Widget _buildQuestionsTable(
-    pw.Font base,
-    pw.Font bold,
-    List questions,
-  ) {
-    String answerLabel(dynamic v) {
-      if (v == true) return 'نعم';
-      if (v == false) return 'لا';
-      return 'غير مجاب';
-    }
-
-    final headers = ['السؤال', 'الإجابة', 'الملاحظة'];
-    final data = <List<String>>[];
-    for (final q in questions) {
-      if (q is! Map) continue;
-      final text = (q['question_text'] ?? '').toString();
-      final answer = answerLabel(q['answer']);
-      final note = (q['note'] ?? '').toString();
-      data.add([text, answer, note]);
-    }
-
-    if (data.isEmpty) {
-      data.add(['—', '—', '—']);
-    }
-
-    return pw.Table(
-      columnWidths: const <int, pw.TableColumnWidth>{
-        0: pw.FlexColumnWidth(3.6),
-        1: pw.FlexColumnWidth(1.3),
-        2: pw.FlexColumnWidth(2.1),
-      },
-      border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
-      children: [
-        pw.TableRow(
-          decoration: const pw.BoxDecoration(color: PdfColors.grey300),
-          children: [
-            pw.Padding(
-              padding: const pw.EdgeInsets.all(8),
-              child: pw.Text(headers[0],
-                  style: pw.TextStyle(font: bold, fontSize: 11),
-                  textAlign: pw.TextAlign.right),
-            ),
-            pw.Padding(
-              padding: const pw.EdgeInsets.all(8),
-              child: pw.Text(headers[1],
-                  style: pw.TextStyle(font: bold, fontSize: 11),
-                  textAlign: pw.TextAlign.center),
-            ),
-            pw.Padding(
-              padding: const pw.EdgeInsets.all(8),
-              child: pw.Text(headers[2],
-                  style: pw.TextStyle(font: bold, fontSize: 11),
-                  textAlign: pw.TextAlign.right),
-            ),
-          ],
-        ),
-        for (final row in data)
-          pw.TableRow(
-            children: [
-              pw.Padding(
-                padding: const pw.EdgeInsets.all(8),
-                child: pw.Text(row[0],
-                    style: pw.TextStyle(font: base, fontSize: 10),
-                    textAlign: pw.TextAlign.right),
-              ),
-              pw.Padding(
-                padding: const pw.EdgeInsets.all(8),
-                child: pw.Text(row[1],
-                    style: pw.TextStyle(font: base, fontSize: 10),
-                    textAlign: pw.TextAlign.center),
-              ),
-              pw.Padding(
-                padding: const pw.EdgeInsets.all(8),
-                child: pw.Text(row[2],
-                    style: pw.TextStyle(font: base, fontSize: 10),
-                    textAlign: pw.TextAlign.right),
-              ),
-            ],
-          ),
-      ],
-    );
+  static String _clinicPhones(ClinicProfile clinic) {
+    final map = clinic.toMap();
+    final p1 = (map['phone'] ?? '').toString().trim();
+    final p2 = (map['phone2'] ?? '').toString().trim();
+    return p2.isEmpty ? p1 : '$p1 / $p2';
   }
 
   static pw.Widget _buildFooter(pw.Font base, ClinicProfile clinic) {

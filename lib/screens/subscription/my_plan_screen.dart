@@ -41,7 +41,7 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
     'اضافة طبيب وخدماته',
     'الموظفون',
     'المدفوعات',
-    'المختبر/الأشعة',
+    'المختبر/الأشعة (تحت التطوير)',
     'الرسوم البيانية',
     'المستودع/المخزون',
     'الوصفات الطبية',
@@ -62,7 +62,7 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
 
   static const List<String> _employeesPolicy = [
     'الحد الأساسي: حتى 5 موظفين للعيادة.',
-    'لأكثر من 5: يتم دفع مبلغ لكل موظف إضافي مع اعتماد الطلب من القائمين على نظام ElmamClinic.',
+    'كل موظف إضافي على العدد الأساسي: 50$.',
   ];
 
   @override
@@ -222,10 +222,8 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
                                         final canUpgrade = auth.isLoggedIn && !isCurrent && !isFree;
 
                                         final isAnnual = _isAnnualByCode(plan.code);
-                                        final cycleLabel = isFree ? '' : _cycleLabelByCode(plan.code);
-
                                         final priceMain = isFree ? 'مجانية' : _currency.format(plan.priceUsd);
-                                        final priceSuffix = isFree ? '' : ' / $cycleLabel';
+                                        final priceSuffix = '';
 
                                         return SizedBox(
                                           width: cardWidth,

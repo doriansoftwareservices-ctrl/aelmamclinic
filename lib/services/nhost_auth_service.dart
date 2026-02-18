@@ -120,6 +120,41 @@ class NhostAuthService {
 
   GraphQLClient get _gql => _gqlOverride ?? NhostGraphqlService.client;
 
+  Future<Map<String, dynamic>?> _fetchSessionSnapshot(String uid) async {
+    try {
+      final data = await _runQuery(
+        r'''
+        query SessionSnapshot($uid: uuid!) {
+          my_profile {
+            account_id
+            role
+          }
+          account_users(
+            where: {user_uid: {_eq: $uid}}
+            order_by: {created_at: desc}
+            limit: 1
+          ) {
+            account_id
+            role
+            disabled
+          }
+          my_account_plan {
+            plan_code
+            plan_end_at
+          }
+          fn_is_super_admin_gql {
+            is_super_admin
+          }
+        }
+        ''',
+        {'uid': uid},
+      );
+      return data;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<Map<String, dynamic>> _runQuery(
     String doc,
     Map<String, dynamic> variables,
@@ -192,6 +227,7 @@ class NhostAuthService {
         $street_en: String!
         $near_en: String!
         $phone: String!
+        $phone2: String
       ) {
         self_create_account(
           args: {
@@ -204,6 +240,7 @@ class NhostAuthService {
             p_street_en: $street_en
             p_near_en: $near_en
             p_phone: $phone
+            p_phone2: $phone2
           }
         ) {
           id
@@ -220,6 +257,9 @@ class NhostAuthService {
       'street_en': profile.streetEn.trim(),
       'near_en': profile.nearEn.trim(),
       'phone': profile.phone.trim(),
+      'phone2': (profile.phone2 ?? '').trim().isEmpty
+          ? null
+          : profile.phone2!.trim(),
     };
     for (var attempt = 0; attempt < 2; attempt += 1) {
       try {
@@ -255,6 +295,7 @@ class NhostAuthService {
           street_en
           near_en
           phone
+          phone2
         }
       }
       ''',
@@ -278,6 +319,7 @@ class NhostAuthService {
         $street_en: String!
         $near_en: String!
         $phone: String!
+        $phone2: String
       ) {
         update_clinic_profile(
           args: {
@@ -290,6 +332,7 @@ class NhostAuthService {
             p_street_en: $street_en
             p_near_en: $near_en
             p_phone: $phone
+            p_phone2: $phone2
           }
         ) {
           ok
@@ -307,6 +350,9 @@ class NhostAuthService {
       'street_en': profile.streetEn.trim(),
       'near_en': profile.nearEn.trim(),
       'phone': profile.phone.trim(),
+      'phone2': (profile.phone2 ?? '').trim().isEmpty
+          ? null
+          : profile.phone2!.trim(),
     };
     final data = await _runMutation(mutation, vars);
     final rows = _rowsFromData(data, 'update_clinic_profile');
@@ -417,6 +463,27 @@ class NhostAuthService {
     }
   }
 
+  Future<Map<String, dynamic>?> fetchMyPlanDetails() async {
+    try {
+      final data = await _runQuery(
+        '''
+        query MyAccountPlanDetails {
+          my_account_plan {
+            plan_code
+            plan_end_at
+          }
+        }
+        ''',
+        const {},
+      );
+      final rows = _rowsFromData(data, 'my_account_plan');
+      if (rows.isEmpty) return null;
+      return rows.first;
+    } catch (_) {
+      return null;
+    }
+  }
+
   bool _isSchemaError(OperationException ex) {
     final message = _formatOperationException(ex);
     final lower = message.toLowerCase();
@@ -484,53 +551,110 @@ class NhostAuthService {
     String? accountId;
     String? role;
     bool disabled = false;
+    String? planCode;
+    DateTime? planEndAt;
+    bool? dbIsSuper;
 
-    try {
-      final profile = await _fetchMyProfileRow();
-      if (profile != null) {
+    final snap = await _fetchSessionSnapshot(user.id);
+    if (snap != null && snap.isNotEmpty) {
+      final profileRows = _rowsFromData(snap, 'my_profile');
+      if (profileRows.isNotEmpty) {
+        final profile = profileRows.first;
         final profileAccount = profile['account_id']?.toString();
         if (profileAccount != null &&
             profileAccount.isNotEmpty &&
             profileAccount != 'null') {
           accountId = profileAccount;
+          await ActiveAccountStore.writeAccountId(profileAccount);
         }
         role = profile['role']?.toString();
-        if (accountId != null && accountId.isNotEmpty) {
-          await ActiveAccountStore.writeAccountId(accountId);
-        }
       }
-    } catch (_) {}
 
-    try {
-      final preferred = await ActiveAccountStore.readAccountId();
-      final row = await _fetchAccountUserRow(
-            uid: user.id,
-            accountId: preferred,
-          ) ??
-          await _fetchAccountUserRow(uid: user.id);
-      if (row != null) {
+      final accountRows = _rowsFromData(snap, 'account_users');
+      if (accountRows.isNotEmpty) {
+        final row = accountRows.first;
         accountId ??= row['account_id']?.toString();
         role ??= row['role']?.toString();
-        disabled = disabled || row['disabled'] == true;
+        disabled = row['disabled'] == true;
         if (accountId != null && accountId.isNotEmpty) {
           await ActiveAccountStore.writeAccountId(accountId);
         }
       }
-    } catch (_) {}
+
+      final planRows = _rowsFromData(snap, 'my_account_plan');
+      if (planRows.isNotEmpty) {
+        planCode = planRows.first['plan_code']?.toString();
+        final rawEnd = planRows.first['plan_end_at']?.toString();
+        if (rawEnd != null && rawEnd.isNotEmpty) {
+          planEndAt = DateTime.tryParse(rawEnd);
+        }
+      }
+
+      final superRows = _rowsFromData(snap, 'fn_is_super_admin_gql');
+      if (superRows.isNotEmpty) {
+        final flag = superRows.first['is_super_admin'];
+        if (flag is bool) {
+          dbIsSuper = flag;
+        }
+      }
+    }
+
+    if (snap == null) {
+      try {
+        final profile = await _fetchMyProfileRow();
+        if (profile != null) {
+          final profileAccount = profile['account_id']?.toString();
+          if (profileAccount != null &&
+              profileAccount.isNotEmpty &&
+              profileAccount != 'null') {
+            accountId = profileAccount;
+          }
+          role = profile['role']?.toString();
+          if (accountId != null && accountId.isNotEmpty) {
+            await ActiveAccountStore.writeAccountId(accountId);
+          }
+        }
+      } catch (_) {}
+
+      try {
+        final preferred = await ActiveAccountStore.readAccountId();
+        final row = await _fetchAccountUserRow(
+              uid: user.id,
+              accountId: preferred,
+            ) ??
+            await _fetchAccountUserRow(uid: user.id);
+        if (row != null) {
+          accountId ??= row['account_id']?.toString();
+          role ??= row['role']?.toString();
+          disabled = disabled || row['disabled'] == true;
+          if (accountId != null && accountId.isNotEmpty) {
+            await ActiveAccountStore.writeAccountId(accountId);
+          }
+        }
+      } catch (_) {}
+    }
 
     final tokenRoles = user.roles.map((r) => r.toLowerCase()).toList();
     final tokenIsSuper = tokenRoles.contains('superadmin') ||
         (user.defaultRole.toLowerCase() == 'superadmin');
     final metaRole =
         (user.metadata?['role']?.toString().toLowerCase() == 'superadmin');
-    final dbIsSuper = await _resolveSuperAdminFlag(fallbackEmail: user.email);
+    dbIsSuper ??= await _resolveSuperAdminFlag(fallbackEmail: user.email);
     final emailLower = (user.email ?? '').toLowerCase().trim();
     final isSuper = dbIsSuper ||
         (emailLower == _rootSuperAdminEmail && (tokenIsSuper || metaRole));
-    String? planCode;
-    try {
-      planCode = await fetchMyPlanCode() ?? 'free';
-    } catch (_) {}
+    if (planCode == null) {
+      try {
+        final details = await fetchMyPlanDetails();
+        planCode = details?['plan_code']?.toString() ?? 'free';
+        if (planEndAt == null) {
+          final rawEnd = details?['plan_end_at']?.toString();
+          if (rawEnd != null && rawEnd.isNotEmpty) {
+            planEndAt = DateTime.tryParse(rawEnd);
+          }
+        }
+      } catch (_) {}
+    }
 
     return {
       'uid': user.id,
@@ -540,7 +664,66 @@ class NhostAuthService {
       'disabled': disabled,
       'isSuperAdmin': isSuper,
       'planCode': planCode,
+      'planEndAt': planEndAt,
     };
+  }
+
+  Future<ActiveAccount> resolveActiveAccountOrThrowFromCache({
+    required String uid,
+    String? accountId,
+    String? role,
+    bool disabled = false,
+    String? planCode,
+  }) async {
+    if (accountId == null ||
+        accountId.isEmpty ||
+        role == null ||
+        role.isEmpty) {
+      return resolveActiveAccountOrThrow();
+    }
+
+    if (disabled) {
+      throw AccountUserDisabledException(accountId);
+    }
+
+    final roleLower = role.toLowerCase();
+    String effectivePlan = (planCode ?? '').toLowerCase();
+    if (effectivePlan.isEmpty) {
+      try {
+        effectivePlan = (await fetchMyPlanCode() ?? 'free').toLowerCase();
+      } catch (_) {
+        effectivePlan = 'free';
+      }
+    }
+    if (effectivePlan == 'free' &&
+        roleLower != 'owner' &&
+        roleLower != 'admin' &&
+        roleLower != 'superadmin') {
+      throw PlanUpgradeRequiredException(accountId, planCode: effectivePlan);
+    }
+
+    try {
+      final data = await _runQuery(
+        r'''
+        query ClinicFrozen($id: uuid!) {
+          clinics(where: {id: {_eq: $id}}, limit: 1) {
+            frozen
+          }
+        }
+        ''',
+        {'id': accountId},
+      );
+      final rows = _rowsFromData(data, 'clinics');
+      final frozen = rows.isNotEmpty && rows.first['frozen'] == true;
+      if (frozen) {
+        throw AccountFrozenException(accountId);
+      }
+    } catch (e) {
+      if (e is AccountFrozenException) rethrow;
+    }
+
+    await ActiveAccountStore.writeAccountId(accountId);
+    return ActiveAccount(id: accountId, role: role, canWrite: true);
   }
 
   Future<String?> resolveAccountId() async {
@@ -792,6 +975,7 @@ class NhostAuthService {
       deviceId: devId,
       enableLogs: enableLogs,
       pushDebounce: debounce,
+      canSync: _canSyncGuard,
     );
     _boundAccountId = acc.id;
 
@@ -800,6 +984,41 @@ class NhostAuthService {
     await _sync!.bootstrap(pull: pull, realtime: realtime);
     // ادفع التغييرات المحلية في الخلفية لتسريع جاهزية الواجهة بعد الدخول.
     unawaited(_sync!.pushAll());
+  }
+
+  Future<bool> _canSyncGuard() async {
+    final user = _client.auth.currentUser;
+    if (user == null) return false;
+    final accId = _boundAccountId ?? await resolveAccountId();
+    if (accId == null || accId.trim().isEmpty) return false;
+    try {
+      final data = await _runQuery(
+        r'''
+        query SyncGuard($uid: uuid!, $acc: uuid!) {
+          account_users(
+            where: {user_uid: {_eq: $uid}, account_id: {_eq: $acc}}
+            limit: 1
+          ) {
+            disabled
+          }
+          clinics(where: {id: {_eq: $acc}}, limit: 1) {
+            frozen
+          }
+        }
+        ''',
+        {'uid': user.id, 'acc': accId},
+      );
+      final users = _rowsFromData(data, 'account_users');
+      if (users.isEmpty) return false;
+      final disabled = users.first['disabled'] == true;
+      if (disabled) return false;
+      final clinics = _rowsFromData(data, 'clinics');
+      final frozen = clinics.isNotEmpty && clinics.first['frozen'] == true;
+      if (frozen) return false;
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   void _bindDbPush(SyncService sync) {

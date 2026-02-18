@@ -15,6 +15,10 @@ class EmployeeSeatService {
   final GraphQLClient _gql;
   final NhostApiClient _api;
 
+  Context _superAdminContext() => Context.fromList([
+        const HttpLinkHeaders(headers: {'x-hasura-role': 'superadmin'}),
+      ]);
+
   Future<Map<String, dynamic>> createEmployeeWithinLimit({
     required String email,
     required String password,
@@ -92,6 +96,7 @@ class EmployeeSeatService {
       QueryOptions(
         document: gql(query),
         fetchPolicy: FetchPolicy.noCache,
+        context: _superAdminContext(),
       ),
     );
     if (res.hasException) {
@@ -170,6 +175,7 @@ class EmployeeSeatService {
           'note': note,
         },
         fetchPolicy: FetchPolicy.noCache,
+        context: _superAdminContext(),
       ),
     );
     if (res.hasException) {
@@ -202,6 +208,7 @@ class EmployeeSeatService {
         document: gql(mutation),
         variables: {'id': requestId, 'price': priceUsd},
         fetchPolicy: FetchPolicy.noCache,
+        context: _superAdminContext(),
       ),
     );
     if (res.hasException) {
@@ -218,22 +225,54 @@ class EmployeeSeatService {
         }
       }
     ''';
-    final res = await _gql.query(
-      QueryOptions(
-        document: gql(query),
-        fetchPolicy: FetchPolicy.noCache,
-      ),
-    );
-    if (res.hasException) {
-      throw res.exception!;
+    try {
+      final res = await _gql.query(
+        QueryOptions(
+          document: gql(query),
+          fetchPolicy: FetchPolicy.noCache,
+          context: _superAdminContext(),
+        ),
+      );
+      if (res.hasException) {
+        throw res.exception!;
+      }
+      final rows = (res.data?['admin_get_employee_seat_pricing'] as List?) ??
+          const [];
+      if (rows.isEmpty) return null;
+      final row = Map<String, dynamic>.from(rows.first as Map);
+      final price = row['price_usd'];
+      if (price == null) return null;
+      return double.tryParse(price.toString());
+    } catch (_) {
+      // Fallback: direct view query in case the function isn't tracked.
+      const fallbackQuery = r'''
+        query SeatPricingView {
+          v_employee_seat_pricing(
+            where: {seat_kind: {_eq: "extra"}}
+            limit: 1
+          ) {
+            seat_kind
+            price_usd
+          }
+        }
+      ''';
+      final res = await _gql.query(
+        QueryOptions(
+          document: gql(fallbackQuery),
+          fetchPolicy: FetchPolicy.noCache,
+          context: _superAdminContext(),
+        ),
+      );
+      if (res.hasException) {
+        throw res.exception!;
+      }
+      final rows = (res.data?['v_employee_seat_pricing'] as List?) ?? const [];
+      if (rows.isEmpty) return null;
+      final row = Map<String, dynamic>.from(rows.first as Map);
+      final price = row['price_usd'];
+      if (price == null) return null;
+      return double.tryParse(price.toString());
     }
-    final rows = (res.data?['admin_get_employee_seat_pricing'] as List?) ??
-        const [];
-    if (rows.isEmpty) return null;
-    final row = Map<String, dynamic>.from(rows.first as Map);
-    final price = row['price_usd'];
-    if (price == null) return null;
-    return double.tryParse(price.toString());
   }
 
   Future<void> setDefaultSeatPrice({
@@ -254,6 +293,7 @@ class EmployeeSeatService {
         document: gql(mutation),
         variables: {'price': priceUsd},
         fetchPolicy: FetchPolicy.noCache,
+        context: _superAdminContext(),
       ),
     );
     if (res.hasException) {

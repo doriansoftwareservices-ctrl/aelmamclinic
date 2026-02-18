@@ -667,11 +667,13 @@ class DBService {
         street_en TEXT,
         near_en TEXT,
         phone TEXT,
+        phone2 TEXT,
         logo_path TEXT,
         updated_at TEXT
       )
     ''');
     await _addColumnIfMissing(db, 'clinic_profile', 'logo_path', 'TEXT');
+    await _addColumnIfMissing(db, 'clinic_profile', 'phone2', 'TEXT');
   }
 
   Future<void> saveClinicProfile(ClinicProfile profile) async {

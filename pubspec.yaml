@@ -16,6 +16,7 @@ dependency_overrides:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_image_compress: ^2.3.0
 
   flutter_localizations:
     sdk: flutter
@@ -60,6 +61,7 @@ dependencies:
   # التفعيل والإعدادات
   shared_preferences: ^2.5.3
   pdf: ^3.11.3
+  arabic_reshaper: ^3.0.0
   printing: ^5.9.0
 
   #الاشعارات (محلية فقط)
@@ -82,16 +84,16 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_launcher_icons: ^0.13.1
-  flutter_lints: any
   integration_test:
     sdk: flutter
+  flutter_launcher_icons: ^0.13.1
+  flutter_lints: any
 
 flutter_launcher_icons:
   android: true
   ios: false
-  image_path: "assets/images/logo3.png"
-  adaptive_icon_foreground: "assets/images/logo3.png"
+  image_path: "assets/images/logo4.png"
+  adaptive_icon_foreground: "assets/images/logo4.png"
   adaptive_icon_background: "#FFFFFF"
   min_sdk_android: 21
   windows:
@@ -106,6 +108,7 @@ flutter:
   assets:
     - assets/images/logo.png
     - assets/images/logo2.png
+    - assets/images/logo4.png
     - assets/activation_codes_fixed.json
     - assets/images/whatsapp_icon.png
     - assets/images/bell_icon1.png

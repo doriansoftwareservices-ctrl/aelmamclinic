@@ -23,6 +23,7 @@ import 'package:aelmamclinic/models/attachment.dart';
 import 'package:aelmamclinic/services/clinic_profile_service.dart';
 import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/screens/patient_questions/patient_details_questions_section.dart';
+import 'package:aelmamclinic/utils/pdf_text.dart';
 
 class ViewPatientScreen extends StatefulWidget {
   final Patient patient;
@@ -222,6 +223,7 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
     final attachments = await _attachmentsFuture;
 
     final clinic = await ClinicProfileService.loadActiveOrFallback();
+    final clinicPhones = clinic.phonesDisplay;
     final pdf = pw.Document();
 
     final baseText =
@@ -251,7 +253,7 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
           pw.Expanded(
-              child: pw.Text(value,
+              child: pw.Text(pdfText(value),
                   style: valueStyle, textAlign: pw.TextAlign.right)),
           pw.SizedBox(width: 14),
           pw.Text(labelEn, style: boldText, textAlign: pw.TextAlign.left),
@@ -306,7 +308,7 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
                   ),
                   pw.Padding(
                     padding: const pw.EdgeInsets.all(8),
-                    child: pw.Text('لا توجد خدمات مسجلة',
+                    child: pw.Text(pdfText('لا توجد خدمات مسجلة'),
                         style: baseText, textAlign: pw.TextAlign.right),
                   ),
                 ],
@@ -377,7 +379,7 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
                     ),
                     pw.Padding(
                       padding: const pw.EdgeInsets.all(8),
-                      child: pw.Text(r[1],
+                      child: pw.Text(pdfText(r[1]),
                           style: baseText, textAlign: pw.TextAlign.right),
                     ),
                   ],
@@ -436,15 +438,15 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
                     child: pw.Column(
                       crossAxisAlignment: pw.CrossAxisAlignment.start,
                       children: [
-                        pw.Text(clinic.nameAr,
+                        pw.Text(pdfText(clinic.nameAr),
                             style: pw.TextStyle(
                                 font: cairoBold,
                                 fontSize: 14,
                                 color: PdfColors.blueGrey)),
-                        pw.Text(clinic.addressAr,
+                        pw.Text(pdfText(clinic.addressAr),
                             style:
                                 pw.TextStyle(font: cairoRegular, fontSize: 9)),
-                        pw.Text('الهاتف: ${clinic.phone}',
+                        pw.Text(pdfText('الهاتف: $clinicPhones'),
                             style:
                                 pw.TextStyle(font: cairoRegular, fontSize: 9)),
                       ],
@@ -480,7 +482,7 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
                               textAlign: pw.TextAlign.left,
                               style: pw.TextStyle(
                                   font: cairoRegular, fontSize: 9)),
-                          pw.Text('Tel: ${clinic.phone}',
+                          pw.Text('Tel: $clinicPhones',
                               textAlign: pw.TextAlign.left,
                               style: pw.TextStyle(
                                   font: cairoRegular, fontSize: 9)),
@@ -504,7 +506,9 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
                 top: pw.BorderSide(width: 0.6, color: PdfColors.grey300)),
           ),
           child: pw.Text(
-            '${clinic.nameAr} - ${clinic.addressAr} "هاتف : ${clinic.phone}  •  Page ${ctx.pageNumber}/${ctx.pagesCount}',
+            pdfText(
+              '${clinic.nameAr} - ${clinic.addressAr} "هاتف : $clinicPhones  •  Page ${ctx.pageNumber}/${ctx.pagesCount}',
+            ),
             style: pw.TextStyle(
                 font: cairoRegular, fontSize: 9, color: PdfColors.blueGrey),
             textAlign: pw.TextAlign.center,

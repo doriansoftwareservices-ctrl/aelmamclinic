@@ -1,4 +1,6 @@
 // lib/screens/patients/duplicate_patients_screen.dart
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -15,6 +17,7 @@ import 'package:aelmamclinic/models/patient.dart';
 import 'package:aelmamclinic/models/patient_service.dart';
 import 'package:aelmamclinic/services/clinic_profile_service.dart';
 import 'package:aelmamclinic/services/db_service.dart';
+import 'package:aelmamclinic/utils/pdf_text.dart';
 import 'view_patient_screen.dart';
 import 'edit_patient_screen.dart';
 
@@ -237,10 +240,26 @@ class _DuplicatePatientsScreenState extends State<DuplicatePatientsScreen> {
   Future<void> _exportPdf() async {
     if (_selectedIds.isEmpty) return;
 
-    final fontData = await rootBundle.load('assets/fonts/Cairo-Regular.ttf');
-    final cairo = pw.Font.ttf(fontData.buffer.asByteData());
+    pw.Font cairo;
+    pw.Font cairoBold;
+    try {
+      final fontData = await rootBundle.load('assets/fonts/Cairo-Regular.ttf');
+      final fontBold = await rootBundle.load('assets/fonts/Cairo-Bold.ttf');
+      cairo = pw.Font.ttf(fontData.buffer.asByteData());
+      cairoBold = pw.Font.ttf(fontBold.buffer.asByteData());
+    } catch (_) {
+      cairo = pw.Font.helvetica();
+      cairoBold = pw.Font.helveticaBold();
+    }
+
     final clinic = await ClinicProfileService.loadActiveOrFallback();
-    final logoData = await ClinicProfileService.loadReportLogoBytes();
+    final clinicPhones = clinic.phonesDisplay;
+    Uint8List? logoData;
+    try {
+      logoData = await ClinicProfileService.loadReportLogoBytes();
+    } catch (_) {
+      logoData = null;
+    }
 
     final pdf = pw.Document();
     final rows = <List<String>>[];
@@ -265,109 +284,170 @@ class _DuplicatePatientsScreenState extends State<DuplicatePatientsScreen> {
       }
     }
 
+    final baseText = pw.TextStyle(font: cairo, fontSize: 12, height: 1.35);
+    final boldText = pw.TextStyle(font: cairoBold, fontSize: 12, height: 1.35);
+    final pageTheme = pw.PageTheme(
+      pageFormat: PdfPageFormat.a4,
+      margin: const pw.EdgeInsets.all(20),
+      textDirection: pw.TextDirection.rtl,
+      theme: pw.ThemeData.withFont(base: cairo, bold: cairoBold),
+    );
+
+    pw.Widget thinDivider([double v = 6]) => pw.Padding(
+          padding: pw.EdgeInsets.symmetric(vertical: v),
+          child: pw.Container(height: 0.7, color: PdfColors.grey300),
+        );
+
+    pw.Widget infoRow(String labelEn, String value) => pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Expanded(
+                child: pw.Text(pdfText(value),
+                    style: baseText, textAlign: pw.TextAlign.right)),
+            pw.SizedBox(width: 14),
+            pw.Text(labelEn, style: boldText, textAlign: pw.TextAlign.left),
+          ],
+        );
+
     pdf.addPage(
-      pw.Page(
-        pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.all(20),
-        build: (_) => pw.Directionality(
-          textDirection: pw.TextDirection.rtl,
-          child: pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-            children: [
-              pw.Row(
-                children: [
-                  pw.Expanded(
+      pw.MultiPage(
+        pageTheme: pageTheme,
+        header: (_) => pw.Column(
+          children: [
+            pw.Row(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Expanded(
+                  child: pw.Padding(
+                    padding: const pw.EdgeInsets.only(right: 12),
                     child: pw.Column(
                       crossAxisAlignment: pw.CrossAxisAlignment.start,
                       children: [
-                        pw.Text(clinic.nameAr,
+                        pw.Text(pdfText(clinic.nameAr),
                             style: pw.TextStyle(
-                                font: cairo,
-                                fontSize: 18,
-                                fontWeight: pw.FontWeight.bold,
+                                font: cairoBold,
+                                fontSize: 14,
                                 color: PdfColors.blueGrey)),
-                        pw.Text(clinic.addressAr,
-                            style: pw.TextStyle(font: cairo, fontSize: 10)),
-                        pw.Text('الهاتف: ${clinic.phone}',
-                            style: pw.TextStyle(font: cairo, fontSize: 10)),
+                        pw.Text(pdfText(clinic.addressAr),
+                            style: pw.TextStyle(font: cairo, fontSize: 9)),
+                        pw.Text(pdfText('الهاتف: $clinicPhones'),
+                            style: pw.TextStyle(font: cairo, fontSize: 9)),
                       ],
                     ),
                   ),
-                  pw.Container(
-                    alignment: pw.Alignment.center,
-                    width: 80,
-                    height: 60,
-                    child: pw.Image(pw.MemoryImage(logoData),
-                        width: 60, height: 60),
-                  ),
-                  pw.Expanded(
-                    child: pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.end,
-                      children: [
-                        pw.Text(clinic.nameEn,
-                            style: pw.TextStyle(
-                                font: cairo,
-                                fontSize: 18,
-                                fontWeight: pw.FontWeight.bold,
-                                color: PdfColors.blueGrey)),
-                        pw.Text(clinic.addressEn,
-                            style: pw.TextStyle(font: cairo, fontSize: 10)),
-                        pw.Text('Tel: ${clinic.phone}',
-                            style: pw.TextStyle(font: cairo, fontSize: 10)),
-                      ],
+                ),
+                pw.Container(
+                  width: 100,
+                  height: 60,
+                  alignment: pw.Alignment.topCenter,
+                  child: logoData == null
+                      ? pw.SizedBox()
+                      : pw.Image(pw.MemoryImage(logoData), width: 56, height: 56),
+                ),
+                pw.Expanded(
+                  child: pw.Padding(
+                    padding: const pw.EdgeInsets.only(left: 12),
+                    child: pw.Directionality(
+                      textDirection: pw.TextDirection.ltr,
+                      child: pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Text(clinic.nameEn,
+                              textAlign: pw.TextAlign.left,
+                              style: pw.TextStyle(
+                                  font: cairoBold,
+                                  fontSize: 14,
+                                  color: PdfColors.blueGrey)),
+                          pw.Text(clinic.addressEn,
+                              textAlign: pw.TextAlign.left,
+                              style: pw.TextStyle(font: cairo, fontSize: 9)),
+                          pw.Text('Tel: $clinicPhones',
+                              textAlign: pw.TextAlign.left,
+                              style: pw.TextStyle(font: cairo, fontSize: 9)),
+                        ],
+                      ),
                     ),
                   ),
-                ],
-              ),
-              pw.SizedBox(height: 16),
-              pw.Divider(color: PdfColors.grey300),
-              pw.SizedBox(height: 8),
-              pw.Text('سجلات ${widget.patientName} (${widget.phoneNumber})',
-                  textAlign: pw.TextAlign.center,
-                  style: pw.TextStyle(
-                      font: cairo,
-                      fontSize: 16,
-                      fontWeight: pw.FontWeight.bold)),
-              pw.SizedBox(height: 12),
-              pw.TableHelper.fromTextArray(
-                headers: ['المريض', 'الخدمة', 'السعر', 'التاريخ'],
-                data: rows,
-                headerStyle: pw.TextStyle(
-                    font: cairo, fontWeight: pw.FontWeight.bold, fontSize: 12),
-                cellStyle: pw.TextStyle(font: cairo, fontSize: 12),
-                headerDecoration:
-                    const pw.BoxDecoration(color: PdfColors.grey300),
-                cellAlignments: <int, pw.Alignment>{
-                  0: pw.Alignment.centerRight,
-                  1: pw.Alignment.centerRight,
-                  2: pw.Alignment.center,
-                  3: pw.Alignment.center,
-                },
-                columnWidths: <int, pw.TableColumnWidth>{
-                  0: const pw.FlexColumnWidth(2),
-                  1: const pw.FlexColumnWidth(3),
-                  2: const pw.FlexColumnWidth(1),
-                  3: const pw.FlexColumnWidth(2),
-                },
-              ),
-              pw.SizedBox(height: 10),
-              pw.Divider(color: PdfColors.grey300),
-              pw.Text('الإجمالي المحدد: ${_selectedTotal.toStringAsFixed(2)}',
-                  textAlign: pw.TextAlign.left,
-                  style: pw.TextStyle(
-                      font: cairo,
-                      fontSize: 12,
-                      fontWeight: pw.FontWeight.bold)),
-              pw.SizedBox(height: 8),
-              pw.Center(
-                child: pw.Text(
-                    '${clinic.nameAr} - ${clinic.addressAr} "هاتف : ${clinic.phone}',
-                    style: pw.TextStyle(
-                        font: cairo, fontSize: 10, color: PdfColors.blueGrey)),
-              ),
-            ],
+                ),
+              ],
+            ),
+            pw.SizedBox(height: 8),
+            pw.Container(height: 1, color: PdfColors.grey500),
+          ],
+        ),
+        footer: (ctx) => pw.Container(
+          alignment: pw.Alignment.center,
+          padding: const pw.EdgeInsets.only(top: 6),
+          decoration: const pw.BoxDecoration(
+            border:
+                pw.Border(top: pw.BorderSide(width: 0.6, color: PdfColors.grey300)),
+          ),
+          child: pw.Text(
+            pdfText(
+              '${clinic.nameAr} - ${clinic.addressAr} "هاتف : $clinicPhones  •  Page ${ctx.pageNumber}/${ctx.pagesCount}',
+            ),
+            style: pw.TextStyle(
+                font: cairo, fontSize: 9, color: PdfColors.blueGrey),
+            textAlign: pw.TextAlign.center,
           ),
         ),
+        build: (_) => [
+          pw.SizedBox(height: 10),
+          pw.Center(
+            child: pw.Text(
+              pdfText('سجلات ${widget.patientName} (${widget.phoneNumber})'),
+              style: pw.TextStyle(
+                  font: cairoBold,
+                  fontSize: 16,
+                  color: PdfColors.blueGrey),
+            ),
+          ),
+          pw.SizedBox(height: 8),
+          thinDivider(),
+          infoRow('Patient', widget.patientName),
+          infoRow('Phone', widget.phoneNumber),
+          pw.SizedBox(height: 10),
+          pw.TableHelper.fromTextArray(
+            headers: [
+              pdfText('المريض'),
+              pdfText('الخدمة'),
+              pdfText('السعر'),
+              pdfText('التاريخ')
+            ],
+            data: rows
+                .map((r) => [
+                      pdfText(r[0]),
+                      pdfText(r[1]),
+                      r[2],
+                      r[3],
+                    ])
+                .toList(),
+            headerStyle: pw.TextStyle(font: cairoBold, fontSize: 12),
+            cellStyle: pw.TextStyle(font: cairo, fontSize: 12),
+            headerDecoration:
+                const pw.BoxDecoration(color: PdfColors.grey300),
+            cellAlignments: <int, pw.Alignment>{
+              0: pw.Alignment.centerRight,
+              1: pw.Alignment.centerRight,
+              2: pw.Alignment.center,
+              3: pw.Alignment.center,
+            },
+            columnWidths: <int, pw.TableColumnWidth>{
+              0: const pw.FlexColumnWidth(2),
+              1: const pw.FlexColumnWidth(3),
+              2: const pw.FlexColumnWidth(1),
+              3: const pw.FlexColumnWidth(2),
+            },
+          ),
+          pw.SizedBox(height: 10),
+          thinDivider(),
+          pw.Text('الإجمالي المحدد: ${_selectedTotal.toStringAsFixed(2)}',
+              textAlign: pw.TextAlign.left,
+              style: pw.TextStyle(
+                  font: cairoBold,
+                  fontSize: 12,
+                  color: PdfColors.blueGrey)),
+        ],
       ),
     );
 

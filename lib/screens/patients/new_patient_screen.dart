@@ -381,7 +381,8 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
         _selectedServices.fold<double>(0.0, (p, e) => p + e.serviceCost);
     _totalCtrl.text = total.toStringAsFixed(2);
     final paid = _parseDouble(_paidCtrl.text);
-    _remainingCtrl.text = (total - paid).toStringAsFixed(2);
+    final remain = total - paid;
+    _remainingCtrl.text = (remain < 0 ? 0 : remain).toStringAsFixed(2);
     setState(() {});
   }
 
@@ -435,7 +436,8 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
   void _onPaidChanged(String v) {
     final total = _parseDouble(_totalCtrl.text);
     final paid = _parseDouble(v);
-    _remainingCtrl.text = (total - paid).toStringAsFixed(2);
+    final remain = total - paid;
+    _remainingCtrl.text = (remain < 0 ? 0 : remain).toStringAsFixed(2);
     setState(() {});
   }
 
@@ -849,6 +851,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
         });
       }
       await batch.commit(noResult: true);
+      await DBService.instance.notifyTableChanged(PatientService.table);
 
       // 3) Inventory usages
       var touchedItems = false;
@@ -1094,11 +1097,29 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
                             border: InputBorder.none,
                             contentPadding: EdgeInsets.zero,
                           ),
-                          items: const [
+                          items: [
                             DropdownMenuItem(
-                                value: 'الأشعة', child: Text('الأشعة')),
+                              value: 'الأشعة',
+                              enabled: false,
+                              child: Row(
+                                children: [
+                                  Text('الأشعة'),
+                                  SizedBox(width: 8),
+                                  _UnderDevBadge(),
+                                ],
+                              ),
+                            ),
                             DropdownMenuItem(
-                                value: 'المختبر', child: Text('المختبر')),
+                              value: 'المختبر',
+                              enabled: false,
+                              child: Row(
+                                children: [
+                                  Text('المختبر'),
+                                  SizedBox(width: 8),
+                                  _UnderDevBadge(),
+                                ],
+                              ),
+                            ),
                             DropdownMenuItem(
                                 value: 'طبيب', child: Text('طبيب')),
                           ],
@@ -1465,6 +1486,31 @@ class _RemovableChip extends StatelessWidget {
             child: const Icon(Icons.close, size: 18, color: Colors.red),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _UnderDevBadge extends StatelessWidget {
+  const _UnderDevBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: scheme.error.withValues(alpha: .12),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: scheme.error.withValues(alpha: .35)),
+      ),
+      child: Text(
+        'تحت التطوير',
+        style: TextStyle(
+          color: scheme.error,
+          fontWeight: FontWeight.w700,
+          fontSize: 10.5,
+        ),
       ),
     );
   }

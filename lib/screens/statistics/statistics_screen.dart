@@ -23,6 +23,7 @@ import 'package:aelmamclinic/services/clinic_profile_service.dart';
 import 'package:aelmamclinic/services/save_file_service.dart';
 import 'package:aelmamclinic/models/patient.dart';
 import 'package:aelmamclinic/models/consumption.dart';
+import 'package:aelmamclinic/utils/pdf_text.dart';
 
 /// نموذج بيانات بسيط للرسوم
 class _ChartData {
@@ -83,13 +84,14 @@ class _PdfUtils {
                 child: pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    pw.Text(clinic.nameAr,
+                    pw.Text(pdfText(clinic.nameAr),
                         style: pw.TextStyle(
                             fontSize: 14, fontWeight: pw.FontWeight.bold)),
-                    pw.Text(clinic.addressAr,
+                    pw.Text(pdfText(clinic.addressAr),
                         style: pw.TextStyle(
                             fontSize: 9, color: PdfColors.grey700)),
-                    pw.Text('هاتف: ${clinic.phone}',
+                    pw.Text(
+                        pdfText('هاتف: ${_clinicPhones(clinic)}'),
                         style: pw.TextStyle(
                             fontSize: 9, color: PdfColors.grey700)),
                   ],
@@ -124,7 +126,7 @@ class _PdfUtils {
                     pw.Text(clinic.addressEn,
                         style: pw.TextStyle(
                             fontSize: 9, color: PdfColors.grey700)),
-                    pw.Text('Tel: ${clinic.phone}',
+                    pw.Text('Tel: ${_clinicPhones(clinic)}',
                         style: pw.TextStyle(
                             fontSize: 9, color: PdfColors.grey700)),
                   ],
@@ -162,9 +164,10 @@ class _PdfUtils {
                   pw.Text('ELMAM CLINIC',
                       style: pw.TextStyle(
                           fontSize: 16, fontWeight: pw.FontWeight.bold)),
-                  pw.Text(title, style: const pw.TextStyle(fontSize: 12)),
+                  pw.Text(pdfText(title),
+                      style: const pw.TextStyle(fontSize: 12)),
                   if (subtitle != null)
-                    pw.Text(subtitle,
+                    pw.Text(pdfText(subtitle),
                         style: pw.TextStyle(
                             fontSize: 10, color: PdfColors.grey700)),
                 ],
@@ -176,12 +179,12 @@ class _PdfUtils {
           pw.Column(
             children: [
               pw.SizedBox(height: 6),
-              pw.Text(title,
+              pw.Text(pdfText(title),
                   textAlign: pw.TextAlign.center,
                   style: pw.TextStyle(
                       fontSize: 12, fontWeight: pw.FontWeight.bold)),
               if (subtitle != null)
-                pw.Text(subtitle,
+                pw.Text(pdfText(subtitle),
                     textAlign: pw.TextAlign.center,
                     style: pw.TextStyle(
                         fontSize: 10, color: PdfColors.grey700)),
@@ -208,7 +211,7 @@ class _PdfUtils {
               .map(
                 (h) => pw.Padding(
                   padding: const pw.EdgeInsets.all(8),
-                  child: pw.Text(h,
+                  child: pw.Text(pdfText(h),
                       textAlign: pw.TextAlign.center,
                       style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
                 ),
@@ -222,7 +225,8 @@ class _PdfUtils {
                   (c) => pw.Padding(
                     padding: const pw.EdgeInsets.symmetric(
                         horizontal: 8, vertical: 6),
-                    child: pw.Text(c, textAlign: pw.TextAlign.center),
+                    child: pw.Text(pdfText(c),
+                        textAlign: pw.TextAlign.center),
                   ),
                 )
                 .toList(),
@@ -294,7 +298,7 @@ class _PdfUtils {
     final widgets = <pw.Widget>[];
 
     for (final part in _chunk(entries, size: chunkSize)) {
-      var labels = part.map((e) => e.key).toList();
+      var labels = part.map((e) => pdfText(e.key)).toList();
       var values = part.map((e) => e.value).toList();
 
       // إن كان لدينا نقطة واحدة فقط، نضيف نقطة وهمية لتفادي مشاكل step=0
@@ -307,7 +311,7 @@ class _PdfUtils {
 
       widgets.addAll([
         if (title != null && entries.length <= chunkSize)
-          pw.Text(title,
+          pw.Text(pdfText(title),
               style:
                   pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 12)),
         pw.Container(
@@ -349,7 +353,7 @@ class _PdfUtils {
     final widgets = <pw.Widget>[];
 
     for (final part in _chunk(entries, size: chunkSize)) {
-      var labels = part.map((e) => e.key).toList();
+      var labels = part.map((e) => pdfText(e.key)).toList();
       var values = part.map((e) => e.value).toList();
 
       // إن كان لدينا عمود واحد فقط، نضيف عمودًا صفرّيًا (label فارغ) لضمان ≥2
@@ -362,7 +366,7 @@ class _PdfUtils {
 
       widgets.addAll([
         if (title != null && entries.length <= chunkSize)
-          pw.Text(title,
+          pw.Text(pdfText(title),
               style:
                   pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 12)),
         pw.Container(
@@ -416,6 +420,13 @@ class _PdfUtils {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text("تم حفظ الملف بنجاح")),
     );
+  }
+
+  static String _clinicPhones(ClinicProfile clinic) {
+    final map = clinic.toMap();
+    final p1 = (map['phone'] ?? '').toString().trim();
+    final p2 = (map['phone2'] ?? '').toString().trim();
+    return p2.isEmpty ? p1 : '$p1 / $p2';
   }
 }
 

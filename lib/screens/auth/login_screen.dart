@@ -21,6 +21,7 @@ import 'package:aelmamclinic/core/constants.dart';
 
 // 👇 إضافات مهمة
 import 'package:aelmamclinic/screens/admin/admin_dashboard_screen.dart';
+import 'package:aelmamclinic/screens/statistics/statistics_overview_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -279,7 +280,9 @@ class _LoginScreenState extends State<LoginScreen> {
         MaterialPageRoute(builder: (_) => const AdminDashboardScreen()),
       );
     } else {
-      Navigator.of(context).pushReplacementNamed('/');
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const StatisticsOverviewScreen()),
+      );
     }
   }
 
@@ -295,9 +298,9 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => _error = 'من فضلك أدخل البريد الإلكتروني وكلمة المرور.');
       return;
     }
-    if (!_isValidEmail(email) || pass.length < 9) {
+    if (!_isValidEmail(email) || pass.length < 6) {
       setState(() =>
-          _error = '⚠️ إدخال كلمة مرور أقل من 9 أحرف أو بريد غير صحيح.');
+          _error = '⚠️ إدخال كلمة مرور أقل من 6 أحرف أو بريد غير صحيح.');
       return;
     }
 
@@ -425,9 +428,9 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => _error = 'أدخل البريد وكلمة المرور أولًا.');
       return;
     }
-    if (!_isValidEmail(email) || pass.length < 9) {
+    if (!_isValidEmail(email) || pass.length < 6) {
       setState(() =>
-          _error = '⚠️ إدخال كلمة مرور أقل من 9 أحرف أو بريد غير صحيح.');
+          _error = '⚠️ إدخال كلمة مرور أقل من 6 أحرف أو بريد غير صحيح.');
       return;
     }
 
@@ -504,7 +507,9 @@ class _LoginScreenState extends State<LoginScreen> {
       streetLabel: 'الشارع',
       nearLabel: 'بجوار',
       phoneLabel: 'رقم الهاتف',
+      phone2Label: 'رقم هاتف إضافي (اختياري)',
       prefillPhone: null,
+      prefillPhone2: null,
     );
     if (arStep == null) return null;
 
@@ -515,7 +520,9 @@ class _LoginScreenState extends State<LoginScreen> {
       streetLabel: 'Street',
       nearLabel: 'Near',
       phoneLabel: 'Phone',
+      phone2Label: 'Phone 2 (optional)',
       prefillPhone: arStep.phone,
+      prefillPhone2: arStep.phone2,
     );
     if (enStep == null) return null;
 
@@ -529,6 +536,7 @@ class _LoginScreenState extends State<LoginScreen> {
       streetEn: enStep.street,
       nearEn: enStep.near,
       phone: arStep.phone,
+      phone2: arStep.phone2,
     );
   }
 
@@ -553,13 +561,16 @@ class _LoginScreenState extends State<LoginScreen> {
     required String streetLabel,
     required String nearLabel,
     required String phoneLabel,
+    required String phone2Label,
     String? prefillPhone,
+    String? prefillPhone2,
   }) async {
     final nameCtrl = TextEditingController();
     final cityCtrl = TextEditingController();
     final streetCtrl = TextEditingController();
     final nearCtrl = TextEditingController();
     final phoneCtrl = TextEditingController(text: prefillPhone ?? '');
+    final phone2Ctrl = TextEditingController(text: prefillPhone2 ?? '');
 
     final isEnglish = title.toLowerCase().contains('english') ||
         title.toLowerCase().contains('clinic');
@@ -706,6 +717,14 @@ class _LoginScreenState extends State<LoginScreen> {
                           keyboardType: TextInputType.phone,
                           textInputAction: TextInputAction.done,
                         ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: phone2Ctrl,
+                          decoration:
+                              dec(phone2Label, Icons.phone_forwarded_rounded),
+                          keyboardType: TextInputType.phone,
+                          textInputAction: TextInputAction.done,
+                        ),
                         const SizedBox(height: 14),
                         Row(
                           children: [
@@ -731,6 +750,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   final street = streetCtrl.text.trim();
                                   final near = nearCtrl.text.trim();
                                   final phone = phoneCtrl.text.trim();
+                                  final phone2 = phone2Ctrl.text.trim();
                                   if (name.isEmpty ||
                                       city.isEmpty ||
                                       street.isEmpty ||
@@ -754,6 +774,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                       street: street,
                                       near: near,
                                       phone: phone,
+                                      phone2: phone2.isEmpty ? null : phone2,
                                     ),
                                   );
                                 },
@@ -977,7 +998,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                                 const SizedBox(height: 6),
                                 Text(
-                                  '⚠️ إدخال كلمة مرور أقل من 9 أحرف أو بريد غير صحيح.',
+                                  '⚠️ إدخال كلمة مرور أقل من 6 أحرف أو بريد غير صحيح.',
                                   style: TextStyle(
                                     fontWeight: FontWeight.w600,
                                     fontSize: 11,
@@ -1498,6 +1519,7 @@ class _ClinicProfileStep {
   final String street;
   final String near;
   final String phone;
+  final String? phone2;
 
   const _ClinicProfileStep({
     required this.name,
@@ -1505,5 +1527,6 @@ class _ClinicProfileStep {
     required this.street,
     required this.near,
     required this.phone,
+    this.phone2,
   });
 }

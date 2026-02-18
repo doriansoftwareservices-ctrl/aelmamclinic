@@ -36,6 +36,7 @@ const _kAccountId = 'auth.accountId';
 const _kRole = 'auth.role';
 const _kDisabled = 'auth.disabled';
 const _kPlanCode = 'auth.planCode';
+const _kPlanEndAt = 'auth.planEndAt';
 const _kDeviceId = 'auth.deviceId';
 const _kLastNetCheckAt = 'auth.lastNetCheckAt';
 const int _kNetCheckIntervalMinutes = 5; // فحص شبكة كل 5 دقائق
@@ -178,7 +179,7 @@ class AuthProvider extends ChangeNotifier {
   bool featureAllowed(String featureKey) {
     if (isSuperAdmin) return true;
     if (featureKey == FeatureKeys.patientQuestions) {
-      return planCode.toLowerCase() != 'free';
+      return planCode.toLowerCase() != 'free' && !_isPlanExpired();
     }
     if (!_permissionsLoaded) return false;
     if (_allowAllFeatures) return true;
@@ -194,6 +195,14 @@ class AuthProvider extends ChangeNotifier {
   Timer? _patientAlertDebounce;
   Set<int> _pendingPatientAlerts = <int>{};
   int? _patientAlertDoctorId;
+  Future<bool>? _refreshInFlight;
+  Future<AuthAccountGuardResult>? _guardInFlight;
+  DateTime? _lastRefreshAttemptAt;
+  bool _lastRefreshSuccess = false;
+  bool _offlineSession = false;
+  bool _authFlowRunning = false;
+  DateTime? _lastGuardOkAt;
+  bool _lastGuardOk = false;
 
   /*──────── Getters ────────*/
   bool get isLoggedIn => currentUser != null;
@@ -204,9 +213,11 @@ class AuthProvider extends ChangeNotifier {
   String? get accountId => currentUser?['accountId'] as String?;
   String get planCode =>
       (currentUser?['planCode'] as String?)?.toLowerCase() ?? 'free';
-  bool get isPro => isSuperAdmin || planCode != 'free';
+  DateTime? get planEndAt => _readPlanEndAt(currentUser?['planEndAt']);
+  bool get isPro => isSuperAdmin || (planCode != 'free' && !_isPlanExpired());
   bool get isDisabled => (currentUser?['disabled'] as bool?) ?? false;
   bool get isSuperAdmin => currentUser?['isSuperAdmin'] == true;
+  bool get isOffline => _offlineSession;
   bool get isOwnerOrAdmin {
     if (isSuperAdmin) return true;
     final r = role?.toLowerCase();
@@ -224,6 +235,8 @@ class AuthProvider extends ChangeNotifier {
           _resetPermissionsInMemory();
           _allowAutoCreateAccount = false;
           AuthRoleState.clear();
+          _lastGuardOk = false;
+          _lastGuardOkAt = null;
           NhostGraphqlService.refreshClient();
           await _stopDoctorPatientAlerts();
           await _clearStorage();
@@ -231,6 +244,14 @@ class AuthProvider extends ChangeNotifier {
           return;
         }
 
+        if (_authFlowRunning) {
+          _authDiagWarn('_authFlow:reentrySkip', context: {
+            'event': event.name,
+          });
+          return;
+        }
+        _authFlowRunning = true;
+        try {
         // لأي حدث آخر: نحدّث من الشبكة عند الدخول أو عند حلول موعد الفحص
         final due = await _isNetCheckDue();
         if (event == AuthenticationState.signedIn) {
@@ -256,9 +277,14 @@ class AuthProvider extends ChangeNotifier {
         }
 
         // تحقّق من الحساب الفعّال (غير مجمّد/غير معطّل)
-        await _ensureActiveAccountOrSignOut();
+        final guard = await _ensureActiveAccountOrSignOut();
         if (isDisabled) {
           await _auth.signOut();
+          return;
+        }
+        if (guard != AuthAccountGuardResult.ok) {
+          // لا نفعّل مزامنة أو صلاحيات إذا الحساب غير صالح أو الشبكة متذبذبة
+          notifyListeners();
           return;
         }
 
@@ -276,6 +302,9 @@ class AuthProvider extends ChangeNotifier {
         }
 
         notifyListeners();
+        } finally {
+          _authFlowRunning = false;
+        }
       });
     }
   }
@@ -303,10 +332,14 @@ class AuthProvider extends ChangeNotifier {
       }
     } else {
       await _loadFromStorage();
-      // لا يوجد مستخدم على Nhost، امسح أي حالة محلية قديمة.
-      currentUser = null;
-      _resetPermissionsInMemory();
-      await _clearStorage();
+      if (currentUser != null) {
+        _offlineSession = true;
+      } else {
+        // لا يوجد مستخدم على Nhost ولا بيانات محلية.
+        currentUser = null;
+        _resetPermissionsInMemory();
+        await _clearStorage();
+      }
     }
 
     if (isLoggedIn) {
@@ -367,6 +400,8 @@ class AuthProvider extends ChangeNotifier {
     _resetPermissionsInMemory();
     _autoCreateAttempted = false;
     _pendingClinicProfile = null;
+    _lastGuardOk = false;
+    _lastGuardOkAt = null;
 
     final sp = await SharedPreferences.getInstance();
     await _clearStorage();
@@ -476,6 +511,24 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<bool> _networkRefreshAndMark() async {
+    if (_refreshInFlight != null) {
+      return _refreshInFlight!;
+    }
+    final now = DateTime.now();
+    if (_lastRefreshAttemptAt != null &&
+        now.difference(_lastRefreshAttemptAt!).inSeconds < 2) {
+      return _lastRefreshSuccess;
+    }
+    _lastRefreshAttemptAt = now;
+    final future = _networkRefreshAndMarkInternal();
+    _refreshInFlight = future;
+    final result = await future;
+    _refreshInFlight = null;
+    _lastRefreshSuccess = result;
+    return result;
+  }
+
+  Future<bool> _networkRefreshAndMarkInternal() async {
     final startCtx = <String, Object?>{
       'uid': currentUser?['uid'],
       'hasAccount': ((currentUser?['accountId'] ?? '').toString().isNotEmpty),
@@ -517,32 +570,8 @@ class AuthProvider extends ChangeNotifier {
           success = true;
           return true;
         }
-        try {
-          final aa = await _auth.resolveActiveAccountOrThrow();
-          currentUser ??= {};
-          currentUser!['accountId'] = aa.id;
-          currentUser!['role'] = aa.role.toLowerCase();
-          currentUser!['disabled'] = false;
-          _authDiag(
-            '_networkRefreshAndMark:resolvedViaActiveAccount',
-            context: {
-              'accountId': aa.id,
-              'role': aa.role,
-            },
-          );
-        } catch (e, st) {
-          if (e is AccountPolicyException) {
-            rethrow;
-          }
-          _authDiagWarn(
-            '_networkRefreshAndMark:activeAccountFallbackFailed',
-            context: {
-              'uid': currentUser?['uid'],
-              'error': e.runtimeType.toString(),
-            },
-            stackTrace: st,
-          );
-        }
+        // لا نستدعي resolveActiveAccountOrThrow هنا لتجنّب تكرار الشبكة.
+        // التحقق الفعلي سيتم في _ensureActiveAccountOrSignOut (مرة واحدة).
       }
 
       success = ((currentUser?['accountId'] ?? '').toString().isNotEmpty);
@@ -557,6 +586,9 @@ class AuthProvider extends ChangeNotifier {
         error: e,
         stackTrace: st,
       );
+      if (_isTransientNetworkError(e)) {
+        _offlineSession = true;
+      }
     }
 
     await _persistUser();
@@ -567,6 +599,7 @@ class AuthProvider extends ChangeNotifier {
     });
 
     if (success) {
+      _offlineSession = false;
       final sp = await SharedPreferences.getInstance();
       await sp.setString(_kLastNetCheckAt, DateTime.now().toIso8601String());
       _authDiag('_networkRefreshAndMark:success', context: {
@@ -628,17 +661,14 @@ class AuthProvider extends ChangeNotifier {
         accId = await _auth.resolveAccountId();
       } catch (_) {}
     }
-    if (accId == null || accId.isEmpty) {
-      try {
-        final aa = await _auth.resolveActiveAccountOrThrow();
-        accId = aa.id;
-      } catch (_) {}
-    }
+    // لا نستدعي resolveActiveAccountOrThrow هنا لتجنب تكرار الشبكة.
 
     // الدور والبريد — توحيد role = 'superadmin' إن كان سوبر
     final infoRole = (info?['role'] as String?)?.toLowerCase();
     final infoIsSuper = info?['isSuperAdmin'] == true;
     final infoPlan = (info?['planCode'] as String?)?.toLowerCase();
+    final infoPlanEndAt = _readPlanEndAt(info?['planEndAt']);
+    final prevPlanEndAt = _readPlanEndAt(currentUser?['planEndAt']);
     final role = infoIsSuper ? 'superadmin' : (infoRole ?? 'employee');
     final isSuper = infoIsSuper;
 
@@ -650,6 +680,7 @@ class AuthProvider extends ChangeNotifier {
       'disabled': infoDisabled,
       'isSuperAdmin': isSuper,
       'planCode': infoPlan ?? 'free',
+      'planEndAt': infoPlanEndAt ?? prevPlanEndAt,
       if (deviceId != null) _kDeviceId: deviceId,
     };
 
@@ -667,6 +698,17 @@ class AuthProvider extends ChangeNotifier {
 
   /// يتأكد أن الحساب الفعّال قابل للكتابة (غير مجمّد/غير معطّل) وإلا يخرج.
   Future<AuthAccountGuardResult> _ensureActiveAccountOrSignOut() async {
+    if (_guardInFlight != null) {
+      return _guardInFlight!;
+    }
+    final future = _ensureActiveAccountOrSignOutInternal();
+    _guardInFlight = future;
+    final result = await future;
+    _guardInFlight = null;
+    return result;
+  }
+
+  Future<AuthAccountGuardResult> _ensureActiveAccountOrSignOutInternal() async {
     if (!isLoggedIn) {
       _authDiag('_ensureActiveAccountOrSignOut:signedOutEarly');
       return AuthAccountGuardResult.signedOut;
@@ -675,7 +717,30 @@ class AuthProvider extends ChangeNotifier {
       _authDiag('_ensureActiveAccountOrSignOut:superAdminBypass', context: {
         'uid': uid,
       });
+      _lastGuardOkAt = DateTime.now();
+      _lastGuardOk = true;
       return AuthAccountGuardResult.ok; // السوبر أدمن خارج نطاق الحسابات
+    }
+    if (_isPlanExpired()) {
+      _authDiagWarn('_ensureActiveAccountOrSignOut:planExpired', context: {
+        'planCode': planCode,
+        'planEndAt': planEndAt?.toIso8601String(),
+      });
+      _lastGuardOk = false;
+      return AuthAccountGuardResult.planUpgradeRequired;
+    }
+    final now = DateTime.now();
+    if (_lastGuardOk &&
+        _lastGuardOkAt != null &&
+        now.difference(_lastGuardOkAt!).inSeconds < 60 &&
+        (accountId ?? '').isNotEmpty &&
+        (role ?? '').isNotEmpty &&
+        !isDisabled) {
+      _authDiag('_ensureActiveAccountOrSignOut:cachedOk', context: {
+        'accountId': accountId,
+        'role': role,
+      });
+      return AuthAccountGuardResult.ok;
     }
     _authDiag('_ensureActiveAccountOrSignOut:start', context: {
       'uid': uid,
@@ -688,7 +753,13 @@ class AuthProvider extends ChangeNotifier {
           'attempt': attempt,
           'max': maxAttempts,
         });
-        final aa = await _auth.resolveActiveAccountOrThrow();
+        final aa = await _auth.resolveActiveAccountOrThrowFromCache(
+          uid: uid ?? '',
+          accountId: accountId,
+          role: role,
+          disabled: isDisabled,
+          planCode: planCode,
+        );
         currentUser ??= {};
         currentUser!['accountId'] = aa.id;
         currentUser!['role'] = aa.role.toLowerCase();
@@ -698,6 +769,8 @@ class AuthProvider extends ChangeNotifier {
           'accountId': aa.id,
           'role': aa.role,
         });
+        _lastGuardOkAt = DateTime.now();
+        _lastGuardOk = true;
         return AuthAccountGuardResult.ok;
       } catch (e, st) {
         if (_isTransientNetworkError(e)) {
@@ -837,6 +910,7 @@ class AuthProvider extends ChangeNotifier {
             context: {'attempt': attempt},
             stackTrace: st,
           );
+          _lastGuardOk = false;
           return result;
         }
         currentUser!['disabled'] = true;
@@ -850,6 +924,7 @@ class AuthProvider extends ChangeNotifier {
           error: e,
           stackTrace: st,
         );
+        _lastGuardOk = false;
         if (result == AuthAccountGuardResult.signedOut) {
           return result;
         }
@@ -885,6 +960,7 @@ class AuthProvider extends ChangeNotifier {
         streetEn: data['street_en']?.toString() ?? '',
         nearEn: data['near_en']?.toString() ?? '',
         phone: data['phone']?.toString() ?? '',
+        phone2: data['phone2']?.toString(),
         logoPath: existing?.logoPath,
       );
       await DBService.instance.saveClinicProfile(profile);
@@ -993,6 +1069,12 @@ class AuthProvider extends ChangeNotifier {
     await sp.setBool(_kDisabled, currentUser!['disabled'] ?? false);
     await sp.setString(_kPlanCode,
         (currentUser!['planCode'] ?? 'free').toString().toLowerCase());
+    final storedPlanEnd = _readPlanEndAt(currentUser?['planEndAt']);
+    if (storedPlanEnd != null) {
+      await sp.setString(_kPlanEndAt, storedPlanEnd.toIso8601String());
+    } else {
+      await sp.remove(_kPlanEndAt);
+    }
     if (deviceId != null) {
       await sp.setString(_kDeviceId, deviceId!);
     }
@@ -1005,6 +1087,8 @@ class AuthProvider extends ChangeNotifier {
     final role = sp.getString(_kRole);
     final disabled = sp.getBool(_kDisabled);
     final planCode = sp.getString(_kPlanCode);
+    final planEndRaw = sp.getString(_kPlanEndAt);
+    final planEndAt = _readPlanEndAt(planEndRaw);
     final savedDev = sp.getString(_kDeviceId);
 
     if (uid != null && uid.isNotEmpty) {
@@ -1017,6 +1101,7 @@ class AuthProvider extends ChangeNotifier {
         'disabled': disabled ?? false,
         'isSuperAdmin': isSuper,
         'planCode': (planCode ?? 'free').toLowerCase(),
+        if (planEndAt != null) 'planEndAt': planEndAt,
       };
       if (savedDev != null && savedDev.isNotEmpty) {
         deviceId = savedDev;
@@ -1040,6 +1125,7 @@ class AuthProvider extends ChangeNotifier {
     await sp.remove(_kRole);
     await sp.remove(_kDisabled);
     await sp.remove(_kPlanCode);
+    await sp.remove(_kPlanEndAt);
     // لا نحذف _kDeviceId لأنه مُعرّف جهاز ثابت على مستوى الجهاز.
 
     // نظّف أيضًا الصلاحيات المخزّنة
@@ -1051,6 +1137,25 @@ class AuthProvider extends ChangeNotifier {
 
     AuthRoleState.clear();
     NhostGraphqlService.refreshClient();
+  }
+
+  DateTime? _readPlanEndAt(Object? value) {
+    if (value == null) return null;
+    if (value is DateTime) return value;
+    if (value is String && value.trim().isNotEmpty) {
+      return DateTime.tryParse(value.trim());
+    }
+    return null;
+  }
+
+  bool _isPlanExpired() {
+    final code = planCode.toLowerCase();
+    if (code == 'free') return false;
+    final endAt = planEndAt;
+    if (endAt == null) return false;
+    final endUtc = endAt.isUtc ? endAt : endAt.toUtc();
+    final nowUtc = DateTime.now().toUtc();
+    return !endUtc.isAfter(nowUtc);
   }
 
   Future<void> _restartDoctorPatientAlerts() async {

@@ -108,9 +108,21 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
           await DBService.instance.getAllPatients(doctorId: _activeDoctorId);
       final db = await DBService.instance.database;
 
-      final ids =
-          patients.where((p) => p.id != null).map((p) => p.id!).toList();
       final svcMap = <int, List<PatientService>>{};
+      final primaryIdByAnyId = <int, int>{};
+      for (final p in patients) {
+        final id = p.id;
+        if (id == null) continue;
+        primaryIdByAnyId[id] = id;
+        final local = p.localId;
+        if (local != null) {
+          primaryIdByAnyId[local] = id;
+        }
+        if (id > 1000000000) {
+          primaryIdByAnyId[id % 1000000000] = id;
+        }
+      }
+      final ids = primaryIdByAnyId.keys.toList();
 
       if (ids.isNotEmpty) {
         final placeholders = List.filled(ids.length, '?').join(',');
@@ -130,7 +142,8 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
           ids,
         );
         for (final r in rows) {
-          final pid = (r['patientId'] as num).toInt();
+          final pidRaw = (r['patientId'] as num).toInt();
+          final pid = primaryIdByAnyId[pidRaw] ?? pidRaw;
           svcMap.putIfAbsent(pid, () => []).add(
                 PatientService(
                   id: (r['id'] as num?)?.toInt(),
@@ -625,9 +638,19 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
                       )
                       .toList();
 
-                  final svcSummary = _summarizeServices(allSvcs);
-                  final totalCost =
+                  var svcSummary = _summarizeServices(allSvcs);
+                  var totalCost =
                       allSvcs.fold<double>(0, (sum, s) => sum + s.serviceCost);
+                  if (allSvcs.isEmpty) {
+                    final fallbackName =
+                        (p.serviceName ?? '').trim().isNotEmpty
+                            ? p.serviceName!.trim()
+                            : 'لا خدمات';
+                    svcSummary = fallbackName;
+                    final fallbackCost = p.serviceCost ??
+                        (p.paidAmount + p.remaining);
+                    totalCost = fallbackCost;
+                  }
                   final diagnosis = (p.diagnosis).toString().trim().isEmpty
                       ? '—'
                       : p.diagnosis;

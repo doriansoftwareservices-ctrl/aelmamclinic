@@ -9,6 +9,7 @@ class ClinicProfile {
   final String streetEn;
   final String nearEn;
   final String phone;
+  final String? phone2;
   final String? logoPath;
 
   const ClinicProfile({
@@ -22,6 +23,7 @@ class ClinicProfile {
     required this.streetEn,
     required this.nearEn,
     required this.phone,
+    this.phone2,
     this.logoPath,
   });
 
@@ -38,6 +40,13 @@ class ClinicProfile {
       nearEn.trim().isNotEmpty &&
       phone.trim().isNotEmpty;
 
+  String get phonesDisplay {
+    final p1 = phone.trim();
+    final p2 = (phone2 ?? '').trim();
+    if (p2.isEmpty) return p1;
+    return '$p1 / $p2';
+  }
+
   String _joinParts(List<String> parts) {
     return parts.where((p) => p.trim().isNotEmpty).join(' - ');
   }
@@ -53,6 +62,7 @@ class ClinicProfile {
         'street_en': streetEn,
         'near_en': nearEn,
         'phone': phone,
+        if (phone2 != null) 'phone2': phone2,
         if (logoPath != null) 'logo_path': logoPath,
       };
 
@@ -67,6 +77,7 @@ class ClinicProfile {
         streetEn: map['street_en']?.toString() ?? '',
         nearEn: map['near_en']?.toString() ?? '',
         phone: map['phone']?.toString() ?? '',
+        phone2: map['phone2']?.toString(),
         logoPath: map['logo_path']?.toString(),
       );
 
@@ -81,6 +92,7 @@ class ClinicProfile {
         streetEn: 'Address2',
         nearEn: 'Address3',
         phone: '12345678',
+        phone2: null,
         logoPath: null,
       );
 }
@@ -95,6 +107,7 @@ class ClinicProfileInput {
   final String streetEn;
   final String nearEn;
   final String phone;
+  final String? phone2;
 
   const ClinicProfileInput({
     required this.nameAr,
@@ -106,6 +119,7 @@ class ClinicProfileInput {
     required this.streetEn,
     required this.nearEn,
     required this.phone,
+    this.phone2,
   });
 
   Map<String, dynamic> toArgs() => {
@@ -118,5 +132,6 @@ class ClinicProfileInput {
         'street_en': streetEn,
         'near_en': nearEn,
         'phone': phone,
+        if (phone2 != null && phone2!.trim().isNotEmpty) 'phone2': phone2,
       };
 }

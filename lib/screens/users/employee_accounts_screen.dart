@@ -243,9 +243,12 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
         if (requestId.isEmpty) {
           throw Exception('request_not_found');
         }
-        final price = (request['price_usd'] as num?)?.toDouble() ??
+        var price = (request['price_usd'] as num?)?.toDouble() ??
             double.tryParse(request['price_usd']?.toString() ?? '') ??
             0;
+        if (price <= 0) {
+          price = 50;
+        }
         if (!mounted) return;
         final proceed = await Navigator.of(context).push<bool>(
           MaterialPageRoute(
@@ -312,8 +315,9 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
     final title = isAwaiting
         ? 'لديك طلب لم يتم دفعه بعد'
         : 'تم إرسال طلب التفعيل للمراجعة';
-    final priceLine = latest.priceUsd > 0
-        ? 'المبلغ المطلوب: \$${latest.priceUsd.toStringAsFixed(0)}'
+    final effectivePrice = latest.priceUsd > 0 ? latest.priceUsd : 50;
+    final priceLine = effectivePrice > 0
+        ? 'المبلغ المطلوب: \$${effectivePrice.toStringAsFixed(0)}'
         : null;
     final subtitle = isAwaiting
         ? [
@@ -361,7 +365,7 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
                             builder: (_) => EmployeeSeatPaymentScreen(
                               requestId: latest.id,
                               employeeEmail: latest.employeeEmail,
-                              priceUsd: latest.priceUsd,
+                              priceUsd: effectivePrice,
                             ),
                           ),
                         );
