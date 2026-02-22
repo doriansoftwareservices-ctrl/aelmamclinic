@@ -91,22 +91,40 @@ select_permissions:
       columns: '*'
       filter:
         chat_participants:
-          user_uid:
-            _eq: X-Hasura-User-Id
+          _and:
+            - user_uid:
+                _eq: X-Hasura-User-Id
+            - _or:
+                - is_deleted:
+                    _eq: false
+                - is_deleted:
+                    _is_null: true
   - role: me
     permission:
       columns: '*'
       filter:
         chat_participants:
-          user_uid:
-            _eq: X-Hasura-User-Id
+          _and:
+            - user_uid:
+                _eq: X-Hasura-User-Id
+            - _or:
+                - is_deleted:
+                    _eq: false
+                - is_deleted:
+                    _is_null: true
   - role: owner
     permission:
       columns: '*'
       filter:
         chat_participants:
-          user_uid:
-            _eq: X-Hasura-User-Id
+          _and:
+            - user_uid:
+                _eq: X-Hasura-User-Id
+            - _or:
+                - is_deleted:
+                    _eq: false
+                - is_deleted:
+                    _is_null: true
   - role: superadmin
     permission:
       columns: '*'
@@ -116,8 +134,14 @@ select_permissions:
       columns: '*'
       filter:
         chat_participants:
-          user_uid:
-            _eq: X-Hasura-User-Id
+          _and:
+            - user_uid:
+                _eq: X-Hasura-User-Id
+            - _or:
+                - is_deleted:
+                    _eq: false
+                - is_deleted:
+                    _is_null: true
 update_permissions:
   - role: me
     permission:

@@ -13,8 +13,6 @@ insert_permissions:
           _eq: X-Hasura-User-Id
       columns:
         - id
-        - account_id
-        - role
         - display_name
 select_permissions:
   - role: me
