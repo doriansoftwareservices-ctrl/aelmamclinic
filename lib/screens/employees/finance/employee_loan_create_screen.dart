@@ -8,7 +8,6 @@ import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/core/formatters.dart';
 
 import 'package:aelmamclinic/services/db_service.dart';
-import 'package:aelmamclinic/services/logging_service.dart';
 import 'package:aelmamclinic/models/doctor.dart';
 import 'finance_access_guard.dart';
 
@@ -255,15 +254,22 @@ class _EmployeeLoanCreateScreenState extends State<EmployeeLoanCreateScreen> {
     };
 
     try {
-      await DBService.instance.insertEmployeeLoan(loanData);
-
-      LoggingService().logTransaction(
-        transactionType: "Loan",
-        operation: "create",
-        amount: loan,
-        employeeId: widget.empId,
-        description: "تم إنشاء سلفة للموظف رقم ${widget.empId} بقيمة $loan",
-      );
+      final db = await DBService.instance.database;
+      final nowIso = DateTime.now().toIso8601String();
+      await db.transaction((txn) async {
+        await txn.insert('employees_loans', loanData);
+        await txn.insert('financial_logs', {
+          'transaction_type': 'Loan',
+          'operation': 'create',
+          'amount': loan,
+          'employee_id': widget.empId.toString(),
+          'description': 'تم إنشاء سلفة للموظف رقم ${widget.empId} بقيمة $loan',
+          'modification_details': '',
+          'timestamp': nowIso,
+        });
+      });
+      await DBService.instance.notifyTableChanged('employees_loans');
+      await DBService.instance.notifyTableChanged('financial_logs');
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

@@ -168,6 +168,9 @@ class SyncService {
 
   /// تأخير دفع التغييرات المتتالية لنفس الجدول (دمجها بعد 1 ثانية).
   final Duration pushDebounce;
+  /// هل نعتمد دفتر الحركة (purchases/consumptions) كمصدر الحقيقة للمخزون؟
+  /// إذا false: نعتمد items.stock ونتجنب تطبيق دلتا الدفتر أثناء السحب.
+  final bool useLedgerStock;
 
   static const int _pushChunkSize = 500;
   static const int _pullPageSize = 1000;
@@ -315,6 +318,7 @@ class SyncService {
       'final_salary',
       'ratio_sum',
       'total_loans',
+      'total_discounts',
       'net_pay',
       'is_paid',
       'payment_date'
@@ -394,6 +398,7 @@ class SyncService {
     'employees_salaries': {'is_paid'},
     'employees': {'is_doctor'},
     'patients': {'doctor_review_pending'},
+    'returns': {'is_attended'},
   };
 
   /// خريطة مفاتيح FK لكل جدول (snake_case → parentLocalTable).
@@ -577,6 +582,7 @@ class SyncService {
     this.accountId, {
     this.deviceId,
     this.enableLogs = false,
+    this.useLedgerStock = false,
     this.pushDebounce = const Duration(seconds: 1),
     Future<bool> Function()? canSync,
   })  : _db = database,
@@ -895,6 +901,7 @@ class SyncService {
     required int resolvedLocalId,
     required Map<String, dynamic> filteredRow,
   }) async {
+    if (!useLedgerStock) return;
     if (localTable != 'purchases' && localTable != 'consumptions') return;
 
     final qtyRaw = filteredRow['quantity'] ?? filteredRow['Quantity'];
@@ -915,9 +922,18 @@ class SyncService {
         ? itemRaw.toInt()
         : int.tryParse(itemRaw?.toString() ?? '');
 
+    // استخدم قراءة جديدة للأعمدة لتفادي كاش قديم عند تغير السكيمة
+    final cols = await _getLocalColumnsFresh(localTable);
+    final selectCols = <String>[
+      if (cols.contains('quantity')) 'quantity',
+      if (cols.contains('isDeleted')) 'isDeleted',
+      if (cols.contains('is_deleted')) 'is_deleted',
+      if (cols.contains('itemId')) 'itemId',
+      if (cols.contains('item_id')) 'item_id',
+    ];
     final rows = await _db.query(
       localTable,
-      columns: const ['quantity', 'isDeleted', 'itemId', 'item_id'],
+      columns: selectCols,
       where: 'id = ?',
       whereArgs: [resolvedLocalId],
       limit: 1,
@@ -935,7 +951,7 @@ class SyncService {
     final prevQty = (prev['quantity'] as num?)?.toInt() ??
         int.tryParse(prev['quantity']?.toString() ?? '') ??
         0;
-    final prevDelRaw = prev['isDeleted'];
+    final prevDelRaw = prev['isDeleted'] ?? prev['is_deleted'];
     final bool prevDeleted = (prevDelRaw is num)
         ? prevDelRaw.toInt() == 1
         : (prevDelRaw?.toString().trim().toLowerCase() == 'true' ||
@@ -984,6 +1000,26 @@ class SyncService {
 
   Future<Set<String>> _getLocalColumns(String table) async {
     if (_localColsCache.containsKey(table)) return _localColsCache[table]!;
+    final rows = await _db.rawQuery("PRAGMA table_info($table)");
+    final cols = rows.map((r) => (r['name'] as String)).toSet();
+    _localColsCache[table] = cols;
+    final types = <String, String>{};
+    final notNullCols = <String>{};
+    for (final r in rows) {
+      final name = (r['name'] as String);
+      final type = (r['type'] ?? '').toString().toUpperCase();
+      final notNullFlag = (r['notnull'] ?? 0) as int;
+      types[name] = type;
+      if (notNullFlag == 1) {
+        notNullCols.add(name);
+      }
+    }
+    _localColTypeCache[table] = types;
+    _localNotNullColsCache[table] = notNullCols;
+    return cols;
+  }
+
+  Future<Set<String>> _getLocalColumnsFresh(String table) async {
     final rows = await _db.rawQuery("PRAGMA table_info($table)");
     final cols = rows.map((r) => (r['name'] as String)).toSet();
     _localColsCache[table] = cols;
@@ -2849,7 +2885,7 @@ class SyncService {
           filtered[updCol] = remoteUpdatedAt;
         }
 
-        if (localTable == 'items' && resolvedLocalId > 0) {
+        if (useLedgerStock && localTable == 'items' && resolvedLocalId > 0) {
           try {
             final exists = await _db.query(
               localTable,
@@ -3486,7 +3522,7 @@ class SyncService {
       filtered[updCol] = remoteUpdatedAt;
     }
 
-    if (localTable == 'items' && resolvedLocalId > 0) {
+    if (useLedgerStock && localTable == 'items' && resolvedLocalId > 0) {
       try {
         final exists = await _db.query(
           localTable,
@@ -3586,16 +3622,25 @@ class SyncService {
 
     if (localTable == 'purchases' || localTable == 'consumptions') {
       try {
+        final cols = await _getLocalColumnsFresh(localTable);
+        final selectCols = <String>[
+          if (cols.contains('quantity')) 'quantity',
+          if (cols.contains('isDeleted')) 'isDeleted',
+          if (cols.contains('is_deleted')) 'is_deleted',
+          if (cols.contains('itemId')) 'itemId',
+          if (cols.contains('item_id')) 'item_id',
+        ];
+        if (selectCols.isEmpty) return;
         final rows = await _db.query(
           localTable,
-          columns: const ['quantity', 'isDeleted', 'itemId', 'item_id'],
+          columns: selectCols,
           where: 'id = ?',
           whereArgs: [resolvedLocalId],
           limit: 1,
         );
         if (rows.isNotEmpty) {
           final row = rows.first;
-          final isDelRaw = row['isDeleted'];
+          final isDelRaw = row['isDeleted'] ?? row['is_deleted'];
           final bool isDeleted = (isDelRaw is num)
               ? isDelRaw.toInt() == 1
               : (isDelRaw?.toString().trim().toLowerCase() == 'true' ||

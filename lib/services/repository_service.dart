@@ -31,14 +31,10 @@ class RepositoryService {
   }
 
   Future<List<Item>> fetchItemsByType(int typeId) async {
-    final db = await _db.database;
-    final maps = await db.query(
-      Item.table,
-      where: 'type_id = ? AND ifnull(isDeleted, 0) = 0',
-      whereArgs: [typeId],
-      orderBy: 'name',
-    );
-    return maps.map(Item.fromMap).toList();
+    final items = await _db.getAllItems();
+    final filtered = items.where((i) => i.typeId == typeId).toList();
+    filtered.sort((a, b) => a.name.compareTo(b.name));
+    return filtered;
   }
 
   Future<Item?> fetchItem(int id) async {
@@ -141,10 +137,19 @@ class RepositoryService {
       unitPrice: unitPrice,
     );
 
-    await _db.insertPurchase(purchase);
-
-    final updatedItem = item.copyWith(stock: item.stock + quantity);
-    await _db.updateItem(updatedItem);
+    final db = await _db.database;
+    await db.transaction((txn) async {
+      await txn.insert(Purchase.table, purchase.toMap());
+      final updatedItem = item.copyWith(stock: item.stock + quantity);
+      await txn.update(
+        Item.table,
+        updatedItem.toMap(),
+        where: 'id = ?',
+        whereArgs: [itemId],
+      );
+    });
+    await _db.notifyTableChanged(Purchase.table);
+    await _db.notifyTableChanged(Item.table);
 
     await _evaluateAlertForItem(itemId);
   }
@@ -175,10 +180,19 @@ class RepositoryService {
       date: DateTime.now(),
     );
 
-    await _db.insertConsumption(consumption);
-
-    final updatedItem = item.copyWith(stock: item.stock - quantity);
-    await _db.updateItem(updatedItem);
+    final db = await _db.database;
+    await db.transaction((txn) async {
+      await txn.insert(Consumption.table, consumption.toMap());
+      final updatedItem = item.copyWith(stock: item.stock - quantity);
+      await txn.update(
+        Item.table,
+        updatedItem.toMap(),
+        where: 'id = ?',
+        whereArgs: [itemId],
+      );
+    });
+    await _db.notifyTableChanged(Consumption.table);
+    await _db.notifyTableChanged(Item.table);
 
     await _evaluateAlertForItem(itemId);
   }
@@ -273,33 +287,11 @@ class RepositoryService {
 
   /*────────── الأصناف منخفضة المخزون ──────────*/
   Future<List<Item>> fetchLowStockItems() async {
-    final db = await _db.database;
-    final rows = await db.rawQuery('''
-      SELECT i.*
-      FROM ${Item.table}         AS i
-      JOIN ${AlertSetting.table} AS a ON a.item_id = i.id
-      WHERE a.is_enabled = 1
-        AND ifnull(a.isDeleted, 0) = 0
-        AND i.stock     <= a.threshold
-        AND ifnull(i.isDeleted, 0) = 0
-      ORDER BY i.stock ASC
-    ''');
-    return rows.map(Item.fromMap).toList();
+    return _db.getLowStockItems();
   }
 
   /*────────── تحقُّق سريع للشارة ──────────*/
   Future<bool> anyLowStockAlert() async {
-    final db = await _db.database;
-    final result = await db.rawQuery('''
-      SELECT 1
-      FROM ${AlertSetting.table} AS a
-      JOIN ${Item.table}         AS i ON i.id = a.item_id
-      WHERE a.is_enabled = 1
-        AND ifnull(a.isDeleted, 0) = 0
-        AND i.stock     <= a.threshold
-        AND ifnull(i.isDeleted, 0) = 0
-      LIMIT 1
-    ''');
-    return result.isNotEmpty;
+    return _db.hasLowStockAlert();
   }
 }

@@ -115,6 +115,7 @@ class DBService {
   /// تجميع + تأخير خفيف لنداءات الـ push لتفادي ضغط الطلبات و"database is locked"
   final Map<String, Timer> _pushDebouncers = <String, Timer>{};
   final Set<String> _pendingTables = <String>{};
+  final Map<String, Set<String>> _tableColumnsCache = <String, Set<String>>{};
 
   /// ربط سريع مع SyncService.pushFor (تفادي الاستيراد الدائري) + تفريغ المعلّق
   void bindSyncPush(LocalChangeCallback callback) {
@@ -156,6 +157,57 @@ class DBService {
     } catch (_) {
       // نتجاهل أي خطأ حتى لا يكسر عمليات الكتابة المحلية
     }
+  }
+
+  Future<Set<String>> _getTableColumns(DatabaseExecutor db, String table) async {
+    if (_tableColumnsCache.containsKey(table)) {
+      return _tableColumnsCache[table]!;
+    }
+    try {
+      final rows = await db.rawQuery("PRAGMA table_info($table)");
+      final cols = rows
+          .map((r) => r['name']?.toString() ?? '')
+          .where((v) => v.isNotEmpty)
+          .toSet();
+      _tableColumnsCache[table] = cols;
+      return cols;
+    } catch (_) {
+      return const <String>{};
+    }
+  }
+
+  Future<bool> _hasColumn(DatabaseExecutor db, String table, String column) async {
+    final cols = await _getTableColumns(db, table);
+    return cols.contains(column);
+  }
+
+  Future<String?> _currentAccountId() async {
+    final db = await database;
+    try {
+      final rows =
+          await db.rawQuery('SELECT account_id FROM sync_identity LIMIT 1');
+      if (rows.isEmpty) return null;
+      final raw = rows.first['account_id']?.toString().trim() ?? '';
+      return raw.isEmpty ? null : raw;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<String> _accountFilterClause(
+    DatabaseExecutor db,
+    String table, {
+    String? alias,
+    List<Object?>? args,
+  }) async {
+    if (!await _hasColumn(db, table, 'account_id')) return '';
+    final accountId = await _currentAccountId();
+    if (accountId == null || accountId.trim().isEmpty) {
+      return ' AND 1=0';
+    }
+    if (args != null) args.add(accountId);
+    final col = alias != null ? '$alias.account_id' : 'account_id';
+    return ' AND $col = ?';
   }
 
   /// بث تغيير دون جدولة دفع (للعمليات القادمة من المزامنة).
@@ -710,6 +762,91 @@ class DBService {
     }
   }
 
+  Future<void> _ensureEmployeeSalariesColumns(Database db) async {
+    await _addColumnIfMissing(
+        db, 'employees_salaries', 'totalDiscounts', 'REAL DEFAULT 0');
+    await _addColumnIfMissing(
+        db, 'employees_salaries', 'totalLoans', 'REAL DEFAULT 0');
+    await _addColumnIfMissing(
+        db, 'employees_salaries', 'ratioSum', 'REAL DEFAULT 0');
+    await _addColumnIfMissing(
+        db, 'employees_salaries', 'finalSalary', 'REAL DEFAULT 0');
+    await _addColumnIfMissing(
+        db, 'employees_salaries', 'netPay', 'REAL DEFAULT 0');
+    await _addColumnIfMissing(
+        db, 'employees_salaries', 'isPaid', 'INTEGER DEFAULT 0');
+    await _addColumnIfMissing(db, 'employees_salaries', 'paymentDate', 'TEXT');
+    await _addColumnIfMissing(
+        db, 'employees_salaries', 'employeeId', 'INTEGER');
+  }
+
+  Map<String, dynamic> _normalizeEmployeeSalaryData(
+      Map<String, dynamic> data) {
+    final normalized = <String, dynamic>{};
+    void putIfPresent(String key, dynamic value) {
+      if (value != null) normalized[key] = value;
+    }
+
+    final mapped = Map<String, dynamic>.from(data);
+    if (mapped.containsKey('employeeld') && !mapped.containsKey('employeeId')) {
+      mapped['employeeId'] = mapped.remove('employeeld');
+    }
+    if (mapped.containsKey('employee_id') && !mapped.containsKey('employeeId')) {
+      mapped['employeeId'] = mapped.remove('employee_id');
+    }
+    if (mapped.containsKey('final_salary') &&
+        !mapped.containsKey('finalSalary')) {
+      mapped['finalSalary'] = mapped.remove('final_salary');
+    }
+    if (mapped.containsKey('ratio_sum') && !mapped.containsKey('ratioSum')) {
+      mapped['ratioSum'] = mapped.remove('ratio_sum');
+    }
+    if (mapped.containsKey('total_loans') &&
+        !mapped.containsKey('totalLoans')) {
+      mapped['totalLoans'] = mapped.remove('total_loans');
+    }
+    if (mapped.containsKey('total_discounts') &&
+        !mapped.containsKey('totalDiscounts')) {
+      mapped['totalDiscounts'] = mapped.remove('total_discounts');
+    }
+    if (mapped.containsKey('net_pay') && !mapped.containsKey('netPay')) {
+      mapped['netPay'] = mapped.remove('net_pay');
+    }
+    if (mapped.containsKey('is_paid') && !mapped.containsKey('isPaid')) {
+      mapped['isPaid'] = mapped.remove('is_paid');
+    }
+    if (mapped.containsKey('payment_date') &&
+        !mapped.containsKey('paymentDate')) {
+      mapped['paymentDate'] = mapped.remove('payment_date');
+    }
+
+    const allowed = <String>{
+      'employeeId',
+      'year',
+      'month',
+      'finalSalary',
+      'ratioSum',
+      'totalLoans',
+      'totalDiscounts',
+      'netPay',
+      'isPaid',
+      'paymentDate',
+      'isDeleted',
+      'deletedAt',
+      'account_id',
+      'device_id',
+      'local_id',
+      'updated_at',
+    };
+
+    for (final entry in mapped.entries) {
+      if (allowed.contains(entry.key)) {
+        normalized[entry.key] = entry.value;
+      }
+    }
+    return normalized;
+  }
+
   /// يضمن أعمدة المزامنة المحلية (snake_case) + فهرس مركّب (idempotent)
   ///
   /// 🔄 تمت مواءمته مع سكربت parity v3 (account_id/device_id/local_id/updated_at).
@@ -914,6 +1051,27 @@ class DBService {
         ['employeeId']);
     await safeIndex('idx_employees_userUid', 'employees', ['userUid']);
 
+    if (await _tableExists(db, 'employees_salaries')) {
+      final hasIsDeleted =
+          await _hasColumn(db, 'employees_salaries', 'isDeleted');
+      try {
+        if (hasIsDeleted) {
+          await db.execute('''
+            CREATE UNIQUE INDEX IF NOT EXISTS uix_employees_salaries_employee_month
+            ON employees_salaries(employeeId, year, month)
+            WHERE ifnull(isDeleted,0)=0
+          ''');
+        } else {
+          await db.execute('''
+            CREATE UNIQUE INDEX IF NOT EXISTS uix_employees_salaries_employee_month
+            ON employees_salaries(employeeId, year, month)
+          ''');
+        }
+      } catch (_) {
+        // تجاهل الخطأ إذا كان الفهرس موجودًا أو السكيمة غير جاهزة بعد
+      }
+    }
+
     Future<void> safeUniqueIndex(String name, String table, String sql) async {
       if (!await _tableExists(db, table)) return;
       try {
@@ -1065,6 +1223,7 @@ class DBService {
     await _ensureItemTypesNoUniqueName(db);
     await _ensureSoftDeleteColumns(db);
     await _ensureSyncMetaColumns(db); // ← snake_case (متوافق مع parity v3)
+    await _ensureEmployeeSalariesColumns(db);
     await _ensureReturnsAttendanceColumns(db);
     await _ensureLoansSettlementColumns(db);
     await _ensureSyncFkMappingTable(db);
@@ -1279,6 +1438,7 @@ class DBService {
     finalSalary REAL,
     ratioSum REAL,
     totalLoans REAL,
+    totalDiscounts REAL,
     netPay REAL,
     isPaid INTEGER DEFAULT 0,
     paymentDate TEXT,
@@ -1439,6 +1599,7 @@ class DBService {
           finalSalary REAL,
           ratioSum    REAL,
           totalLoans  REAL,
+          totalDiscounts REAL,
           netPay      REAL,
           isPaid      INTEGER DEFAULT 0,
           paymentDate TEXT,
@@ -1794,9 +1955,21 @@ class DBService {
 
   Future<List<ItemType>> getAllItemTypes() async {
     final db = await database;
+    final accountId = await _currentAccountId();
+    final whereArgs = <Object?>[];
+    var where = 'ifnull(isDeleted,0)=0';
+    final hasAccCol = await _hasColumn(db, ItemType.table, 'account_id');
+    if (hasAccCol && (accountId == null || accountId.trim().isEmpty)) {
+      return const [];
+    }
+    if (accountId != null && hasAccCol) {
+      where += ' AND account_id = ?';
+      whereArgs.add(accountId);
+    }
     final res = await db.query(
       ItemType.table,
-      where: 'ifnull(isDeleted,0)=0',
+      where: where,
+      whereArgs: whereArgs,
       orderBy: 'name ASC',
     );
     return res.map((r) => ItemType.fromMap(r)).toList();
@@ -1894,12 +2067,66 @@ class DBService {
 
   Future<List<Item>> getAllItems() async {
     final db = await database;
+    final accountId = await _currentAccountId();
+    final whereArgs = <Object?>[];
+    var where = 'ifnull(isDeleted,0)=0';
+    final hasAccCol = await _hasColumn(db, Item.table, 'account_id');
+    if (hasAccCol && (accountId == null || accountId.trim().isEmpty)) {
+      return const [];
+    }
+    if (accountId != null && hasAccCol) {
+      where += ' AND account_id = ?';
+      whereArgs.add(accountId);
+    }
     final res = await db.query(
       Item.table,
-      where: 'ifnull(isDeleted,0)=0',
+      where: where,
+      whereArgs: whereArgs,
       orderBy: 'name ASC',
     );
     return res.map((r) => Item.fromMap(r)).toList();
+  }
+
+  Future<List<Item>> getLowStockItems() async {
+    final db = await database;
+    final args = <Object?>[];
+    final itemAccount =
+        await _accountFilterClause(db, Item.table, alias: 'i', args: args);
+    final alertAccount = await _accountFilterClause(db, AlertSetting.table,
+        alias: 'a', args: args);
+    final rows = await db.rawQuery('''
+      SELECT i.*
+      FROM ${Item.table}         AS i
+      JOIN ${AlertSetting.table} AS a ON a.item_id = i.id
+      WHERE a.is_enabled = 1
+        AND ifnull(a.isDeleted, 0) = 0
+        AND i.stock     <= a.threshold
+        AND ifnull(i.isDeleted, 0) = 0
+        $itemAccount$alertAccount
+      ORDER BY i.stock ASC
+    ''', args);
+    return rows.map(Item.fromMap).toList();
+  }
+
+  Future<bool> hasLowStockAlert() async {
+    final db = await database;
+    final args = <Object?>[];
+    final itemAccount =
+        await _accountFilterClause(db, Item.table, alias: 'i', args: args);
+    final alertAccount = await _accountFilterClause(db, AlertSetting.table,
+        alias: 'a', args: args);
+    final result = await db.rawQuery('''
+      SELECT 1
+      FROM ${AlertSetting.table} AS a
+      JOIN ${Item.table}         AS i ON i.id = a.item_id
+      WHERE a.is_enabled = 1
+        AND ifnull(a.isDeleted, 0) = 0
+        AND i.stock     <= a.threshold
+        AND ifnull(i.isDeleted, 0) = 0
+        $itemAccount$alertAccount
+      LIMIT 1
+    ''', args);
+    return result.isNotEmpty;
   }
 
   Future<int> updateItem(Item i) async {
@@ -1934,6 +2161,18 @@ class DBService {
 
   Future<List<PatientService>> getPatientServices(int patientId) async {
     final db = await database;
+    final args = <Object?>[patientId];
+    final psAccount =
+        await _accountFilterClause(db, PatientService.table, alias: 'ps', args: args);
+    String msAccount = '';
+    if (await _hasColumn(db, 'medical_services', 'account_id')) {
+      final accountId = await _currentAccountId();
+      if (accountId == null || accountId.trim().isEmpty) {
+        return const <PatientService>[];
+      }
+      msAccount = ' AND (ms.account_id = ? OR ms.id IS NULL)';
+      args.add(accountId);
+    }
     final rows = await db.rawQuery('''
     SELECT
       ps.*,
@@ -1945,8 +2184,9 @@ class DBService {
     WHERE ps.patientId = ?
       AND ifnull(ps.isDeleted,0)=0
       AND (ps.serviceId IS NULL OR ifnull(ms.isDeleted,0)=0)
+      $psAccount$msAccount
     ORDER BY ps.id ASC
-  ''', [patientId]);
+  ''', args);
 
     return rows.map((m) => PatientService.fromMap(m)).toList();
   }
@@ -2089,9 +2329,21 @@ class DBService {
 
   Future<List<Purchase>> getAllPurchases() async {
     final db = await database;
+    final accountId = await _currentAccountId();
+    final whereArgs = <Object?>[];
+    var where = 'ifnull(isDeleted,0)=0';
+    final hasAccCol = await _hasColumn(db, Purchase.table, 'account_id');
+    if (hasAccCol && (accountId == null || accountId.trim().isEmpty)) {
+      return const [];
+    }
+    if (accountId != null && hasAccCol) {
+      where += ' AND account_id = ?';
+      whereArgs.add(accountId);
+    }
     final res = await db.query(
       Purchase.table,
-      where: 'ifnull(isDeleted,0)=0',
+      where: where,
+      whereArgs: whereArgs,
       orderBy: 'created_at DESC', // ✅ العمود محليًا هو snake_case
     );
     return res.map((r) => Purchase.fromMap(r)).toList();
@@ -2123,9 +2375,21 @@ class DBService {
 
   Future<List<AlertSetting>> getAllAlerts() async {
     final db = await database;
+    final accountId = await _currentAccountId();
+    final whereArgs = <Object?>[];
+    var where = 'ifnull(isDeleted,0)=0';
+    final hasAccCol = await _hasColumn(db, AlertSetting.table, 'account_id');
+    if (hasAccCol && (accountId == null || accountId.trim().isEmpty)) {
+      return const [];
+    }
+    if (accountId != null && hasAccCol) {
+      where += ' AND account_id = ?';
+      whereArgs.add(accountId);
+    }
     final res = await db.query(
       AlertSetting.table,
-      where: 'ifnull(isDeleted,0)=0',
+      where: where,
+      whereArgs: whereArgs,
       orderBy: 'id DESC',
     );
     return res.map((r) => AlertSetting.fromMap(r)).toList();
@@ -2271,6 +2535,15 @@ class DBService {
 
   Future<List<Consumption>> getAllConsumption() async {
     final db = await database;
+    final accountId = await _currentAccountId();
+    final hasAccCol = await _hasColumn(db, 'consumptions', 'account_id');
+    if (hasAccCol && (accountId == null || accountId.trim().isEmpty)) {
+      return const [];
+    }
+    final hasAcc = accountId != null && hasAccCol;
+    final args = <Object?>[];
+    final accClause = hasAcc ? ' AND c.account_id = ?' : '';
+    if (hasAcc) args.add(accountId);
     final res = await db.rawQuery('''
       SELECT 
         c.*,
@@ -2282,8 +2555,9 @@ class DBService {
       FROM consumptions c
       LEFT JOIN items i ON i.id = c.itemId
       WHERE ifnull(c.isDeleted,0)=0
+      $accClause
       ORDER BY c.date DESC
-    ''');
+    ''', args);
     return res.map((row) => Consumption.fromMap(row)).toList();
   }
 
@@ -2314,6 +2588,17 @@ class DBService {
 
   Future<List<Appointment>> getAllAppointments() async {
     final db = await database;
+    if (await _hasColumn(db, 'appointments', 'account_id')) {
+      final accountId = await _currentAccountId();
+      if (accountId == null || accountId.trim().isEmpty) return [];
+      final res = await db.query(
+        'appointments',
+        where: 'ifnull(isDeleted,0)=0 AND account_id = ?',
+        whereArgs: [accountId],
+        orderBy: 'appointmentTime DESC',
+      );
+      return res.map((row) => Appointment.fromMap(row)).toList();
+    }
     final res = await db.query(
       'appointments',
       where: 'ifnull(isDeleted,0)=0',
@@ -2330,6 +2615,18 @@ class DBService {
     final toIso = DateTime(now.year, now.month, now.day, 23, 59, 59, 999)
         .toIso8601String();
 
+    if (await _hasColumn(db, 'appointments', 'account_id')) {
+      final accountId = await _currentAccountId();
+      if (accountId == null || accountId.trim().isEmpty) return [];
+      final res = await db.query(
+        'appointments',
+        where:
+            'appointmentTime BETWEEN ? AND ? AND ifnull(isDeleted,0)=0 AND account_id = ?',
+        whereArgs: [fromIso, toIso, accountId],
+        orderBy: 'appointmentTime DESC',
+      );
+      return res.map((row) => Appointment.fromMap(row)).toList();
+    }
     final res = await db.query(
       'appointments',
       where: 'appointmentTime BETWEEN ? AND ? AND ifnull(isDeleted,0)=0',
@@ -2418,8 +2715,19 @@ class DBService {
 
   Future<List<Doctor>> getAllDoctors() async {
     final db = await database;
-    final res = await db.query('doctors',
-        where: 'ifnull(isDeleted,0)=0', orderBy: 'id DESC');
+    final accountId = await _currentAccountId();
+    final whereArgs = <Object?>[];
+    var where = 'ifnull(isDeleted,0)=0';
+    final hasAccCol = await _hasColumn(db, 'doctors', 'account_id');
+    if (hasAccCol && (accountId == null || accountId.trim().isEmpty)) {
+      return const [];
+    }
+    if (accountId != null && hasAccCol) {
+      where += ' AND account_id = ?';
+      whereArgs.add(accountId);
+    }
+    final res =
+        await db.query('doctors', where: where, whereArgs: whereArgs, orderBy: 'id DESC');
     return res.map((row) => Doctor.fromMap(row)).toList();
   }
 
@@ -2427,10 +2735,21 @@ class DBService {
     final trimmed = userUid.trim();
     if (trimmed.isEmpty) return null;
     final db = await database;
+    final accountId = await _currentAccountId();
+    final hasAccCol = await _hasColumn(db, 'doctors', 'account_id');
+    if (hasAccCol && (accountId == null || accountId.trim().isEmpty)) {
+      return null;
+    }
+    final whereArgs = <Object?>[trimmed];
+    var where = 'userUid = ? AND ifnull(isDeleted,0)=0';
+    if (hasAccCol && accountId != null) {
+      where += ' AND account_id = ?';
+      whereArgs.add(accountId);
+    }
     final rows = await db.query(
       'doctors',
-      where: 'userUid = ? AND ifnull(isDeleted,0)=0',
-      whereArgs: [trimmed],
+      where: where,
+      whereArgs: whereArgs,
       limit: 1,
     );
     if (rows.isEmpty) return null;
@@ -2439,11 +2758,23 @@ class DBService {
 
   Future<Set<String>> getDoctorUserUids() async {
     final db = await database;
+    final accountId = await _currentAccountId();
+    final hasAccCol = await _hasColumn(db, 'doctors', 'account_id');
+    if (hasAccCol && (accountId == null || accountId.trim().isEmpty)) {
+      return <String>{};
+    }
+    final whereArgs = <Object?>[];
+    var where =
+        "userUid IS NOT NULL AND TRIM(userUid) <> '' AND ifnull(isDeleted,0)=0";
+    if (hasAccCol && accountId != null) {
+      where += ' AND account_id = ?';
+      whereArgs.add(accountId);
+    }
     final rows = await db.query(
       'doctors',
       columns: const ['userUid'],
-      where:
-          "userUid IS NOT NULL AND TRIM(userUid) <> '' AND ifnull(isDeleted,0)=0",
+      where: where,
+      whereArgs: whereArgs,
     );
     final set = <String>{};
     for (final row in rows) {
@@ -2581,10 +2912,21 @@ class DBService {
   Future<List<Map<String, dynamic>>> getServicesByType(
       String serviceType) async {
     final db = await database;
+    final accountId = await _currentAccountId();
+    final whereArgs = <Object?>[serviceType];
+    var where = 'serviceType = ? AND ifnull(isDeleted,0)=0';
+    final hasAccCol = await _hasColumn(db, 'medical_services', 'account_id');
+    if (hasAccCol && (accountId == null || accountId.trim().isEmpty)) {
+      return const [];
+    }
+    if (accountId != null && hasAccCol) {
+      where += ' AND account_id = ?';
+      whereArgs.add(accountId);
+    }
     final res = await db.query(
       'medical_services',
-      where: 'serviceType = ? AND ifnull(isDeleted,0)=0',
-      whereArgs: [serviceType],
+      where: where,
+      whereArgs: whereArgs,
       orderBy: 'name',
     );
     return res;
@@ -2592,9 +2934,21 @@ class DBService {
 
   Future<List<Map<String, dynamic>>> getAllMedicalServices() async {
     final db = await database;
+    final accountId = await _currentAccountId();
+    final whereArgs = <Object?>[];
+    var where = 'ifnull(isDeleted,0)=0';
+    final hasAccCol = await _hasColumn(db, 'medical_services', 'account_id');
+    if (hasAccCol && (accountId == null || accountId.trim().isEmpty)) {
+      return const [];
+    }
+    if (accountId != null && hasAccCol) {
+      where += ' AND account_id = ?';
+      whereArgs.add(accountId);
+    }
     final res = await db.query(
       'medical_services',
-      where: 'ifnull(isDeleted,0)=0',
+      where: where,
+      whereArgs: whereArgs,
       orderBy: 'id DESC',
     );
     return res;
@@ -2627,10 +2981,21 @@ class DBService {
   Future<List<Map<String, dynamic>>> getDoctorSharesForService(
       int serviceId) async {
     final db = await database;
+    final accountId = await _currentAccountId();
+    final hasAccCol = await _hasColumn(db, 'service_doctor_share', 'account_id');
+    if (hasAccCol && (accountId == null || accountId.trim().isEmpty)) {
+      return const [];
+    }
+    final whereArgs = <Object?>[serviceId];
+    var where = 'serviceId = ? AND ifnull(isDeleted,0)=0';
+    if (hasAccCol && accountId != null) {
+      where += ' AND account_id = ?';
+      whereArgs.add(accountId);
+    }
     return db.query(
       'service_doctor_share',
-      where: 'serviceId = ? AND ifnull(isDeleted,0)=0',
-      whereArgs: [serviceId],
+      where: where,
+      whereArgs: whereArgs,
     );
   }
 
@@ -2639,11 +3004,22 @@ class DBService {
     required int serviceId,
   }) async {
     final db = await database;
+    final accountId = await _currentAccountId();
+    final hasAccCol = await _hasColumn(db, 'service_doctor_share', 'account_id');
+    if (hasAccCol && (accountId == null || accountId.trim().isEmpty)) {
+      return null;
+    }
+    final whereArgs = <Object?>[doctorId, serviceId];
+    var where = 'doctorId = ? AND serviceId = ? AND ifnull(isDeleted,0)=0';
+    if (hasAccCol && accountId != null) {
+      where += ' AND account_id = ?';
+      whereArgs.add(accountId);
+    }
     final res = await db.query(
       'service_doctor_share',
       columns: ['sharePercentage'],
-      where: 'doctorId = ? AND serviceId = ? AND ifnull(isDeleted,0)=0',
-      whereArgs: [doctorId, serviceId],
+      where: where,
+      whereArgs: whereArgs,
       limit: 1,
     );
     if (res.isEmpty) return null;
@@ -2696,6 +3072,11 @@ class DBService {
   Future<List<Map<String, dynamic>>> getDoctorGeneralServices(
       int doctorId) async {
     final db = await database;
+    final args = <Object?>[doctorId];
+    final msAccount =
+        await _accountFilterClause(db, 'medical_services', alias: 'ms', args: args);
+    final sdsAccount =
+        await _accountFilterClause(db, 'service_doctor_share', alias: 'sds', args: args);
     return db.rawQuery('''
     SELECT ms.id, ms.name, ms.cost
     FROM medical_services ms
@@ -2704,8 +3085,9 @@ class DBService {
     WHERE ms.serviceType = 'doctorGeneral'
       AND sds.isHidden = 0
       AND ifnull(ms.isDeleted,0)=0
+      $msAccount$sdsAccount
     ORDER BY ms.id DESC
-  ''', [doctorId]);
+  ''', args);
   }
 
   /*───────────────────────────────────────────────────────────────
@@ -2725,6 +3107,11 @@ class DBService {
   Future<List<Map<String, dynamic>>> getDoctorServiceCatalogWithPercents(
       int doctorId) async {
     final db = await database;
+    final args = <Object?>[doctorId];
+    final sdsAccount =
+        await _accountFilterClause(db, 'service_doctor_share', alias: 'sds', args: args);
+    final msAccount =
+        await _accountFilterClause(db, 'medical_services', alias: 'ms', args: args);
     return db.rawQuery('''
       SELECT 
         ms.id   AS serviceId,
@@ -2749,8 +3136,9 @@ class DBService {
         AND (sds.isDeleted IS NULL OR sds.isDeleted = 0)
         AND (ms.isDeleted  IS NULL OR ms.isDeleted  = 0)
         AND sds.isHidden = 0
+        $sdsAccount$msAccount
       ORDER BY ms.name COLLATE NOCASE;
-    ''', [doctorId]);
+    ''', args);
   }
 
   /// تفصيل فترة: عدد المرات + إجمالي مبالغ الطبيب والمركز لكل خدمة للطبيب
@@ -2760,6 +3148,29 @@ class DBService {
     DateTime to,
   ) async {
     final db = await database;
+    final args = <Object?>[
+      doctorId,
+      from.toIso8601String(),
+      to.toIso8601String(),
+    ];
+    final sdsAccount =
+        await _accountFilterClause(db, 'service_doctor_share', alias: 'sds', args: args);
+    final msAccount =
+        await _accountFilterClause(db, 'medical_services', alias: 'ms', args: args);
+    String psAccount = '';
+    if (await _hasColumn(db, PatientService.table, 'account_id')) {
+      final accountId = await _currentAccountId();
+      if (accountId == null || accountId.trim().isEmpty) return const [];
+      psAccount = ' AND (ps.account_id = ? OR ps.id IS NULL)';
+      args.add(accountId);
+    }
+    String pAccount = '';
+    if (await _hasColumn(db, 'patients', 'account_id')) {
+      final accountId = await _currentAccountId();
+      if (accountId == null || accountId.trim().isEmpty) return const [];
+      pAccount = ' AND (p.account_id = ? OR p.id IS NULL)';
+      args.add(accountId);
+    }
     return db.rawQuery('''
       SELECT 
         ms.id   AS serviceId,
@@ -2805,9 +3216,10 @@ class DBService {
         AND (ms.isDeleted  IS NULL OR ms.isDeleted  = 0)
         AND sds.isHidden   = 0
         AND (date(p.registerDate) BETWEEN date(?) AND date(?) OR p.registerDate IS NULL)
+        $sdsAccount$msAccount$psAccount$pAccount
       GROUP BY ms.id, ms.name, ms.serviceType, ms.cost, sds.sharePercentage, sds.towerSharePercentage
       ORDER BY ms.name COLLATE NOCASE;
-    ''', [doctorId, from.toIso8601String(), to.toIso8601String()]);
+    ''', args);
   }
 
   /// نسبة محسوبة لخدمة محددة لطبيب معيّن (مفيد للواجهات عند عرض خدمة واحدة).
@@ -2816,6 +3228,11 @@ class DBService {
     required int serviceId,
   }) async {
     final db = await database;
+    final args = <Object?>[doctorId, serviceId];
+    final sdsAccount =
+        await _accountFilterClause(db, 'service_doctor_share', alias: 'sds', args: args);
+    final msAccount =
+        await _accountFilterClause(db, 'medical_services', alias: 'ms', args: args);
     final rows = await db.rawQuery('''
       SELECT 
         ms.serviceType,
@@ -2827,8 +3244,9 @@ class DBService {
         AND (sds.isDeleted IS NULL OR sds.isDeleted = 0)
         AND (ms.isDeleted  IS NULL OR ms.isDeleted  = 0)
         AND sds.isHidden = 0
+        $sdsAccount$msAccount
       LIMIT 1;
-    ''', [doctorId, serviceId]);
+    ''', args);
 
     if (rows.isEmpty) {
       return {'doctor': 0.0, 'clinic': 0.0};
@@ -2862,8 +3280,19 @@ class DBService {
 
   Future<List<Map<String, dynamic>>> getAllEmployees() async {
     final db = await database;
+    final accountId = await _currentAccountId();
+    final whereArgs = <Object?>[];
+    var where = 'ifnull(isDeleted,0)=0';
+    final hasAccCol = await _hasColumn(db, 'employees', 'account_id');
+    if (hasAccCol && (accountId == null || accountId.trim().isEmpty)) {
+      return const [];
+    }
+    if (accountId != null && hasAccCol) {
+      where += ' AND account_id = ?';
+      whereArgs.add(accountId);
+    }
     return db.query('employees',
-        where: 'ifnull(isDeleted,0)=0', orderBy: 'id DESC');
+        where: where, whereArgs: whereArgs, orderBy: 'id DESC');
   }
 
   Future<Employee?> getEmployeeByUserUid(String userUid) async {
@@ -3085,11 +3514,25 @@ class DBService {
   Future<Set<String>> getLinkedUserUids() async {
     final db = await database;
     final linked = <String>{};
+    final accountId = await _currentAccountId();
+    final hasDocAcc = await _hasColumn(db, 'doctors', 'account_id');
+    final hasEmpAcc = await _hasColumn(db, 'employees', 'account_id');
+    if ((hasDocAcc || hasEmpAcc) &&
+        (accountId == null || accountId.trim().isEmpty)) {
+      return linked;
+    }
 
+    final docWhereArgs = <Object?>[];
+    var docWhere = 'ifnull(isDeleted,0)=0';
+    if (hasDocAcc && accountId != null) {
+      docWhere += ' AND account_id = ?';
+      docWhereArgs.add(accountId);
+    }
     final doctors = await db.query(
       'doctors',
       columns: const ['userUid'],
-      where: 'ifnull(isDeleted,0)=0',
+      where: docWhere,
+      whereArgs: docWhereArgs,
     );
     for (final row in doctors) {
       final raw = row['userUid'] ?? row['user_uid'];
@@ -3097,10 +3540,17 @@ class DBService {
       if (uid.isNotEmpty) linked.add(uid);
     }
 
+    final empWhereArgs = <Object?>[];
+    var empWhere = 'ifnull(isDeleted,0)=0';
+    if (hasEmpAcc && accountId != null) {
+      empWhere += ' AND account_id = ?';
+      empWhereArgs.add(accountId);
+    }
     final employees = await db.query(
       'employees',
       columns: const ['userUid'],
-      where: 'ifnull(isDeleted,0)=0',
+      where: empWhere,
+      whereArgs: empWhereArgs,
     );
     for (final row in employees) {
       final raw = row['userUid'] ?? row['user_uid'];
@@ -3121,8 +3571,19 @@ class DBService {
 
   Future<List<Map<String, dynamic>>> getAllEmployeeLoans() async {
     final db = await database;
+    final accountId = await _currentAccountId();
+    final whereArgs = <Object?>[];
+    var where = 'ifnull(isDeleted,0)=0';
+    final hasAccCol = await _hasColumn(db, 'employees_loans', 'account_id');
+    if (hasAccCol && (accountId == null || accountId.trim().isEmpty)) {
+      return const [];
+    }
+    if (accountId != null && hasAccCol) {
+      where += ' AND account_id = ?';
+      whereArgs.add(accountId);
+    }
     return db.query('employees_loans',
-        where: 'ifnull(isDeleted,0)=0', orderBy: 'loanDateTime DESC');
+        where: where, whereArgs: whereArgs, orderBy: 'loanDateTime DESC');
   }
 
   Future<int> updateEmployeeLoan(
@@ -3147,6 +3608,14 @@ class DBService {
   }) async {
     final db = await database;
     final now = DateTime.now().toIso8601String();
+    final args = <Object?>[
+      now,
+      employeeId,
+      year.toString(),
+      month.toString().padLeft(2, '0'),
+    ];
+    final accountClause =
+        await _accountFilterClause(db, 'employees_loans', args: args);
     final rows = await db.rawUpdate('''
         UPDATE employees_loans
         SET isSettled = 1,
@@ -3156,12 +3625,8 @@ class DBService {
           AND strftime('%Y', loanDateTime) = ?
           AND strftime('%m', loanDateTime) = ?
           AND ifnull(isDeleted,0)=0
-      ''', [
-      now,
-      employeeId,
-      year.toString(),
-      month.toString().padLeft(2, '0')
-    ]);
+          $accountClause
+      ''', args);
     await _markChanged('employees_loans');
     return rows;
   }
@@ -3172,6 +3637,13 @@ class DBService {
     required DateTime to,
   }) async {
     final db = await database;
+    final args = <Object?>[
+      employeeId,
+      from.toIso8601String(),
+      to.toIso8601String(),
+    ];
+    final accountClause =
+        await _accountFilterClause(db, 'employees_loans', args: args);
     final res = await db.rawQuery('''
       SELECT COALESCE(SUM(loanAmount), 0) AS total
       FROM employees_loans
@@ -3179,28 +3651,42 @@ class DBService {
         AND date(loanDateTime) BETWEEN date(?) AND date(?)
         AND ifnull(isSettled,0)=0
         AND ifnull(isDeleted,0)=0
-    ''', [employeeId, from.toIso8601String(), to.toIso8601String()]);
+        $accountClause
+    ''', args);
     return (res.first['total'] as num?)?.toDouble() ?? 0.0;
   }
 
   //=============================== رواتب الموظفين ===============================
   Future<int> insertEmployeeSalary(Map<String, dynamic> salaryData) async {
     final db = await database;
-    final id = await db.insert('employees_salaries', salaryData);
+    final normalized = _normalizeEmployeeSalaryData(salaryData);
+    final id = await db.insert('employees_salaries', normalized);
     await _markChanged('employees_salaries');
     return id;
   }
 
   Future<List<Map<String, dynamic>>> getAllEmployeeSalaries() async {
     final db = await database;
+    final accountId = await _currentAccountId();
+    final whereArgs = <Object?>[];
+    var where = 'ifnull(isDeleted,0)=0';
+    final hasAccCol = await _hasColumn(db, 'employees_salaries', 'account_id');
+    if (hasAccCol && (accountId == null || accountId.trim().isEmpty)) {
+      return const [];
+    }
+    if (accountId != null && hasAccCol) {
+      where += ' AND account_id = ?';
+      whereArgs.add(accountId);
+    }
     return db.query('employees_salaries',
-        where: 'ifnull(isDeleted,0)=0', orderBy: 'id DESC');
+        where: where, whereArgs: whereArgs, orderBy: 'id DESC');
   }
 
   Future<int> updateEmployeeSalary(
       int salaryId, Map<String, dynamic> newData) async {
     final db = await database;
-    final rows = await db.update('employees_salaries', newData,
+    final normalized = _normalizeEmployeeSalaryData(newData);
+    final rows = await db.update('employees_salaries', normalized,
         where: 'id = ?', whereArgs: [salaryId]);
     await _markChanged('employees_salaries');
     return rows;
@@ -3222,9 +3708,21 @@ class DBService {
 
   Future<List<Map<String, dynamic>>> getAllEmployeeDiscounts() async {
     final db = await database;
+    final accountId = await _currentAccountId();
+    final whereArgs = <Object?>[];
+    var where = 'ifnull(isDeleted,0)=0';
+    final hasAccCol = await _hasColumn(db, 'employees_discounts', 'account_id');
+    if (hasAccCol && (accountId == null || accountId.trim().isEmpty)) {
+      return const [];
+    }
+    if (accountId != null && hasAccCol) {
+      where += ' AND account_id = ?';
+      whereArgs.add(accountId);
+    }
     return db.query(
       'employees_discounts',
-      where: 'ifnull(isDeleted,0)=0',
+      where: where,
+      whereArgs: whereArgs,
       orderBy: 'discountDateTime DESC',
     );
   }
@@ -3235,13 +3733,21 @@ class DBService {
     required DateTime to,
   }) async {
     final db = await database;
+    final args = <Object?>[
+      employeeId,
+      from.toIso8601String(),
+      to.toIso8601String(),
+    ];
+    final accountClause =
+        await _accountFilterClause(db, 'employees_discounts', args: args);
     final res = await db.rawQuery('''
       SELECT COALESCE(SUM(amount), 0) AS total
       FROM employees_discounts
       WHERE employeeId = ?
         AND date(discountDateTime) BETWEEN date(?) AND date(?)
         AND ifnull(isDeleted,0)=0
-    ''', [employeeId, from.toIso8601String(), to.toIso8601String()]);
+        $accountClause
+    ''', args);
     return (res.first['total'] as num?)?.toDouble() ?? 0.0;
   }
 
@@ -3254,11 +3760,23 @@ class DBService {
     var fixedLoans = false;
     var fixedDiscounts = false;
 
+    final accountId = await _currentAccountId();
+    final logsHasAccCol = await _hasColumn(db, 'financial_logs', 'account_id');
+    if (logsHasAccCol && (accountId == null || accountId.trim().isEmpty)) {
+      return;
+    }
+    final logsWhereArgs = <Object?>['Loan', 'Discount'];
+    var logsWhere =
+        'employee_id IS NOT NULL AND transaction_type IN (?,?)';
+    if (logsHasAccCol && accountId != null) {
+      logsWhere += ' AND account_id = ?';
+      logsWhereArgs.add(accountId);
+    }
     final logs = await db.query(
       'financial_logs',
       columns: const ['transaction_type', 'amount', 'employee_id', 'timestamp'],
-      where: 'employee_id IS NOT NULL AND transaction_type IN (?,?)',
-      whereArgs: const ['Loan', 'Discount'],
+      where: logsWhere,
+      whereArgs: logsWhereArgs,
     );
 
     if (logs.isEmpty) return;
@@ -3283,10 +3801,21 @@ class DBService {
       }
     }
 
+    final loansHasAccCol = await _hasColumn(db, 'employees_loans', 'account_id');
+    if (loansHasAccCol && (accountId == null || accountId.trim().isEmpty)) {
+      return;
+    }
+    final missingLoansWhereArgs = <Object?>[];
+    var missingLoansWhere = 'employeeId IS NULL';
+    if (loansHasAccCol && accountId != null) {
+      missingLoansWhere += ' AND account_id = ?';
+      missingLoansWhereArgs.add(accountId);
+    }
     final missingLoans = await db.query(
       'employees_loans',
       columns: const ['id', 'loanAmount', 'loanDateTime', 'employeeId'],
-      where: 'employeeId IS NULL',
+      where: missingLoansWhere,
+      whereArgs: missingLoansWhereArgs,
     );
     for (final row in missingLoans) {
       final loanId = (row['id'] as num?)?.toInt();
@@ -3323,10 +3852,23 @@ class DBService {
       }
     }
 
+    final discountsHasAccCol =
+        await _hasColumn(db, 'employees_discounts', 'account_id');
+    if (discountsHasAccCol &&
+        (accountId == null || accountId.trim().isEmpty)) {
+      return;
+    }
+    final missingDiscountsWhereArgs = <Object?>[];
+    var missingDiscountsWhere = 'employeeId IS NULL';
+    if (discountsHasAccCol && accountId != null) {
+      missingDiscountsWhere += ' AND account_id = ?';
+      missingDiscountsWhereArgs.add(accountId);
+    }
     final missingDiscounts = await db.query(
       'employees_discounts',
       columns: const ['id', 'amount', 'discountDateTime', 'employeeId'],
-      where: 'employeeId IS NULL',
+      where: missingDiscountsWhere,
+      whereArgs: missingDiscountsWhereArgs,
     );
     for (final row in missingDiscounts) {
       final discId = (row['id'] as num?)?.toInt();
@@ -3369,10 +3911,22 @@ class DBService {
 
   Future<List<Map<String, dynamic>>> getDiscountsByEmployee(int empId) async {
     final db = await database;
+    final accountId = await _currentAccountId();
+    final hasAccCol =
+        await _hasColumn(db, 'employees_discounts', 'account_id');
+    if (hasAccCol && (accountId == null || accountId.trim().isEmpty)) {
+      return const [];
+    }
+    final whereArgs = <Object?>[empId];
+    var where = 'employeeId = ? AND ifnull(isDeleted,0)=0';
+    if (hasAccCol && accountId != null) {
+      where += ' AND account_id = ?';
+      whereArgs.add(accountId);
+    }
     return db.query(
       'employees_discounts',
-      where: 'employeeId = ? AND ifnull(isDeleted,0)=0',
-      whereArgs: [empId],
+      where: where,
+      whereArgs: whereArgs,
       orderBy: 'discountDateTime DESC',
     );
   }
@@ -3395,29 +3949,47 @@ class DBService {
   //=============================== الإحصائيات ===============================
   Future<int> getTotalPatients() async {
     final db = await database;
+    final args = <Object?>[];
+    final accountClause = await _accountFilterClause(db, 'patients', args: args);
     final res = await db.rawQuery(
-        'SELECT COUNT(*) as count FROM patients WHERE ifnull(isDeleted,0)=0');
+      'SELECT COUNT(*) as count FROM patients WHERE ifnull(isDeleted,0)=0$accountClause',
+      args,
+    );
     return Sqflite.firstIntValue(res) ?? 0;
   }
 
   Future<int> getSuccessfulAppointments() async {
     final db = await database;
+    final args = <Object?>[];
+    final accountClause =
+        await _accountFilterClause(db, 'appointments', args: args);
     final res = await db.rawQuery(
-        "SELECT COUNT(*) as count FROM appointments WHERE status = 'مؤكد' AND ifnull(isDeleted,0)=0");
+      "SELECT COUNT(*) as count FROM appointments WHERE status = 'مؤكد' AND ifnull(isDeleted,0)=0$accountClause",
+      args,
+    );
     return Sqflite.firstIntValue(res) ?? 0;
   }
 
   Future<int> getFollowUpCount() async {
     final db = await database;
+    final args = <Object?>[];
+    final accountClause =
+        await _accountFilterClause(db, 'appointments', args: args);
     final res = await db.rawQuery(
-        "SELECT COUNT(*) as count FROM appointments WHERE status = 'متابعة' AND ifnull(isDeleted,0)=0");
+      "SELECT COUNT(*) as count FROM appointments WHERE status = 'متابعة' AND ifnull(isDeleted,0)=0$accountClause",
+      args,
+    );
     return Sqflite.firstIntValue(res) ?? 0;
   }
 
   Future<double> getFinancialTotal() async {
     final db = await database;
+    final args = <Object?>[];
+    final accountClause = await _accountFilterClause(db, 'patients', args: args);
     final res = await db.rawQuery(
-        'SELECT SUM(paidAmount) as total FROM patients WHERE ifnull(isDeleted,0)=0');
+      'SELECT SUM(paidAmount) as total FROM patients WHERE ifnull(isDeleted,0)=0$accountClause',
+      args,
+    );
     return res.first['total'] == null
         ? 0.0
         : (res.first['total'] as num).toDouble();
@@ -3489,15 +4061,65 @@ class DBService {
     await db.update('stats_dirty', {'dirty': 1}, where: 'id = 1');
   }
 
+  /// تحقّق هل توجد صفوف محليًا تخص حسابًا مختلفًا عن الحساب الحالي.
+  /// هذا يُستخدم لتجنب مسح البيانات عند تغيّر الحساب المؤقت أو قراءة خاطئة.
+  Future<bool> hasRowsForOtherAccount(String accountId) async {
+    final db = await database;
+    const tables = <String>[
+      'patients',
+      'returns',
+      'consumptions',
+      'appointments',
+      'doctors',
+      'consumption_types',
+      'medical_services',
+      'service_doctor_share',
+      'employees',
+      'employees_loans',
+      'employees_salaries',
+      'employees_discounts',
+      'items',
+      'item_types',
+      'purchases',
+      'alert_settings',
+      'attachments',
+      'financial_logs',
+      PatientService.table,
+      Drug.table,
+      Prescription.table,
+      PrescriptionItem.table,
+      'complaints',
+    ];
+    for (final t in tables) {
+      try {
+        final cols = await db
+            .rawQuery("PRAGMA table_info($t)")
+            .then((rows) => rows.map((r) => r['name'] as String).toSet());
+        if (!cols.contains('account_id')) continue;
+        final rows = await db.rawQuery(
+          'SELECT 1 FROM $t WHERE account_id IS NOT NULL AND account_id != ? LIMIT 1',
+          [accountId],
+        );
+        if (rows.isNotEmpty) return true;
+      } catch (_) {
+        // تجاهل أي جدول غير موجود أو خطأ عارض
+      }
+    }
+    return false;
+  }
+
   //=============================== دوال إضافية للإحصاء ===============================
   Future<double> getSumPatientsBetween(DateTime from, DateTime to) async {
     final db = await database;
+    final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
+    final accountClause = await _accountFilterClause(db, 'patients', args: args);
     final res = await db.rawQuery('''
         SELECT SUM(paidAmount) as total
         FROM patients
         WHERE date(registerDate) BETWEEN date(?) AND date(?)
           AND ifnull(isDeleted,0)=0
-      ''', [from.toIso8601String(), to.toIso8601String()]);
+          $accountClause
+      ''', args);
     return res.first['total'] == null
         ? 0.0
         : (res.first['total'] as num).toDouble();
@@ -3506,6 +4128,18 @@ class DBService {
   /// إجمالي قيمة الخدمات المقدمة خلال الفترة (يُستخدم كدخل عند عدم تسجيل الدفعات).
   Future<double> getSumPatientServicesBetween(DateTime from, DateTime to) async {
     final db = await database;
+    final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
+    final psAccount =
+        await _accountFilterClause(db, PatientService.table, alias: 'ps', args: args);
+    final pAccount =
+        await _accountFilterClause(db, 'patients', alias: 'p', args: args);
+    String msAccount = '';
+    if (await _hasColumn(db, 'medical_services', 'account_id')) {
+      final accountId = await _currentAccountId();
+      if (accountId == null || accountId.trim().isEmpty) return 0.0;
+      msAccount = ' AND (ms.account_id = ? OR ms.id IS NULL)';
+      args.add(accountId);
+    }
     final res = await db.rawQuery('''
         SELECT COALESCE(SUM(
           COALESCE(ps.serviceCost, ms.cost, 0)
@@ -3517,12 +4151,23 @@ class DBService {
           AND ifnull(ps.isDeleted,0)=0
           AND ifnull(p.isDeleted,0)=0
           AND (ps.serviceId IS NULL OR ifnull(ms.isDeleted,0)=0)
-      ''', [from.toIso8601String(), to.toIso8601String()]);
+          $psAccount$pAccount$msAccount
+      ''', args);
     return (res.first['total'] as num?)?.toDouble() ?? 0.0;
   }
 
   Future<double> getSumConsumptionBetween(DateTime from, DateTime to) async {
     final db = await database;
+    final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
+    final cAccount =
+        await _accountFilterClause(db, 'consumptions', alias: 'c', args: args);
+    String iAccount = '';
+    if (await _hasColumn(db, 'items', 'account_id')) {
+      final accountId = await _currentAccountId();
+      if (accountId == null || accountId.trim().isEmpty) return 0.0;
+      iAccount = ' AND (i.account_id = ? OR i.id IS NULL)';
+      args.add(accountId);
+    }
     final res = await db.rawQuery('''
         SELECT COALESCE(SUM(
           CASE 
@@ -3535,7 +4180,8 @@ class DBService {
         LEFT JOIN items i ON i.id = c.itemId
         WHERE c.date BETWEEN ? AND ?
           AND ifnull(c.isDeleted,0)=0
-      ''', [from.toIso8601String(), to.toIso8601String()]);
+          $cAccount$iAccount
+      ''', args);
     return res.first['total'] == null
         ? 0.0
         : (res.first['total'] as num).toDouble();
@@ -3544,6 +4190,9 @@ class DBService {
   /// إجمالي المشتريات خلال الفترة (تحسب تكلفة المواد عند الشراء).
   Future<double> getSumPurchasesBetween(DateTime from, DateTime to) async {
     final db = await database;
+    final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
+    final accountClause =
+        await _accountFilterClause(db, 'purchases', args: args);
     final res = await db.rawQuery('''
         SELECT COALESCE(SUM(
           COALESCE(quantity, 0) * COALESCE(unit_price, 0)
@@ -3551,19 +4200,23 @@ class DBService {
         FROM purchases
         WHERE date(created_at) BETWEEN date(?) AND date(?)
           AND ifnull(isDeleted,0)=0
-      ''', [from.toIso8601String(), to.toIso8601String()]);
+          $accountClause
+      ''', args);
     return (res.first['total'] as num?)?.toDouble() ?? 0.0;
   }
 
   Future<double> getSumReturnsRemainingBetween(
       DateTime from, DateTime to) async {
     final db = await database;
+    final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
+    final accountClause = await _accountFilterClause(db, 'returns', args: args);
     final res = await db.rawQuery('''
         SELECT SUM(remaining) as total
         FROM returns
         WHERE date BETWEEN ? AND ?
           AND ifnull(isDeleted,0)=0
-      ''', [from.toIso8601String(), to.toIso8601String()]);
+          $accountClause
+      ''', args);
     return res.first['total'] == null
         ? 0.0
         : (res.first['total'] as num).toDouble();
@@ -3578,6 +4231,24 @@ class DBService {
   Future<double> getDoctorRatioSum(
       int doctorId, DateTime from, DateTime to) async {
     final db = await database;
+    final args = <Object?>[
+      doctorId,
+      from.toIso8601String(),
+      to.toIso8601String(),
+    ];
+    final psAccount =
+        await _accountFilterClause(db, PatientService.table, alias: 'ps', args: args);
+    final pAccount =
+        await _accountFilterClause(db, 'patients', alias: 'p', args: args);
+    final msAccount =
+        await _accountFilterClause(db, 'medical_services', alias: 'ms', args: args);
+    String sdsAccount = '';
+    if (await _hasColumn(db, 'service_doctor_share', 'account_id')) {
+      final accountId = await _currentAccountId();
+      if (accountId == null || accountId.trim().isEmpty) return 0.0;
+      sdsAccount = ' AND (sds.account_id = ? OR sds.id IS NULL)';
+      args.add(accountId);
+    }
     final res = await db.rawQuery('''
       SELECT COALESCE(SUM(
         ps.serviceCost * (COALESCE(sds.sharePercentage, 0) / 100.0)
@@ -3594,13 +4265,39 @@ class DBService {
         AND ifnull(ps.isDeleted,0)=0
         AND ifnull(p.isDeleted,0)=0
         AND ifnull(ms.isDeleted,0)=0
-    ''', [doctorId, from.toIso8601String(), to.toIso8601String()]);
+        $psAccount$pAccount$msAccount$sdsAccount
+    ''', args);
     return (res.first['ratioSum'] as num?)?.toDouble() ?? 0.0;
   }
 
   Future<double> getEffectiveDoctorDirectInputSum(
       int doctorId, DateTime from, DateTime to) async {
     final db = await database;
+    final args = <Object?>[
+      doctorId,
+      doctorId,
+      doctorId,
+      from.toIso8601String(),
+      to.toIso8601String(),
+    ];
+    final psAccount =
+        await _accountFilterClause(db, PatientService.table, alias: 'ps', args: args);
+    final pAccount =
+        await _accountFilterClause(db, 'patients', alias: 'p', args: args);
+    String msAccount = '';
+    if (await _hasColumn(db, 'medical_services', 'account_id')) {
+      final accountId = await _currentAccountId();
+      if (accountId == null || accountId.trim().isEmpty) return 0.0;
+      msAccount = ' AND (ms.account_id = ? OR ms.id IS NULL)';
+      args.add(accountId);
+    }
+    String sdsAccount = '';
+    if (await _hasColumn(db, 'service_doctor_share', 'account_id')) {
+      final accountId = await _currentAccountId();
+      if (accountId == null || accountId.trim().isEmpty) return 0.0;
+      sdsAccount = ' AND (sds.account_id = ? OR sds.id IS NULL)';
+      args.add(accountId);
+    }
     final res = await db.rawQuery('''
       SELECT COALESCE(SUM(
         CASE
@@ -3624,19 +4321,38 @@ class DBService {
         AND ifnull(ps.isDeleted,0)=0
         AND ifnull(p.isDeleted,0)=0
         AND (ps.serviceId IS NULL OR ifnull(ms.isDeleted,0)=0)
-    ''', [
-      doctorId, // حالة السطر الحر
-      doctorId, // خدمات الطبيب المُعرّفة
-      doctorId, // ربط sds
-      from.toIso8601String(),
-      to.toIso8601String(),
-    ]);
+        $psAccount$pAccount$msAccount$sdsAccount
+    ''', args);
     return (res.first['docInput'] as num?)?.toDouble() ?? 0.0;
   }
 
   Future<double> getDoctorTowerShareSum(
       int doctorId, DateTime from, DateTime to) async {
     final db = await database;
+    final args = <Object?>[
+      doctorId,
+      doctorId,
+      from.toIso8601String(),
+      to.toIso8601String(),
+    ];
+    final psAccount =
+        await _accountFilterClause(db, PatientService.table, alias: 'ps', args: args);
+    final pAccount =
+        await _accountFilterClause(db, 'patients', alias: 'p', args: args);
+    String msAccount = '';
+    if (await _hasColumn(db, 'medical_services', 'account_id')) {
+      final accountId = await _currentAccountId();
+      if (accountId == null || accountId.trim().isEmpty) return 0.0;
+      msAccount = ' AND (ms.account_id = ? OR ms.id IS NULL)';
+      args.add(accountId);
+    }
+    String sdsAccount = '';
+    if (await _hasColumn(db, 'service_doctor_share', 'account_id')) {
+      final accountId = await _currentAccountId();
+      if (accountId == null || accountId.trim().isEmpty) return 0.0;
+      sdsAccount = ' AND (sds.account_id = ? OR sds.id IS NULL)';
+      args.add(accountId);
+    }
     final res = await db.rawQuery('''
       SELECT COALESCE(SUM(
         CASE
@@ -3660,13 +4376,33 @@ class DBService {
         AND ifnull(ps.isDeleted,0)=0
         AND ifnull(p.isDeleted,0)=0
         AND (ps.serviceId IS NULL OR ifnull(ms.isDeleted,0)=0)
-    ''', [doctorId, doctorId, from.toIso8601String(), to.toIso8601String()]);
+        $psAccount$pAccount$msAccount$sdsAccount
+    ''', args);
     return (res.first['towerShare'] as num?)?.toDouble() ?? 0.0;
   }
 
   Future<double> getEffectiveSumAllDoctorInputBetween(
       DateTime from, DateTime to) async {
     final db = await database;
+    final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
+    final psAccount =
+        await _accountFilterClause(db, PatientService.table, alias: 'ps', args: args);
+    final pAccount =
+        await _accountFilterClause(db, 'patients', alias: 'p', args: args);
+    String msAccount = '';
+    if (await _hasColumn(db, 'medical_services', 'account_id')) {
+      final accountId = await _currentAccountId();
+      if (accountId == null || accountId.trim().isEmpty) return 0.0;
+      msAccount = ' AND (ms.account_id = ? OR ms.id IS NULL)';
+      args.add(accountId);
+    }
+    String sdsAccount = '';
+    if (await _hasColumn(db, 'service_doctor_share', 'account_id')) {
+      final accountId = await _currentAccountId();
+      if (accountId == null || accountId.trim().isEmpty) return 0.0;
+      sdsAccount = ' AND (sds.account_id = ? OR sds.id IS NULL)';
+      args.add(accountId);
+    }
     final res = await db.rawQuery('''
       SELECT COALESCE(SUM(
         CASE
@@ -3694,12 +4430,27 @@ class DBService {
         AND ifnull(ps.isDeleted,0)=0
         AND ifnull(p.isDeleted,0)=0
         AND (ps.serviceId IS NULL OR ifnull(ms.isDeleted,0)=0)
-    ''', [from.toIso8601String(), to.toIso8601String()]);
+        $psAccount$pAccount$msAccount$sdsAccount
+    ''', args);
     return (res.first['total'] as num?)?.toDouble() ?? 0.0;
   }
 
   Future<double> getSumAllDoctorShareBetween(DateTime from, DateTime to) async {
     final db = await database;
+    final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
+    final psAccount =
+        await _accountFilterClause(db, PatientService.table, alias: 'ps', args: args);
+    final pAccount =
+        await _accountFilterClause(db, 'patients', alias: 'p', args: args);
+    final msAccount =
+        await _accountFilterClause(db, 'medical_services', alias: 'ms', args: args);
+    String sdsAccount = '';
+    if (await _hasColumn(db, 'service_doctor_share', 'account_id')) {
+      final accountId = await _currentAccountId();
+      if (accountId == null || accountId.trim().isEmpty) return 0.0;
+      sdsAccount = ' AND (sds.account_id = ? OR sds.id IS NULL)';
+      args.add(accountId);
+    }
     final res = await db.rawQuery('''
       SELECT COALESCE(SUM(
         ps.serviceCost * (COALESCE(sds.sharePercentage, 0) / 100.0)
@@ -3715,7 +4466,8 @@ class DBService {
         AND ifnull(ps.isDeleted,0)=0
         AND ifnull(p.isDeleted,0)=0
         AND ifnull(ms.isDeleted,0)=0
-    ''', [from.toIso8601String(), to.toIso8601String()]);
+        $psAccount$pAccount$msAccount$sdsAccount
+    ''', args);
     return (res.first['total'] as num?)?.toDouble() ?? 0.0;
   }
 
@@ -3725,6 +4477,25 @@ class DBService {
 
   Future<double> getSumAllTowerShareBetween(DateTime from, DateTime to) async {
     final db = await database;
+    final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
+    final psAccount =
+        await _accountFilterClause(db, PatientService.table, alias: 'ps', args: args);
+    final pAccount =
+        await _accountFilterClause(db, 'patients', alias: 'p', args: args);
+    String msAccount = '';
+    if (await _hasColumn(db, 'medical_services', 'account_id')) {
+      final accountId = await _currentAccountId();
+      if (accountId == null || accountId.trim().isEmpty) return 0.0;
+      msAccount = ' AND (ms.account_id = ? OR ms.id IS NULL)';
+      args.add(accountId);
+    }
+    String sdsAccount = '';
+    if (await _hasColumn(db, 'service_doctor_share', 'account_id')) {
+      final accountId = await _currentAccountId();
+      if (accountId == null || accountId.trim().isEmpty) return 0.0;
+      sdsAccount = ' AND (sds.account_id = ? OR sds.id IS NULL)';
+      args.add(accountId);
+    }
     final res = await db.rawQuery('''
       SELECT COALESCE(SUM(
         CASE
@@ -3745,13 +4516,28 @@ class DBService {
         AND ifnull(ps.isDeleted,0)=0
         AND ifnull(p.isDeleted,0)=0
         AND (ps.serviceId IS NULL OR ifnull(ms.isDeleted,0)=0)
-    ''', [from.toIso8601String(), to.toIso8601String()]);
+        $psAccount$pAccount$msAccount$sdsAccount
+    ''', args);
     return (res.first['total'] as num?)?.toDouble() ?? 0.0;
   }
 
   Future<Map<String, double>> getDoctorShareByDateBetween(
       DateTime from, DateTime to) async {
     final db = await database;
+    final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
+    final psAccount =
+        await _accountFilterClause(db, PatientService.table, alias: 'ps', args: args);
+    final pAccount =
+        await _accountFilterClause(db, 'patients', alias: 'p', args: args);
+    final msAccount =
+        await _accountFilterClause(db, 'medical_services', alias: 'ms', args: args);
+    String sdsAccount = '';
+    if (await _hasColumn(db, 'service_doctor_share', 'account_id')) {
+      final accountId = await _currentAccountId();
+      if (accountId == null || accountId.trim().isEmpty) return {};
+      sdsAccount = ' AND (sds.account_id = ? OR sds.id IS NULL)';
+      args.add(accountId);
+    }
     final rows = await db.rawQuery('''
       SELECT 
         date(p.registerDate) AS dayKey,
@@ -3769,9 +4555,10 @@ class DBService {
         AND ifnull(ps.isDeleted,0)=0
         AND ifnull(p.isDeleted,0)=0
         AND ifnull(ms.isDeleted,0)=0
+        $psAccount$pAccount$msAccount$sdsAccount
       GROUP BY date(p.registerDate)
       ORDER BY dayKey ASC
-    ''', [from.toIso8601String(), to.toIso8601String()]);
+    ''', args);
     final out = <String, double>{};
     for (final row in rows) {
       final key = row['dayKey']?.toString() ?? '';
@@ -3784,6 +4571,25 @@ class DBService {
   Future<Map<String, double>> getDoctorInputByDateBetween(
       DateTime from, DateTime to) async {
     final db = await database;
+    final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
+    final psAccount =
+        await _accountFilterClause(db, PatientService.table, alias: 'ps', args: args);
+    final pAccount =
+        await _accountFilterClause(db, 'patients', alias: 'p', args: args);
+    String msAccount = '';
+    if (await _hasColumn(db, 'medical_services', 'account_id')) {
+      final accountId = await _currentAccountId();
+      if (accountId == null || accountId.trim().isEmpty) return {};
+      msAccount = ' AND (ms.account_id = ? OR ms.id IS NULL)';
+      args.add(accountId);
+    }
+    String sdsAccount = '';
+    if (await _hasColumn(db, 'service_doctor_share', 'account_id')) {
+      final accountId = await _currentAccountId();
+      if (accountId == null || accountId.trim().isEmpty) return {};
+      sdsAccount = ' AND (sds.account_id = ? OR sds.id IS NULL)';
+      args.add(accountId);
+    }
     final rows = await db.rawQuery('''
       SELECT 
         date(p.registerDate) AS dayKey,
@@ -3811,9 +4617,10 @@ class DBService {
         AND ifnull(ps.isDeleted,0)=0
         AND ifnull(p.isDeleted,0)=0
         AND (ps.serviceId IS NULL OR ifnull(ms.isDeleted,0)=0)
+        $psAccount$pAccount$msAccount$sdsAccount
       GROUP BY date(p.registerDate)
       ORDER BY dayKey ASC
-    ''', [from.toIso8601String(), to.toIso8601String()]);
+    ''', args);
     final out = <String, double>{};
     for (final row in rows) {
       final key = row['dayKey']?.toString() ?? '';
@@ -3826,6 +4633,18 @@ class DBService {
   Future<Map<String, double>> getNetProfitByDateBetween(
       DateTime from, DateTime to) async {
     final db = await database;
+    final incomeArgs = <Object?>[from.toIso8601String(), to.toIso8601String()];
+    final psAccount =
+        await _accountFilterClause(db, PatientService.table, alias: 'ps', args: incomeArgs);
+    final pAccount =
+        await _accountFilterClause(db, 'patients', alias: 'p', args: incomeArgs);
+    String msAccount = '';
+    if (await _hasColumn(db, 'medical_services', 'account_id')) {
+      final accountId = await _currentAccountId();
+      if (accountId == null || accountId.trim().isEmpty) return {};
+      msAccount = ' AND (ms.account_id = ? OR ms.id IS NULL)';
+      incomeArgs.add(accountId);
+    }
     final incomeRows = await db.rawQuery('''
       SELECT date(p.registerDate) AS dayKey,
              COALESCE(SUM(
@@ -3838,9 +4657,13 @@ class DBService {
         AND ifnull(ps.isDeleted,0)=0
         AND ifnull(p.isDeleted,0)=0
         AND (ps.serviceId IS NULL OR ifnull(ms.isDeleted,0)=0)
+        $psAccount$pAccount$msAccount
       GROUP BY date(p.registerDate)
-    ''', [from.toIso8601String(), to.toIso8601String()]);
+    ''', incomeArgs);
 
+    final consArgs = <Object?>[from.toIso8601String(), to.toIso8601String()];
+    final purchasesAccount =
+        await _accountFilterClause(db, 'purchases', args: consArgs);
     final consRows = await db.rawQuery('''
       SELECT date(created_at) AS dayKey,
              COALESCE(SUM(
@@ -3849,17 +4672,22 @@ class DBService {
       FROM purchases
       WHERE date(created_at) BETWEEN date(?) AND date(?)
         AND ifnull(isDeleted,0)=0
+        $purchasesAccount
       GROUP BY date(created_at)
-    ''', [from.toIso8601String(), to.toIso8601String()]);
+    ''', consArgs);
 
+    final salArgs = <Object?>[from.toIso8601String(), to.toIso8601String()];
+    final salariesAccount =
+        await _accountFilterClause(db, 'employees_salaries', args: salArgs);
     final salRows = await db.rawQuery('''
       SELECT date(paymentDate) AS dayKey,
              COALESCE(SUM(netPay), 0) AS total
       FROM employees_salaries
       WHERE paymentDate BETWEEN ? AND ?
         AND ifnull(isDeleted,0)=0
+        $salariesAccount
       GROUP BY date(paymentDate)
-    ''', [from.toIso8601String(), to.toIso8601String()]);
+    ''', salArgs);
 
     Map<String, double> mapFromRows(List<Map<String, dynamic>> rows) {
       final out = <String, double>{};

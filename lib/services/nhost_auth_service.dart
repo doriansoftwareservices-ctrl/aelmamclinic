@@ -939,10 +939,18 @@ class NhostAuthService {
       final accountChangedBetweenLaunches =
           (lastAcc != null && lastAcc.isNotEmpty && lastAcc != acc.id);
       if (accountChangedBetweenLaunches) {
-        dev.log(
-          'Detected account change since last launch → clearing local tables.',
-        );
-        await DBService.instance.clearAllLocalTables();
+        final hasForeignRows =
+            await DBService.instance.hasRowsForOtherAccount(acc.id);
+        if (hasForeignRows) {
+          dev.log(
+            'Account change detected → pending local wipe (manual confirmation required).',
+          );
+          await ActiveAccountStore.setPendingWipe(acc.id);
+        } else {
+          dev.log(
+            'Account change detected but no foreign-account rows found → skip local wipe.',
+          );
+        }
       }
     } catch (e) {
       dev.log('read last sync_identity failed: $e');
@@ -952,7 +960,10 @@ class NhostAuthService {
       final accountChanged =
           (_boundAccountId != null && _boundAccountId != acc.id);
       if (wipeLocalFirst && accountChanged) {
-        await DBService.instance.clearAllLocalTables();
+        dev.log(
+          'wipeLocalFirst requested → pending local wipe (manual confirmation required).',
+        );
+        await ActiveAccountStore.setPendingWipe(acc.id);
       }
       await _disposeSync();
     }

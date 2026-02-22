@@ -27,6 +27,9 @@ import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/services/device_id_service.dart';
 import 'package:aelmamclinic/services/notification_service.dart';
 import 'package:aelmamclinic/services/nhost_graphql_service.dart';
+import 'package:aelmamclinic/services/backup_restore_service.dart';
+import 'package:aelmamclinic/core/active_account_store.dart';
+import 'package:aelmamclinic/models/storage_type.dart';
 import 'package:aelmamclinic/utils/logger.dart';
 
 /// مفاتيح التخزين المحلي
@@ -166,6 +169,8 @@ class AuthProvider extends ChangeNotifier {
   bool _autoCreateAttempted = false;
   ClinicProfileInput? _pendingClinicProfile;
   bool _allowAutoCreateAccount = false;
+  bool _pendingLocalWipe = false;
+  String? _pendingWipeAccountId;
 
   Set<String> get allowedFeatures => _allowedFeatures;
   bool get allowAllFeatures => _allowAllFeatures;
@@ -223,6 +228,8 @@ class AuthProvider extends ChangeNotifier {
     final r = role?.toLowerCase();
     return r == 'owner' || r == 'admin';
   }
+  bool get hasPendingLocalWipe => _pendingLocalWipe;
+  String? get pendingWipeAccountId => _pendingWipeAccountId;
 
   AuthProvider({NhostAuthService? authService, bool listenAuthChanges = true})
       : _auth = authService ?? NhostAuthService() {
@@ -406,6 +413,9 @@ class AuthProvider extends ChangeNotifier {
     final sp = await SharedPreferences.getInstance();
     await _clearStorage();
     await sp.remove(_kLastNetCheckAt);
+    await ActiveAccountStore.clearPendingWipe();
+    _pendingLocalWipe = false;
+    _pendingWipeAccountId = null;
 
     notifyListeners();
   }
@@ -456,10 +466,10 @@ class AuthProvider extends ChangeNotifier {
     currentUser!['accountId'] = newAccountId;
     await _persistUser();
 
-    // مسح البيانات المحلية كي لا تختلط بين الحسابات المختلفة
-    try {
-      await DBService.instance.clearAllLocalTables();
-    } catch (_) {}
+    // لا نمسح تلقائيًا: نطلب تأكيدًا يدويًا لتجنّب فقدان البيانات
+    await ActiveAccountStore.setPendingWipe(newAccountId);
+    _pendingLocalWipe = true;
+    _pendingWipeAccountId = newAccountId;
 
     // تحديث الصلاحيات للحساب الجديد
     await _refreshFeaturePermissions();
@@ -474,6 +484,44 @@ class AuthProvider extends ChangeNotifier {
     ));
 
     notifyListeners();
+  }
+
+  Future<void> refreshPendingLocalWipeState() async {
+    _pendingLocalWipe = await ActiveAccountStore.hasPendingWipe();
+    _pendingWipeAccountId =
+        await ActiveAccountStore.readPendingWipeAccountId();
+    notifyListeners();
+  }
+
+  Future<bool> performPendingLocalWipe({
+    bool createBackup = true,
+    bool rebootstrap = true,
+  }) async {
+    if (!_pendingLocalWipe) return true;
+    try {
+      if (createBackup) {
+        await BackupRestoreService.backupDatabase(
+          storageType: StorageType.local,
+          includeSharedPrefs: true,
+        );
+      }
+      await DBService.instance.clearAllLocalTables();
+      await ActiveAccountStore.clearPendingWipe();
+      _pendingLocalWipe = false;
+      _pendingWipeAccountId = null;
+      if (rebootstrap) {
+        await bootstrapSync(
+          pull: true,
+          realtime: true,
+          enableLogs: true,
+        );
+      }
+      notifyListeners();
+      return true;
+    } catch (e, st) {
+      dev.log('performPendingLocalWipe failed', error: e, stackTrace: st);
+      return false;
+    }
   }
 
   /// تحديث يدوي للصلاحيات (مفيد بعد تغيير إعدادات المالك)
@@ -1111,9 +1159,14 @@ class AuthProvider extends ChangeNotifier {
 
       // حمّل صلاحيات الميزات من التخزين كذلك
       await _loadPermissionsFromStorage();
+      _pendingLocalWipe = await ActiveAccountStore.hasPendingWipe();
+      _pendingWipeAccountId =
+          await ActiveAccountStore.readPendingWipeAccountId();
     } else {
       currentUser = null;
       _resetPermissionsInMemory();
+      _pendingLocalWipe = false;
+      _pendingWipeAccountId = null;
     }
   }
 
@@ -1254,6 +1307,7 @@ class AuthProvider extends ChangeNotifier {
         debounce: debounce,
         wipeLocalFirst: wipeLocalFirst,
       );
+      await refreshPendingLocalWipeState();
       await _restartDoctorPatientAlerts();
     } catch (e, st) {
       await _stopDoctorPatientAlerts();

@@ -23,6 +23,15 @@ class PatientLocalRepository {
     final db = await _dbService.database;
     final args = <Object?>[];
     final where = StringBuffer('WHERE ifnull(p.isDeleted,0)=0');
+    final accountId = await _dbService._currentAccountId();
+    final hasAccCol = await _dbService._hasColumn(db, 'patients', 'account_id');
+    if (hasAccCol && (accountId == null || accountId.trim().isEmpty)) {
+      return const [];
+    }
+    if (accountId != null && hasAccCol) {
+      where.write(' AND p.account_id = ?');
+      args.add(accountId);
+    }
     if (doctorId != null) {
       where.write(' AND p.doctorId = ?');
       args.add(doctorId);
@@ -45,10 +54,21 @@ class PatientLocalRepository {
 
   Future<Patient?> getPatientById(int id) async {
     final db = await _dbService.database;
+    final accountId = await _dbService._currentAccountId();
+    final hasAccCol = await _dbService._hasColumn(db, 'patients', 'account_id');
+    if (hasAccCol && (accountId == null || accountId.trim().isEmpty)) {
+      return null;
+    }
+    final whereArgs = <Object?>[id];
+    var where = 'id = ? AND ifnull(isDeleted,0)=0';
+    if (hasAccCol && accountId != null) {
+      where += ' AND account_id = ?';
+      whereArgs.add(accountId);
+    }
     final rows = await db.query(
       'patients',
-      where: 'id = ? AND ifnull(isDeleted,0)=0',
-      whereArgs: [id],
+      where: where,
+      whereArgs: whereArgs,
       limit: 1,
     );
     if (rows.isEmpty) return null;
@@ -77,53 +97,66 @@ class PatientLocalRepository {
   ) async {
     final db = await _dbService.database;
     final data = patient.toMap();
-    Map<String, Object?>? existing;
-    if (patient.id != null) {
-      final rows = await db.query(
+    final count = await db.transaction((txn) async {
+      Map<String, Object?>? existing;
+      if (patient.id != null) {
+        final rows = await txn.query(
+          'patients',
+          columns: const ['doctorId', 'doctorReviewPending'],
+          where: 'id = ?',
+          whereArgs: [patient.id],
+          limit: 1,
+        );
+        if (rows.isNotEmpty) {
+          existing = Map<String, Object?>.from(rows.first);
+        }
+      }
+
+      final int currentDoctor = (patient.doctorId ?? 0);
+      final int previousDoctor = (() {
+        final raw = existing?['doctorId'];
+        if (raw is num) return raw.toInt();
+        return int.tryParse('${raw ?? 0}') ?? 0;
+      })();
+
+      if (currentDoctor == 0) {
+        data['doctorReviewPending'] = 0;
+        data['doctorReviewedAt'] = null;
+      } else if (currentDoctor != previousDoctor) {
+        data['doctorReviewPending'] = 1;
+        data['doctorReviewedAt'] = null;
+      }
+
+      final updated = await txn.update(
         'patients',
-        columns: const ['doctorId', 'doctorReviewPending'],
+        data,
         where: 'id = ?',
         whereArgs: [patient.id],
-        limit: 1,
       );
-      if (rows.isNotEmpty) {
-        existing = Map<String, Object?>.from(rows.first);
+
+      if (patient.id != null) {
+        await txn.update(
+          PatientService.table,
+          {'isDeleted': 1, 'deletedAt': DateTime.now().toIso8601String()},
+          where: 'patientId = ?',
+          whereArgs: [patient.id],
+        );
+        if (newServices.isNotEmpty) {
+          final batch = txn.batch();
+          for (final service in newServices) {
+            final toInsert = (service.patientId == patient.id)
+                ? service
+                : service.copyWith(patientId: patient.id);
+            batch.insert(PatientService.table, toInsert.toMap());
+          }
+          await batch.commit(noResult: true);
+        }
       }
-    }
-
-    final int currentDoctor = (patient.doctorId ?? 0);
-    final int previousDoctor = (() {
-      final raw = existing?['doctorId'];
-      if (raw is num) return raw.toInt();
-      return int.tryParse('${raw ?? 0}') ?? 0;
-    })();
-
-    if (currentDoctor == 0) {
-      data['doctorReviewPending'] = 0;
-      data['doctorReviewedAt'] = null;
-    } else if (currentDoctor != previousDoctor) {
-      data['doctorReviewPending'] = 1;
-      data['doctorReviewedAt'] = null;
-    }
-
-    final count = await db.update(
-      'patients',
-      data,
-      where: 'id = ?',
-      whereArgs: [patient.id],
-    );
-
-    if (patient.id != null) {
-      await _dbService.deletePatientServices(patient.id!);
-      for (final service in newServices) {
-        final toInsert = (service.patientId == patient.id)
-            ? service
-            : service.copyWith(patientId: patient.id);
-        await _dbService.insertPatientService(toInsert);
-      }
-    }
+      return updated;
+    });
 
     await _dbService._markChanged('patients');
+    await _dbService._markChanged(PatientService.table);
     return count;
   }
 

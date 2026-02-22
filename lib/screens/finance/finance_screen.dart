@@ -225,7 +225,7 @@ class _EmployeesFinanceSummaryScreenState
 
     final net = collectedVal - salariesVal - consumptionVal;
 
-    LoggingService().logTransaction(
+    await LoggingService().logTransaction(
       transactionType: "FinanceSummary",
       operation: "create",
       amount: net,

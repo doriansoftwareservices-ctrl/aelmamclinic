@@ -28,7 +28,7 @@ class _NewPurchaseScreenState extends State<NewPurchaseScreen> {
   final _priceCtrl = TextEditingController();
 
   ItemType? _selectedType;
-  Item? _selectedItem;
+  int? _selectedItemId;
   bool _isSaving = false;
   bool _didInitArgs = false;
 
@@ -54,7 +54,7 @@ class _NewPurchaseScreenState extends State<NewPurchaseScreen> {
         final match = items.where((it) => it.id == initialId);
         if (match.length == 1) {
           _selectedType = t;
-          _selectedItem = match.first;
+          _selectedItemId = match.first.id;
           break;
         }
       }
@@ -66,10 +66,10 @@ class _NewPurchaseScreenState extends State<NewPurchaseScreen> {
   double _asDouble(String v) => double.tryParse(v.trim()) ?? 0.0;
 
   int get _currentStock {
-    if (_selectedItem == null) return 0;
+    if (_selectedItemId == null) return 0;
     final repo = context.read<RepositoryProvider>();
-    final list = repo.itemsOf(_selectedItem!.typeId);
-    final fresh = list.where((e) => e.id == _selectedItem!.id);
+    final list = repo.itemsOf(_selectedType?.id ?? 0);
+    final fresh = list.where((e) => e.id == _selectedItemId);
     if (fresh.isEmpty) return 0;
     return fresh.first.stock;
   }
@@ -97,12 +97,12 @@ class _NewPurchaseScreenState extends State<NewPurchaseScreen> {
       );
 
   Future<void> _submit() async {
-    if (!_formKey.currentState!.validate() || _selectedItem == null) return;
+    if (!_formKey.currentState!.validate() || _selectedItemId == null) return;
 
     setState(() => _isSaving = true);
     try {
       await context.read<RepositoryProvider>().addPurchase(
-            itemId: _selectedItem!.id!,
+            itemId: _selectedItemId!,
             quantity: _asInt(_qtyCtrl.text),
             unitPrice: _asDouble(_priceCtrl.text),
           );
@@ -131,8 +131,15 @@ class _NewPurchaseScreenState extends State<NewPurchaseScreen> {
   Widget build(BuildContext context) {
     final repo = context.watch<RepositoryProvider>();
     final types = repo.types;
-    final items =
+    final rawItems =
         _selectedType == null ? <Item>[] : repo.itemsOf(_selectedType!.id!);
+    final seenIds = <int>{};
+    final items = <Item>[];
+    for (final it in rawItems) {
+      final id = it.id;
+      if (id == null) continue;
+      if (seenIds.add(id)) items.add(it);
+    }
 
     final predictedStock = _currentStock + _asInt(_qtyCtrl.text);
 
@@ -177,26 +184,28 @@ class _NewPurchaseScreenState extends State<NewPurchaseScreen> {
                       .toList(),
                   onChanged: (v) => setState(() {
                     _selectedType = v;
-                    _selectedItem = null;
+                    _selectedItemId = null;
                   }),
                   validator: (v) => v == null ? 'اختر نوعًا' : null,
                 ),
                 const SizedBox(height: 14),
 
                 // اسم الصنف
-                DropdownButtonFormField<Item>(
-                  initialValue:
-                      items.contains(_selectedItem) ? _selectedItem : null,
+                DropdownButtonFormField<int>(
+                  initialValue: _selectedItemId != null &&
+                          items.any((it) => it.id == _selectedItemId)
+                      ? _selectedItemId
+                      : null,
                   decoration: _dec('اسم الصنف'),
                   items: items
-                      .map((it) =>
-                          DropdownMenuItem(value: it, child: Text(it.name)))
+                      .map((it) => DropdownMenuItem(
+                          value: it.id, child: Text(it.name)))
                       .toList(),
-                  onChanged: (v) => setState(() => _selectedItem = v),
+                  onChanged: (v) => setState(() => _selectedItemId = v),
                   validator: (v) => v == null ? 'اختر صنفًا' : null,
                 ),
 
-                if (_selectedItem != null) ...[
+                if (_selectedItemId != null) ...[
                   const SizedBox(height: 10),
                   Row(
                     children: [

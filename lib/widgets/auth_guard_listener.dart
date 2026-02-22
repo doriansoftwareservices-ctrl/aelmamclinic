@@ -25,6 +25,7 @@ class _AuthGuardListenerState extends State<AuthGuardListener>
   bool _checking = false;
   bool _active = true;
   DateTime? _lastOfflineNoticeAt;
+  bool _pendingWipePrompted = false;
 
   @override
   void initState() {
@@ -62,6 +63,10 @@ class _AuthGuardListenerState extends State<AuthGuardListener>
     if (!auth.isLoggedIn || auth.isSuperAdmin) return;
     _checking = true;
     try {
+      if (auth.hasPendingLocalWipe && !_pendingWipePrompted) {
+        _pendingWipePrompted = true;
+        await _showPendingWipeDialog(auth);
+      }
       final result = await auth.refreshAndValidateCurrentUser();
       if (!mounted || result.isSuccess) return;
 
@@ -89,6 +94,48 @@ class _AuthGuardListenerState extends State<AuthGuardListener>
       }
     } finally {
       _checking = false;
+    }
+  }
+
+  Future<void> _showPendingWipeDialog(AuthProvider auth) async {
+    if (!mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('تغيير الحساب'),
+          content: const Text(
+            'تم رصد تبديل الحساب أو اختلاف البيانات المحلية. يُنصح بمسح البيانات المحلية '
+            'لتجنب اختلاط البيانات بين العيادات. سيتم إنشاء نسخة احتياطية قبل المسح.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('لاحقًا'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('مسح الآن (موصى به)'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed == true && mounted) {
+      final ok = await auth.performPendingLocalWipe(
+        createBackup: true,
+        rebootstrap: true,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(ok
+              ? 'تم إنشاء نسخة احتياطية ومسح البيانات المحلية.'
+              : 'فشل تنفيذ المسح. يرجى المحاولة مرة أخرى.'),
+        ),
+      );
     }
   }
 

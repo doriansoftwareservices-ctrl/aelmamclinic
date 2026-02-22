@@ -6,7 +6,6 @@ import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
 
 import 'package:aelmamclinic/services/db_service.dart';
-import 'package:aelmamclinic/services/logging_service.dart';
 import 'finance_access_guard.dart';
 
 class EmployeeSalaryDetailScreen extends StatefulWidget {
@@ -143,6 +142,7 @@ class _EmployeeSalaryDetailScreenState
     );
     if (ok != true) return;
 
+      final nowIso = DateTime.now().toIso8601String();
       final row = {
         'employeeId': widget.empId,
         'year': widget.year,
@@ -153,41 +153,61 @@ class _EmployeeSalaryDetailScreenState
         'totalDiscounts': _totalDiscounts,
         'netPay': _netPay,
         'isPaid': 1,
-        'paymentDate': DateTime.now().toIso8601String(),
+        'paymentDate': nowIso,
       };
 
     try {
-      final salaries = await DBService.instance.getAllEmployeeSalaries();
-      final existing = salaries.firstWhere(
-        (s) =>
-            s['employeeId'] == widget.empId &&
-            s['year'] == widget.year &&
-            s['month'] == widget.month,
-        orElse: () => {},
-      );
+      final db = await DBService.instance.database;
+      await db.transaction((txn) async {
+        final existing = await txn.query(
+          'employees_salaries',
+          columns: const ['id'],
+          where:
+              'employeeId = ? AND year = ? AND month = ? AND ifnull(isDeleted,0)=0',
+          whereArgs: [widget.empId, widget.year, widget.month],
+          limit: 1,
+        );
+        if (existing.isEmpty) {
+          await txn.insert('employees_salaries', row);
+        } else {
+          await txn.update(
+            'employees_salaries',
+            row,
+            where: 'id = ?',
+            whereArgs: [existing.first['id']],
+          );
+        }
 
-      if (existing.isEmpty) {
-        await DBService.instance.insertEmployeeSalary(row);
-      } else {
-        await DBService.instance.updateEmployeeSalary(existing['id'], row);
-      }
+        await txn.rawUpdate('''
+            UPDATE employees_loans
+            SET isSettled = 1,
+                settledAt = ?,
+                leftover = 0
+            WHERE employeeId = ?
+              AND strftime('%Y', loanDateTime) = ?
+              AND strftime('%m', loanDateTime) = ?
+              AND ifnull(isDeleted,0)=0
+          ''', [
+          nowIso,
+          widget.empId,
+          widget.year.toString(),
+          widget.month.toString().padLeft(2, '0')
+        ]);
 
-      // علِّم سُلف هذا الشهر مسدّدة
-      await DBService.instance.markEmployeeLoansSettled(
-        employeeId: widget.empId,
-        year: widget.year,
-        month: widget.month,
-      );
-
-      // تسجيل العملية
-      LoggingService().logTransaction(
-        transactionType: "Salary",
-        operation: "pay",
-        amount: _netPay,
-        employeeId: widget.empId,
-        description:
-            "صرف راتب $_employeeName لشهر ${widget.month}/${widget.year} صافي ${_fmt(_netPay)}",
-      );
+        await txn.insert('financial_logs', {
+          'transaction_type': 'Salary',
+          'operation': 'pay',
+          'amount': _netPay,
+          'employee_id': widget.empId.toString(),
+          'description':
+              'صرف راتب $_employeeName لشهر ${widget.month}/${widget.year} صافي ${_fmt(_netPay)}',
+          'modification_details': '',
+          'timestamp': nowIso,
+        });
+      });
+      await DBService.instance.notifyTableChanged('employees_salaries');
+      await DBService.instance.notifyTableChanged('employees_loans');
+      await DBService.instance.notifyTableChanged('financial_logs');
 
       widget.onSalaryPaid?.call(widget.empId);
 

@@ -4,7 +4,6 @@ import 'package:intl/intl.dart';
 
 import 'package:aelmamclinic/models/consumption.dart';
 import 'package:aelmamclinic/services/db_service.dart';
-import 'package:aelmamclinic/services/logging_service.dart';
 import 'list_consumption_screen.dart';
 
 // تصميم TBIAN
@@ -56,14 +55,22 @@ class _NewConsumptionScreenState extends State<NewConsumptionScreen> {
     );
 
     try {
-      await DBService.instance.insertConsumption(record);
-      LoggingService().logTransaction(
-        transactionType: "Consumption",
-        operation: "create",
-        amount: amount,
-        employeeId: null,
-        description: "تم تسجيل عملية استهلاك لنوع $_selectedConsumptionType",
-      );
+      final db = await DBService.instance.database;
+      await db.transaction((txn) async {
+        await txn.insert(Consumption.table, record.toMap());
+        await txn.insert('financial_logs', {
+          'transaction_type': 'Consumption',
+          'operation': 'create',
+          'amount': amount,
+          'employee_id': null,
+          'description':
+              'تم تسجيل عملية استهلاك لنوع $_selectedConsumptionType',
+          'modification_details': '',
+          'timestamp': DateTime.now().toIso8601String(),
+        });
+      });
+      await DBService.instance.notifyTableChanged(Consumption.table);
+      await DBService.instance.notifyTableChanged('financial_logs');
       if (!mounted) return;
       Navigator.pushReplacement(
         context,

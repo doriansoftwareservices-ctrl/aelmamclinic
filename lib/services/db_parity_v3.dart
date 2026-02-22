@@ -120,6 +120,19 @@ class DBParityV3 {
     }
   }
 
+  Future<int> _queryInt(DatabaseExecutor db, String sql,
+      [List<Object?>? args, int fallback = 0]) async {
+    try {
+      final rows = await db.rawQuery(sql, args);
+      if (rows.isEmpty) return fallback;
+      final v = rows.first.values.first;
+      if (v is num) return v.toInt();
+      return int.tryParse('$v') ?? fallback;
+    } catch (_) {
+      return fallback;
+    }
+  }
+
   Future<void> _execOn(DatabaseExecutor ex, String sql,
       [List<Object?>? args]) async {
     try {
@@ -289,9 +302,20 @@ class DBParityV3 {
          WHERE type_id IN (SELECT loser_id FROM tmp_item_type_map)
       ''');
 
-      // حذف الخاسرين
-      await _execOn(txn,
-          'DELETE FROM item_types WHERE id IN (SELECT loser_id FROM tmp_item_type_map)');
+      // حذف الخاسرين (بحماية من أي حذف كارثي)
+      final itemTypesTotal =
+          await _queryInt(txn, 'SELECT COUNT(*) FROM item_types');
+      final itemTypesLosers =
+          await _queryInt(txn, 'SELECT COUNT(*) FROM tmp_item_type_map');
+      if (itemTypesLosers > 0 && itemTypesLosers < itemTypesTotal) {
+        await _execOn(txn,
+            'DELETE FROM item_types WHERE id IN (SELECT loser_id FROM tmp_item_type_map)');
+      } else if (itemTypesLosers > 0 && itemTypesLosers >= itemTypesTotal) {
+        if (verbose) {
+          print(
+              '[parity_v3] Skip deleting item_types (losers >= total) to prevent wipe');
+        }
+      }
 
       // تنظيف أسماء الأنواع
       await _execOn(txn,
@@ -353,9 +377,19 @@ class DBParityV3 {
          WHERE item_id IN (SELECT loser_id FROM tmp_item_map)
       ''');
 
-      // حذف الخاسرين
-      await _execOn(txn,
-          'DELETE FROM items WHERE id IN (SELECT loser_id FROM tmp_item_map)');
+      // حذف الخاسرين (بحماية من أي حذف كارثي)
+      final itemsTotal = await _queryInt(txn, 'SELECT COUNT(*) FROM items');
+      final itemsLosers =
+          await _queryInt(txn, 'SELECT COUNT(*) FROM tmp_item_map');
+      if (itemsLosers > 0 && itemsLosers < itemsTotal) {
+        await _execOn(
+            txn, 'DELETE FROM items WHERE id IN (SELECT loser_id FROM tmp_item_map)');
+      } else if (itemsLosers > 0 && itemsLosers >= itemsTotal) {
+        if (verbose) {
+          print(
+              '[parity_v3] Skip deleting items (losers >= total) to prevent wipe');
+        }
+      }
 
       // تنظيف أسماء العناصر
       await _execOn(

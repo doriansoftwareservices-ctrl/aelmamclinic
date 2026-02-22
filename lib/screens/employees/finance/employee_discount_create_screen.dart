@@ -8,7 +8,6 @@ import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/core/formatters.dart';
 
 import 'package:aelmamclinic/services/db_service.dart';
-import 'package:aelmamclinic/services/logging_service.dart';
 import 'package:aelmamclinic/models/doctor.dart';
 import 'finance_access_guard.dart';
 
@@ -325,16 +324,23 @@ class _EmployeeDiscountCreateScreenState
     };
 
     try {
-      await DBService.instance.insertEmployeeDiscount(data);
-
-      LoggingService().logTransaction(
-        transactionType: "Discount",
-        operation: "create",
-        amount: discount,
-        employeeId: widget.empId,
-        description:
-            "تم إنشاء خصم للموظف رقم ${widget.empId}، مبلغ: ${discount.toStringAsFixed(2)}",
-      );
+      final db = await DBService.instance.database;
+      final nowIso = DateTime.now().toIso8601String();
+      await db.transaction((txn) async {
+        await txn.insert('employees_discounts', data);
+        await txn.insert('financial_logs', {
+          'transaction_type': 'Discount',
+          'operation': 'create',
+          'amount': discount,
+          'employee_id': widget.empId.toString(),
+          'description':
+              'تم إنشاء خصم للموظف رقم ${widget.empId}، مبلغ: ${discount.toStringAsFixed(2)}',
+          'modification_details': '',
+          'timestamp': nowIso,
+        });
+      });
+      await DBService.instance.notifyTableChanged('employees_discounts');
+      await DBService.instance.notifyTableChanged('financial_logs');
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

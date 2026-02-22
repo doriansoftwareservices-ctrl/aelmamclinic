@@ -105,8 +105,11 @@ async function runSql(sql) {
   return res.json();
 }
 
+const escapeLiteral = (value) => `${value}`.replace(/'/g, "''");
+
 async function lookupAuthUserId(email) {
-  const sql = `select id from auth.users where lower(email)=lower('${email}') limit 1;`;
+  const safeEmail = escapeLiteral(email);
+  const sql = `select id from auth.users where lower(email)=lower('${safeEmail}') limit 1;`;
   const json = await runSql(sql);
   const row = Array.isArray(json?.result) ? json.result[1] : null;
   return row ? row[0] : null;

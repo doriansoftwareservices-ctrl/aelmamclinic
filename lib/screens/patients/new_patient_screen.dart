@@ -114,19 +114,25 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
 
   /*──────────────────── المستودع ────────────────────*/
   Future<void> _loadInvTypes() async {
-    final db = await DBService.instance.database;
-    final types = await db.query('item_types', orderBy: 'name');
-    setState(() => _invTypes = types);
+    final types = await DBService.instance.getAllItemTypes();
+    final rows = types
+        .where((t) => t.id != null)
+        .map((t) => {'id': t.id!, 'name': t.name})
+        .toList();
+    setState(() => _invTypes = rows);
   }
 
   Future<void> _loadInvItems(int typeId) async {
-    final db = await DBService.instance.database;
-    final rows = await db.query(
-      'items',
-      where: 'type_id = ?',
-      whereArgs: [typeId],
-      orderBy: 'name',
-    );
+    final items = await DBService.instance.getAllItems();
+    final rows = items
+        .where((i) => i.typeId == typeId)
+        .map((i) => {
+              'id': i.id,
+              'name': i.name,
+              'price': i.price,
+              'stock': i.stock,
+            })
+        .toList();
     setState(() => _invItems = rows);
   }
 
@@ -878,6 +884,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
       var touchedServices = false;
       var touchedConsumptions = false;
       var touchedItems = false;
+      var touchedFinancial = false;
 
       await db.transaction((txn) async {
         // 1) Insert patient
@@ -887,6 +894,20 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
           data['doctorReviewedAt'] = null;
         }
         patientId = await txn.insert(Patient.table, data);
+
+        if (paid > 0) {
+          await txn.insert('financial_logs', {
+            'transaction_type': 'PatientPayment',
+            'operation': 'create',
+            'amount': paid,
+            'employee_id': null,
+            'description':
+                'دفعة مريض: ${patient.name} (ID: $patientId)',
+            'modification_details': '',
+            'timestamp': regDT.toIso8601String(),
+          });
+          touchedFinancial = true;
+        }
 
         // 2) Insert services
         if (_selectedServices.isNotEmpty) {
@@ -948,6 +969,9 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
       }
       if (touchedItems) {
         await DBService.instance.notifyTableChanged(Item.table);
+      }
+      if (touchedFinancial) {
+        await DBService.instance.notifyTableChanged('financial_logs');
       }
 
       // 4) Attachments

@@ -222,19 +222,25 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
 
   /*──────── المستودع ────────*/
   Future<void> _loadInvTypes() async {
-    final db = await DBService.instance.database;
-    final types = await db.query('item_types', orderBy: 'name');
-    setState(() => _invTypes = types);
+    final types = await DBService.instance.getAllItemTypes();
+    final rows = types
+        .where((t) => t.id != null)
+        .map((t) => {'id': t.id!, 'name': t.name})
+        .toList();
+    setState(() => _invTypes = rows);
   }
 
   Future<void> _loadInvItems(int typeId) async {
-    final db = await DBService.instance.database;
-    final rows = await db.query(
-      'items',
-      where: 'type_id = ?',
-      whereArgs: [typeId],
-      orderBy: 'name',
-    );
+    final items = await DBService.instance.getAllItems();
+    final rows = items
+        .where((i) => i.typeId == typeId)
+        .map((i) => {
+              'id': i.id,
+              'name': i.name,
+              'price': i.price,
+              'stock': i.stock,
+            })
+        .toList();
     setState(() => _invItems = rows);
   }
 
@@ -1078,6 +1084,7 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
       var touchedServices = false;
       var touchedConsumptions = false;
       var touchedItems = false;
+      var touchedFinancial = false;
 
       await db.transaction((txn) async {
         // Update patient + services (داخل معاملة واحدة)
@@ -1087,7 +1094,7 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
         // احسب حالة المراجعة حسب تغيّر الطبيب
         final existing = await txn.query(
           'patients',
-          columns: const ['doctorId'],
+          columns: const ['doctorId', 'paidAmount'],
           where: 'id = ?',
           whereArgs: [updated.id],
           limit: 1,
@@ -1095,6 +1102,9 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
         final prevDoctor = existing.isNotEmpty
             ? (existing.first['doctorId'] as num?)?.toInt() ?? 0
             : 0;
+        final prevPaid = existing.isNotEmpty
+            ? (existing.first['paidAmount'] as num?)?.toDouble() ?? 0.0
+            : 0.0;
         final currDoctor = updated.doctorId ?? 0;
         if (currDoctor == 0) {
           data['doctorReviewPending'] = 0;
@@ -1110,6 +1120,22 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
           where: 'id = ?',
           whereArgs: [updated.id],
         );
+
+        final deltaPaid = paid - prevPaid;
+        if (deltaPaid != 0) {
+          await txn.insert('financial_logs', {
+            'transaction_type': 'PatientPayment',
+            'operation': 'update',
+            'amount': deltaPaid,
+            'employee_id': null,
+            'description':
+                'تعديل دفعة مريض: ${updated.name} (ID: ${updated.id})',
+            'modification_details':
+                'paidAmount ${prevPaid.toStringAsFixed(2)} -> ${paid.toStringAsFixed(2)}',
+            'timestamp': DateTime.now().toIso8601String(),
+          });
+          touchedFinancial = true;
+        }
 
         // soft delete old services + insert new services
         await txn.update(
@@ -1191,6 +1217,9 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
       }
       if (touchedItems) {
         await DBService.instance.notifyTableChanged(Item.table);
+      }
+      if (touchedFinancial) {
+        await DBService.instance.notifyTableChanged('financial_logs');
       }
 
       // Attachments

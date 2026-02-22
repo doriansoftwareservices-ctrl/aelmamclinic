@@ -6,6 +6,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
 import 'package:excel/excel.dart' as xls;
+import 'package:archive/archive.dart';
 
 import 'package:aelmamclinic/models/item_type.dart';
 import 'package:aelmamclinic/providers/repository_provider.dart';
@@ -32,7 +33,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
   final _nameNode = FocusNode();
   final _stockNode = FocusNode();
 
-  ItemType? _selectedType;
+  int? _selectedTypeId;
   bool _isSaving = false;
 
   @override
@@ -68,8 +69,8 @@ class _AddItemScreenState extends State<AddItemScreen> {
   }
 
   Future<void> _submit() async {
-    if (!_formKey.currentState!.validate() || _selectedType == null) {
-      if (_selectedType == null) {
+    if (!_formKey.currentState!.validate() || _selectedTypeId == null) {
+      if (_selectedTypeId == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('اختر نوع الصنف')),
         );
@@ -79,8 +80,16 @@ class _AddItemScreenState extends State<AddItemScreen> {
     setState(() => _isSaving = true);
     try {
       final stock = int.parse(_stockCtrl.text);
+      final repo = context.read<RepositoryProvider>();
+      final type = repo.types.firstWhere(
+        (t) => t.id == _selectedTypeId,
+        orElse: () => repo.types.isNotEmpty ? repo.types.first : ItemType(name: ''),
+      );
+      if (type.id == null) {
+        throw StateError('نوع الصنف غير صالح');
+      }
       await context.read<RepositoryProvider>().addItem(
-            typeId: _selectedType!.id!,
+            typeId: type.id!,
             name: _nameCtrl.text.trim(),
             price: 0,
             initialStock: stock,
@@ -128,14 +137,22 @@ class _AddItemScreenState extends State<AddItemScreen> {
       if (!mounted) return;
       final name = ctrl.text.trim();
       final repo = context.read<RepositoryProvider>();
-      await repo.addType(name);
+      try {
+        await repo.addType(name);
+      } catch (_) {
+        await repo.bootstrap();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('هذا النوع موجود بالفعل')),
+        );
+      }
       if (!mounted) return;
       // اضبط النوع المختار على النوع الذي أضيف للتو (بأمان)
       final match = repo.types.firstWhere(
         (t) => t.name.trim().toLowerCase() == name.toLowerCase(),
         orElse: () => repo.types.isNotEmpty ? repo.types.last : ItemType(name: name),
       );
-      setState(() => _selectedType = match);
+      setState(() => _selectedTypeId = match.id);
       // وضع التركيز مباشرة على اسم الصنف
       await Future<void>.delayed(const Duration(milliseconds: 50));
       if (!mounted) return;
@@ -143,7 +160,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
     }
   }
 
-  /// استيراد أصناف من ملف Excel (عمود A: نوع الصنف، عمود B: اسم الصنف)
+  /// استيراد أصناف من ملف Excel (عمود A: نوع الصنف، عمود B: اسم الصنف، عمود C: الكمية)
   Future<void> _importItemsFromExcel() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -155,10 +172,9 @@ class _AddItemScreenState extends State<AddItemScreen> {
     if (picked.bytes == null && picked.path == null) return;
 
     try {
-      final bytes =
-          picked.bytes ?? await File(picked.path!).readAsBytes();
+      final bytes = picked.bytes ?? await File(picked.path!).readAsBytes();
       if (!mounted) return;
-      final excel = xls.Excel.decodeBytes(bytes);
+      final excel = _decodeExcelWithRepair(bytes);
 
       final repo = context.read<RepositoryProvider>();
       if (repo.types.isEmpty) {
@@ -177,30 +193,10 @@ class _AddItemScreenState extends State<AddItemScreen> {
         final sheet = excel.tables[sheetName];
         if (sheet == null) continue;
 
-        // محاولة اكتشاف الأعمدة من العناوين إن وُجدت
-        int? typeCol;
-        int? nameCol;
-        for (final row in sheet.rows.take(5)) {
-          for (var i = 0; i < row.length; i++) {
-            final v = (row[i]?.value?.toString() ?? '').trim().toLowerCase();
-            if (v.isEmpty) continue;
-            if (typeCol == null &&
-                (v.contains('نوع') ||
-                    v.contains('الصنف') ||
-                    v.contains('type'))) {
-              typeCol = i;
-            }
-            if (nameCol == null &&
-                (v.contains('اسم') ||
-                    v.contains('المادة') ||
-                    v.contains('الصنف') ||
-                    v.contains('name'))) {
-              nameCol = i;
-            }
-          }
-        }
-        typeCol ??= 0;
-        nameCol ??= 1;
+        // ترتيب الأعمدة ثابت: A=نوع الصنف, B=اسم الصنف, C=الكمية
+        final int typeCol = 0;
+        final int nameCol = 1;
+        final int qtyCol = 2;
 
         for (final row in sheet.rows) {
           if (row.isEmpty) continue;
@@ -211,6 +207,9 @@ class _AddItemScreenState extends State<AddItemScreen> {
           final rawName = row.length > nameCol
               ? row[nameCol]?.value?.toString().trim()
               : null;
+          final rawQty = row.length > qtyCol
+              ? row[qtyCol]?.value?.toString().trim()
+              : null;
           if (rawType == null ||
               rawType.isEmpty ||
               rawName == null ||
@@ -219,7 +218,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
             continue;
           }
 
-          // تخطّي صفوف العناوين
+          // تخطّي صف العناوين إن وُجد
           final head = rawName.toLowerCase();
           if (head.contains('اسم') ||
               head.contains('name') ||
@@ -234,12 +233,23 @@ class _AddItemScreenState extends State<AddItemScreen> {
           if (typesMap.containsKey(typeKey)) {
             type = typesMap[typeKey]!;
           } else {
-            await repo.addType(rawType);
+            try {
+              await repo.addType(rawType);
+            } catch (_) {
+              await repo.bootstrap();
+            }
             type = repo.types.firstWhere(
               (t) => t.name.trim().toLowerCase() == typeKey,
-              orElse: () => repo.types.last,
+              orElse: () => repo.types.isNotEmpty ? repo.types.last : ItemType(name: rawType),
             );
-            typesMap[typeKey] = type;
+            if (type.id != null) {
+              typesMap[typeKey] = type;
+            }
+          }
+
+          if (type.id == null) {
+            skipped++;
+            continue;
           }
 
           final key = '${type.id}__${rawName.trim()}';
@@ -248,14 +258,19 @@ class _AddItemScreenState extends State<AddItemScreen> {
             continue;
           }
 
-          await repo.addItem(
-            typeId: type.id!,
-            name: rawName.trim(),
-            price: 0,
-            initialStock: 0,
-          );
-          existingKeys.add(key);
-          imported++;
+          try {
+            final qty = int.tryParse((rawQty ?? '').replaceAll(',', '')) ?? 0;
+            await repo.addItem(
+              typeId: type.id!,
+              name: rawName.trim(),
+              price: 0,
+              initialStock: qty < 0 ? 0 : qty,
+            );
+            existingKeys.add(key);
+            imported++;
+          } catch (_) {
+            skipped++;
+          }
         }
       }
 
@@ -281,9 +296,9 @@ class _AddItemScreenState extends State<AddItemScreen> {
     try {
       final excel = xls.Excel.createExcel();
       final sheet = excel['Sheet1'];
-      sheet.appendRow(['نوع الصنف', 'اسم الصنف']);
-      sheet.appendRow(['حشوات', 'حشوة فضية']);
-      sheet.appendRow(['مواد الأشعة', 'فيلم أشعة سينية']);
+      sheet.appendRow(['نوع الصنف', 'اسم الصنف', 'الكمية']);
+      sheet.appendRow(['حشوات', 'حشوة فضية', 10]);
+      sheet.appendRow(['مواد الأشعة', 'فيلم أشعة سينية', 5]);
 
       final bytes = excel.encode()!;
       final dir = await getTemporaryDirectory();
@@ -297,6 +312,48 @@ class _AddItemScreenState extends State<AddItemScreen> {
         SnackBar(content: Text('تعذّر إنشاء/فتح الملف: $e')),
       );
     }
+  }
+
+  xls.Excel _decodeExcelWithRepair(List<int> bytes) {
+    try {
+      return xls.Excel.decodeBytes(bytes);
+    } catch (_) {
+      final repaired = _repairExcelBytes(bytes);
+      return xls.Excel.decodeBytes(repaired);
+    }
+  }
+
+  List<int> _repairExcelBytes(List<int> bytes) {
+    final archive = ZipDecoder().decodeBytes(bytes);
+    const stylesPath = 'xl/styles.xml';
+    const minimalStyles = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <fonts count="1"><font><sz val="11"/><color theme="1"/><name val="Calibri"/><family val="2"/><scheme val="minor"/></font></fonts>
+  <fills count="1"><fill><patternFill patternType="none"/></fill></fills>
+  <borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
+  <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+  <cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs>
+  <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+</styleSheet>
+''';
+
+    bool replaced = false;
+    for (var i = 0; i < archive.length; i++) {
+      final f = archive[i];
+      if (f.isFile && f.name == stylesPath) {
+        archive[i] =
+            ArchiveFile(stylesPath, minimalStyles.length, minimalStyles.codeUnits);
+        replaced = true;
+        break;
+      }
+    }
+    if (!replaced) {
+      archive.addFile(
+        ArchiveFile(stylesPath, minimalStyles.length, minimalStyles.codeUnits),
+      );
+    }
+    final out = ZipEncoder().encode(archive);
+    return out ?? bytes;
   }
 
   @override
@@ -315,22 +372,15 @@ class _AddItemScreenState extends State<AddItemScreen> {
       ..sort((a, b) => a.name.compareTo(b.name));
 
     // تأكد أن القيمة المختارة تنتمي لقائمة الأنواع الحالية
-    ItemType? resolvedSelected = _selectedType;
-    final selected = resolvedSelected;
-    if (selected != null) {
-      final match = types.cast<ItemType?>().firstWhere(
-            (t) =>
-                t != null &&
-                ((selected.id != null && t.id == selected.id) ||
-                    t.name.trim() == selected.name.trim()),
-            orElse: () => null,
-          );
-      resolvedSelected = match;
+    int? resolvedSelectedId = _selectedTypeId;
+    if (resolvedSelectedId != null &&
+        !types.any((t) => t.id == resolvedSelectedId)) {
+      resolvedSelectedId = null;
     }
-    if (resolvedSelected != _selectedType && mounted) {
+    if (resolvedSelectedId != _selectedTypeId && mounted) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        setState(() => _selectedType = resolvedSelected);
+        setState(() => _selectedTypeId = resolvedSelectedId);
       });
     }
 
@@ -411,18 +461,18 @@ class _AddItemScreenState extends State<AddItemScreen> {
                 child: Column(
                   children: [
                     // نوع الصنف
-                    DropdownButtonFormField<ItemType?>(
-                      initialValue: _selectedType,
+                    DropdownButtonFormField<int?>(
+                      initialValue: _selectedTypeId,
                       decoration: _dec('نوع الصنف',
                           prefixIcon: const Icon(Icons.category_outlined)),
                       items: [
                         ...types.map(
-                          (t) => DropdownMenuItem<ItemType?>(
-                            value: t,
+                          (t) => DropdownMenuItem<int?>(
+                            value: t.id,
                             child: Text(t.name),
                           ),
                         ),
-                        const DropdownMenuItem<ItemType?>(
+                        const DropdownMenuItem<int?>(
                           value: null,
                           child: Text('— إنشاء نوع جديد —'),
                         ),
@@ -432,12 +482,12 @@ class _AddItemScreenState extends State<AddItemScreen> {
                           // فتح نافذة إنشاء نوع جديد
                           await _createNewType();
                         } else {
-                          setState(() => _selectedType = val);
+                          setState(() => _selectedTypeId = val);
                           _nameNode.requestFocus();
                         }
                       },
                       validator: (_) =>
-                          _selectedType == null ? 'اختر نوعًا' : null,
+                          _selectedTypeId == null ? 'اختر نوعًا' : null,
                     ),
                     const SizedBox(height: 12),
 
