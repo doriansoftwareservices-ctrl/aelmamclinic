@@ -141,9 +141,9 @@ class _EmployeesFinanceSummaryScreenState
                     spacing: 16,
                     runSpacing: 18,
                     children: [
-                      _statCard('مجموع المبالغ المدخلة من المرضى', _collected,
+                      _statCard('إجمالي قيمة الخدمات', _collected,
                           Icons.payments_outlined),
-                      _statCard('مشتريات واستهلاكات المركز الطبي',
+                      _statCard('مشتريات المستودع',
                           _clinicConsumption, Icons.local_hospital_outlined),
                       _statCard('مبلغ النسب للأطباء من الأشعة/المختبر',
                           _doctorsRatios, Icons.percent_outlined),
@@ -284,11 +284,11 @@ class _EmployeesFinanceSummaryScreenState
     final to = _endDate!;
 
     try {
-      // مدخلات المرضى + الاستهلاكات
-      final collectedVal =
-          _asDouble(await DBService.instance.getSumPatientsBetween(from, to));
+      // مدخلات المرضى + المشتريات
+      final collectedVal = _asDouble(
+          await DBService.instance.getSumPatientServicesBetween(from, to));
       final consumptionVal = _asDouble(
-          await DBService.instance.getSumConsumptionBetween(from, to));
+          await DBService.instance.getSumPurchasesBetween(from, to));
       final returnsVal = _asDouble(
           await DBService.instance.getSumReturnsRemainingBetween(from, to));
 
@@ -333,12 +333,7 @@ class _EmployeesFinanceSummaryScreenState
       }
 
       // صافي مبسّط وفق منطقك الحالي
-      final net = collectedVal -
-          salariesVal -
-          consumptionVal -
-          loansVal -
-          discountsVal -
-          returnsVal;
+      final net = collectedVal - salariesVal - consumptionVal - returnsVal;
 
       // سجل تشغيلي
       LoggingService().logTransaction(

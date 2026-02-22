@@ -4,7 +4,6 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle;
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
@@ -23,6 +22,7 @@ import 'package:aelmamclinic/services/clinic_profile_service.dart';
 import 'package:aelmamclinic/services/save_file_service.dart';
 import 'package:aelmamclinic/models/patient.dart';
 import 'package:aelmamclinic/models/consumption.dart';
+import 'package:aelmamclinic/utils/pdf_fonts.dart';
 import 'package:aelmamclinic/utils/pdf_text.dart';
 
 /// نموذج بيانات بسيط للرسوم
@@ -48,9 +48,8 @@ double _safeNumber(double value) {
 /*──────────────────────── أدوات PDF ────────────────────────*/
 class _PdfUtils {
   static Future<(pw.Font, pw.Font)> _loadFonts() async {
-    final regular = await rootBundle.load('assets/fonts/Cairo-Regular.ttf');
-    final bold = await rootBundle.load('assets/fonts/Cairo-Bold.ttf');
-    return (pw.Font.ttf(regular), pw.Font.ttf(bold));
+    final fonts = await loadPdfFonts();
+    return (fonts.regular, fonts.bold);
   }
 
   static pw.PageTheme _pageTheme(pw.Font base, pw.Font bold) {
@@ -637,13 +636,16 @@ class _IncomeByDateWidgetState extends State<_IncomeByDateWidget> {
 
   Future<void> _applyFilters() async {
     Iterable<Patient> filtered = _patients;
-    if (_startDate != null) {
-      filtered = filtered.where((p) => p.registerDate
-          .isAfter(_startDate!.subtract(const Duration(days: 1))));
-    }
-    if (_endDate != null) {
+    final range = _normalizedRange(_startDate, _endDate);
+    final start = range.start;
+    final end = range.end;
+    if (start != null) {
       filtered = filtered.where((p) =>
-          p.registerDate.isBefore(_endDate!.add(const Duration(days: 1))));
+          p.registerDate.isAfter(start.subtract(const Duration(days: 1))));
+    }
+    if (end != null) {
+      filtered = filtered.where(
+          (p) => p.registerDate.isBefore(end.add(const Duration(days: 1))));
     }
     final df = DateFormat('yyyy-MM-dd');
     final map = <String, double>{};
@@ -710,7 +712,7 @@ class _IncomeByDateWidgetState extends State<_IncomeByDateWidget> {
               logo: logo,
               clinic: clinic),
           pw.SizedBox(height: 6),
-          pw.Text('الإجمالي: ${_PdfUtils.formatNumber(_total)}',
+          pw.Text(pdfText('الإجمالي: ${_PdfUtils.formatNumber(_total)}'),
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 10),
           ..._PdfUtils.lineChartsFromMap(_incomeByDate,
@@ -804,6 +806,7 @@ class _IncomeByDateWidgetState extends State<_IncomeByDateWidget> {
                         height: 300,
                         child: SfCartesianChart(
                           title: ChartTitle(text: "الدخل بالتاريخ (Line)"),
+                          enableAxisAnimation: false,
                           primaryXAxis: CategoryAxis(labelRotation: 45),
                           primaryYAxis: NumericAxis(),
                           zoomPanBehavior: zoomPan,
@@ -813,6 +816,7 @@ class _IncomeByDateWidgetState extends State<_IncomeByDateWidget> {
                               dataSource: data,
                               xValueMapper: (d, _) => d.label,
                               yValueMapper: (d, _) => d.value,
+                              animationDuration: 0,
                               dataLabelSettings:
                                   const DataLabelSettings(isVisible: true),
                             ),
@@ -845,6 +849,7 @@ class _IncomeByDateWidgetState extends State<_IncomeByDateWidget> {
                               dataSource: data,
                               xValueMapper: (d, _) => d.label,
                               yValueMapper: (d, _) => d.value,
+                              animationDuration: 0,
                               dataLabelSettings:
                                   const DataLabelSettings(isVisible: true),
                             )
@@ -893,19 +898,22 @@ class _ConsumptionByDateWidgetState extends State<_ConsumptionByDateWidget> {
 
   Future<void> _applyFilters() async {
     Iterable<Consumption> filtered = _all;
-    if (_startDate != null) {
-      filtered = filtered.where(
-          (c) => c.date.isAfter(_startDate!.subtract(const Duration(days: 1))));
+    final range = _normalizedRange(_startDate, _endDate);
+    final start = range.start;
+    final end = range.end;
+    if (start != null) {
+      filtered = filtered
+          .where((c) => c.date.isAfter(start.subtract(const Duration(days: 1))));
     }
-    if (_endDate != null) {
-      filtered = filtered.where(
-          (c) => c.date.isBefore(_endDate!.add(const Duration(days: 1))));
+    if (end != null) {
+      filtered =
+          filtered.where((c) => c.date.isBefore(end.add(const Duration(days: 1))));
     }
     final df = DateFormat('yyyy-MM-dd');
     final m = <String, double>{};
     for (final c in filtered) {
       final k = df.format(c.date);
-      m[k] = (m[k] ?? 0) + c.amount;
+      m[k] = (m[k] ?? 0) + _safeNumber(c.amount);
     }
     if (!mounted) return;
     setState(() => _byDate = m);
@@ -966,7 +974,7 @@ class _ConsumptionByDateWidgetState extends State<_ConsumptionByDateWidget> {
               logo: logo,
               clinic: clinic),
           pw.SizedBox(height: 6),
-          pw.Text('الإجمالي: ${_PdfUtils.formatNumber(_total)}',
+          pw.Text(pdfText('الإجمالي: ${_PdfUtils.formatNumber(_total)}'),
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 10),
           ..._PdfUtils.lineChartsFromMap(_byDate,
@@ -1057,6 +1065,7 @@ class _ConsumptionByDateWidgetState extends State<_ConsumptionByDateWidget> {
                         height: 300,
                         child: SfCartesianChart(
                           title: ChartTitle(text: "الاستهلاك بالتاريخ (Line)"),
+                          enableAxisAnimation: false,
                           primaryXAxis: CategoryAxis(labelRotation: 45),
                           primaryYAxis: NumericAxis(),
                           zoomPanBehavior: zoomPan,
@@ -1066,6 +1075,7 @@ class _ConsumptionByDateWidgetState extends State<_ConsumptionByDateWidget> {
                               dataSource: data,
                               xValueMapper: (d, _) => d.label,
                               yValueMapper: (d, _) => d.value,
+                              animationDuration: 0,
                               dataLabelSettings:
                                   const DataLabelSettings(isVisible: true),
                             ),
@@ -1097,6 +1107,7 @@ class _ConsumptionByDateWidgetState extends State<_ConsumptionByDateWidget> {
                               dataSource: data,
                               xValueMapper: (d, _) => d.label,
                               yValueMapper: (d, _) => d.value,
+                              animationDuration: 0,
                               dataLabelSettings:
                                   const DataLabelSettings(isVisible: true),
                             ),
@@ -1145,13 +1156,16 @@ class _IncomeByDoctorWidgetState extends State<_IncomeByDoctorWidget> {
 
   Future<void> _applyFilters() async {
     Iterable<Patient> filtered = _patients;
-    if (_startDate != null) {
-      filtered = filtered.where((p) => p.registerDate
-          .isAfter(_startDate!.subtract(const Duration(days: 1))));
-    }
-    if (_endDate != null) {
+    final range = _normalizedRange(_startDate, _endDate);
+    final start = range.start;
+    final end = range.end;
+    if (start != null) {
       filtered = filtered.where((p) =>
-          p.registerDate.isBefore(_endDate!.add(const Duration(days: 1))));
+          p.registerDate.isAfter(start.subtract(const Duration(days: 1))));
+    }
+    if (end != null) {
+      filtered = filtered.where(
+          (p) => p.registerDate.isBefore(end.add(const Duration(days: 1))));
     }
     final m = <String, double>{};
     for (final p in filtered) {
@@ -1220,7 +1234,7 @@ class _IncomeByDoctorWidgetState extends State<_IncomeByDoctorWidget> {
               logo: logo,
               clinic: clinic),
           pw.SizedBox(height: 6),
-          pw.Text('الإجمالي: ${_PdfUtils.formatNumber(_total)}',
+          pw.Text(pdfText('الإجمالي: ${_PdfUtils.formatNumber(_total)}'),
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 10),
           ..._PdfUtils.barChartsFromMap(_byDoctor,
@@ -1310,6 +1324,7 @@ class _IncomeByDoctorWidgetState extends State<_IncomeByDoctorWidget> {
                         height: 320,
                         child: SfCartesianChart(
                           title: ChartTitle(text: "الدخل حسب الطبيب (Bar)"),
+                          enableAxisAnimation: false,
                           primaryXAxis: CategoryAxis(labelRotation: 45),
                           primaryYAxis: NumericAxis(),
                           zoomPanBehavior: zoomPan,
@@ -1319,6 +1334,7 @@ class _IncomeByDoctorWidgetState extends State<_IncomeByDoctorWidget> {
                               dataSource: data,
                               xValueMapper: (d, _) => d.label,
                               yValueMapper: (d, _) => d.value,
+                              animationDuration: 0,
                               dataLabelSettings:
                                   const DataLabelSettings(isVisible: true),
                             ),
@@ -1350,6 +1366,7 @@ class _IncomeByDoctorWidgetState extends State<_IncomeByDoctorWidget> {
                               dataSource: data,
                               xValueMapper: (d, _) => d.label,
                               yValueMapper: (d, _) => d.value,
+                              animationDuration: 0,
                               dataLabelSettings:
                                   const DataLabelSettings(isVisible: true),
                             ),
@@ -1398,19 +1415,22 @@ class _ConsumptionTypeWidgetState extends State<_ConsumptionTypeWidget> {
 
   Future<void> _applyFilters() async {
     Iterable<Consumption> filtered = _all;
-    if (_startDate != null) {
-      filtered = filtered.where(
-          (c) => c.date.isAfter(_startDate!.subtract(const Duration(days: 1))));
+    final range = _normalizedRange(_startDate, _endDate);
+    final start = range.start;
+    final end = range.end;
+    if (start != null) {
+      filtered = filtered
+          .where((c) => c.date.isAfter(start.subtract(const Duration(days: 1))));
     }
-    if (_endDate != null) {
-      filtered = filtered.where(
-          (c) => c.date.isBefore(_endDate!.add(const Duration(days: 1))));
+    if (end != null) {
+      filtered =
+          filtered.where((c) => c.date.isBefore(end.add(const Duration(days: 1))));
     }
     final m = <String, double>{};
     for (final c in filtered) {
       final noteRaw = (c.note ?? '').trim();
       final type = noteRaw.isEmpty ? 'غير محدد' : noteRaw;
-      m[type] = (m[type] ?? 0) + c.amount;
+      m[type] = (m[type] ?? 0) + _safeNumber(c.amount);
     }
     if (!mounted) return;
     setState(() => _byType = m);
@@ -1471,7 +1491,7 @@ class _ConsumptionTypeWidgetState extends State<_ConsumptionTypeWidget> {
               logo: logo,
               clinic: clinic),
           pw.SizedBox(height: 6),
-          pw.Text('الإجمالي: ${_PdfUtils.formatNumber(_total)}',
+          pw.Text(pdfText('الإجمالي: ${_PdfUtils.formatNumber(_total)}'),
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 10),
           ..._PdfUtils.barChartsFromMap(_byType,
@@ -1561,6 +1581,7 @@ class _ConsumptionTypeWidgetState extends State<_ConsumptionTypeWidget> {
                         height: 320,
                         child: SfCartesianChart(
                           title: ChartTitle(text: "نوعية الاستهلاك (Bar)"),
+                          enableAxisAnimation: false,
                           primaryXAxis: CategoryAxis(labelRotation: 45),
                           primaryYAxis: NumericAxis(),
                           zoomPanBehavior: zoomPan,
@@ -1570,6 +1591,7 @@ class _ConsumptionTypeWidgetState extends State<_ConsumptionTypeWidget> {
                               dataSource: data,
                               xValueMapper: (d, _) => d.label,
                               yValueMapper: (d, _) => d.value,
+                              animationDuration: 0,
                               dataLabelSettings:
                                   const DataLabelSettings(isVisible: true),
                             ),
@@ -1601,6 +1623,7 @@ class _ConsumptionTypeWidgetState extends State<_ConsumptionTypeWidget> {
                               dataSource: data,
                               xValueMapper: (d, _) => d.label,
                               yValueMapper: (d, _) => d.value,
+                              animationDuration: 0,
                               dataLabelSettings:
                                   const DataLabelSettings(isVisible: true),
                             ),
@@ -1645,8 +1668,9 @@ class _DoctorShareByDateWidgetState extends State<_DoctorShareByDateWidget> {
   }
 
   Future<void> _applyFilters() async {
-    final from = _startDate ?? DateTime(2000);
-    final to = _endDate ?? DateTime(2100);
+    final range = _normalizedRange(_startDate, _endDate);
+    final from = range.start ?? DateTime(2000);
+    final to = range.end ?? DateTime(2100);
     final map = await DBService.instance.getDoctorShareByDateBetween(from, to);
     if (!mounted) return;
     setState(() => _shareByDate = map);
@@ -1707,7 +1731,7 @@ class _DoctorShareByDateWidgetState extends State<_DoctorShareByDateWidget> {
               logo: logo,
               clinic: clinic),
           pw.SizedBox(height: 6),
-          pw.Text('الإجمالي: ${_PdfUtils.formatNumber(_total)}',
+          pw.Text(pdfText('الإجمالي: ${_PdfUtils.formatNumber(_total)}'),
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 10),
           ..._PdfUtils.lineChartsFromMap(_shareByDate,
@@ -1794,6 +1818,7 @@ class _DoctorShareByDateWidgetState extends State<_DoctorShareByDateWidget> {
                   height: 300,
                   child: SfCartesianChart(
                     title: ChartTitle(text: "حصة الأطباء بالتاريخ (Line)"),
+                    enableAxisAnimation: false,
                     primaryXAxis: CategoryAxis(labelRotation: 45),
                     primaryYAxis: NumericAxis(),
                     zoomPanBehavior: zoomPan,
@@ -1803,6 +1828,7 @@ class _DoctorShareByDateWidgetState extends State<_DoctorShareByDateWidget> {
                         dataSource: data,
                         xValueMapper: (d, _) => d.label,
                         yValueMapper: (d, _) => d.value,
+                        animationDuration: 0,
                         dataLabelSettings:
                             const DataLabelSettings(isVisible: true),
                       ),
@@ -1831,9 +1857,6 @@ class _NetProfitWidgetState extends State<_NetProfitWidget> {
   DateTime? _startDate;
   DateTime? _endDate;
 
-  List<Patient> _patients = [];
-  List<Consumption> _cons = [];
-  List<Map<String, dynamic>> _discounts = [];
   Map<String, double> _netByDate = {};
 
   @override
@@ -1843,77 +1866,14 @@ class _NetProfitWidgetState extends State<_NetProfitWidget> {
   }
 
   Future<void> _load() async {
-    final patients = await DBService.instance.getAllPatients();
-    if (!mounted) return;
-    final cons = await DBService.instance.getAllConsumption();
-    if (!mounted) return;
-    final discounts = await DBService.instance.getAllEmployeeDiscounts();
-    if (!mounted) return;
-    _patients = patients;
-    _cons = cons;
-    _discounts = discounts;
     await _applyFilters();
   }
 
   Future<void> _applyFilters() async {
-    final from = _startDate ?? DateTime(2000);
-    final to = _endDate ?? DateTime(2100);
-
-    final df = DateFormat('yyyy-MM-dd');
-
-    final income = <String, double>{};
-    final share = <String, double>{};
-    for (final p in _patients.where((p) =>
-        p.registerDate.isAfter(from.subtract(const Duration(days: 1))) &&
-        p.registerDate.isBefore(to.add(const Duration(days: 1))))) {
-      final k = df.format(p.registerDate);
-      income[k] = (income[k] ?? 0) + _safeNumber(p.paidAmount);
-    }
-
-    final cons = <String, double>{};
-    for (final c in _cons.where((c) =>
-        c.date.isAfter(from.subtract(const Duration(days: 1))) &&
-        c.date.isBefore(to.add(const Duration(days: 1))))) {
-      final k = df.format(c.date);
-      cons[k] = (cons[k] ?? 0) + c.amount;
-    }
-
-    final disc = <String, double>{};
-    for (final d in _discounts.where((d) {
-      final raw = d['discountDateTime']?.toString();
-      if (raw == null || raw.isEmpty) return false;
-      final dt = DateTime.tryParse(raw);
-      if (dt == null) return false;
-      return dt.isAfter(from.subtract(const Duration(days: 1))) &&
-          dt.isBefore(to.add(const Duration(days: 1)));
-    })) {
-      final dt = DateTime.parse(d['discountDateTime'].toString());
-      final k = df.format(dt);
-      final amt = (d['amount'] as num?)?.toDouble() ?? 0.0;
-      disc[k] = (disc[k] ?? 0) + amt;
-    }
-
-    final shareMap =
-        await DBService.instance.getDoctorShareByDateBetween(from, to);
-    final inputMap =
-        await DBService.instance.getDoctorInputByDateBetween(from, to);
-
-    share.addAll(shareMap);
-    final days = <String>{}
-      ..addAll(income.keys)
-      ..addAll(cons.keys)
-      ..addAll(disc.keys)
-      ..addAll(share.keys)
-      ..addAll(inputMap.keys);
-
-    final net = <String, double>{};
-    for (final k in days) {
-      net[k] = (income[k] ?? 0) -
-          (cons[k] ?? 0) -
-          (disc[k] ?? 0) -
-          (share[k] ?? 0) -
-          (inputMap[k] ?? 0);
-    }
+    final range = _normalizedRange(_startDate, _endDate);
+    final from = range.start ?? DateTime(2000);
+    final to = range.end ?? DateTime(2100);
+    final net = await DBService.instance.getNetProfitByDateBetween(from, to);
     if (!mounted) return;
     setState(() => _netByDate = net);
   }
@@ -1973,7 +1933,7 @@ class _NetProfitWidgetState extends State<_NetProfitWidget> {
               logo: logo,
               clinic: clinic),
           pw.SizedBox(height: 6),
-          pw.Text('مجموع صافي الأيام: ${_PdfUtils.formatNumber(_total)}',
+          pw.Text(pdfText('مجموع صافي الأيام: ${_PdfUtils.formatNumber(_total)}'),
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 10),
           ..._PdfUtils.lineChartsFromMap(_netByDate,
@@ -2063,6 +2023,7 @@ class _NetProfitWidgetState extends State<_NetProfitWidget> {
                   height: 300,
                   child: SfCartesianChart(
                     title: ChartTitle(text: "صافي الأرباح بالتاريخ (Line)"),
+                    enableAxisAnimation: false,
                     primaryXAxis: CategoryAxis(labelRotation: 45),
                     primaryYAxis: NumericAxis(),
                     zoomPanBehavior: zoomPan,
@@ -2072,6 +2033,7 @@ class _NetProfitWidgetState extends State<_NetProfitWidget> {
                         dataSource: data,
                         xValueMapper: (d, _) => d.label,
                         yValueMapper: (d, _) => d.value,
+                        animationDuration: 0,
                         dataLabelSettings:
                             const DataLabelSettings(isVisible: true),
                       ),
@@ -2091,8 +2053,21 @@ class _NetProfitWidgetState extends State<_NetProfitWidget> {
 /*──────────────────────── أدوات مساعدة صغيرة ────────────────────────*/
 String _subtitleRange(DateTime? from, DateTime? to) {
   final df = DateFormat('yyyy-MM-dd');
-  if (from == null && to == null) return 'الفترة: الكل';
-  final fs = from == null ? '...' : df.format(from);
-  final ts = to == null ? '...' : df.format(to);
+  final range = _normalizedRange(from, to);
+  final start = range.start;
+  final end = range.end;
+  if (start == null && end == null) return 'الفترة: الكل';
+  final fs = start == null ? '...' : df.format(start);
+  final ts = end == null ? '...' : df.format(end);
   return 'الفترة: $fs → $ts';
+}
+
+({DateTime? start, DateTime? end}) _normalizedRange(
+  DateTime? start,
+  DateTime? end,
+) {
+  if (start != null && end != null && end.isBefore(start)) {
+    return (start: end, end: start);
+  }
+  return (start: start, end: end);
 }

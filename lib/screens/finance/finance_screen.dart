@@ -117,8 +117,8 @@ class _EmployeesFinanceSummaryScreenState
                 ],
               ),
               const SizedBox(height: 20),
-              _buildCard('مجموع المبالغ المدخلة من المرضى', _collected),
-              _buildCard('مشتريات واستهلاكات المركز الطبي', _clinicConsumption),
+              _buildCard('إجمالي قيمة الخدمات', _collected),
+              _buildCard('مشتريات المستودع', _clinicConsumption),
               _buildCard(
                   'مبلغ النسب للأطباء من الأشعة/المختبر', _doctorsRatios),
               _buildCard(
@@ -180,9 +180,9 @@ class _EmployeesFinanceSummaryScreenState
     final to = _endDate!;
 
     final collectedVal =
-        await DBService.instance.getSumPatientsBetween(from, to);
+        await DBService.instance.getSumPatientServicesBetween(from, to);
     final consumptionVal =
-        await DBService.instance.getSumConsumptionBetween(from, to);
+        await DBService.instance.getSumPurchasesBetween(from, to);
 
     double ratiosVal = 0, inputsVal = 0, towerVal = 0;
     try {
@@ -223,13 +223,7 @@ class _EmployeesFinanceSummaryScreenState
       }
     }
 
-    final net = collectedVal -
-        salariesVal -
-        consumptionVal -
-        loansVal -
-        discountsVal -
-        ratiosVal -
-        inputsVal;
+    final net = collectedVal - salariesVal - consumptionVal;
 
     LoggingService().logTransaction(
       transactionType: "FinanceSummary",

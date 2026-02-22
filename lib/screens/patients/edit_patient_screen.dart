@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:mime/mime.dart';
 import 'package:open_file/open_file.dart';
 import 'package:provider/provider.dart';
+import 'dart:ui' as ui show TextDirection;
 
 /*── تصميم TBIAN ─*/
 import 'package:aelmamclinic/core/theme.dart';
@@ -25,6 +26,7 @@ import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:aelmamclinic/providers/repository_provider.dart';
 import 'list_patients_screen.dart';
+import 'duplicate_patients_screen.dart';
 
 class EditPatientScreen extends StatefulWidget {
   final Patient patient;
@@ -70,13 +72,15 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
   final List<int> _deletedUsageIds = [];
 
   // Attachments
-  late Future<List<Attachment>> _attachmentsFuture;
+  Future<List<Attachment>> _attachmentsFuture =
+      Future<List<Attachment>>.value(const []);
   final List<Attachment> _newAttachments = [];
   final List<Attachment> _deletedAttachments = [];
 
   final _formKey = GlobalKey<FormState>();
   final _dtOnly = DateFormat('yyyy-MM-dd');
   bool _doctorRestricted = false;
+  bool _saving = false;
 
   // ── Helpers العامة ──
   double _parseDouble(String s) {
@@ -107,6 +111,32 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
         return 'doctor';
     }
     return null;
+  }
+
+  Future<int?> _inferDoctorIdFromServices() async {
+    final ids = <int>{};
+    for (final s in _selectedServices) {
+      if (s.serviceId == null) continue;
+      final rows =
+          await DBService.instance.getDoctorSharesForService(s.serviceId!);
+      for (final r in rows) {
+        final did = (r['doctorId'] is int)
+            ? r['doctorId'] as int
+            : int.tryParse('${r['doctorId']}');
+        if (did != null) ids.add(did);
+      }
+    }
+    if (ids.length == 1) return ids.first;
+    return null;
+  }
+
+  Future<String?> _doctorNameById(int id) async {
+    final db = await DBService.instance.database;
+    final rows = await db.query('doctors',
+        columns: const ['name'], where: 'id = ?', whereArgs: [id], limit: 1);
+    if (rows.isEmpty) return null;
+    final name = (rows.first['name'] ?? '').toString().trim();
+    return name.isEmpty ? null : 'د/$name';
   }
 
   @override
@@ -145,8 +175,12 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
 
     _selectedServiceTypeAr = _codeToLabel(p.serviceType);
 
-    // تحميل المرفقات فورًا
-    _attachmentsFuture = DBService.instance.getAttachmentsByPatient(p.id!);
+    // تحميل المرفقات (قد تكون معطلة على الخادم)
+    try {
+      _attachmentsFuture = DBService.instance.getAttachmentsByPatient(p.id!);
+    } catch (_) {
+      _attachmentsFuture = Future<List<Attachment>>.value(const []);
+    }
 
     // تحميل الخدمات المحفوظة للمريض
     final svcs = await DBService.instance.getPatientServices(p.id!);
@@ -544,6 +578,19 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
     setState(() {});
   }
 
+  void _quickFillPaidAll() {
+    final total = _parseDouble(_totalCtrl.text);
+    _paidCtrl.text = total.toStringAsFixed(2);
+    _onPaidChanged(_paidCtrl.text);
+  }
+
+  void _clearSelectedServices() {
+    setState(() {
+      _selectedServices.clear();
+      _recalcTotals();
+    });
+  }
+
   Future<void> _selectDoctorForRadLab() async {
     if (_doctorRestricted && _linkedDoctor != null) {
       setState(() {
@@ -823,8 +870,54 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
     }
   }
 
+  Future<bool> _maybeWarnDuplicates(String phoneNormalized, String name) async {
+    final all = await DBService.instance.getAllPatients();
+    final dups = all
+        .where((p) =>
+            p.phoneNumber == phoneNormalized && p.id != widget.patient.id)
+        .toList();
+    if (dups.isEmpty) return true;
+
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('تنبيه تكرار',
+            style: TextStyle(fontWeight: FontWeight.w800)),
+        content: Text(
+            'هناك سجلات أخرى بنفس رقم الهاتف (${dups.length}). هل ترغب بعرضها قبل المتابعة؟'),
+        actions: [
+          TPrimaryButton(
+            icon: Icons.check_circle_outline,
+            label: 'متابعة الحفظ',
+            onPressed: () => Navigator.pop(ctx, true),
+          ),
+          TOutlinedButton(
+            icon: Icons.visibility_outlined,
+            label: 'عرض المكررات',
+            onPressed: () {
+              Navigator.pop(ctx, false);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => DuplicatePatientsScreen(
+                    phoneNumber: phoneNormalized,
+                    patientName: name,
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+
+    return proceed ?? false;
+  }
+
   /*──────── حفظ ────────*/
   Future<void> _saveChanges() async {
+    if (_saving) return;
     if (!_formKey.currentState!.validate()) return;
 
     if (_selectedServiceTypeAr == null) {
@@ -835,6 +928,17 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
     final needsDoctor = _selectedServiceTypeAr == 'الأشعة' ||
         _selectedServiceTypeAr == 'المختبر' ||
         _selectedServiceTypeAr == 'طبيب';
+    if (needsDoctor && _selectedDoctorId == null) {
+      final inferred = await _inferDoctorIdFromServices();
+      if (inferred != null) {
+        final inferredName = await _doctorNameById(inferred);
+        setState(() {
+          _selectedDoctorId = inferred;
+          _selectedDoctorName = inferredName ?? _selectedDoctorName;
+          if (inferredName != null) _doctorCtrl.text = inferredName;
+        });
+      }
+    }
     if (needsDoctor && _selectedDoctorId == null) {
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('يجب اختيار الطبيب')));
@@ -922,6 +1026,15 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
 
     // تطبيع الهاتف قبل الحفظ
     final normalizedPhone = Formatters.normalizePhone(_phoneCtrl.text.trim());
+    final originalPhone =
+        Formatters.normalizePhone(widget.patient.phoneNumber.trim());
+    if (normalizedPhone != originalPhone) {
+      final ok = await _maybeWarnDuplicates(
+        normalizedPhone,
+        _nameCtrl.text.trim(),
+      );
+      if (!ok) return;
+    }
 
     final oldDoctorId = widget.patient.doctorId;
     final newDoctorId = _selectedDoctorId;
@@ -959,55 +1072,120 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
       doctorReviewedAt: reviewedAt,
     );
 
-    final db = await DBService.instance.database;
-
+    setState(() => _saving = true);
     try {
-      // Update patient + services
-      await DBService.instance.updatePatient(updated, _selectedServices);
-
-      // Inventory: حذف/إضافة + تعديل الرصيد
+      final db = await DBService.instance.database;
+      var touchedServices = false;
       var touchedConsumptions = false;
       var touchedItems = false;
-      for (final id in _deletedUsageIds) {
-        final u = _existingUsages.firstWhere((e) => e['consId'] == id);
-        await db.delete('consumptions', where: 'id = ?', whereArgs: [id]);
-        await db.rawUpdate(
-          'UPDATE items SET stock = stock + ? WHERE id = ?',
-          [u['quantity'], u['itemId']],
-        );
-        touchedConsumptions = true;
-        touchedItems = true;
-      }
-      for (final u in _newUsages) {
-        double amount = 0.0;
-        final itemRows = await db.query(
-          'items',
-          columns: ['price'],
+
+      await db.transaction((txn) async {
+        // Update patient + services (داخل معاملة واحدة)
+        final data = updated.toMap();
+        final nowIso = DateTime.now().toIso8601String();
+
+        // احسب حالة المراجعة حسب تغيّر الطبيب
+        final existing = await txn.query(
+          'patients',
+          columns: const ['doctorId'],
           where: 'id = ?',
-          whereArgs: [u['itemId']],
+          whereArgs: [updated.id],
           limit: 1,
         );
-        if (itemRows.isNotEmpty) {
-          amount =
-              ((itemRows.first['price'] as num?)?.toDouble() ?? 0.0) *
-                  (u['quantity'] as int);
+        final prevDoctor = existing.isNotEmpty
+            ? (existing.first['doctorId'] as num?)?.toInt() ?? 0
+            : 0;
+        final currDoctor = updated.doctorId ?? 0;
+        if (currDoctor == 0) {
+          data['doctorReviewPending'] = 0;
+          data['doctorReviewedAt'] = null;
+        } else if (currDoctor != prevDoctor) {
+          data['doctorReviewPending'] = 1;
+          data['doctorReviewedAt'] = null;
         }
-        await DBService.instance.insertConsumption(Consumption(
-          id: null,
-          patientId: widget.patient.id.toString(),
-          itemId: u['itemId'].toString(),
-          quantity: u['quantity'],
-          date: regDT,
-          amount: amount,
-        ));
-        await db.rawUpdate(
-          'UPDATE items SET stock = stock - ? WHERE id = ?',
-          [u['quantity'], u['itemId']],
-        );
-        touchedItems = true;
-        touchedConsumptions = true;
-      }
 
+        await txn.update(
+          'patients',
+          data,
+          where: 'id = ?',
+          whereArgs: [updated.id],
+        );
+
+        // soft delete old services + insert new services
+        await txn.update(
+          PatientService.table,
+          {'isDeleted': 1, 'deletedAt': nowIso},
+          where: 'patientId = ?',
+          whereArgs: [updated.id],
+        );
+        if (_selectedServices.isNotEmpty) {
+          final batch = txn.batch();
+          for (final s in _selectedServices) {
+            batch.insert(PatientService.table, {
+              'patientId': updated.id,
+              'serviceId': s.serviceId,
+              'serviceName': s.serviceName,
+              'serviceCost': s.serviceCost,
+            });
+          }
+          await batch.commit(noResult: true);
+        }
+        touchedServices = true;
+
+        // Inventory: حذف/إضافة + تعديل الرصيد
+        for (final id in _deletedUsageIds) {
+          final u = _existingUsages.firstWhere((e) => e['consId'] == id);
+          await txn.update(
+            Consumption.table,
+            {'isDeleted': 1, 'deletedAt': nowIso},
+            where: 'id = ?',
+            whereArgs: [id],
+          );
+          await txn.rawUpdate(
+            'UPDATE items SET stock = stock + ? WHERE id = ?',
+            [u['quantity'], u['itemId']],
+          );
+          touchedConsumptions = true;
+          touchedItems = true;
+        }
+
+        for (final u in _newUsages) {
+          double amount = 0.0;
+          final itemRows = await txn.query(
+            'items',
+            columns: ['price'],
+            where: 'id = ?',
+            whereArgs: [u['itemId']],
+            limit: 1,
+          );
+          if (itemRows.isNotEmpty) {
+            amount =
+                ((itemRows.first['price'] as num?)?.toDouble() ?? 0.0) *
+                    (u['quantity'] as int);
+          }
+          await txn.insert(Consumption.table, {
+            'patientId': updated.id.toString(),
+            'itemId': u['itemId'].toString(),
+            'quantity': u['quantity'],
+            'date': regDT.toIso8601String(),
+            'amount': amount,
+          });
+          final rows = await txn.rawUpdate(
+            'UPDATE items SET stock = stock - ? WHERE id = ? AND stock >= ?',
+            [u['quantity'], u['itemId'], u['quantity']],
+          );
+          if (rows == 0) {
+            throw Exception('المخزون غير كافٍ لبعض المواد المستخدمة.');
+          }
+          touchedItems = true;
+          touchedConsumptions = true;
+        }
+      });
+
+      await DBService.instance.notifyTableChanged(Patient.table);
+      if (touchedServices) {
+        await DBService.instance.notifyTableChanged(PatientService.table);
+      }
       if (touchedConsumptions) {
         await DBService.instance.notifyTableChanged(Consumption.table);
       }
@@ -1039,275 +1217,106 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('فشل الحفظ: $e')),
       );
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final isRadLab = _selectedServiceTypeAr == 'الأشعة' ||
         _selectedServiceTypeAr == 'المختبر';
     final isDoctor = _selectedServiceTypeAr == 'طبيب';
+    final dateLabel = _formatRegistrationDateTime();
 
     return Scaffold(
       appBar: AppBar(
         centerTitle: true,
-        title: const Text('تعديل بيانات المريض'),
-        flexibleSpace: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [scheme.primaryContainer, scheme.primary],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Image.asset(
+              'assets/images/logo.png',
+              height: 24,
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
             ),
-          ),
+            const SizedBox(width: 8),
+            const Text('تعديل بيانات المريض'),
+          ],
         ),
       ),
-      body: Stack(
-        children: [
-          // خلفية ناعمة من الثيم
-          Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  scheme.surfaceContainerHigh,
-                  scheme.surface,
-                  scheme.surfaceContainerHigh
-                ],
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-              ),
-            ),
-          ),
-
-          // المحتوى
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-                16, 12, 16, 120), // مساحة للشريط السفلي
-            child: Form(
-              key: _formKey,
-              child: ListView(
-                children: [
-                  // التاريخ والوقت
-                  const TSectionHeader('التاريخ والوقت'),
-                  NeuCard(
-                    onTap: _pickRegistrationDateTime,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 10),
-                    child: Row(
-                      children: [
-                        Container(
-                          decoration: BoxDecoration(
-                            color: kPrimaryColor.withValues(alpha: .10),
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          padding: const EdgeInsets.all(8),
-                          child: const Icon(Icons.calendar_today,
-                              color: kPrimaryColor, size: 18),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            _formatRegistrationDateTime(),
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w800, fontSize: 14.5),
-                          ),
-                        ),
-                        const Icon(Icons.chevron_left_rounded),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-
-                  // بيانات المريض
-                  const TSectionHeader('بيانات المريض'),
-                  NeuField(
-                    controller: _nameCtrl,
-                    labelText: 'اسم المريض',
-                    validator: (v) =>
-                        Validators.required(v, fieldName: 'اسم المريض'),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
+      body: SafeArea(
+        child: Directionality(
+          textDirection: ui.TextDirection.rtl,
+          child: Stack(
+            children: [
+              Form(
+                key: _formKey,
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 140),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Expanded(
-                        child: NeuField(
-                          controller: _ageCtrl,
-                          labelText: 'العمر',
-                          keyboardType: TextInputType.number,
+                      TSectionHeader('تاريخ ووقت التسجيل'),
+                      NeuCard(
+                        onTap: _pickRegistrationDateTime,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
+                        child: _DateRow(
+                          icon: Icons.calendar_month_rounded,
+                          label: dateLabel,
+                          action: 'تغيير',
                         ),
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: NeuField(
-                          controller: _phoneCtrl,
-                          labelText: 'رقم الهاتف',
-                          keyboardType: TextInputType.phone,
-                          validator: (v) => Validators.phone(v),
-                          onChanged: (_) {}, // لتوحيد السلوك
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  // نوع الخدمة
-                  const TSectionHeader('نوع الخدمة'),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final label in const ['الأشعة', 'المختبر', 'طبيب'])
-                        _ChoicePill(
-                          label: label,
-                          selected: _selectedServiceTypeAr == label,
-                          onTap: () => _onServiceTypeChanged(label),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-
-                  // اختيار خدمات النوع
-                  if (isRadLab) ...[
-                    const TSectionHeader('الخدمات'),
-                    _buildServicesChips(),
-                    const SizedBox(height: 14),
-                  ],
-
-                  // الطبيب حسب النوع
-                  if (isRadLab) ...[
-                    const TSectionHeader('الطبيب المختص'),
-                    GestureDetector(
-                      onTap: _selectDoctorForRadLab,
-                      child: AbsorbPointer(
-                        child: NeuField(
-                          controller: _doctorCtrl,
-                          labelText: 'الطبيب',
-                          suffix: const Icon(Icons.local_hospital_outlined),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-
-                  if (isDoctor) ...[
-                    const TSectionHeader('عيادة الطبيب'),
-                    GestureDetector(
-                      onTap: _selectDoctorForOther,
-                      child: AbsorbPointer(
-                        child: NeuField(
-                          controller: _doctorCtrl,
-                          labelText: 'عيادة الطبيب',
-                          suffix: const Icon(Icons.local_hospital_outlined),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: NeuField(
-                            controller: _diagnosisCtrl,
-                            labelText: 'خدمة/حالة نصيّة',
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        SizedBox(
-                          width: 160,
-                          child: NeuField(
-                            controller: _manualCostCtrl,
-                            keyboardType: TextInputType.number,
-                            labelText: 'تكلفة (يدوي)',
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: NeuButton.primary(
-                        icon: Icons.add,
-                        label: 'إضافة إلى القائمة',
-                        onPressed: _addManualDoctorService,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    NeuCard(
-                      onTap: _selectDoctorGeneralService,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 12),
-                      child: Row(
-                        children: [
-                          Container(
-                            decoration: BoxDecoration(
-                              color: kPrimaryColor.withValues(alpha: .10),
-                              borderRadius: BorderRadius.circular(14),
+                      const SizedBox(height: 14),
+                      TSectionHeader('بيانات المريض'),
+                      NeuCard(
+                        padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
+                        child: Column(
+                          children: [
+                            NeuField(
+                              controller: _nameCtrl,
+                              labelText: 'اسم المريض',
+                              validator: (v) => Validators.required(v,
+                                  fieldName: 'اسم المريض'),
                             ),
-                            padding: const EdgeInsets.all(8),
-                            child: const Icon(Icons.add_task_outlined,
-                                color: kPrimaryColor, size: 18),
-                          ),
-                          const SizedBox(width: 8),
-                          const Expanded(
-                            child: Text('إضافة خدمة من عيادة الطبيب',
-                                style: TextStyle(fontWeight: FontWeight.w800)),
-                          ),
-                          const Icon(Icons.chevron_left_rounded),
-                        ],
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: NeuField(
+                                    controller: _ageCtrl,
+                                    labelText: 'العمر',
+                                    keyboardType: TextInputType.number,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: NeuField(
+                                    controller: _phoneCtrl,
+                                    labelText: 'رقم الهاتف',
+                                    keyboardType: TextInputType.phone,
+                                    validator: (v) => Validators.phone(v),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                          ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-
-                  // الخدمات المحددة + إجمالي مصغّر
-                  if (_selectedServices.isNotEmpty) ...[
-                    const TSectionHeader('الخدمات المحدَّدة'),
-                    NeuCard(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 10),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 6,
-                            children: _selectedServices
-                                .map((ps) => Chip(
-                                      backgroundColor:
-                                          kPrimaryColor.withValues(alpha: .12),
-                                      label: Text(
-                                          '${ps.serviceName} • ${ps.serviceCost.toStringAsFixed(2)}'),
-                                      onDeleted: () {
-                                        setState(() {
-                                          _selectedServices.remove(ps);
-                                          _recalcTotals();
-                                        });
-                                      },
-                                    ))
-                                .toList(),
-                          ),
-                          const SizedBox(height: 10),
-                          _MiniTotalCard(totalText: _totalCtrl.text),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-
-                  // المستودع
-                  const TSectionHeader('استهلاكات المستودع'),
-                  NeuCard(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 10),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (_existingUsages
-                                .where((u) =>
-                                    !_deletedUsageIds.contains(u['consId']))
-                                .isNotEmpty ||
-                            _newUsages.isNotEmpty) ...[
-                          Wrap(
+                      const SizedBox(height: 14),
+                      TSectionHeader('استخدام من المستودع'),
+                      if (_existingUsages
+                              .where((u) =>
+                                  !_deletedUsageIds.contains(u['consId']))
+                              .isNotEmpty ||
+                          _newUsages.isNotEmpty) ...[
+                        NeuCard(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 8),
+                          child: Wrap(
                             spacing: 8,
                             runSpacing: 6,
                             children: [
@@ -1319,253 +1328,460 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
                                   .map((u) => _usageChip(u, isNew: true)),
                             ],
                           ),
-                          const SizedBox(height: 10),
-                        ],
-                        TOutlinedButton(
-                          icon: Icons.inventory_2_outlined,
-                          label: 'إضافة استخدام',
-                          onPressed: _selectInventoryUsage,
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                      TOutlinedButton(
+                        icon: Icons.inventory_2_rounded,
+                        label: 'إضافة استخدام',
+                        onPressed: _selectInventoryUsage,
+                      ),
+                      const SizedBox(height: 14),
+                      TSectionHeader('المرفقات'),
+                      FutureBuilder<List<Attachment>>(
+                        future: _attachmentsFuture,
+                        builder: (c, snap) {
+                          final existing = snap.data ?? [];
+                          final all = [...existing, ..._newAttachments];
+                          final visible = all
+                              .where((a) => !_deletedAttachments.contains(a))
+                              .toList();
+                          if (all.isEmpty) {
+                            return TOutlinedButton(
+                              icon: Icons.attach_file,
+                              label: 'إضافة مرفقات',
+                              onPressed: _pickAttachments,
+                            );
+                          }
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (visible.isNotEmpty) ...[
+                                NeuCard(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 10, vertical: 8),
+                                  child: Wrap(
+                                    spacing: 8,
+                                    runSpacing: 6,
+                                    children: all.map((a) {
+                                      final isNew = _newAttachments.contains(a);
+                                      final isDeleted =
+                                          _deletedAttachments.contains(a);
+                                      final text = a.fileName +
+                                          (isNew ? ' (جديد)' : '') +
+                                          (isDeleted ? ' (محذوف)' : '');
+                                      return _RemovableChip(
+                                        text: text,
+                                        muted: isDeleted,
+                                        onTap: isDeleted
+                                            ? null
+                                            : () => _openAttachment(a),
+                                        onDelete: () {
+                                          setState(() {
+                                            if (isNew) {
+                                              _newAttachments.remove(a);
+                                            } else if (isDeleted) {
+                                              _deletedAttachments.remove(a);
+                                            } else {
+                                              _deletedAttachments.add(a);
+                                            }
+                                          });
+                                        },
+                                      );
+                                    }).toList(),
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                              ],
+                              TOutlinedButton(
+                                icon: Icons.attach_file,
+                                label: 'إضافة مرفقات',
+                                onPressed: _pickAttachments,
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 14),
+                      TSectionHeader('نوع الخدمة'),
+                      NeuCard(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
+                        child: DropdownButtonFormField<String>(
+                          initialValue: _selectedServiceTypeAr,
+                          decoration: const InputDecoration(
+                            labelText: 'اختر نوع الخدمة',
+                            border: InputBorder.none,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                          items: const [
+                            DropdownMenuItem(
+                                value: 'الأشعة', child: Text('الأشعة')),
+                            DropdownMenuItem(
+                                value: 'المختبر', child: Text('المختبر')),
+                            DropdownMenuItem(
+                                value: 'طبيب', child: Text('طبيب')),
+                          ],
+                          onChanged: _onServiceTypeChanged,
+                          validator: (v) =>
+                              v == null ? 'اختر نوع الخدمة' : null,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      if (isRadLab) ...[
+                        TSectionHeader('الخدمات المتاحة'),
+                        _buildServicesChips(),
+                        const SizedBox(height: 12),
+                        GestureDetector(
+                          onTap: _selectDoctorForRadLab,
+                          child: AbsorbPointer(
+                            child: NeuField(
+                              controller: _doctorCtrl,
+                              labelText: 'الطبيب المختص',
+                              suffix: const Icon(Icons.chevron_left_rounded),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                      ],
+                      if (isDoctor) ...[
+                        TSectionHeader('عيادة الطبيب'),
+                        GestureDetector(
+                          onTap: _selectDoctorForOther,
+                          child: AbsorbPointer(
+                            child: NeuField(
+                              controller: _doctorCtrl,
+                              labelText: 'عيادة الطبيب',
+                              suffix: const Icon(Icons.chevron_left_rounded),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        NeuCard(
+                          onTap: _selectDoctorGeneralService,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 12),
+                          child: Row(
+                            children: const [
+                              Icon(Icons.add_circle_outline,
+                                  color: kPrimaryColor),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: Text('إضافة خدمة من عيادة الطبيب',
+                                    style:
+                                        TextStyle(fontWeight: FontWeight.w700)),
+                              ),
+                              Icon(Icons.chevron_left_rounded),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              flex: 2,
+                              child: NeuField(
+                                controller: _diagnosisCtrl,
+                                labelText: 'خدمة/حالة نصيّة',
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: NeuField(
+                                controller: _manualCostCtrl,
+                                labelText: 'تكلفة اليدوية',
+                                keyboardType: TextInputType.number,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: NeuButton.primary(
+                            icon: Icons.add,
+                            label: 'إضافة إلى القائمة',
+                            onPressed: _addManualDoctorService,
+                          ),
                         ),
                       ],
-                    ),
+                      if (_selectedServices.isNotEmpty) ...[
+                        const SizedBox(height: 14),
+                        TSectionHeader('الخدمات المحدّدة'),
+                        NeuCard(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 8),
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 6,
+                            children: _selectedServices
+                                .map((ps) => _RemovableChip(
+                                      text:
+                                          '${ps.serviceName} • ${ps.serviceCost.toStringAsFixed(2)}',
+                                      onDelete: () {
+                                        setState(() {
+                                          _selectedServices.remove(ps);
+                                          _recalcTotals();
+                                        });
+                                      },
+                                    ))
+                                .toList(),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: TOutlinedButton(
+                            icon: Icons.clear_all,
+                            label: 'مسح القائمة',
+                            onPressed: _clearSelectedServices,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 14),
+                      TSectionHeader('المبالغ'),
+                      NeuCard(
+                        padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
+                        child: Column(
+                          children: [
+                            NeuField(
+                              controller: _totalCtrl,
+                              labelText: 'المجموع الكلي للخدمات',
+                              enabled: false,
+                            ),
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: NeuField(
+                                    controller: _paidCtrl,
+                                    labelText: 'المبلغ المقدم',
+                                    keyboardType: TextInputType.number,
+                                    onChanged: _onPaidChanged,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: NeuField(
+                                    controller: _remainingCtrl,
+                                    labelText: 'المتبقي (يُحسب تلقائيًا)',
+                                    enabled: false,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Align(
+                              alignment: AlignmentDirectional.centerStart,
+                              child: TOutlinedButton(
+                                icon: Icons.done_all_rounded,
+                                label: 'اعتبار المدفوع = الإجمالي',
+                                onPressed: _quickFillPaidAll,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      TSectionHeader('ملاحظات'),
+                      NeuField(
+                        controller: _notesCtrl,
+                        labelText: 'ملاحظات',
+                        maxLines: 3,
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 16),
-
-                  // المرفقات
-                  const TSectionHeader('المرفقات'),
-                  NeuCard(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 10),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                ),
+              ),
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: NeuCard(
+                  margin: EdgeInsets.zero,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: SafeArea(
+                    top: false,
+                    child: Row(
                       children: [
-                        FutureBuilder<List<Attachment>>(
-                          future: _attachmentsFuture,
-                          builder: (c, snap) {
-                            final existing = snap.data ?? [];
-                            final all = [...existing, ..._newAttachments];
-                            if (all.isEmpty) {
-                              return const Text('لا توجد مرفقات');
-                            }
-                            return Wrap(
-                              spacing: 8,
-                              runSpacing: 6,
-                              children: all.map((a) {
-                                final isNew = _newAttachments.contains(a);
-                                final isDeleted =
-                                    _deletedAttachments.contains(a);
-                                final bg = isDeleted
-                                    ? Colors.red.shade100
-                                    : isNew
-                                        ? kPrimaryColor.withValues(alpha: .14)
-                                        : null;
-                                return FilterChip(
-                                  backgroundColor: bg,
-                                  label: Text(a.fileName +
-                                      (isNew ? ' (جديد)' : '') +
-                                      (isDeleted ? ' (محذوف)' : '')),
-                                  onSelected: (_) {
-                                    if (!isDeleted) _openAttachment(a);
-                                  },
-                                  onDeleted: () {
-                                    setState(() {
-                                      if (isNew) {
-                                        _newAttachments.remove(a);
-                                      } else if (isDeleted) {
-                                        _deletedAttachments.remove(a);
-                                      } else {
-                                        _deletedAttachments.add(a);
-                                      }
-                                    });
-                                  },
-                                );
-                              }).toList(),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text('الإجمالي: ${_totalCtrl.text}',
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w800)),
+                              const SizedBox(height: 4),
+                              Text('المتبقي: ${_remainingCtrl.text}'),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        TOutlinedButton(
+                          icon: Icons.list_alt_outlined,
+                          label: 'قائمة المرضى',
+                          onPressed: () {
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => const ListPatientsScreen()),
                             );
                           },
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(width: 8),
                         NeuButton.primary(
-                          icon: Icons.attach_file,
-                          label: 'إضافة مرفقات',
-                          onPressed: _pickAttachments,
+                          icon: Icons.save_rounded,
+                          label: _saving ? 'جارٍ الحفظ...' : 'حفظ التعديلات',
+                          onPressed: _saving ? null : _saveChanges,
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 16),
-
-                  // ملاحظات
-                  const TSectionHeader('ملاحظات'),
-                  NeuField(
-                    controller: _notesCtrl,
-                    labelText: 'ملاحظات',
-                    maxLines: 3,
-                  ),
-                  const SizedBox(height: 90),
-                ],
-              ),
-            ),
-          ),
-
-          // ── شريط سفلي ثابت: الإجمالي / المدفوع / المتبقي + حفظ ──
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: NeuCard(
-              margin: EdgeInsets.zero,
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
-              child: SafeArea(
-                top: false,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: NeuField(
-                            controller: _totalCtrl,
-                            labelText: 'الإجمالي',
-                            enabled: false,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: NeuField(
-                            controller: _paidCtrl,
-                            labelText: 'المدفوع',
-                            keyboardType: TextInputType.number,
-                            onChanged: _onPaidChanged,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: NeuField(
-                            controller: _remainingCtrl,
-                            labelText: 'المتبقي',
-                            enabled: false,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    SizedBox(
-                      width: double.infinity,
-                      child: NeuButton.primary(
-                        icon: Icons.save,
-                        label: 'حفظ التعديلات',
-                        onPressed: _saveChanges,
-                      ),
-                    ),
-                  ],
                 ),
               ),
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 
   Widget _buildServicesChips() {
+    final scheme = Theme.of(context).colorScheme;
     if (_availableServices.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(8),
-        child: Text('لا توجد خدمات محفوظة لهذا النوع'),
+      return NeuCard(
+        padding: const EdgeInsets.all(12),
+        child: const Text('لا توجد خدمات محفوظة لهذا النوع'),
       );
     }
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: _availableServices.map((s) {
-        final id = s['id'] as int;
-        final name = s['name'] as String;
-        final cost = (s['cost'] as num).toDouble();
-        final sel = _selectedServices.any((ps) => ps.serviceId == id);
-        return InkWell(
-          onTap: () => _onSelectServiceChip(id, name, cost),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: sel ? kPrimaryColor.withValues(alpha: .12) : Colors.white,
-              borderRadius: BorderRadius.circular(25),
-              border: Border.all(
-                color: sel ? kPrimaryColor : Colors.grey.shade400,
-                width: sel ? 2 : 1,
+    return Directionality(
+      textDirection: ui.TextDirection.rtl,
+      child: Wrap(
+        alignment: WrapAlignment.start,
+        spacing: 8,
+        runSpacing: 8,
+        children: _availableServices.map((s) {
+          final id = s['id'] as int;
+          final name = s['name'] as String;
+          final cost = (s['cost'] as num).toDouble();
+          final sel = _selectedServices.any((ps) => ps.serviceId == id);
+          return InkWell(
+            onTap: () => _onSelectServiceChip(id, name, cost),
+            borderRadius: BorderRadius.circular(24),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 120),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color:
+                    sel ? kPrimaryColor.withValues(alpha: .10) : scheme.surface,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(
+                  color: sel ? kPrimaryColor : scheme.outlineVariant,
+                  width: sel ? 1.6 : 1.0,
+                ),
+                boxShadow: sel
+                    ? [
+                        BoxShadow(
+                          color: Colors.white.withValues(alpha: .9),
+                          offset: const Offset(-3, -3),
+                          blurRadius: 6,
+                        ),
+                        BoxShadow(
+                          color: const Color(0xFFCFD8DC).withValues(alpha: .6),
+                          offset: const Offset(3, 3),
+                          blurRadius: 6,
+                        ),
+                      ]
+                    : null,
+              ),
+              child: Text(
+                name,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: sel ? kPrimaryColor : scheme.onSurface,
+                ),
               ),
             ),
-            child: Text(
-              name,
-              style: TextStyle(
-                color: sel ? kPrimaryColor : null,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        );
-      }).toList(),
-    );
-  }
-}
-
-/* ───────────── Widgets مساعدة للتصميم (TBIAN) ───────────── */
-
-class _MiniTotalCard extends StatelessWidget {
-  final String totalText;
-  const _MiniTotalCard({required this.totalText});
-
-  @override
-  Widget build(BuildContext context) {
-    return NeuCard(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          const Text('إجمالي الخدمات',
-              style: TextStyle(fontWeight: FontWeight.w800)),
-          Text(totalText,
-              style:
-                  const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
-        ],
+          );
+        }).toList(),
       ),
     );
   }
 }
 
-class _ChoicePill extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
+/*──────────────────── Widgets مساعدة ────────────────────*/
 
-  const _ChoicePill({
-    required this.label,
-    required this.selected,
-    required this.onTap,
+class _DateRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String? action;
+  const _DateRow({required this.icon, required this.label, this.action});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            color: kPrimaryColor.withValues(alpha: .10),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          padding: const EdgeInsets.all(8),
+          child: Icon(icon, color: kPrimaryColor, size: 18),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5),
+          ),
+        ),
+        if (action != null)
+          Text(
+            action!,
+            style: TextStyle(
+              color: scheme.onSurface.withValues(alpha: .6),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _RemovableChip extends StatelessWidget {
+  final String text;
+  final VoidCallback onDelete;
+  final VoidCallback? onTap;
+  final bool muted;
+  const _RemovableChip({
+    required this.text,
+    required this.onDelete,
+    this.onTap,
+    this.muted = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final textColor =
+        muted ? scheme.onSurface.withValues(alpha: .45) : scheme.onSurface;
     return NeuCard(
       onTap: onTap,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      child: AnimatedDefaultTextStyle(
-        duration: const Duration(milliseconds: 120),
-        style: TextStyle(
-          fontWeight: FontWeight.w800,
-          color: selected
-              ? kPrimaryColor
-              : Theme.of(context).colorScheme.onSurface,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (selected)
-              const Padding(
-                padding: EdgeInsetsDirectional.only(start: 4),
-                child: Icon(Icons.check_circle, size: 18, color: kPrimaryColor),
-              ),
-            if (selected) const SizedBox(width: 6),
-            Text(label),
-          ],
-        ),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(text, style: TextStyle(color: textColor)),
+          const SizedBox(width: 6),
+          InkWell(
+            onTap: onDelete,
+            child: const Icon(Icons.close, size: 18, color: Colors.red),
+          ),
+        ],
       ),
     );
   }

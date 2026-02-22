@@ -982,8 +982,14 @@ class NhostAuthService {
     _bindDbPush(_sync!);
 
     await _sync!.bootstrap(pull: pull, realtime: realtime);
-    // ادفع التغييرات المحلية في الخلفية لتسريع جاهزية الواجهة بعد الدخول.
-    unawaited(_sync!.pushAll());
+    // ادفع التغييرات المحلية ثم اسحب لتوحيد الحالة عبر الأجهزة.
+    unawaited(() async {
+      try {
+        await _sync!.pushAll();
+      } finally {
+        await _sync!.pullAll();
+      }
+    }());
   }
 
   Future<bool> _canSyncGuard() async {
@@ -1017,7 +1023,8 @@ class NhostAuthService {
       if (frozen) return false;
       return true;
     } catch (_) {
-      return false;
+      // لا نعطّل المزامنة بسبب خطأ شبكة/تذبذب مؤقت
+      return true;
     }
   }
 

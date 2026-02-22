@@ -1193,12 +1193,12 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                   runSpacing: 18,
                   children: [
                     _StatCard(
-                      title: 'إيرادات الفترة',
+                      title: 'إيرادات الفترة (قيمة الخدمات)',
                       value: stats.fmtRevenue,
                       icon: Icons.paid_outlined,
                     ),
                     _StatCard(
-                      title: 'استهلاكات المركز',
+                      title: 'مشتريات المستودع',
                       value: stats.fmtExpense,
                       icon: Icons.local_hospital_outlined,
                     ),

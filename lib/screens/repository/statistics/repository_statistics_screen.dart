@@ -36,19 +36,19 @@ class _RepositoryStatisticsScreenState
   }
 
   /*──────────────── حسابات إحصائية لكل صنف ────────────────*/
-  Future<int> _purchasedQty(Item item) async {
+  Future<int> _usedQty(Item item) async {
     final db = await RepositoryService.instance.database;
     final res = await db.rawQuery(
-      'SELECT COALESCE(SUM(quantity),0) AS bought FROM purchases WHERE item_id = ?',
+      'SELECT COALESCE(SUM(quantity),0) AS used FROM consumptions WHERE itemId = ? AND ifnull(isDeleted,0)=0',
       [item.id],
     );
-    return (res.first['bought'] as num).toInt();
+    return (res.first['used'] as num).toInt();
   }
 
   Future<double> _totalPurchasedCost(Item item) async {
     final db = await RepositoryService.instance.database;
     final res = await db.rawQuery(
-      'SELECT COALESCE(SUM(quantity*unit_price),0) AS total FROM purchases WHERE item_id = ?',
+      'SELECT COALESCE(SUM(quantity*unit_price),0) AS total FROM purchases WHERE item_id = ? AND ifnull(isDeleted,0)=0',
       [item.id],
     );
     return (res.first['total'] as num).toDouble();
@@ -56,9 +56,7 @@ class _RepositoryStatisticsScreenState
 
   /// يعيد: [المستخدم, تكلفة المشتريات]
   Future<List<num>> _loadStats(Item item) async {
-    final purchased = await _purchasedQty(item);
-    final remaining = item.stock;
-    final used = (purchased - remaining).clamp(0, purchased);
+    final used = await _usedQty(item);
     final cost = await _totalPurchasedCost(item);
     return [used, cost];
   }

@@ -24,6 +24,7 @@ class _AuthGuardListenerState extends State<AuthGuardListener>
   Timer? _timer;
   bool _checking = false;
   bool _active = true;
+  DateTime? _lastOfflineNoticeAt;
 
   @override
   void initState() {
@@ -64,15 +65,44 @@ class _AuthGuardListenerState extends State<AuthGuardListener>
       final result = await auth.refreshAndValidateCurrentUser();
       if (!mounted || result.isSuccess) return;
 
-      await auth.signOut();
+      if (result.status == AuthSessionStatus.networkError ||
+          result.status == AuthSessionStatus.unknown) {
+        _showOfflineNotice();
+        return;
+      }
+
+      if (result.status == AuthSessionStatus.noAccount && auth.isOffline) {
+        _showOfflineNotice();
+        return;
+      }
+
       final message = _messageForStatus(result.status);
       if (message != null && mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(message)));
       }
+      if (result.status == AuthSessionStatus.disabled ||
+          result.status == AuthSessionStatus.accountFrozen ||
+          result.status == AuthSessionStatus.planUpgradeRequired ||
+          result.status == AuthSessionStatus.signedOut) {
+        await auth.signOut();
+      }
     } finally {
       _checking = false;
     }
+  }
+
+  void _showOfflineNotice() {
+    final now = DateTime.now();
+    if (_lastOfflineNoticeAt != null &&
+        now.difference(_lastOfflineNoticeAt!).inSeconds < 20) {
+      return;
+    }
+    _lastOfflineNoticeAt = now;
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('التطبيق غير متصل بالانترنت')),
+    );
   }
 
   String? _messageForStatus(AuthSessionStatus status) {
@@ -84,7 +114,7 @@ class _AuthGuardListenerState extends State<AuthGuardListener>
       case AuthSessionStatus.planUpgradeRequired:
         return 'ناسف فالخطة الحالية للمرفق الصحي هي FREE يجب تجديد الاشتراك';
       case AuthSessionStatus.noAccount:
-        return 'للأسف تم اقصائك من الإدارة للمرفق الصحي';
+        return 'تعذّر التحقق من الحساب الحالي.';
       case AuthSessionStatus.signedOut:
       case AuthSessionStatus.networkError:
       case AuthSessionStatus.unknown:

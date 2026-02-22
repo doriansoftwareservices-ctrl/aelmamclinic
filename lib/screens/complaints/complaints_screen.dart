@@ -38,6 +38,7 @@ class _ComplaintsScreenState extends State<ComplaintsScreen> {
     } catch (_) {}
     final rows = await db.query(
       'complaints',
+      where: 'ifnull(isDeleted,0)=0',
       orderBy: 'createdAt DESC',
     );
     setState(() => _complaints = rows);
@@ -172,7 +173,15 @@ class _ComplaintsScreenState extends State<ComplaintsScreen> {
     if (ok != true) return;
 
     final db = await DBService.instance.database;
-    await db.delete('complaints', where: 'id = ?', whereArgs: [id]);
+    await db.update(
+      'complaints',
+      {
+        'isDeleted': 1,
+        'deletedAt': DateTime.now().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
     await DBService.instance.notifyTableChanged('complaints');
     await _load();
   }

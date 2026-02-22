@@ -116,7 +116,7 @@ class _PatientPrescriptionsScreenState
     final placeholders = List.filled(ids.length, '?').join(',');
     final rows = await db.query(
       'prescriptions',
-      where: 'patientId IN ($placeholders)',
+      where: 'patientId IN ($placeholders) AND ifnull(isDeleted,0)=0',
       whereArgs: ids,
       orderBy: 'recordDate DESC',
     );

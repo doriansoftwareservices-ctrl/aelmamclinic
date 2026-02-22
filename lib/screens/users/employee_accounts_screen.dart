@@ -365,7 +365,7 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
                             builder: (_) => EmployeeSeatPaymentScreen(
                               requestId: latest.id,
                               employeeEmail: latest.employeeEmail,
-                              priceUsd: effectivePrice,
+                              priceUsd: effectivePrice.toDouble(),
                             ),
                           ),
                         );

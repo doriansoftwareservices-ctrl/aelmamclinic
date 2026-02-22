@@ -186,10 +186,20 @@ void main() {
         FlutterError.presentError(details);
         return;
       }
+      // تجاهل أخطاء الـ overflow الشائعة وأخطاء deactivated ancestor لتفادي كسر الـ inspector
+      if (message.contains('A RenderFlex overflowed') ||
+          message.contains('Looking up a deactivated widget')) {
+        FlutterError.dumpErrorToConsole(details);
+        return;
+      }
       debugPrint("FlutterError: ${details.exception}");
       AppErrorReporter.report('حدث خطأ غير متوقع. تم تسجيله.');
       await _logCrash(details.exceptionAsString(), details.stack.toString());
-      FlutterError.presentError(details);
+      try {
+        FlutterError.presentError(details);
+      } catch (_) {
+        FlutterError.dumpErrorToConsole(details);
+      }
     };
 
     // إشعارات محلية فقط

@@ -70,8 +70,13 @@ class RepositoryProvider extends ChangeNotifier {
   /* ─── CRUD: نوع الصنف ─── */
   Future<void> addType(String name) async {
     final newType = await _service.createItemType(name);
-    _types.add(newType);
-    _itemsByType[newType.id!] = [];
+    final idx = _types.indexWhere((t) => t.id == newType.id);
+    if (idx >= 0) {
+      _types[idx] = newType;
+    } else {
+      _types.add(newType);
+    }
+    _itemsByType.putIfAbsent(newType.id!, () => []);
     notifyListeners();
   }
 
@@ -88,7 +93,13 @@ class RepositoryProvider extends ChangeNotifier {
       price: price,
       initialStock: initialStock,
     );
-    _itemsByType[typeId]?.add(item);
+    final list = _itemsByType.putIfAbsent(typeId, () => []);
+    final idx = list.indexWhere((e) => e.id == item.id);
+    if (idx >= 0) {
+      list[idx] = item;
+    } else {
+      list.add(item);
+    }
     await _checkAlerts();
     notifyListeners();
   }
@@ -168,7 +179,17 @@ class RepositoryProvider extends ChangeNotifier {
     if (_refreshBusy) return;
     _refreshBusy = true;
     try {
-      _types = await _service.fetchItemTypes();
+      final fetched = await _service.fetchItemTypes();
+      final dedup = <String, ItemType>{};
+      for (final t in fetched) {
+        final nameKey = t.name.trim().toLowerCase();
+        final key = t.id != null ? 'id:${t.id}' : 'name:$nameKey';
+        if (!dedup.containsKey(key)) {
+          dedup[key] = t;
+        }
+      }
+      _types = dedup.values.toList()
+        ..sort((a, b) => a.name.compareTo(b.name));
       _itemsByType.clear();
       for (final t in _types) {
         _itemsByType[t.id!] = await _service.fetchItemsByType(t.id!);

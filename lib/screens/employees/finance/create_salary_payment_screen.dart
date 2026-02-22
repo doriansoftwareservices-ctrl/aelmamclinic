@@ -7,7 +7,6 @@ import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/core/tbian_ui.dart';
 
 import 'package:aelmamclinic/services/db_service.dart';
-import 'package:aelmamclinic/services/logging_service.dart';
 import 'package:aelmamclinic/models/doctor.dart';
 import 'employee_salary_detail_screen.dart';
 import 'non_doctor_salary_detail_screen.dart';
@@ -497,16 +496,38 @@ class _CreateSalaryPaymentScreenState extends State<CreateSalaryPaymentScreen> {
     }
   }
 
+  Future<Doctor?> _resolveDoctorByUserUid(String userUid) async {
+    final trimmed = userUid.trim();
+    if (trimmed.isEmpty) return null;
+    try {
+      return await DBService.instance.getDoctorByUserUid(trimmed);
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<int?> _ensureDoctorForEmployee(Map<String, dynamic> emp) async {
     final empId = (emp['id'] as num).toInt();
+    final userUid = (emp['userUid'] ?? '').toString().trim();
+
     final existing = await _resolveDoctorIdByEmployee(empId);
     if (existing != null) return existing;
+
+    final byUid = await _resolveDoctorByUserUid(userUid);
+    if (byUid != null) {
+      if (byUid.employeeId == null || byUid.employeeId != empId) {
+        try {
+          await DBService.instance
+              .updateDoctor(byUid.copyWith(employeeId: empId));
+        } catch (_) {}
+      }
+      return byUid.id;
+    }
 
     try {
       final name = (emp['name'] ?? '').toString().trim();
       final specialization = (emp['jobTitle'] ?? '').toString().trim();
       final phone = (emp['phoneNumber'] ?? '').toString().trim();
-      final userUid = (emp['userUid'] ?? '').toString().trim();
 
       final doctor = Doctor(
         employeeId: empId,
@@ -522,19 +543,14 @@ class _CreateSalaryPaymentScreenState extends State<CreateSalaryPaymentScreen> {
       // ignore
     }
 
-    return _resolveDoctorIdByEmployee(empId);
+    final resolved = await _resolveDoctorIdByEmployee(empId);
+    if (resolved != null) return resolved;
+    final byUidAfter = await _resolveDoctorByUserUid(userUid);
+    return byUidAfter?.id;
   }
 
   void _handleSalaryPaid(int empId) {
     setState(() => _paymentStatusMap[empId] = true);
-
-    LoggingService().logTransaction(
-      transactionType: "Salary",
-      operation: "create",
-      amount: 0.0,
-      employeeId: empId,
-      description: "تم صرف الراتب للموظف رقم $empId",
-    );
   }
 
   void _applyFilter() {

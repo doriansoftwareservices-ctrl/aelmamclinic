@@ -11,7 +11,6 @@ import 'package:open_file/open_file.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
-import 'package:flutter/services.dart' show rootBundle;
 
 /*── نمط TBIAN ─*/
 import 'package:aelmamclinic/core/theme.dart';
@@ -23,6 +22,7 @@ import 'package:aelmamclinic/models/attachment.dart';
 import 'package:aelmamclinic/services/clinic_profile_service.dart';
 import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/screens/patient_questions/patient_details_questions_section.dart';
+import 'package:aelmamclinic/utils/pdf_fonts.dart';
 import 'package:aelmamclinic/utils/pdf_text.dart';
 
 class ViewPatientScreen extends StatefulWidget {
@@ -192,10 +192,9 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
     pw.Font cairoBold;
     Uint8List? logo;
     try {
-      final fReg = await rootBundle.load('assets/fonts/Cairo-Regular.ttf');
-      final fBold = await rootBundle.load('assets/fonts/Cairo-Bold.ttf');
-      cairoRegular = pw.Font.ttf(fReg.buffer.asByteData());
-      cairoBold = pw.Font.ttf(fBold.buffer.asByteData());
+      final fonts = await loadPdfFonts();
+      cairoRegular = fonts.regular;
+      cairoBold = fonts.bold;
     } catch (_) {
       // احتياط في حال غابت الملفات
       cairoRegular = pw.Font.helvetica();
@@ -505,13 +504,28 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
             border: pw.Border(
                 top: pw.BorderSide(width: 0.6, color: PdfColors.grey300)),
           ),
-          child: pw.Text(
-            pdfText(
-              '${clinic.nameAr} - ${clinic.addressAr} "هاتف : $clinicPhones  •  Page ${ctx.pageNumber}/${ctx.pagesCount}',
-            ),
-            style: pw.TextStyle(
-                font: cairoRegular, fontSize: 9, color: PdfColors.blueGrey),
-            textAlign: pw.TextAlign.center,
+          child: pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.center,
+            children: [
+              pw.Text(
+                pdfText(
+                  '${clinic.nameAr} - ${clinic.addressAr} - هاتف: $clinicPhones',
+                ),
+                style: pw.TextStyle(
+                    font: cairoRegular, fontSize: 9, color: PdfColors.blueGrey),
+              ),
+              pw.SizedBox(width: 8),
+              pw.Directionality(
+                textDirection: pw.TextDirection.ltr,
+                child: pw.Text(
+                  'Page ${ctx.pageNumber}/${ctx.pagesCount}',
+                  style: pw.TextStyle(
+                      font: cairoRegular,
+                      fontSize: 9,
+                      color: PdfColors.blueGrey),
+                ),
+              ),
+            ],
           ),
         ),
         build: (_) => [

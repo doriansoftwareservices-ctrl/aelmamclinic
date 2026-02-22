@@ -55,6 +55,9 @@ class RepositoryService {
   /*──────── إنشاء / تحديث / حذف ────────*/
   Future<ItemType> createItemType(String name) async {
     final sanitized = name.trim();
+    if (sanitized.isEmpty) {
+      throw ArgumentError('اسم نوع الصنف فارغ');
+    }
     final type = ItemType(name: sanitized);
     final id = await _db.insertItemType(type);
     return type.copyWith(id: id);
@@ -66,9 +69,19 @@ class RepositoryService {
     required double price,
     required int initialStock,
   }) async {
+    final sanitized = name.trim();
+    if (sanitized.isEmpty) {
+      throw ArgumentError('اسم الصنف فارغ');
+    }
+    if (price.isNaN || price < 0) {
+      throw ArgumentError('السعر غير صالح');
+    }
+    if (initialStock < 0) {
+      throw ArgumentError('الكمية غير صالحة');
+    }
     final item = Item(
       typeId: typeId,
-      name: name,
+      name: sanitized,
       price: price,
       stock: initialStock,
     );
@@ -111,6 +124,12 @@ class RepositoryService {
     required int quantity,
     required double unitPrice,
   }) async {
+    if (quantity <= 0) {
+      throw ArgumentError('الكمية غير صالحة');
+    }
+    if (unitPrice.isNaN || unitPrice < 0) {
+      throw ArgumentError('سعر الوحدة غير صالح');
+    }
     final item = await fetchItem(itemId);
     if (item == null) {
       throw StateError('Item $itemId not found when creating purchase');
@@ -136,9 +155,15 @@ class RepositoryService {
     required int quantity,
     String? patientId,
   }) async {
+    if (quantity <= 0) {
+      throw ArgumentError('الكمية غير صالحة');
+    }
     final item = await fetchItem(itemId);
     if (item == null) {
       throw StateError('Item $itemId not found when recording consumption');
+    }
+    if (item.stock - quantity < 0) {
+      throw StateError('الكمية تتجاوز المخزون المتاح');
     }
 
     final unitPrice = item.price;
@@ -254,6 +279,7 @@ class RepositoryService {
       FROM ${Item.table}         AS i
       JOIN ${AlertSetting.table} AS a ON a.item_id = i.id
       WHERE a.is_enabled = 1
+        AND ifnull(a.isDeleted, 0) = 0
         AND i.stock     <= a.threshold
         AND ifnull(i.isDeleted, 0) = 0
       ORDER BY i.stock ASC
@@ -269,6 +295,7 @@ class RepositoryService {
       FROM ${AlertSetting.table} AS a
       JOIN ${Item.table}         AS i ON i.id = a.item_id
       WHERE a.is_enabled = 1
+        AND ifnull(a.isDeleted, 0) = 0
         AND i.stock     <= a.threshold
         AND ifnull(i.isDeleted, 0) = 0
       LIMIT 1

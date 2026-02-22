@@ -10,6 +10,7 @@ import 'package:aelmamclinic/models/item.dart';
 import 'package:aelmamclinic/models/consumption.dart';
 import 'package:aelmamclinic/models/purchase.dart';
 import 'package:aelmamclinic/services/save_file_service.dart';
+import 'package:aelmamclinic/services/repository_service.dart';
 
 /// ‎ExcelExportHelper‎:
 /// • يُولّد ملفات ‎.xlsx‎ بتنسيقٍ يُناسب "إحصاءات وكشوفات المستودع".
@@ -36,10 +37,34 @@ class ExcelExportHelper {
       'السعر للوحدة',
     ]);
 
+    // تحميل إجمالي الاستهلاك لكل صنف (للدقة)
+    final usageByItemId = <int, int>{};
+    try {
+      final ids = items.map((e) => e.id).whereType<int>().toList();
+      if (ids.isNotEmpty) {
+        final db = await RepositoryService.instance.database;
+        final placeholders = List.filled(ids.length, '?').join(',');
+        final rows = await db.rawQuery('''
+          SELECT CAST(itemId AS INTEGER) AS item_id,
+                 COALESCE(SUM(quantity),0) AS used
+            FROM consumptions
+           WHERE ifnull(isDeleted,0)=0
+             AND itemId IN ($placeholders)
+        GROUP BY CAST(itemId AS INTEGER)
+        ''', ids);
+        for (final row in rows) {
+          final id = (row['item_id'] as num?)?.toInt();
+          if (id == null) continue;
+          usageByItemId[id] = (row['used'] as num?)?.toInt() ?? 0;
+        }
+      }
+    } catch (_) {
+      // في حال فشل الاستعلام، نتابع بدون استخدامات
+    }
+
     // تعبئة البيانات
     for (final item in items) {
-      // تجمع الاستخدام من جدول consumption مثلاً، لكن هنا نستخدم stock سالب كـ used
-      final used = item.stock < 0 ? -item.stock : 0;
+      final used = usageByItemId[item.id ?? -1] ?? 0;
       final remaining = item.stock < 0 ? 0 : item.stock;
       sheet.appendRow([
         type.name,

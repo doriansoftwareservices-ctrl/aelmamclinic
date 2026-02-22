@@ -6,7 +6,6 @@ import 'package:intl/intl.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:pdf/pdf.dart';
-import 'package:flutter/services.dart' show rootBundle;
 
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
@@ -17,6 +16,7 @@ import 'package:aelmamclinic/models/patient.dart';
 import 'package:aelmamclinic/models/patient_service.dart';
 import 'package:aelmamclinic/services/clinic_profile_service.dart';
 import 'package:aelmamclinic/services/db_service.dart';
+import 'package:aelmamclinic/utils/pdf_fonts.dart';
 import 'package:aelmamclinic/utils/pdf_text.dart';
 import 'view_patient_screen.dart';
 import 'edit_patient_screen.dart';
@@ -243,10 +243,9 @@ class _DuplicatePatientsScreenState extends State<DuplicatePatientsScreen> {
     pw.Font cairo;
     pw.Font cairoBold;
     try {
-      final fontData = await rootBundle.load('assets/fonts/Cairo-Regular.ttf');
-      final fontBold = await rootBundle.load('assets/fonts/Cairo-Bold.ttf');
-      cairo = pw.Font.ttf(fontData.buffer.asByteData());
-      cairoBold = pw.Font.ttf(fontBold.buffer.asByteData());
+      final fonts = await loadPdfFonts();
+      cairo = fonts.regular;
+      cairoBold = fonts.bold;
     } catch (_) {
       cairo = pw.Font.helvetica();
       cairoBold = pw.Font.helveticaBold();
@@ -382,13 +381,26 @@ class _DuplicatePatientsScreenState extends State<DuplicatePatientsScreen> {
             border:
                 pw.Border(top: pw.BorderSide(width: 0.6, color: PdfColors.grey300)),
           ),
-          child: pw.Text(
-            pdfText(
-              '${clinic.nameAr} - ${clinic.addressAr} "هاتف : $clinicPhones  •  Page ${ctx.pageNumber}/${ctx.pagesCount}',
-            ),
-            style: pw.TextStyle(
-                font: cairo, fontSize: 9, color: PdfColors.blueGrey),
-            textAlign: pw.TextAlign.center,
+          child: pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.center,
+            children: [
+              pw.Text(
+                pdfText(
+                  '${clinic.nameAr} - ${clinic.addressAr} - هاتف: $clinicPhones',
+                ),
+                style: pw.TextStyle(
+                    font: cairo, fontSize: 9, color: PdfColors.blueGrey),
+              ),
+              pw.SizedBox(width: 8),
+              pw.Directionality(
+                textDirection: pw.TextDirection.ltr,
+                child: pw.Text(
+                  'Page ${ctx.pageNumber}/${ctx.pagesCount}',
+                  style: pw.TextStyle(
+                      font: cairo, fontSize: 9, color: PdfColors.blueGrey),
+                ),
+              ),
+            ],
           ),
         ),
         build: (_) => [
@@ -441,7 +453,9 @@ class _DuplicatePatientsScreenState extends State<DuplicatePatientsScreen> {
           ),
           pw.SizedBox(height: 10),
           thinDivider(),
-          pw.Text('الإجمالي المحدد: ${_selectedTotal.toStringAsFixed(2)}',
+          pw.Text(
+              pdfText(
+                  'الإجمالي المحدد: ${_selectedTotal.toStringAsFixed(2)}'),
               textAlign: pw.TextAlign.left,
               style: pw.TextStyle(
                   font: cairoBold,

@@ -68,10 +68,10 @@ class _NewPurchaseScreenState extends State<NewPurchaseScreen> {
   int get _currentStock {
     if (_selectedItem == null) return 0;
     final repo = context.read<RepositoryProvider>();
-    final fresh = repo
-        .itemsOf(_selectedItem!.typeId)
-        .firstWhere((e) => e.id == _selectedItem!.id);
-    return fresh.stock;
+    final list = repo.itemsOf(_selectedItem!.typeId);
+    final fresh = list.where((e) => e.id == _selectedItem!.id);
+    if (fresh.isEmpty) return 0;
+    return fresh.first.stock;
   }
 
   double get _totalCost {

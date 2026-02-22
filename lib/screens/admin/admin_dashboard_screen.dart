@@ -100,7 +100,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   List<String> _visibleSectionKeys = List.of(_baseAdminTabs);
   List<String> _allowedAdminTabs = List.of(_baseAdminTabs);
   bool _loadingAdminTabs = true;
-  bool _tabsLoadFailed = false;
   String? _tabsError;
   Timer? _pendingPollTimer;
 
@@ -282,7 +281,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
 
   Future<void> _loadAdminTabs() async {
     _loadingAdminTabs = true;
-    _tabsLoadFailed = false;
     _tabsError = null;
     try {
       if (_isRootSuperAdmin) {
@@ -294,7 +292,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       }
     } catch (e) {
       _allowedAdminTabs = const [];
-      _tabsLoadFailed = true;
       _tabsError = 'تعذّر تحميل التبويبات. يرجى إعادة المحاولة.';
     } finally {
       _rebuildVisibleSections();
@@ -1890,54 +1887,60 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
               ].join('\n'),
             ),
             trailing: req.status == 'pending'
-                ? Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        tooltip: 'عرض الإثبات',
-                        icon: const Icon(Icons.receipt_long_rounded),
-                        onPressed: () => _openProof(req),
+                ? ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 240),
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            tooltip: 'عرض الإثبات',
+                            icon: const Icon(Icons.receipt_long_rounded),
+                            onPressed: () => _openProof(req),
+                          ),
+                          const SizedBox(width: 6),
+                          NeuButton.primary(
+                            label: 'اعتماد',
+                            onPressed: () async {
+                              final note =
+                                  await _askDecisionNote('ملاحظة الاعتماد');
+                              try {
+                                await _billingService.approveRequest(
+                                  req.id,
+                                  note: note,
+                                );
+                                await _fetchSubscriptionRequests();
+                                await _fetchPaymentStats();
+                              } catch (e) {
+                                final msg =
+                                    e.toString().replaceFirst('Exception: ', '');
+                                _snack('تعذر اعتماد الطلب: $msg');
+                              }
+                            },
+                          ),
+                          const SizedBox(width: 6),
+                          IconButton(
+                            tooltip: 'رفض',
+                            icon: const Icon(Icons.cancel_outlined),
+                            onPressed: () async {
+                              final note = await _askDecisionNote('سبب الرفض');
+                              try {
+                                await _billingService.rejectRequest(
+                                  req.id,
+                                  note: note,
+                                );
+                                await _fetchSubscriptionRequests();
+                              } catch (e) {
+                                final msg =
+                                    e.toString().replaceFirst('Exception: ', '');
+                                _snack('تعذر رفض الطلب: $msg');
+                              }
+                            },
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 6),
-                      NeuButton.primary(
-                        label: 'اعتماد',
-                        onPressed: () async {
-                          final note =
-                              await _askDecisionNote('ملاحظة الاعتماد');
-                          try {
-                            await _billingService.approveRequest(
-                              req.id,
-                              note: note,
-                            );
-                            await _fetchSubscriptionRequests();
-                            await _fetchPaymentStats();
-                          } catch (e) {
-                            final msg =
-                                e.toString().replaceFirst('Exception: ', '');
-                            _snack('تعذر اعتماد الطلب: $msg');
-                          }
-                        },
-                      ),
-                      const SizedBox(width: 6),
-                      IconButton(
-                        tooltip: 'رفض',
-                        icon: const Icon(Icons.cancel_outlined),
-                        onPressed: () async {
-                          final note = await _askDecisionNote('سبب الرفض');
-                          try {
-                            await _billingService.rejectRequest(
-                              req.id,
-                              note: note,
-                            );
-                            await _fetchSubscriptionRequests();
-                          } catch (e) {
-                            final msg =
-                                e.toString().replaceFirst('Exception: ', '');
-                            _snack('تعذر رفض الطلب: $msg');
-                          }
-                        },
-                      ),
-                    ],
+                    ),
                   )
                 : IconButton(
                     tooltip: 'عرض الإثبات',
@@ -1981,48 +1984,54 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
               ].join('\n'),
             ),
             trailing: status == 'submitted'
-                ? Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        tooltip: 'عرض الوصل',
-                        icon: const Icon(Icons.receipt_long_rounded),
-                        onPressed: hasReceipt
-                            ? () async {
-                                await _openSeatProof(
-                                    req.receiptFileId ?? '');
-                              }
-                            : null,
+                ? ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 240),
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            tooltip: 'عرض الوصل',
+                            icon: const Icon(Icons.receipt_long_rounded),
+                            onPressed: hasReceipt
+                                ? () async {
+                                    await _openSeatProof(
+                                        req.receiptFileId ?? '');
+                                  }
+                                : null,
+                          ),
+                          const SizedBox(width: 6),
+                          NeuButton.primary(
+                            label: 'اعتماد',
+                            onPressed: () async {
+                              final note =
+                                  await _askDecisionNote('ملاحظة الاعتماد');
+                              await _seatService.reviewSeatRequest(
+                                requestId: req.id,
+                                approve: true,
+                                note: note,
+                              );
+                              await _fetchSeatRequests();
+                            },
+                          ),
+                          const SizedBox(width: 6),
+                          IconButton(
+                            tooltip: 'رفض',
+                            icon: const Icon(Icons.cancel_outlined),
+                            onPressed: () async {
+                              final note = await _askDecisionNote('سبب الرفض');
+                              await _seatService.reviewSeatRequest(
+                                requestId: req.id,
+                                approve: false,
+                                note: note,
+                              );
+                              await _fetchSeatRequests();
+                            },
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 6),
-                      NeuButton.primary(
-                        label: 'اعتماد',
-                        onPressed: () async {
-                          final note =
-                              await _askDecisionNote('ملاحظة الاعتماد');
-                          await _seatService.reviewSeatRequest(
-                            requestId: req.id,
-                            approve: true,
-                            note: note,
-                          );
-                          await _fetchSeatRequests();
-                        },
-                      ),
-                      const SizedBox(width: 6),
-                      IconButton(
-                        tooltip: 'رفض',
-                        icon: const Icon(Icons.cancel_outlined),
-                        onPressed: () async {
-                          final note = await _askDecisionNote('سبب الرفض');
-                          await _seatService.reviewSeatRequest(
-                            requestId: req.id,
-                            approve: false,
-                            note: note,
-                          );
-                          await _fetchSeatRequests();
-                        },
-                      ),
-                    ],
+                    ),
                   )
                 : status == 'awaiting_payment'
                     ? IconButton(
@@ -2681,11 +2690,31 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                 child: DropdownButtonFormField<Clinic>(
                   initialValue: _selectedClinic,
                   decoration: const InputDecoration(border: InputBorder.none),
+                  isExpanded: true,
                   items: _clinics
                       .map(
                         (c) => DropdownMenuItem(
                           value: c,
-                          child: Text(c.name),
+                          child: SizedBox(
+                            width: double.infinity,
+                            child: Text(
+                              c.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ),
+                      )
+                      .toList(),
+                  selectedItemBuilder: (ctx) => _clinics
+                      .map(
+                        (c) => Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: Text(
+                            c.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       )
                       .toList(),

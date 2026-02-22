@@ -92,15 +92,10 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
   }
 
   ChatMessage? _latestMessageFor(ChatProvider chat, String conversationId) {
+    if (chat.openedConversationId != conversationId) return null;
     final list = chat.messagesOf(conversationId);
     if (list.isEmpty) return null;
-    var latest = list.first;
-    for (final m in list) {
-      if (m.createdAt.isAfter(latest.createdAt)) {
-        latest = m;
-      }
-    }
-    return latest;
+    return list.first;
   }
 
   @override

@@ -61,7 +61,6 @@ dependencies:
   # التفعيل والإعدادات
   shared_preferences: ^2.5.3
   pdf: ^3.11.3
-  arabic_reshaper: ^3.0.0
   printing: ^5.9.0
 
   #الاشعارات (محلية فقط)
@@ -127,4 +126,9 @@ flutter:
       fonts:
         - asset: assets/fonts/Cairo-Regular.ttf
         - asset: assets/fonts/Cairo-Bold.ttf
+          weight: 700
+    - family: Amiri
+      fonts:
+        - asset: assets/fonts/Amiri-Regular.ttf
+        - asset: assets/fonts/Amiri-Bold.ttf
           weight: 700

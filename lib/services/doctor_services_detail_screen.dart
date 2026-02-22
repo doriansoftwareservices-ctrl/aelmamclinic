@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/core/tbian_ui.dart';
+import 'package:aelmamclinic/core/formatters.dart';
 
 import 'db_service.dart';
 import 'package:aelmamclinic/models/doctor.dart';
@@ -60,9 +61,65 @@ class _DoctorServicesDetailScreenState
 
   /*────────────────── أدوات مساعدة ──────────────────*/
   double _parseDouble(String s) {
-    // دعم الفاصلة العربية كفاصل عشري
-    final v = s.trim().replaceAll(',', '.');
-    return double.tryParse(v) ?? 0.0;
+    return Formatters.tryParseDouble(s) ?? 0.0;
+  }
+
+  String _normalizeName(String s) {
+    return Formatters.normalizeWhitespace(s.trim());
+  }
+
+  double _doctorShareFromTower(double towerShare) {
+    final v = 100.0 - towerShare;
+    if (v < 0) return 0.0;
+    if (v > 100) return 100.0;
+    return v;
+  }
+
+  Future<void> _upsertDoctorService({
+    required String nameRaw,
+    required double cost,
+    required double towerShare,
+    int? serviceId,
+    int? shareId,
+  }) async {
+    final name = _normalizeName(nameRaw);
+    if (name.isEmpty || cost <= 0) {
+      _toast('الرجاء إدخال اسم خدمة ومبلغ صحيح (> 0)');
+      return;
+    }
+    if (towerShare < 0 || towerShare > 100) {
+      _toast('نسبة المركز يجب أن تكون بين 0 و 100');
+      return;
+    }
+
+    final doctorShare = _doctorShareFromTower(towerShare);
+
+    if (serviceId != null && shareId != null) {
+      await DBService.instance.updateMedicalService(
+        id: serviceId,
+        name: name,
+        cost: cost,
+        serviceType: 'doctorGeneral',
+      );
+      await DBService.instance.updateServiceDoctorShare(
+        id: shareId,
+        sharePercentage: doctorShare,
+        towerSharePercentage: towerShare,
+      );
+    } else {
+      final newId = await DBService.instance.insertMedicalService(
+        name: name,
+        cost: cost,
+        serviceType: 'doctorGeneral',
+      );
+      await DBService.instance.insertServiceDoctorShare(
+        serviceId: newId,
+        doctorId: widget.doctor.id!,
+        // توحيد النِّسب مع الإدخال اليدوي: الطبيب = 100 - المركز
+        sharePercentage: doctorShare,
+        towerSharePercentage: towerShare,
+      );
+    }
   }
 
   void _toast(String msg) {
@@ -203,46 +260,17 @@ class _DoctorServicesDetailScreenState
               ),
               FilledButton(
                 onPressed: () async {
-                  final name = _serviceNameCtrl.text.trim();
+                  final name = _serviceNameCtrl.text;
                   final cost = _parseDouble(_serviceCostCtrl.text);
                   final towerShare = _parseDouble(_towerShareCtrl.text);
 
-                  if (name.isEmpty || cost <= 0) {
-                    _toast('الرجاء إدخال اسم خدمة ومبلغ صحيح (> 0)');
-                    return;
-                  }
-                  if (towerShare < 0 || towerShare > 100) {
-                    _toast('نسبة المركز يجب أن تكون بين 0 و 100');
-                    return;
-                  }
-
-                  if (isEditMode && shareId != null) {
-                    final int currentServiceId = serviceId;
-                    await DBService.instance.updateMedicalService(
-                      id: currentServiceId,
-                      name: name,
-                      cost: cost,
-                      serviceType: 'doctorGeneral',
-                    );
-                    await DBService.instance.updateServiceDoctorShare(
-                      id: shareId,
-                      towerSharePercentage: towerShare,
-                    );
-                  } else {
-                    final newId = await DBService.instance.insertMedicalService(
-                      name: name,
-                      cost: cost,
-                      serviceType: 'doctorGeneral',
-                    );
-                    await DBService.instance.insertServiceDoctorShare(
-                      serviceId: newId,
-                      doctorId: widget.doctor.id!,
-                      // في خدمات الطبيب: نستخدم towerSharePercentage لنسبة المركز
-                      // ونبقي sharePercentage غير مؤثر (0) كونه يُستخدم للأشعة/المختبر.
-                      sharePercentage: 0.0,
-                      towerSharePercentage: towerShare,
-                    );
-                  }
+                  await _upsertDoctorService(
+                    nameRaw: name,
+                    cost: cost,
+                    towerShare: towerShare,
+                    serviceId: isEditMode ? serviceId : null,
+                    shareId: isEditMode ? shareId : null,
+                  );
 
                   if (!mounted) return;
                   Navigator.pop(ctx);
@@ -273,7 +301,8 @@ class _DoctorServicesDetailScreenState
 
       // أسماء موجودة مسبقاً للطبيب الحالي (حسّاس/غير حسّاس لحالة الأحرف)
       final existingNamesLower = _doctorServices
-          .map((e) => (e['name'] ?? '').toString().trim().toLowerCase())
+          .map((e) => _normalizeName((e['name'] ?? '').toString())
+              .toLowerCase())
           .toSet();
 
       int inserted = 0;
@@ -288,7 +317,7 @@ class _DoctorServicesDetailScreenState
           final shareRaw = (row[2]?.value?.toString() ?? '').trim();
 
           // تخطّي الصفوف الفارغة أو رؤوس الأعمدة
-          final lower = nameRaw.toLowerCase();
+          final lower = _normalizeName(nameRaw).toLowerCase();
           if (nameRaw.isEmpty ||
               lower == 'name' ||
               lower == 'service' ||
@@ -303,19 +332,10 @@ class _DoctorServicesDetailScreenState
           if (cost <= 0 || towerShare < 0 || towerShare > 100) continue;
           if (existingNamesLower.contains(lower)) continue;
 
-          // ⬅️ نُنشئ الخدمة كـ doctorGeneral (متوافق مع الإدخال اليدوي)
-          final newId = await DBService.instance.insertMedicalService(
-            name: nameRaw,
+          await _upsertDoctorService(
+            nameRaw: nameRaw,
             cost: cost,
-            serviceType: 'doctorGeneral',
-          );
-
-          // ⬅️ نربطها بالطبيب: نسبة المركز في towerSharePercentage
-          await DBService.instance.insertServiceDoctorShare(
-            serviceId: newId,
-            doctorId: widget.doctor.id!,
-            sharePercentage: 0.0, // غير مستخدم لخدمات الطبيب
-            towerSharePercentage: towerShare,
+            towerShare: towerShare,
           );
 
           existingNamesLower.add(lower);

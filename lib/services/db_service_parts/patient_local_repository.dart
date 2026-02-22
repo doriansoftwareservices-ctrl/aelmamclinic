@@ -127,15 +127,71 @@ class PatientLocalRepository {
     return count;
   }
 
-  Future<int> deletePatient(int id) async {
+  Future<int> deletePatient(int id, {bool restoreStock = true}) async {
     final db = await _dbService.database;
-    final count = await db.update(
-      'patients',
-      {'isDeleted': 1},
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    final now = DateTime.now().toIso8601String();
+    var touchedItems = false;
+    var touchedConsumptions = false;
+    var touchedServices = false;
+
+    final count = await db.transaction((txn) async {
+      final rows = await txn.update(
+        'patients',
+        {'isDeleted': 1, 'deletedAt': now},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+
+      await txn.update(
+        PatientService.table,
+        {'isDeleted': 1, 'deletedAt': now},
+        where: 'patientId = ?',
+        whereArgs: [id],
+      );
+      touchedServices = true;
+
+      // استهلاكات المريض
+      final cons = await txn.query(
+        Consumption.table,
+        columns: const ['id', 'itemId', 'quantity'],
+        where: 'patientId = ? AND ifnull(isDeleted,0)=0',
+        whereArgs: [id.toString()],
+      );
+
+      if (cons.isNotEmpty) {
+        await txn.update(
+          Consumption.table,
+          {'isDeleted': 1, 'deletedAt': now},
+          where: 'patientId = ?',
+          whereArgs: [id.toString()],
+        );
+        touchedConsumptions = true;
+
+        if (restoreStock) {
+          for (final c in cons) {
+            final itemIdRaw = c['itemId']?.toString();
+            final itemId = int.tryParse(itemIdRaw ?? '');
+            final qty = (c['quantity'] is num)
+                ? (c['quantity'] as num).toInt()
+                : int.tryParse('${c['quantity'] ?? 0}') ?? 0;
+            if (itemId != null && itemId > 0 && qty > 0) {
+              await txn.rawUpdate(
+                'UPDATE items SET stock = stock + ? WHERE id = ?',
+                [qty, itemId],
+              );
+              touchedItems = true;
+            }
+          }
+        }
+      }
+
+      return rows;
+    });
+
     await _dbService._markChanged('patients');
+    if (touchedServices) await _dbService._markChanged(PatientService.table);
+    if (touchedConsumptions) await _dbService._markChanged(Consumption.table);
+    if (touchedItems) await _dbService._markChanged(Item.table);
     return count;
   }
 }

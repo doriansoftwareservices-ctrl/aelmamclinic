@@ -395,7 +395,7 @@ class PatientQuestionsService {
         : r'''
       query PatientComplaints($pid: uuid!) {
         patient_complaints(
-          where: { patient_id: { _eq: $pid }, status: { _eq: \"active\" } }
+          where: { patient_id: { _eq: $pid }, status: { _eq: "active" } }
           order_by: [{ created_at: desc }]
         ) {
           id

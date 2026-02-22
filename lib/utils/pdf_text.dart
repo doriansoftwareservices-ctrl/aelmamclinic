@@ -1,9 +1,9 @@
 // lib/utils/pdf_text.dart
 //
-// أدوات لتشكيل النص العربي في تقارير PDF (حل مشكلة فقدان الحروف النهائية).
+// أدوات لمعالجة اتجاه النص العربي في تقارير PDF بأقل اعتماد ممكن.
+// نستخدم bidi فقط لتجنّب قيود نسخة Dart.
 
-import 'package:arabic_reshaper/arabic_reshaper.dart';
-import 'package:bidi/bidi.dart' as bidi;
+import 'package:aelmamclinic/utils/arabic_reshaper.dart';
 
 final RegExp _rxArabic = RegExp(
   r'[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]',
@@ -12,7 +12,10 @@ final RegExp _rxArabic = RegExp(
 String pdfText(String input) {
   if (input.isEmpty) return input;
   if (!_rxArabic.hasMatch(input)) return input;
-  final reshaper = ArabicReshaper(ArabicReshaperConfig());
-  final reshaped = reshaper.reshape(input);
-  return String.fromCharCodes(bidi.logicalToVisual(reshaped));
+  // إعادة تشكيل العربية فقط. عكس السلسلة كان يسبب كتابة الكلمات بالمقلوب.
+  // نعتمد على textDirection في الـ PDF لتوليد اتجاه RTL الصحيح.
+  final reshaped = ArabicReshaper.instance.reshape(input);
+  return '\u200F$reshaped';
 }
+
+// ملاحظة: تم إلغاء عكس النص بالكامل لأنه كان ينتج كلمات عربية معكوسة.

@@ -654,6 +654,32 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
     return null;
   }
 
+  Future<int?> _inferDoctorIdFromServices() async {
+    final ids = <int>{};
+    for (final s in _selectedServices) {
+      if (s.serviceId == null) continue;
+      final rows =
+          await DBService.instance.getDoctorSharesForService(s.serviceId!);
+      for (final r in rows) {
+        final did = (r['doctorId'] is int)
+            ? r['doctorId'] as int
+            : int.tryParse('${r['doctorId']}');
+        if (did != null) ids.add(did);
+      }
+    }
+    if (ids.length == 1) return ids.first;
+    return null;
+  }
+
+  Future<String?> _doctorNameById(int id) async {
+    final db = await DBService.instance.database;
+    final rows = await db.query('doctors',
+        columns: const ['name'], where: 'id = ?', whereArgs: [id], limit: 1);
+    if (rows.isEmpty) return null;
+    final name = (rows.first['name'] ?? '').toString().trim();
+    return name.isEmpty ? null : 'د/$name';
+  }
+
   /*──────────────────── تحذير مكررات ────────────────────*/
   Future<bool> _maybeWarnDuplicates(String phoneNormalized, String name) async {
     final all = await DBService.instance.getAllPatients();
@@ -720,6 +746,17 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
     final needsDoctor = _selectedServiceType == 'الأشعة' ||
         _selectedServiceType == 'المختبر' ||
         _selectedServiceType == 'طبيب';
+    if (needsDoctor && _selectedDoctorId == null) {
+      final inferred = await _inferDoctorIdFromServices();
+      if (inferred != null) {
+        final inferredName = await _doctorNameById(inferred);
+        setState(() {
+          _selectedDoctorId = inferred;
+          _selectedDoctorName = inferredName ?? _selectedDoctorName;
+          if (inferredName != null) _doctorCtrl.text = inferredName;
+        });
+      }
+    }
     if (needsDoctor && _selectedDoctorId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('يجب اختيار الطبيب')),
@@ -836,56 +873,79 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
         doctorReviewPending: _selectedDoctorId != null,
       );
 
-      // 1) Insert patient
-      final patientId = await DBService.instance.insertPatient(patient);
-
-      // 2) Insert services
       final db = await DBService.instance.database;
-      final batch = db.batch();
-      for (final ps in _selectedServices) {
-        batch.insert(PatientService.table, {
-          'patientId': patientId,
-          'serviceId': ps.serviceId,
-          'serviceName': ps.serviceName,
-          'serviceCost': ps.serviceCost,
-        });
-      }
-      await batch.commit(noResult: true);
-      await DBService.instance.notifyTableChanged(PatientService.table);
-
-      // 3) Inventory usages
+      int patientId = 0;
+      var touchedServices = false;
+      var touchedConsumptions = false;
       var touchedItems = false;
-      for (final u in _invUsages) {
-        final itemId = u['itemId'] as int;
-        final qty = u['quantity'] as int;
-        double amount = 0.0;
-        final itemRows = await db.query(
-          'items',
-          columns: ['price'],
-          where: 'id = ?',
-          whereArgs: [itemId],
-          limit: 1,
-        );
-        if (itemRows.isNotEmpty) {
-          amount = ((itemRows.first['price'] as num?)?.toDouble() ?? 0.0) * qty;
-        }
-        await DBService.instance.insertConsumption(
-          Consumption(
-            id: null,
-            patientId: patientId.toString(),
-            itemId: itemId.toString(),
-            quantity: qty,
-            date: regDT,
-            amount: amount,
-          ),
-        );
-        await db.rawUpdate(
-          'UPDATE items SET stock = stock - ? WHERE id = ? AND stock >= ?',
-          [qty, itemId, qty],
-        );
-        touchedItems = true;
-      }
 
+      await db.transaction((txn) async {
+        // 1) Insert patient
+        final data = patient.toMap()..remove('id');
+        if ((patient.doctorId ?? 0) != 0) {
+          data['doctorReviewPending'] = 1;
+          data['doctorReviewedAt'] = null;
+        }
+        patientId = await txn.insert(Patient.table, data);
+
+        // 2) Insert services
+        if (_selectedServices.isNotEmpty) {
+          final batch = txn.batch();
+          for (final ps in _selectedServices) {
+            batch.insert(PatientService.table, {
+              'patientId': patientId,
+              'serviceId': ps.serviceId,
+              'serviceName': ps.serviceName,
+              'serviceCost': ps.serviceCost,
+            });
+          }
+          await batch.commit(noResult: true);
+          touchedServices = true;
+        }
+
+        // 3) Inventory usages
+        for (final u in _invUsages) {
+          final itemId = u['itemId'] as int;
+          final qty = u['quantity'] as int;
+          double amount = 0.0;
+          final itemRows = await txn.query(
+            'items',
+            columns: ['price'],
+            where: 'id = ?',
+            whereArgs: [itemId],
+            limit: 1,
+          );
+          if (itemRows.isNotEmpty) {
+            amount =
+                ((itemRows.first['price'] as num?)?.toDouble() ?? 0.0) * qty;
+          }
+          await txn.insert(Consumption.table, {
+            'patientId': patientId.toString(),
+            'itemId': itemId.toString(),
+            'quantity': qty,
+            'date': regDT.toIso8601String(),
+            'amount': amount,
+          });
+          touchedConsumptions = true;
+
+          final rows = await txn.rawUpdate(
+            'UPDATE items SET stock = stock - ? WHERE id = ? AND stock >= ?',
+            [qty, itemId, qty],
+          );
+          if (rows == 0) {
+            throw Exception('المخزون غير كافٍ لبعض المواد المستخدمة.');
+          }
+          touchedItems = true;
+        }
+      });
+
+      await DBService.instance.notifyTableChanged(Patient.table);
+      if (touchedServices) {
+        await DBService.instance.notifyTableChanged(PatientService.table);
+      }
+      if (touchedConsumptions) {
+        await DBService.instance.notifyTableChanged(Consumption.table);
+      }
       if (touchedItems) {
         await DBService.instance.notifyTableChanged(Item.table);
       }

@@ -375,51 +375,66 @@ class _NewPrescriptionScreenState extends State<NewPrescriptionScreen> {
     setState(() => _saving = true);
 
     final db = await DBService.instance.database;
+    final nowIso = DateTime.now().toIso8601String();
 
     if (widget.prescriptionId == null) {
-      final headId = await db.insert('prescriptions', {
-        'patientId': _patientId,
-        'doctorId': _doctorId,
-        'recordDate': _recordDate.toIso8601String(),
-        'createdAt': DateTime.now().toIso8601String(),
-      });
-
-      final batch = db.batch();
-      for (final it in _items) {
-        batch.insert('prescription_items', {
-          'prescriptionId': headId,
-          'drugId': it.drugId,
-          'days': it.days,
-          'timesPerDay': it.timesPerDay,
-        });
-      }
-      await batch.commit(noResult: true);
-    } else {
-      await db.update(
-        'prescriptions',
-        {
+      await db.transaction((txn) async {
+        final headId = await txn.insert('prescriptions', {
           'patientId': _patientId,
           'doctorId': _doctorId,
           'recordDate': _recordDate.toIso8601String(),
-        },
-        where: 'id = ?',
-        whereArgs: [widget.prescriptionId],
-      );
-
-      await db.delete('prescription_items',
-          where: 'prescriptionId = ?', whereArgs: [widget.prescriptionId]);
-
-      final batch = db.batch();
-      for (final it in _items) {
-        batch.insert('prescription_items', {
-          'prescriptionId': widget.prescriptionId,
-          'drugId': it.drugId,
-          'days': it.days,
-          'timesPerDay': it.timesPerDay,
+          'createdAt': nowIso,
         });
-      }
-      await batch.commit(noResult: true);
+
+        final batch = txn.batch();
+        for (final it in _items) {
+          batch.insert('prescription_items', {
+            'prescriptionId': headId,
+            'drugId': it.drugId,
+            'days': it.days,
+            'timesPerDay': it.timesPerDay,
+          });
+        }
+        await batch.commit(noResult: true);
+      });
+    } else {
+      await db.transaction((txn) async {
+        await txn.update(
+          'prescriptions',
+          {
+            'patientId': _patientId,
+            'doctorId': _doctorId,
+            'recordDate': _recordDate.toIso8601String(),
+          },
+          where: 'id = ?',
+          whereArgs: [widget.prescriptionId],
+        );
+
+        await txn.update(
+          'prescription_items',
+          {
+            'isDeleted': 1,
+            'deletedAt': nowIso,
+          },
+          where: 'prescriptionId = ? AND ifnull(isDeleted,0)=0',
+          whereArgs: [widget.prescriptionId],
+        );
+
+        final batch = txn.batch();
+        for (final it in _items) {
+          batch.insert('prescription_items', {
+            'prescriptionId': widget.prescriptionId,
+            'drugId': it.drugId,
+            'days': it.days,
+            'timesPerDay': it.timesPerDay,
+          });
+        }
+        await batch.commit(noResult: true);
+      });
     }
+
+    await DBService.instance.notifyTableChanged('prescriptions');
+    await DBService.instance.notifyTableChanged('prescription_items');
 
     setState(() => _saving = false);
     if (mounted) Navigator.pop(context);

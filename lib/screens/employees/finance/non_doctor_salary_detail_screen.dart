@@ -59,6 +59,7 @@ class _NonDoctorSalaryDetailScreenState
 
   Future<void> _loadData() async {
     try {
+      await DBService.instance.repairEmployeeLoansDiscountsMissingEmployeeId();
       final emp = await DBService.instance.getEmployeeById(widget.empId);
       if (emp == null) {
         if (!mounted) return;
@@ -73,29 +74,19 @@ class _NonDoctorSalaryDetailScreenState
       final baseSalary = _toDouble(emp['finalSalary']);
 
       // إجماليات الشهر المحدد
-      double loans = 0.0;
-      for (final ln in await DBService.instance.getAllEmployeeLoans()) {
-        if (ln['employeeId'] == widget.empId) {
-          final dt = DateTime.tryParse('${ln['loanDateTime'] ?? ''}');
-          if (dt != null &&
-              dt.year == widget.year &&
-              dt.month == widget.month) {
-            loans += _toDouble(ln['loanAmount']);
-          }
-        }
-      }
-
-      double discounts = 0.0;
-      for (final ds in await DBService.instance.getAllEmployeeDiscounts()) {
-        if (ds['employeeId'] == widget.empId) {
-          final dt = DateTime.tryParse('${ds['discountDateTime'] ?? ''}');
-          if (dt != null &&
-              dt.year == widget.year &&
-              dt.month == widget.month) {
-            discounts += _toDouble(ds['amount']);
-          }
-        }
-      }
+      final from = DateTime(widget.year, widget.month, 1);
+      final to =
+          DateTime(widget.year, widget.month + 1, 1).subtract(const Duration(seconds: 1));
+      final loans = await DBService.instance.getEmployeeLoansSumBetween(
+        employeeId: widget.empId,
+        from: from,
+        to: to,
+      );
+      final discounts = await DBService.instance.getEmployeeDiscountsSumBetween(
+        employeeId: widget.empId,
+        from: from,
+        to: to,
+      );
 
       final net = baseSalary - (loans + discounts);
 

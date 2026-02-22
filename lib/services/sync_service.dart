@@ -578,8 +578,10 @@ class SyncService {
     this.deviceId,
     this.enableLogs = false,
     this.pushDebounce = const Duration(seconds: 1),
+    Future<bool> Function()? canSync,
   })  : _db = database,
-        _remoteIds = RemoteIdMapper(database) {
+        _remoteIds = RemoteIdMapper(database),
+        _canSync = canSync {
     _validateConstraintMap();
     _clientListener = _handleClientRefresh;
     NhostGraphqlService.buildNotifier().addListener(_clientListener!);
@@ -608,6 +610,47 @@ class SyncService {
       deviceId != null &&
       deviceId!.trim().isNotEmpty &&
       deviceId!.trim().toLowerCase() != 'app-unknown';
+
+  static const Duration _kGuardTtl = Duration(seconds: 20);
+  final Future<bool> Function()? _canSync;
+  bool _syncEnabled = true;
+  DateTime? _lastGuardCheckAt;
+  bool? _lastGuardAllowed;
+
+  Future<bool> _ensureSyncAllowed() async {
+    if (!_syncEnabled) return false;
+    final guard = _canSync;
+    if (guard == null) return true;
+    final now = DateTime.now();
+    if (_lastGuardCheckAt != null &&
+        _lastGuardAllowed != null &&
+        now.difference(_lastGuardCheckAt!) < _kGuardTtl) {
+      return _lastGuardAllowed!;
+    }
+    bool allowed = false;
+    try {
+      allowed = await guard();
+    } catch (_) {
+      allowed = false;
+    }
+    _lastGuardCheckAt = now;
+    _lastGuardAllowed = allowed;
+    if (!allowed) {
+      await _blockSync('guard');
+    }
+    return allowed;
+  }
+
+  Future<void> _blockSync(String reason) async {
+    if (!_syncEnabled) return;
+    _syncEnabled = false;
+    _log('Sync disabled ($reason)');
+    for (final t in _pushTimers.values) {
+      t.cancel();
+    }
+    _pushTimers.clear();
+    await stopRealtime();
+  }
 
   String get _safeDeviceId => (deviceId != null && deviceId!.trim().isNotEmpty)
       ? deviceId!.trim()
@@ -820,6 +863,124 @@ class SyncService {
   // يختار اسم العمود المتاح محليًا (camel أو snake)
   String? _col(Set<String> cols, String camel, String snake) =>
       cols.contains(camel) ? camel : (cols.contains(snake) ? snake : null);
+
+  Future<bool> _shouldSkipRemoteRow({
+    required String localTable,
+    required int localId,
+    required String? remoteUpdatedAt,
+  }) async {
+    if (remoteUpdatedAt == null || remoteUpdatedAt.isEmpty) return false;
+    if (localId <= 0) return false;
+    final cols = await _getLocalColumns(localTable);
+    final updCol = _col(cols, 'updatedAt', 'updated_at');
+    if (updCol == null) return false;
+    final rows = await _db.query(
+      localTable,
+      columns: [updCol],
+      where: 'id = ?',
+      whereArgs: [localId],
+      limit: 1,
+    );
+    if (rows.isEmpty) return false;
+    final localStr = rows.first[updCol]?.toString();
+    if (localStr == null || localStr.isEmpty) return false;
+    final localDt = DateTime.tryParse(localStr);
+    final remoteDt = DateTime.tryParse(remoteUpdatedAt);
+    if (localDt == null || remoteDt == null) return false;
+    return localDt.isAfter(remoteDt);
+  }
+
+  Future<void> _applyStockDeltaForLedgerPull({
+    required String localTable,
+    required int resolvedLocalId,
+    required Map<String, dynamic> filteredRow,
+  }) async {
+    if (localTable != 'purchases' && localTable != 'consumptions') return;
+
+    final qtyRaw = filteredRow['quantity'] ?? filteredRow['Quantity'];
+    final int? newQty = (qtyRaw is num)
+        ? qtyRaw.toInt()
+        : int.tryParse(qtyRaw?.toString() ?? '');
+    if (newQty == null) return;
+
+    final isDelRaw = filteredRow['isDeleted'] ?? filteredRow['is_deleted'];
+    final bool newDeleted = (isDelRaw is num)
+        ? isDelRaw.toInt() == 1
+        : (isDelRaw?.toString().trim().toLowerCase() == 'true' ||
+            isDelRaw?.toString().trim() == '1');
+
+    final itemRaw =
+        filteredRow['itemId'] ?? filteredRow['item_id'] ?? filteredRow['itemID'];
+    final int? newItemId = (itemRaw is num)
+        ? itemRaw.toInt()
+        : int.tryParse(itemRaw?.toString() ?? '');
+
+    final rows = await _db.query(
+      localTable,
+      columns: const ['quantity', 'isDeleted', 'itemId', 'item_id'],
+      where: 'id = ?',
+      whereArgs: [resolvedLocalId],
+      limit: 1,
+    );
+
+    if (rows.isEmpty) {
+      if (!newDeleted && newItemId != null) {
+        final delta = (localTable == 'purchases') ? newQty : -newQty;
+        await _applyStockDelta(newItemId, delta);
+      }
+      return;
+    }
+
+    final prev = rows.first;
+    final prevQty = (prev['quantity'] as num?)?.toInt() ??
+        int.tryParse(prev['quantity']?.toString() ?? '') ??
+        0;
+    final prevDelRaw = prev['isDeleted'];
+    final bool prevDeleted = (prevDelRaw is num)
+        ? prevDelRaw.toInt() == 1
+        : (prevDelRaw?.toString().trim().toLowerCase() == 'true' ||
+            prevDelRaw?.toString().trim() == '1');
+    final prevItemRaw = prev['itemId'] ?? prev['item_id'];
+    final int? prevItemId = (prevItemRaw is num)
+        ? prevItemRaw.toInt()
+        : int.tryParse(prevItemRaw?.toString() ?? '');
+
+    if (prevItemId != null &&
+        newItemId != null &&
+        prevItemId != newItemId) {
+      if (!prevDeleted && prevQty != 0) {
+        final prevDelta =
+            (localTable == 'purchases') ? -prevQty : prevQty;
+        await _applyStockDelta(prevItemId, prevDelta);
+      }
+      if (!newDeleted && newQty != 0) {
+        final newDelta = (localTable == 'purchases') ? newQty : -newQty;
+        await _applyStockDelta(newItemId, newDelta);
+      }
+      return;
+    }
+
+    final effectiveItemId = newItemId ?? prevItemId;
+    if (effectiveItemId == null) return;
+
+    final oldImpact =
+        prevDeleted ? 0 : ((localTable == 'purchases') ? prevQty : -prevQty);
+    final newImpact =
+        newDeleted ? 0 : ((localTable == 'purchases') ? newQty : -newQty);
+    final delta = newImpact - oldImpact;
+
+    if (delta != 0) {
+      await _applyStockDelta(effectiveItemId, delta);
+    }
+  }
+
+  Future<void> _applyStockDelta(int itemId, int delta) async {
+    await _db.rawUpdate(
+      'UPDATE items SET stock = stock + ? WHERE id = ?',
+      [delta, itemId],
+    );
+    DBService.instance.emitPassiveChange('items');
+  }
 
   Future<Set<String>> _getLocalColumns(String table) async {
     if (_localColsCache.containsKey(table)) return _localColsCache[table]!;
@@ -1688,8 +1849,40 @@ class SyncService {
         updateMap.remove('service_id');
       }
     }
+    if (table == 'employees_loans' ||
+        table == 'employees_discounts' ||
+        table == 'employees_salaries') {
+      if (updateMap['employeeId'] == null ||
+          '${updateMap['employeeId']}'.toLowerCase() == 'null') {
+        updateMap.remove('employeeId');
+      }
+      if (updateMap['employee_id'] == null ||
+          '${updateMap['employee_id']}'.toLowerCase() == 'null') {
+        updateMap.remove('employee_id');
+      }
+    }
 
     await _dropNullsForNotNullCols(table, updateMap);
+
+    final exists = (await _db.query(
+      table,
+      columns: const ['id'],
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    ))
+        .isNotEmpty;
+
+    if (exists) {
+      if (updateMap.isEmpty) {
+        return;
+      }
+      final same = await _rowMatchesUpdateMap(table, id, updateMap);
+      if (same) {
+        return;
+      }
+    }
+
     final updated = updateMap.isEmpty
         ? 0
         : await _db.update(
@@ -1716,6 +1909,39 @@ class SyncService {
         whereArgs: [id],
       );
     }
+  }
+
+  bool _valuesEqual(dynamic a, dynamic b) {
+    if (a == null && b == null) return true;
+    if (a == null || b == null) return false;
+    if (a is num && b is num) {
+      return a.toDouble() == b.toDouble();
+    }
+    final sa = a is String ? a.trim() : a.toString();
+    final sb = b is String ? b.trim() : b.toString();
+    return sa == sb;
+  }
+
+  Future<bool> _rowMatchesUpdateMap(
+    String table,
+    int id,
+    Map<String, dynamic> updateMap,
+  ) async {
+    if (updateMap.isEmpty) return true;
+    final cols = updateMap.keys.toList(growable: false);
+    final rows = await _db.query(
+      table,
+      columns: cols,
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (rows.isEmpty) return false;
+    final existing = rows.first;
+    for (final k in cols) {
+      if (!_valuesEqual(existing[k], updateMap[k])) return false;
+    }
+    return true;
   }
 
   /// تنفيذ مع إعادة محاولة Backoff بسيطة (3 محاولات إجمالًا).
@@ -2040,6 +2266,7 @@ class SyncService {
       );
       return;
     }
+    bool hadFailure = false;
     while (_pushBusy[remoteTable] == true) {
       await Future.delayed(const Duration(milliseconds: 120));
     }
@@ -2058,12 +2285,15 @@ class SyncService {
 
       final whereClause = delCol != null ? 'IFNULL($delCol,0)=0' : null;
 
-      final localRows = await _db.query(
+      var localRows = await _db.query(
         localTable,
         where: whereClause,
         whereArgs: null,
       );
-      if (localRows.isEmpty) return;
+      if (localRows.isEmpty) {
+        await DBService.instance.clearDirty(localTable);
+        return;
+      }
 
       // وسم أعمدة المزامنة محليًا (إن وُجدت) — دون الكتابة فوق origin device/local
       final devId = _safeDeviceId;
@@ -2073,29 +2303,46 @@ class SyncService {
             localTable: localTable, localId: id, devId: devId);
       }
 
+      // ✅ أعد قراءة الصفوف بعد ختم أعمدة المزامنة
+      localRows = await _db.query(
+        localTable,
+        where: whereClause,
+        whereArgs: null,
+      );
+      if (localRows.isEmpty) {
+        await DBService.instance.clearDirty(localTable);
+        return;
+      }
+
       // تجهيز ودفع
       final prepared = <Map<String, dynamic>>[];
       final outgoingMeta = <Map<String, dynamic>>[];
       final fkErrors = <String>[];
       for (final row in localRows) {
-        final remoteMap = await _toRemoteRow(
-          localTable: localTable,
-          remoteTable: remoteTable,
-          localRow: row,
-        );
-        prepared.add(remoteMap);
-        final pk = (row['id'] as num).toInt();
-        final dynamic localIdDyn = remoteMap['local_id'];
-        final meta = <String, dynamic>{
-          'pk': pk,
-          'deviceId': (remoteMap['device_id'] ?? '').toString(),
-          'localId': localIdDyn is num
-              ? localIdDyn.toInt()
-              : (localIdDyn == null
-                  ? null
-                  : int.tryParse(localIdDyn.toString())),
-        };
-        outgoingMeta.add(meta);
+        try {
+          final remoteMap = await _toRemoteRow(
+            localTable: localTable,
+            remoteTable: remoteTable,
+            localRow: row,
+          );
+          prepared.add(remoteMap);
+          final pk = (row['id'] as num).toInt();
+          final dynamic localIdDyn = remoteMap['local_id'];
+          final meta = <String, dynamic>{
+            'pk': pk,
+            'deviceId': (remoteMap['device_id'] ?? '').toString(),
+            'localId': localIdDyn is num
+                ? localIdDyn.toInt()
+                : (localIdDyn == null
+                    ? null
+                    : int.tryParse(localIdDyn.toString())),
+          };
+          outgoingMeta.add(meta);
+        } on MissingRemoteMappingException catch (e) {
+          fkErrors.add(e.toString());
+          // تخطّ هذا الصف حتى يتم دفع الأب وإنشاء UUID mapping
+          continue;
+        }
       }
 
       int offset = 0;
@@ -2117,6 +2364,7 @@ class SyncService {
           });
           await _cacheRemoteIdsFromResponse(remoteTable, response, metaChunk);
         } on OperationException catch (e) {
+          hadFailure = true;
           final bool isNameUniqueConflict = (remoteTable == 'drugs') &&
               _isUniqueViolation(e, const [
                 'drugs_unique_name_per_account',
@@ -2172,6 +2420,7 @@ class SyncService {
           await _ensureChunkRemoteMappings(remoteTable, metaChunk);
           continue;
         } catch (e) {
+          hadFailure = true;
           _log('PUSH FAILED for $remoteTable: $e');
           await _ensureChunkRemoteMappings(remoteTable, metaChunk);
           continue;
@@ -2179,8 +2428,18 @@ class SyncService {
       }
 
       if (fkErrors.isNotEmpty) {
+        hadFailure = true;
         _log(
             'PUSH $remoteTable: ${fkErrors.length} FK mapping errors\n  - ${fkErrors.join('\n  - ')}');
+        // أعد الجدولة لمحاولة لاحقة بعد اكتمال دفع الآباء وإنشاء UUID mapping
+        await _schedulePush(
+          remoteTable,
+          () => _pushTable(localTable, remoteTable),
+        );
+      }
+
+      if (!hadFailure) {
+        await DBService.instance.clearDirty(localTable);
       }
     } finally {
       _pushBusy[remoteTable] = false;
@@ -2590,6 +2849,33 @@ class SyncService {
           filtered[updCol] = remoteUpdatedAt;
         }
 
+        if (localTable == 'items' && resolvedLocalId > 0) {
+          try {
+            final exists = await _db.query(
+              localTable,
+              columns: const ['id'],
+              where: 'id = ?',
+              whereArgs: [resolvedLocalId],
+              limit: 1,
+            );
+            if (exists.isNotEmpty) {
+              filtered.remove('stock');
+              filtered.remove('Stock');
+            }
+          } catch (_) {}
+        }
+
+        if (await _shouldSkipRemoteRow(
+          localTable: localTable,
+          localId: resolvedLocalId,
+          remoteUpdatedAt: remoteUpdatedAt,
+        )) {
+          _log(
+            'PULL $remoteTable: skipped id=$resolvedLocalId (local newer)',
+          );
+          continue;
+        }
+
         String? prevReply;
         if (localTable == 'complaints') {
           try {
@@ -2900,6 +3186,23 @@ class SyncService {
           filtered[updCol] = remoteUpdatedAt;
         }
 
+        if (await _shouldSkipRemoteRow(
+          localTable: localTable,
+          localId: resolvedLocalId,
+          remoteUpdatedAt: remoteUpdatedAt,
+        )) {
+          _log(
+            'PULL $remoteTable: skipped id=$resolvedLocalId (local newer)',
+          );
+          continue;
+        }
+
+        await _applyStockDeltaForLedgerPull(
+          localTable: localTable,
+          resolvedLocalId: resolvedLocalId,
+          filteredRow: filtered,
+        );
+
         await _upsertLocalNonDestructive(localTable, filtered,
             id: resolvedLocalId);
 
@@ -3183,6 +3486,37 @@ class SyncService {
       filtered[updCol] = remoteUpdatedAt;
     }
 
+    if (localTable == 'items' && resolvedLocalId > 0) {
+      try {
+        final exists = await _db.query(
+          localTable,
+          columns: const ['id'],
+          where: 'id = ?',
+          whereArgs: [resolvedLocalId],
+          limit: 1,
+        );
+        if (exists.isNotEmpty) {
+          filtered.remove('stock');
+          filtered.remove('Stock');
+        }
+      } catch (_) {}
+    }
+
+    if (await _shouldSkipRemoteRow(
+      localTable: localTable,
+      localId: resolvedLocalId,
+      remoteUpdatedAt: remoteUpdatedAt,
+    )) {
+      _log('RT $remoteTable: skipped id=$resolvedLocalId (local newer)');
+      return;
+    }
+
+    await _applyStockDeltaForLedgerPull(
+      localTable: localTable,
+      resolvedLocalId: resolvedLocalId,
+      filteredRow: filtered,
+    );
+
     await _upsertLocalNonDestructive(localTable, filtered, id: resolvedLocalId);
 
     if (remoteUuid != null && remoteUuid.isNotEmpty) {
@@ -3250,6 +3584,39 @@ class SyncService {
 
     if (resolvedLocalId <= 0) return;
 
+    if (localTable == 'purchases' || localTable == 'consumptions') {
+      try {
+        final rows = await _db.query(
+          localTable,
+          columns: const ['quantity', 'isDeleted', 'itemId', 'item_id'],
+          where: 'id = ?',
+          whereArgs: [resolvedLocalId],
+          limit: 1,
+        );
+        if (rows.isNotEmpty) {
+          final row = rows.first;
+          final isDelRaw = row['isDeleted'];
+          final bool isDeleted = (isDelRaw is num)
+              ? isDelRaw.toInt() == 1
+              : (isDelRaw?.toString().trim().toLowerCase() == 'true' ||
+                  isDelRaw?.toString().trim() == '1');
+          if (!isDeleted) {
+            final qty = (row['quantity'] as num?)?.toInt() ??
+                int.tryParse(row['quantity']?.toString() ?? '') ??
+                0;
+            final itemRaw = row['itemId'] ?? row['item_id'];
+            final int? itemId = (itemRaw is num)
+                ? itemRaw.toInt()
+                : int.tryParse(itemRaw?.toString() ?? '');
+            if (itemId != null && qty != 0) {
+              final delta = (localTable == 'purchases') ? -qty : qty;
+              await _applyStockDelta(itemId, delta);
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
     // لو الجدول يدعم الحذف المنطقي محليًا، علِّمه محذوفًا، وإلا احذف فعليًا
     if (allowedCols.contains('isDeleted')) {
       await _db.update(
@@ -3305,6 +3672,10 @@ class SyncService {
       if (!_realtimeSupported) {
         return;
       }
+      if (!await _ensureSyncAllowed()) {
+        _log('Realtime skipped (sync blocked)');
+        return;
+      }
       // ✅ تفادي ازدواج الاشتراكات عند إعادة التهيئة (مثلاً بعد تغيير المستخدم)
       await _stopRealtimeInternal();
       if (!_hasAccount) {
@@ -3312,84 +3683,84 @@ class SyncService {
         return;
       }
 
-    // لا نُشغّل Realtime للمرفقات (محلي فقط)
-    await _subscribeTableRealtime('drugs', 'drugs');
-    await _subscribeTableRealtime('item_types', 'item_types');
-    await _subscribeTableRealtime(
-      'items',
-      'items',
-      fkParentTables: _fkMap['items'],
-    );
-    await _subscribeTableRealtime('medical_services', 'medical_services');
-    await _subscribeTableRealtime(
-      'doctors',
-      'doctors',
-      fkParentTables: _fkMap['doctors'],
-    );
-    await _subscribeTableRealtime(
-      'service_doctor_share',
-      'service_doctor_share',
-      fkParentTables: _fkMap['service_doctor_share'],
-    );
+      // لا نُشغّل Realtime للمرفقات (محلي فقط)
+      await _subscribeTableRealtime('drugs', 'drugs');
+      await _subscribeTableRealtime('item_types', 'item_types');
+      await _subscribeTableRealtime(
+        'items',
+        'items',
+        fkParentTables: _fkMap['items'],
+      );
+      await _subscribeTableRealtime('medical_services', 'medical_services');
+      await _subscribeTableRealtime(
+        'doctors',
+        'doctors',
+        fkParentTables: _fkMap['doctors'],
+      );
+      await _subscribeTableRealtime(
+        'service_doctor_share',
+        'service_doctor_share',
+        fkParentTables: _fkMap['service_doctor_share'],
+      );
 
-    await _subscribeTableRealtime(
-      'patients',
-      'patients',
-      fkParentTables: _fkMap['patients'],
-    );
-    await _subscribeTableRealtime('returns', 'returns');
-    await _subscribeTableRealtime(
-      'appointments',
-      'appointments',
-      fkParentTables: _fkMap['appointments'],
-    );
+      await _subscribeTableRealtime(
+        'patients',
+        'patients',
+        fkParentTables: _fkMap['patients'],
+      );
+      await _subscribeTableRealtime('returns', 'returns');
+      await _subscribeTableRealtime(
+        'appointments',
+        'appointments',
+        fkParentTables: _fkMap['appointments'],
+      );
 
-    await _subscribeTableRealtime(
-      'prescriptions',
-      'prescriptions',
-      fkParentTables: _fkMap['prescriptions'],
-    );
-    await _subscribeTableRealtime(
-      'prescription_items',
-      'prescription_items',
-      fkParentTables: _fkMap['prescription_items'],
-    );
-    await _subscribeTableRealtime('complaints', 'complaints');
+      await _subscribeTableRealtime(
+        'prescriptions',
+        'prescriptions',
+        fkParentTables: _fkMap['prescriptions'],
+      );
+      await _subscribeTableRealtime(
+        'prescription_items',
+        'prescription_items',
+        fkParentTables: _fkMap['prescription_items'],
+      );
+      await _subscribeTableRealtime('complaints', 'complaints');
 
-    await _subscribeTableRealtime(
-      'consumptions',
-      'consumptions',
-      fkParentTables: _fkMap['consumptions'],
-    );
-    await _subscribeTableRealtime(
-      'purchases',
-      'purchases',
-      fkParentTables: _fkMap['purchases'],
-    );
-    await _subscribeTableRealtime(
-      'alert_settings',
-      'alert_settings',
-      fkParentTables: _fkMap['alert_settings'],
-    );
+      await _subscribeTableRealtime(
+        'consumptions',
+        'consumptions',
+        fkParentTables: _fkMap['consumptions'],
+      );
+      await _subscribeTableRealtime(
+        'purchases',
+        'purchases',
+        fkParentTables: _fkMap['purchases'],
+      );
+      await _subscribeTableRealtime(
+        'alert_settings',
+        'alert_settings',
+        fkParentTables: _fkMap['alert_settings'],
+      );
 
-    await _subscribeTableRealtime('employees', 'employees');
-    await _subscribeTableRealtime(
-      'employees_loans',
-      'employees_loans',
-      fkParentTables: _fkMap['employees_loans'],
-    );
-    await _subscribeTableRealtime(
-      'employees_salaries',
-      'employees_salaries',
-      fkParentTables: _fkMap['employees_salaries'],
-    );
-    await _subscribeTableRealtime(
-      'employees_discounts',
-      'employees_discounts',
-      fkParentTables: _fkMap['employees_discounts'],
-    );
+      await _subscribeTableRealtime('employees', 'employees');
+      await _subscribeTableRealtime(
+        'employees_loans',
+        'employees_loans',
+        fkParentTables: _fkMap['employees_loans'],
+      );
+      await _subscribeTableRealtime(
+        'employees_salaries',
+        'employees_salaries',
+        fkParentTables: _fkMap['employees_salaries'],
+      );
+      await _subscribeTableRealtime(
+        'employees_discounts',
+        'employees_discounts',
+        fkParentTables: _fkMap['employees_discounts'],
+      );
 
-    await _subscribeTableRealtime('financial_logs', 'financial_logs');
+      await _subscribeTableRealtime('financial_logs', 'financial_logs');
       await _subscribeTableRealtime(
         'patient_services',
         'patient_services',
@@ -3429,6 +3800,10 @@ class SyncService {
       _log('Bootstrap skipped (no accountId)');
       return;
     }
+    if (!await _ensureSyncAllowed()) {
+      _log('Bootstrap skipped (sync blocked)');
+      return;
+    }
     if (pull) {
       await pullAll();
     }
@@ -3464,6 +3839,9 @@ class SyncService {
     if (newDeviceId != null) {
       deviceId = newDeviceId;
     }
+    _syncEnabled = true;
+    _lastGuardAllowed = null;
+    _lastGuardCheckAt = null;
 
     if (initialPull) {
       await pullAll();
@@ -3512,6 +3890,7 @@ class SyncService {
 
   Future<void> _triggerPullIfStale({bool force = false}) async {
     if (!_hasAccount) return;
+    if (!await _ensureSyncAllowed()) return;
     final now = DateTime.now();
     final lastRt = _lastRealtimeEventAt;
     final lastPull = _lastPullAt;
@@ -3667,35 +4046,43 @@ class SyncService {
   /*──────────────────── Bulk (مرتَّبة حسب الاعتمادات) ───────────────────*/
 
   Future<void> pushAll() async {
+    if (!await _ensureSyncAllowed()) return;
+    final dirty = await DBService.instance.getDirtySyncTables();
+    if (dirty.isEmpty) return;
+
+    Future<void> pushIfDirty(String table, Future<void> Function() fn) async {
+      if (!dirty.contains(table)) return;
+      await fn();
+    }
     // أسس
-    await pushItemTypes();
-    await pushItems();
-    await pushDrugs();
-    await pushMedicalServices();
-    await pushEmployees();
-    await pushDoctors();
+    await pushIfDirty('item_types', pushItemTypes);
+    await pushIfDirty('items', pushItems);
+    await pushIfDirty('drugs', pushDrugs);
+    await pushIfDirty('medical_services', pushMedicalServices);
+    await pushIfDirty('employees', pushEmployees);
+    await pushIfDirty('doctors', pushDoctors);
 
     // نسب الأطباء
-    await pushServiceDoctorShares();
+    await pushIfDirty('service_doctor_share', pushServiceDoctorShares);
 
     // معاملات مرضى
-    await pushPatients();
-    await pushPatientServices();
-    await pushReturns();
-    await pushAppointments();
-    await pushPrescriptions();
-    await pushPrescriptionItems();
-    await pushConsumptions();
-    await pushPurchases();
-    await pushAlertSettings();
+    await pushIfDirty('patients', pushPatients);
+    await pushIfDirty('patient_services', pushPatientServices);
+    await pushIfDirty('returns', pushReturns);
+    await pushIfDirty('appointments', pushAppointments);
+    await pushIfDirty('prescriptions', pushPrescriptions);
+    await pushIfDirty('prescription_items', pushPrescriptionItems);
+    await pushIfDirty('consumptions', pushConsumptions);
+    await pushIfDirty('purchases', pushPurchases);
+    await pushIfDirty('alert_settings', pushAlertSettings);
 
     // مالية/موارد بشرية إضافية
-    await pushEmployeeLoans();
-    await pushEmployeeSalaries();
-    await pushEmployeeDiscounts();
+    await pushIfDirty('employees_loans', pushEmployeeLoans);
+    await pushIfDirty('employees_salaries', pushEmployeeSalaries);
+    await pushIfDirty('employees_discounts', pushEmployeeDiscounts);
 
-    await pushComplaints();
-    await pushFinancialLogs();
+    await pushIfDirty('complaints', pushComplaints);
+    await pushIfDirty('financial_logs', pushFinancialLogs);
   }
 
   Future<void> pullAll() async {
@@ -3703,6 +4090,7 @@ class SyncService {
     _pullInProgress = true;
     // أسس
     try {
+      if (!await _ensureSyncAllowed()) return;
       await pullItemTypes();
       await pullItems();
       await pullDrugs();
@@ -3754,6 +4142,22 @@ class SyncService {
   }
 
   Future<void> _pushNow(String table) async {
+    return _pushNowInternal(table, <String>{});
+  }
+
+  Future<void> _pushNowInternal(String table, Set<String> stack) async {
+    if (stack.contains(table)) return;
+    stack.add(table);
+
+    // ادفع الجداول الأب أولًا لضمان توافر UUID mapping للـ FK
+    final parents = _fkMap[table];
+    if (parents != null && parents.isNotEmpty) {
+      final uniqueParents = parents.values.toSet();
+      for (final parent in uniqueParents) {
+        await _pushNowInternal(parent, stack);
+      }
+    }
+
     switch (table) {
       case 'patients':
         return pushPatients();
@@ -3801,15 +4205,17 @@ class SyncService {
         return pushPatientServices();
       case 'attachments':
         _log('attachments is local-only. Skipping push.');
-        return Future.value();
+        return;
       default:
         _log('No push handler for table: $table');
-        return Future.value();
+        return;
     }
   }
 
   /// استدعِ هذه من `DBService.onLocalChange` — ستُجَدول دفعة بعد 1s لكل جدول.
   Future<void> pushFor(String table) async {
+    if (!await _ensureSyncAllowed()) return;
+    if (!await DBService.instance.isTableDirty(table)) return;
     switch (table) {
       case 'attachments':
         _log('attachments is local-only. Skipping push.');

@@ -1,0 +1,44 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\zidan\AndroidStudioProjects\aelmamclinic\windows\.cache\printing\pdfium-download\CMakeFiles\964020abf390e3b98347eecbe872c44a\pdfium-download-mkdir.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\zidan\AndroidStudioProjects\aelmamclinic\windows\.cache\printing\pdfium-download\CMakeFiles\964020abf390e3b98347eecbe872c44a\pdfium-download-download.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\zidan\AndroidStudioProjects\aelmamclinic\windows\.cache\printing\pdfium-download\CMakeFiles\964020abf390e3b98347eecbe872c44a\pdfium-download-update.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\zidan\AndroidStudioProjects\aelmamclinic\windows\.cache\printing\pdfium-download\CMakeFiles\964020abf390e3b98347eecbe872c44a\pdfium-download-patch.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\zidan\AndroidStudioProjects\aelmamclinic\windows\.cache\printing\pdfium-download\CMakeFiles\964020abf390e3b98347eecbe872c44a\pdfium-download-configure.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\zidan\AndroidStudioProjects\aelmamclinic\windows\.cache\printing\pdfium-download\CMakeFiles\964020abf390e3b98347eecbe872c44a\pdfium-download-build.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\zidan\AndroidStudioProjects\aelmamclinic\windows\.cache\printing\pdfium-download\CMakeFiles\964020abf390e3b98347eecbe872c44a\pdfium-download-install.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\zidan\AndroidStudioProjects\aelmamclinic\windows\.cache\printing\pdfium-download\CMakeFiles\964020abf390e3b98347eecbe872c44a\pdfium-download-test.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\zidan\AndroidStudioProjects\aelmamclinic\windows\.cache\printing\pdfium-download\CMakeFiles\f4363e97483b66ca2df8f569cae4757d\pdfium-download-complete.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\zidan\AndroidStudioProjects\aelmamclinic\windows\.cache\printing\pdfium-download\CMakeFiles\59ecc3913d930fdd6614410ad0093327\pdfium-download.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\zidan\AndroidStudioProjects\aelmamclinic\windows\.cache\printing\pdfium-download\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="C:\Users\zidan\AndroidStudioProjects\aelmamclinic\windows\.cache\printing\pdfium-download\CMakeFiles\pdfium-download" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{8CCFDC54-777D-32BF-B2B8-E5E85EEC54B2}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

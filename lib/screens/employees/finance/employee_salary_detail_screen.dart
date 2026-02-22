@@ -56,6 +56,7 @@ class _EmployeeSalaryDetailScreenState
   Future<void> _loadData() async {
     setState(() => _loading = true);
     try {
+      await DBService.instance.repairEmployeeLoansDiscountsMissingEmployeeId();
       final emp = await DBService.instance.getEmployeeById(widget.empId);
       if (emp == null) {
         if (!mounted) return;
@@ -82,32 +83,17 @@ class _EmployeeSalaryDetailScreenState
       final towerShare = await DBService.instance
           .getDoctorTowerShareSum(widget.doctorId, from, to);
 
-      // سلف الشهر
-      double loans = 0.0;
-      for (final ln in await DBService.instance.getAllEmployeeLoans()) {
-        if (ln['employeeId'] == widget.empId) {
-          final dt = DateTime.tryParse((ln['loanDateTime'] ?? '').toString());
-          if (dt != null &&
-              dt.year == widget.year &&
-              dt.month == widget.month) {
-            loans += _asDouble(ln['loanAmount']);
-          }
-        }
-      }
-
-      // خصومات الشهر
-      double discounts = 0.0;
-      for (final ds in await DBService.instance.getAllEmployeeDiscounts()) {
-        if (ds['employeeId'] == widget.empId) {
-          final dt =
-              DateTime.tryParse((ds['discountDateTime'] ?? '').toString());
-          if (dt != null &&
-              dt.year == widget.year &&
-              dt.month == widget.month) {
-            discounts += _asDouble(ds['amount']);
-          }
-        }
-      }
+      // سلف وخصومات الشهر
+      final loans = await DBService.instance.getEmployeeLoansSumBetween(
+        employeeId: widget.empId,
+        from: from,
+        to: to,
+      );
+      final discounts = await DBService.instance.getEmployeeDiscountsSumBetween(
+        employeeId: widget.empId,
+        from: from,
+        to: to,
+      );
 
       final net = (baseSalary + ratioSum + directInput) - (loans + discounts);
 
@@ -157,17 +143,18 @@ class _EmployeeSalaryDetailScreenState
     );
     if (ok != true) return;
 
-    final row = {
-      'employeeId': widget.empId,
-      'year': widget.year,
-      'month': widget.month,
-      'finalSalary': _finalSalary,
-      'ratioSum': _ratioSum,
-      'totalLoans': _totalLoans,
-      'netPay': _netPay,
-      'isPaid': 1,
-      'paymentDate': DateTime.now().toIso8601String(),
-    };
+      final row = {
+        'employeeId': widget.empId,
+        'year': widget.year,
+        'month': widget.month,
+        'finalSalary': _finalSalary,
+        'ratioSum': _ratioSum,
+        'totalLoans': _totalLoans,
+        'totalDiscounts': _totalDiscounts,
+        'netPay': _netPay,
+        'isPaid': 1,
+        'paymentDate': DateTime.now().toIso8601String(),
+      };
 
     try {
       final salaries = await DBService.instance.getAllEmployeeSalaries();

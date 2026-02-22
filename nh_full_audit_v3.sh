@@ -3,25 +3,37 @@ set -euo pipefail
 
 SUBDOMAIN="${1:-}"
 REGION="${2:-}"
+PROJECT_DIR="${3:-}"
 
 need(){ command -v "$1" >/dev/null 2>&1 || { echo "Missing dependency: $1" >&2; exit 2; }; }
 need nhost; need curl; need python3; need awk
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -z "${PROJECT_DIR}" ]]; then
+  PROJECT_DIR="${SCRIPT_DIR}"
+fi
+export PROJECT_DIR
+
 if [[ -z "${SUBDOMAIN}" || -z "${REGION}" ]]; then
-  if [[ -f config.json ]]; then
+  if [[ -f "${PROJECT_DIR}/config.json" ]]; then
     read -r SUBDOMAIN REGION < <(
       python3 - <<'PY'
 import json
-with open("config.json", "r", encoding="utf-8") as f:
+import os
+with open(os.path.join(os.environ["PROJECT_DIR"], "config.json"), "r", encoding="utf-8") as f:
     cfg = json.load(f)
-print(cfg.get("subdomain",""), cfg.get("region",""))
+print(
+    cfg.get("subdomain") or cfg.get("nhostSubdomain",""),
+    cfg.get("region") or cfg.get("nhostRegion","")
+)
 PY
     )
-  elif [[ -f .nhost/project.json ]]; then
+  elif [[ -f "${PROJECT_DIR}/.nhost/project.json" ]]; then
     read -r SUBDOMAIN REGION < <(
       python3 - <<'PY'
 import json
-with open(".nhost/project.json", "r", encoding="utf-8") as f:
+import os
+with open(os.path.join(os.environ["PROJECT_DIR"], ".nhost", "project.json"), "r", encoding="utf-8") as f:
     cfg = json.load(f)
 print(cfg.get("subdomain",""), cfg.get("region",""))
 PY
@@ -56,7 +68,7 @@ RUNSQL_URL="${HASURA_BASE}/v2/query"
 GQL_URL="${HASURA_BASE}/v1/graphql"
 
 STAMP="$(date +%Y%m%d_%H%M%S)"
-OUTDIR="server_snapshot_${SUBDOMAIN}_${STAMP}"
+OUTDIR="${PROJECT_DIR}/server_snapshot_${SUBDOMAIN}_${STAMP}"
 REPORT="${OUTDIR}/report.md"
 mkdir -p "$OUTDIR"
 
@@ -128,6 +140,42 @@ append "## Deployments list"
 append '```'
 (nhost deployments list --subdomain "$SUBDOMAIN" 2>&1 || true) >> "$REPORT"
 append '```'
+append ""
+
+# Service health checks
+append "## Service health"
+append '```'
+{
+  echo "HASURA /healthz:"
+  curl -sS -i "${HASURA_BASE}/healthz" | head -n 20 || true
+  echo
+  echo "HASURA /v1/version:"
+  curl -sS "${HASURA_BASE}/v1/version" || true
+  echo
+  echo "AUTH /healthz:"
+  curl -sS -i "https://${SUBDOMAIN}.auth.${REGION}.nhost.run/healthz" | head -n 20 || true
+  echo
+  echo "AUTH /version:"
+  curl -sS "https://${SUBDOMAIN}.auth.${REGION}.nhost.run/v1/version" || true
+} >> "$REPORT"
+append '```'
+append ""
+
+# Latest deployment logs (best-effort)
+append "## Latest deployment logs (best-effort)"
+LATEST_DEPLOY_ID="$(
+  nhost deployments list --subdomain "$SUBDOMAIN" 2>/dev/null | rg -m1 -o "[0-9a-f-]{36}" || true
+)"
+if [[ -n "${LATEST_DEPLOY_ID}" ]]; then
+  DEPLOY_LOG="${OUTDIR}/deployment_${LATEST_DEPLOY_ID}.log"
+  if nhost deployments logs --subdomain "$SUBDOMAIN" "$LATEST_DEPLOY_ID" --timeout 2m > "$DEPLOY_LOG" 2>&1; then
+    append "Saved: ${DEPLOY_LOG}"
+  else
+    append "FAILED: nhost deployments logs ${LATEST_DEPLOY_ID}"
+  fi
+else
+  append "SKIPPED: No deployment ID found"
+fi
 append ""
 
 # export metadata

@@ -197,6 +197,7 @@ class DBParityV3 {
 
   /// دمج آمن لتكرارات الأسماء الطبيعية:
   /// - drugs: (account_id, lower(trim(name)))
+  /// - item_types: (account_id, lower(trim(name)))
   /// - items: (account_id, type_id, trim(name))
   /// يتم داخل معاملة: بناء فائز/خاسر → إعادة ربط المراجع → حذف الخاسرين → تنظيف الأسماء
   Future<void> _mergeNaturalDuplicates(Database db,
@@ -249,6 +250,52 @@ class DBParityV3 {
       // 5) تنظيف الأسماء (TRIM) بعد الدمج
       await _execOn(
           txn, "UPDATE drugs SET name = TRIM(name) WHERE name IS NOT NULL");
+
+      // ===== ITEM_TYPES =====
+      await _execOn(txn, 'DROP TABLE IF EXISTS tmp_item_type_winners');
+      await _execOn(txn,
+          'CREATE TEMP TABLE tmp_item_type_winners(id INTEGER PRIMARY KEY)');
+      await _execOn(txn, '''
+        INSERT OR IGNORE INTO tmp_item_type_winners(id)
+        SELECT t.id
+        FROM item_types t
+        WHERE NOT EXISTS (
+          SELECT 1 FROM item_types b
+          WHERE b.account_id = t.account_id
+            AND lower(trim(b.name)) = lower(trim(t.name))
+            AND (COALESCE(b.updated_at,'') > COALESCE(t.updated_at,'')
+                 OR (b.updated_at = t.updated_at AND b.rowid > t.rowid))
+        )
+      ''');
+
+      await _execOn(txn, 'DROP TABLE IF EXISTS tmp_item_type_map');
+      await _execOn(txn,
+          'CREATE TEMP TABLE tmp_item_type_map(loser_id INTEGER PRIMARY KEY, winner_id INTEGER NOT NULL)');
+      await _execOn(txn, '''
+        INSERT OR IGNORE INTO tmp_item_type_map(loser_id, winner_id)
+        SELECT t.id, w.id
+        FROM item_types t
+        JOIN item_types w
+          ON w.id IN (SELECT id FROM tmp_item_type_winners)
+         AND w.account_id = t.account_id
+         AND lower(trim(w.name)) = lower(trim(t.name))
+        WHERE t.id != w.id
+      ''');
+
+      // إعادة ربط العناصر إلى type الفائز
+      await _execOn(txn, '''
+        UPDATE items
+           SET type_id = (SELECT winner_id FROM tmp_item_type_map WHERE loser_id = items.type_id)
+         WHERE type_id IN (SELECT loser_id FROM tmp_item_type_map)
+      ''');
+
+      // حذف الخاسرين
+      await _execOn(txn,
+          'DELETE FROM item_types WHERE id IN (SELECT loser_id FROM tmp_item_type_map)');
+
+      // تنظيف أسماء الأنواع
+      await _execOn(txn,
+          "UPDATE item_types SET name = TRIM(name) WHERE name IS NOT NULL");
 
       // ===== ITEMS =====
       await _execOn(txn, 'DROP TABLE IF EXISTS tmp_item_winners');
@@ -319,11 +366,13 @@ class DBParityV3 {
       await _execOn(txn, 'DROP TABLE IF EXISTS tmp_drug_map');
       await _execOn(txn, 'DROP TABLE IF EXISTS tmp_item_winners');
       await _execOn(txn, 'DROP TABLE IF EXISTS tmp_item_map');
+      await _execOn(txn, 'DROP TABLE IF EXISTS tmp_item_type_winners');
+      await _execOn(txn, 'DROP TABLE IF EXISTS tmp_item_type_map');
     });
 
     if (verbose) {
       print(
-          '[parity_v3] natural duplicates merged for drugs/items (with repoint)');
+          '[parity_v3] natural duplicates merged for drugs/item_types/items (with repoint)');
     }
   }
 
@@ -340,6 +389,10 @@ class DBParityV3 {
     // فهارس الطبيعة
     await _exec(db,
         'CREATE UNIQUE INDEX IF NOT EXISTS uidx_drugs_name_per_account ON drugs(account_id, lower(name))');
+    await _exec(db,
+        'CREATE UNIQUE INDEX IF NOT EXISTS uidx_item_types_name_per_account ON item_types(account_id, lower(name))');
+    // إسقاط الفهرس القديم إن وجد (كان يسبب تعارضات عبر الحسابات)
+    await _exec(db, 'DROP INDEX IF EXISTS uix_item_types_lower_name');
     await _exec(db,
         'CREATE UNIQUE INDEX IF NOT EXISTS items_type_name ON items(account_id, type_id, name)');
 
@@ -408,6 +461,10 @@ class DBParityV3 {
     await check(
       'dup_items_type_name',
       "SELECT COUNT(*) c FROM (SELECT account_id, type_id, TRIM(name) k, COUNT(*) c FROM items GROUP BY 1,2,3 HAVING c>1)",
+    );
+    await check(
+      'dup_item_types_name',
+      "SELECT COUNT(*) c FROM (SELECT account_id, lower(TRIM(name)) k, COUNT(*) c FROM item_types GROUP BY 1,2 HAVING c>1)",
     );
 
     return out;

@@ -15,6 +15,7 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:aelmamclinic/local/chat_local_store.dart';
 import 'package:aelmamclinic/models/chat_invitation.dart';
@@ -74,6 +75,7 @@ class ChatProvider extends ChangeNotifier {
   final Map<String, List<ChatParticipantLocal>> _participantsByConv = {};
   final Map<String, List<CM.ChatReadState>> _readStatesByConv = {};
   final Map<String, String> _aliasByUser = {};
+  final Map<String, String> _aliasCache = {};
   final Map<String, String> _displayTitleByConv = {};
   String displayTitleOf(String conversationId) =>
       _displayTitleByConv[conversationId] ?? 'محادثة';
@@ -220,6 +222,31 @@ class ChatProvider extends ChangeNotifier {
     } catch (_) {}
   }
 
+  Future<void> _loadAliasCache() async {
+    try {
+      final uid = currentUid;
+      if (uid.isEmpty) return;
+      final sp = await SharedPreferences.getInstance();
+      final raw = sp.getString('chat.aliases.$uid');
+      if (raw == null || raw.trim().isEmpty) return;
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) {
+        _aliasCache
+          ..clear()
+          ..addAll(decoded.map((k, v) => MapEntry(k.toString(), v.toString())));
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _persistAliasCache() async {
+    try {
+      final uid = currentUid;
+      if (uid.isEmpty) return;
+      final sp = await SharedPreferences.getInstance();
+      await sp.setString('chat.aliases.$uid', jsonEncode(_aliasCache));
+    } catch (_) {}
+  }
+
   // --------------------------------------------------------------------------
   // Bootstrap
   // --------------------------------------------------------------------------
@@ -239,6 +266,7 @@ class ChatProvider extends ChangeNotifier {
     try {
       await _primeMyEmail();
       await _loadLocalSnapshot();
+      await _loadAliasCache();
       final accId = accountId ??
           await fetchAccountIdForCurrentUser(isSuperAdmin: isSuperAdmin);
       final accountFilter =
@@ -615,7 +643,17 @@ class ChatProvider extends ChangeNotifier {
           .toList();
 
       // عنونة العرض
-      final aliasByUser = await _chat.fetchAliasMap();
+      Map<String, String> aliasByUser = {};
+      try {
+        aliasByUser = await _chat.fetchAliasMap();
+      } catch (_) {
+        aliasByUser = {};
+      }
+      if (_aliasCache.isNotEmpty) {
+        for (final entry in _aliasCache.entries) {
+          aliasByUser.putIfAbsent(entry.key, () => entry.value);
+        }
+      }
       final tmpDisplay = <String, String>{};
       for (final c in serverList) {
         final cid = c.id.trim();
@@ -683,7 +721,14 @@ class ChatProvider extends ChangeNotifier {
 
         // unread يعتمد على الخادم لضمان الدقة (مع تصفير المفتوح)
         final serverUc = srv.unreadCount ?? 0;
-        final uc = (openedId == srv.id) ? 0 : serverUc;
+        var uc = (openedId == srv.id) ? 0 : serverUc;
+        if (uc == 0 && (prev?.unreadCount ?? 0) > 0) {
+          final lr = _myLastReadByConv[srv.id];
+          final prevAt = prev?.lastMsgAt ?? prev?.createdAt;
+          if (lr == null || (prevAt != null && prevAt.isAfter(lr))) {
+            uc = prev!.unreadCount ?? 0;
+          }
+        }
 
         return srv.copyWith(
           lastMsgAt: effAt,
@@ -709,6 +754,10 @@ class ChatProvider extends ChangeNotifier {
       _aliasByUser
         ..clear()
         ..addAll(aliasByUser);
+      _aliasCache
+        ..clear()
+        ..addAll(aliasByUser);
+      unawaited(_persistAliasCache());
       _participantsByConv
         ..clear()
         ..addAll(tmpParticipantsByConv);
@@ -799,9 +848,19 @@ class ChatProvider extends ChangeNotifier {
     if (other.userUid.isEmpty) return;
     final trimmed = alias.trim();
     if (trimmed.isEmpty) {
-      await _chat.removeAlias(other.userUid);
+      _aliasByUser.remove(other.userUid);
+      _aliasCache.remove(other.userUid);
+      unawaited(_persistAliasCache());
+      try {
+        await _chat.removeAlias(other.userUid);
+      } catch (_) {}
     } else {
-      await _chat.setAlias(targetUid: other.userUid, alias: trimmed);
+      _aliasByUser[other.userUid] = trimmed;
+      _aliasCache[other.userUid] = trimmed;
+      unawaited(_persistAliasCache());
+      try {
+        await _chat.setAlias(targetUid: other.userUid, alias: trimmed);
+      } catch (_) {}
     }
     await _loadMyConversationsAndParticipants();
   }
@@ -990,8 +1049,19 @@ class ChatProvider extends ChangeNotifier {
         DateTime.tryParse((rec['created_at'] ?? '').toString())?.toUtc() ??
             DateTime.now().toUtc();
     final senderUid = (rec['sender_uid'] ?? '').toString();
-    final body = ((rec['body'] ?? rec['text']) ?? '').toString();
-    final snippet = _trimSnippet(body.isEmpty ? 'رسالة' : body);
+    final kind = (rec['kind'] ?? '').toString().toLowerCase();
+    final body = ((rec['body'] ?? rec['text']) ?? '').toString().trim();
+    String snippet;
+    if (kind == 'image') {
+      snippet = '📷 صورة';
+    } else if (kind == 'file') {
+      snippet = '📎 ملف';
+    } else if (body.isNotEmpty) {
+      snippet = body;
+    } else {
+      snippet = 'رسالة';
+    }
+    snippet = _trimSnippet(snippet);
 
     _fastBumpConversationOnNewMessage(
       cid: cid,
@@ -1011,6 +1081,10 @@ class ChatProvider extends ChangeNotifier {
     if (idx == -1) return;
 
     var c = _conversations[idx];
+    final lastAt = c.lastMsgAt ?? c.createdAt;
+    if (!createdAt.isAfter(lastAt)) {
+      return;
+    }
     var uc = c.unreadCount ?? 0;
     if (fromUid != currentUid) {
       final lr = _myLastReadByConv[cid];
@@ -1238,7 +1312,7 @@ class ChatProvider extends ChangeNotifier {
         before: before,
       );
 
-      final incoming = List<CM.ChatMessage>.from(listDesc.reversed);
+      final incoming = List<CM.ChatMessage>.from(listDesc);
 
       await _local.upsertMessages(incoming);
 
@@ -1253,8 +1327,8 @@ class ChatProvider extends ChangeNotifier {
       }
       _messagesByConv[conversationId] = existing;
 
-      if (incoming.isNotEmpty) {
-        _olderCursorByConv[conversationId] = incoming.last.createdAt;
+      if (existing.isNotEmpty) {
+        _olderCursorByConv[conversationId] = existing.last.createdAt;
       }
 
       _safeNotify();
@@ -1300,7 +1374,7 @@ class ChatProvider extends ChangeNotifier {
         conversationId: conversationId,
         limit: 40,
       );
-      final incoming = List<CM.ChatMessage>.from(listDesc.reversed);
+      final incoming = List<CM.ChatMessage>.from(listDesc);
       await _local.upsertMessages(incoming);
       _mergeIncomingMessages(conversationId, incoming);
       _safeNotify();
@@ -1321,13 +1395,13 @@ class ChatProvider extends ChangeNotifier {
       if (m.id.isNotEmpty) map[m.id] = m;
     }
     final merged = map.values.toList()
-      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     if (merged.length > 500) {
-      merged.removeRange(0, merged.length - 500);
+      merged.removeRange(500, merged.length);
     }
     _messagesByConv[conversationId] = merged;
     _olderCursorByConv[conversationId] =
-        merged.isNotEmpty ? merged.first.createdAt : null;
+        merged.isNotEmpty ? merged.last.createdAt : null;
   }
 
   // --------------------------------------------------------------------------

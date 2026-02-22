@@ -71,6 +71,14 @@ class _ViewItemsScreenState extends State<ViewItemsScreen> {
     final allItems = repo.allItems;
     final types = repo.types;
 
+    if (_typeFilter != null &&
+        types.where((t) => t.id == _typeFilter!.id).isEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() => _typeFilter = null);
+      });
+    }
+
     final items = _applyFiltersSort(repo, allItems);
     final outOfStockCount = allItems.where((it) => it.stock <= 0).length;
 
@@ -235,11 +243,11 @@ class _ItemTileTBIAN extends StatelessWidget {
   Future<List<num>> _loadStats() async {
     final db = await RepositoryService.instance.database;
     final res1 = await db.rawQuery(
-      'SELECT COALESCE(SUM(quantity),0) AS bought FROM purchases WHERE item_id = ?',
+      'SELECT COALESCE(SUM(quantity),0) AS bought FROM purchases WHERE item_id = ? AND ifnull(isDeleted,0)=0',
       [itemId],
     );
     final res2 = await db.rawQuery(
-      'SELECT COALESCE(SUM(quantity*unit_price),0) AS totalCost FROM purchases WHERE item_id = ?',
+      'SELECT COALESCE(SUM(quantity*unit_price),0) AS totalCost FROM purchases WHERE item_id = ? AND ifnull(isDeleted,0)=0',
       [itemId],
     );
     final boughtQty = (res1.first['bought'] as num).toInt();
@@ -369,10 +377,10 @@ class _ItemTileTBIAN extends StatelessWidget {
     if (ok != true) return;
 
     final qty = int.tryParse(ctrl.text);
-    if (qty == null || qty <= 0 || qty >= stock) {
+    if (qty == null || qty <= 0 || qty > stock) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text('الكمية يجب أن تكون رقمًا موجبًا وأقل من $stock')),
+            content: Text('الكمية يجب أن تكون رقمًا موجبًا ولا تتجاوز $stock')),
       );
       return;
     }
@@ -387,7 +395,16 @@ class _ItemTileTBIAN extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final repo = context.watch<RepositoryProvider>();
-    final current = repo.itemsOf(typeId).firstWhere((e) => e.id == itemId);
+    final list = repo.itemsOf(typeId);
+    final current = list.where((e) => e.id == itemId).isNotEmpty
+        ? list.firstWhere((e) => e.id == itemId)
+        : Item(
+            id: itemId,
+            typeId: typeId,
+            name: '—',
+            price: 0,
+            stock: 0,
+          );
     final stock = current.stock;
     final critical = stock <= 0;
 

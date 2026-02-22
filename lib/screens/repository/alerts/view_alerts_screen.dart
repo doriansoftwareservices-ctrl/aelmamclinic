@@ -67,6 +67,8 @@ class _ViewAlertsScreenState extends State<ViewAlertsScreen> {
              i.name AS item_name, i.stock AS current_stock
       FROM ${AlertSetting.table} AS a
       JOIN ${Item.table} AS i ON i.id = a.item_id
+      WHERE ifnull(a.isDeleted,0)=0
+        AND ifnull(i.isDeleted,0)=0
       ORDER BY i.name
     ''');
 
@@ -91,7 +93,10 @@ class _ViewAlertsScreenState extends State<ViewAlertsScreen> {
     final db = await RepositoryService.instance.database;
     await db.update(
       AlertSetting.table,
-      {'is_enabled': a.isEnabled ? 0 : 1},
+      {
+        'is_enabled': a.isEnabled ? 0 : 1,
+        'isEnabled': a.isEnabled ? 0 : 1,
+      },
       where: 'id = ?',
       whereArgs: [a.id],
     );
@@ -155,9 +160,7 @@ class _ViewAlertsScreenState extends State<ViewAlertsScreen> {
       ),
     );
     if (ok == true) {
-      final db = await RepositoryService.instance.database;
-      await db.delete(AlertSetting.table, where: 'id = ?', whereArgs: [a.id]);
-      await DBService.instance.notifyTableChanged(AlertSetting.table);
+      await DBService.instance.deleteAlert(a.id);
       await _refresh();
     }
   }

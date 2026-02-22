@@ -145,6 +145,8 @@ class DBService {
         return;
       }
 
+      await _setDirty(table);
+
       // إذا لم تكن آلية الدفع مربوطة بعد → خزّن الاسم مؤقتًا
       if (onLocalChange == null) {
         _pendingTables.add(table);
@@ -166,6 +168,99 @@ class DBService {
         unawaited(markStatisticsDirty());
       }
     } catch (_) {}
+  }
+
+  /*────────────────── dirty tracking (sync) ──────────────────*/
+  Future<void> _ensureSyncDirtyTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS sync_dirty (
+        table_name TEXT PRIMARY KEY,
+        dirty INTEGER NOT NULL DEFAULT 1,
+        updated_at TEXT
+      );
+    ''');
+
+    final rows =
+        await db.rawQuery('SELECT COUNT(*) AS c FROM sync_dirty LIMIT 1');
+    final count = (rows.first['c'] as num?)?.toInt() ?? 0;
+    if (count == 0) {
+      final now = DateTime.now().toIso8601String();
+      final batch = db.batch();
+      for (final t in _kSyncTables) {
+        batch.insert(
+          'sync_dirty',
+          {'table_name': t, 'dirty': 1, 'updated_at': now},
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
+      }
+      await batch.commit(noResult: true);
+    }
+  }
+
+  Future<void> _setDirty(String table) async {
+    try {
+      final db = await database;
+      await db.insert(
+        'sync_dirty',
+        {
+          'table_name': table,
+          'dirty': 1,
+          'updated_at': DateTime.now().toIso8601String(),
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    } catch (_) {}
+  }
+
+  Future<void> clearDirty(String table) async {
+    try {
+      final db = await database;
+      await db.update(
+        'sync_dirty',
+        {
+          'dirty': 0,
+          'updated_at': DateTime.now().toIso8601String(),
+        },
+        where: 'table_name = ?',
+        whereArgs: [table],
+      );
+    } catch (_) {}
+  }
+
+  Future<bool> isTableDirty(String table) async {
+    try {
+      final db = await database;
+      final rows = await db.query(
+        'sync_dirty',
+        columns: const ['dirty'],
+        where: 'table_name = ?',
+        whereArgs: [table],
+        limit: 1,
+      );
+      if (rows.isEmpty) return false;
+      final v = rows.first['dirty'];
+      if (v is num) return v.toInt() != 0;
+      return v?.toString() == '1';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<Set<String>> getDirtySyncTables() async {
+    try {
+      final db = await database;
+      final rows = await db.query(
+        'sync_dirty',
+        columns: const ['table_name'],
+        where: 'dirty = 1',
+      );
+      return rows
+          .map((r) => (r['table_name'] ?? '').toString())
+          .where((t) => t.isNotEmpty)
+          .toSet();
+    } catch (_) {
+      return <String>{};
+    }
   }
 
   /// جدولة دفع متأخر (Debounce) لجدول واحد
@@ -628,12 +723,44 @@ class DBService {
       await _createIndexIfMissing(db, 'idx_${t}_acc_dev_local', t,
           ['account_id', 'device_id', 'local_id']);
     }
+    await _ensureUpdatedAtTriggers(db);
+  }
+
+  Future<void> _ensureUpdatedAtTriggers(Database db) async {
+    for (final t in _kSyncTables) {
+      // بعد الإدراج: لو لم يُمرر updated_at، املأه تلقائيًا
+      await db.execute('''
+        CREATE TRIGGER IF NOT EXISTS trg_${t}_updated_at_ins
+        AFTER INSERT ON $t
+        FOR EACH ROW
+        WHEN NEW.updated_at IS NULL OR NEW.updated_at = ''
+        BEGIN
+          UPDATE $t SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+        END;
+      ''');
+      // بعد التحديث: لو لم يتغير updated_at، حدّثه تلقائيًا
+      await db.execute('''
+        CREATE TRIGGER IF NOT EXISTS trg_${t}_updated_at_upd
+        AFTER UPDATE ON $t
+        FOR EACH ROW
+        WHEN NEW.updated_at IS NULL OR NEW.updated_at = OLD.updated_at
+        BEGIN
+          UPDATE $t SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+        END;
+      ''');
+    }
   }
 
   Future<void> _ensureReturnsAttendanceColumns(Database db) async {
     await _addColumnIfMissing(
         db, 'returns', 'isAttended', 'INTEGER NOT NULL DEFAULT 0');
     await _addColumnIfMissing(db, 'returns', 'attendedAt', 'TEXT');
+  }
+
+  Future<void> _ensureLoansSettlementColumns(Database db) async {
+    await _addColumnIfMissing(
+        db, 'employees_loans', 'isSettled', 'INTEGER NOT NULL DEFAULT 0');
+    await _addColumnIfMissing(db, 'employees_loans', 'settledAt', 'TEXT');
   }
 
   Future<void> _ensureSyncFkMappingTable(Database db) async {
@@ -810,6 +937,17 @@ class DBService {
       'CREATE UNIQUE INDEX IF NOT EXISTS uix_items_type_name ON items(type_id, name)',
     );
 
+    // 🧪 فهرس فريد لأنواع الأصناف لكل حساب (يتسامح مع اختلاف حالة الأحرف)
+    await safeUniqueIndex(
+      'uix_item_types_name_per_account',
+      'item_types',
+      'CREATE UNIQUE INDEX IF NOT EXISTS uix_item_types_name_per_account ON item_types(account_id, lower(name))',
+    );
+    // تراجع آمن عن الفهرس القديم لو كان موجودًا (كان يسبب تعارضات عبر الحسابات)
+    try {
+      await db.execute('DROP INDEX IF EXISTS uix_item_types_lower_name');
+    } catch (_) {}
+
     // ✅ فهرس فريد لمنع ازدواج (خدمة، طبيب) الفعال فقط — بدون دوال داخل WHERE (متوافق مع SQLite)
     await safeUniqueIndex(
       'uix_sds_service_doctor_active',
@@ -845,20 +983,99 @@ class DBService {
     );
   }
 
+  Future<void> _ensureItemTypesNoUniqueName(Database db) async {
+    try {
+      if (!await _tableExists(db, ItemType.table)) return;
+      final idx = await db.rawQuery("PRAGMA index_list('${ItemType.table}')");
+      final hasUniqueName = idx.any((r) {
+        final unique = (r['unique'] as int? ?? 0) == 1;
+        final name = (r['name'] ?? '').toString().toLowerCase();
+        return unique && name.contains('item_types') && name.contains('name');
+      });
+      // sqlite_autoindex_item_types_1 يشير لقيّد UNIQUE(name)
+      final hasAutoUnique = idx.any((r) {
+        final unique = (r['unique'] as int? ?? 0) == 1;
+        final name = (r['name'] ?? '').toString().toLowerCase();
+        return unique && name.contains('sqlite_autoindex_item_types');
+      });
+      if (!(hasUniqueName || hasAutoUnique)) return;
+
+      final colsInfo = await db.rawQuery("PRAGMA table_info('${ItemType.table}')");
+      final existingCols = colsInfo
+          .map((c) => (c['name'] ?? '').toString())
+          .where((c) => c.isNotEmpty)
+          .toSet();
+
+      // جدول جديد بدون UNIQUE(name)
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS item_types_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          isDeleted INTEGER NOT NULL DEFAULT 0,
+          deletedAt TEXT,
+          account_id TEXT,
+          device_id TEXT,
+          local_id INTEGER,
+          updated_at TEXT
+        )
+      ''');
+
+      final targetCols = [
+        'id',
+        'name',
+        'isDeleted',
+        'deletedAt',
+        'account_id',
+        'device_id',
+        'local_id',
+        'updated_at',
+      ];
+
+      final insertCols = <String>[];
+      final selectCols = <String>[];
+      for (final col in targetCols) {
+        insertCols.add(col);
+        if (existingCols.contains(col)) {
+          selectCols.add(col);
+        } else if (col == 'isDeleted') {
+          selectCols.add('0');
+        } else if (col == 'deletedAt') {
+          selectCols.add('NULL');
+        } else {
+          selectCols.add('NULL');
+        }
+      }
+
+      await db.execute('''
+        INSERT INTO item_types_new (${insertCols.join(',')})
+        SELECT ${selectCols.join(',')} FROM ${ItemType.table};
+      ''');
+
+      await db.execute('DROP TABLE ${ItemType.table};');
+      await db.execute('ALTER TABLE item_types_new RENAME TO ${ItemType.table};');
+    } catch (e) {
+      print('ensureItemTypesNoUniqueName: $e');
+    }
+  }
+
   Future<void> _postOpenChecks(Database db) async {
     await db.rawQuery('PRAGMA foreign_keys = ON');
     await _ensureClinicProfileTable(db);
     await _ensureAlertSettingsColumns(db);
+    await _ensureItemTypesNoUniqueName(db);
     await _ensureSoftDeleteColumns(db);
     await _ensureSyncMetaColumns(db); // ← snake_case (متوافق مع parity v3)
     await _ensureReturnsAttendanceColumns(db);
+    await _ensureLoansSettlementColumns(db);
     await _ensureSyncFkMappingTable(db);
     await _ensureCommonIndexes(db);
+    await _ensureSyncDirtyTable(db);
   }
 
   /*──────────────── إنشاء الجداول ───────────────*/
   Future<void> _onCreate(Database db, int version) async {
     await _ensureSyncFkMappingTable(db);
+    await _ensureSyncDirtyTable(db);
     await _ensureClinicProfileTable(db);
     await db.execute('''
   CREATE TABLE patients (
@@ -1544,7 +1761,33 @@ class DBService {
   /*=============================== item_types ===============================*/
   Future<int> insertItemType(ItemType t) async {
     final db = await database;
-    final id = await db.insert(ItemType.table, t.toMap());
+    final name = t.name.trim();
+    if (name.isEmpty) {
+      throw ArgumentError('اسم نوع الصنف فارغ');
+    }
+    // إن وُجد نوع بنفس الاسم: استرجع/أعد استخدامه
+    final exists = await db.query(
+      ItemType.table,
+      where: 'lower(name)=lower(?)',
+      whereArgs: [name],
+      limit: 1,
+    );
+    if (exists.isNotEmpty) {
+      final row = exists.first;
+      final id = (row['id'] as num).toInt();
+      final isDel = (row['isDeleted'] as int? ?? 0) == 1;
+      if (isDel) {
+        await db.update(
+          ItemType.table,
+          {'name': name, 'isDeleted': 0, 'deletedAt': null},
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+      }
+      await _markChanged(ItemType.table);
+      return id;
+    }
+    final id = await db.insert(ItemType.table, {...t.toMap(), 'name': name});
     await _markChanged(ItemType.table);
     return id;
   }
@@ -1561,13 +1804,50 @@ class DBService {
 
   Future<int> updateItemType(int id, String name) async {
     final db = await database;
-    final rows = await db.update(ItemType.table, {'name': name},
+    final sanitized = name.trim();
+    if (sanitized.isEmpty) {
+      throw ArgumentError('اسم نوع الصنف فارغ');
+    }
+    final rows = await db.update(ItemType.table, {'name': sanitized},
         where: 'id = ?', whereArgs: [id]);
     await _markChanged(ItemType.table);
     return rows;
   }
 
   Future<int> deleteItemType(int id) async {
+    // احذف النوع وكل الأصناف التابعة له (منطقيًا) لتجنّب عناصر يتيمة
+    final db = await database;
+    final itemRows = await db.query(
+      Item.table,
+      columns: const ['id'],
+      where: 'type_id = ?',
+      whereArgs: [id],
+    );
+    final itemIds = itemRows
+        .map((r) => (r['id'] as num?)?.toInt())
+        .whereType<int>()
+        .toList();
+    if (itemIds.isNotEmpty) {
+      final args = List<Object?>.filled(itemIds.length, 0);
+      for (var i = 0; i < itemIds.length; i++) {
+        args[i] = itemIds[i];
+      }
+      await _softDeleteWhere(
+        Item.table,
+        'id IN (${List.filled(itemIds.length, '?').join(',')})',
+        args,
+      );
+      await _markChanged(Item.table);
+
+      // احذف أي تنبيهات مرتبطة بهذه الأصناف
+      await _softDeleteWhere(
+        AlertSetting.table,
+        'item_id IN (${List.filled(itemIds.length, '?').join(',')})',
+        args,
+      );
+      await _markChanged(AlertSetting.table);
+    }
+
     final rows = await _softDeleteById(ItemType.table, id);
     await _markChanged(ItemType.table);
     return rows;
@@ -1576,7 +1856,38 @@ class DBService {
   /*=============================== items ===============================*/
   Future<int> insertItem(Item i) async {
     final db = await database;
-    final id = await db.insert(Item.table, i.toMap());
+    final name = i.name.trim();
+    if (name.isEmpty) {
+      throw ArgumentError('اسم الصنف فارغ');
+    }
+    // إن وُجد صنف بنفس (type_id + name): استرجعه/أعد استخدامه
+    final exists = await db.query(
+      Item.table,
+      where: 'type_id = ? AND lower(name)=lower(?)',
+      whereArgs: [i.typeId, name],
+      limit: 1,
+    );
+    if (exists.isNotEmpty) {
+      final row = exists.first;
+      final id = (row['id'] as num).toInt();
+      final isDel = (row['isDeleted'] as int? ?? 0) == 1;
+      if (isDel) {
+        await db.update(
+          Item.table,
+          {
+            ...i.toMap(),
+            'name': name,
+            'isDeleted': 0,
+            'deletedAt': null,
+          },
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+      }
+      await _markChanged(Item.table);
+      return id;
+    }
+    final id = await db.insert(Item.table, {...i.toMap(), 'name': name});
     await _markChanged(Item.table);
     return id;
   }
@@ -1593,8 +1904,14 @@ class DBService {
 
   Future<int> updateItem(Item i) async {
     final db = await database;
-    final rows = await db
-        .update(Item.table, i.toMap(), where: 'id = ?', whereArgs: [i.id]);
+    final data = i.toMap();
+    final name = (data['name'] ?? '').toString().trim();
+    if (name.isEmpty) {
+      throw ArgumentError('اسم الصنف فارغ');
+    }
+    data['name'] = name;
+    final rows =
+        await db.update(Item.table, data, where: 'id = ?', whereArgs: [i.id]);
     await _markChanged(Item.table);
     return rows;
   }
@@ -1844,7 +2161,8 @@ class DBService {
 
   /// حذف منطقي للمريض وكل العناصر التابعة + عكس المخزون + قيد مالي سالب
   /// الآن داخل معاملة واحدة لضمان الذرّية.
-  Future<int> deletePatient(int id) => patients.deletePatient(id);
+  Future<int> deletePatient(int id, {bool restoreStock = true}) =>
+      patients.deletePatient(id, restoreStock: restoreStock);
 
   //=============================== العودات ===============================
   Future<int> insertReturnEntry(ReturnEntry entry) async {
@@ -2030,7 +2348,70 @@ class DBService {
   //=============================== الأطباء ===============================
   Future<int> insertDoctor(Doctor doctor) async {
     final db = await database;
-    final id = await db.insert('doctors', doctor.toMap());
+    final map = doctor.toMap();
+    final uidRaw = (map['userUid'] ?? map['user_uid'] ?? '').toString().trim();
+    final cols = <String>{};
+    try {
+      final info = await db.rawQuery('PRAGMA table_info(doctors)');
+      for (final row in info) {
+        final name = row['name']?.toString();
+        if (name != null && name.isNotEmpty) cols.add(name);
+      }
+    } catch (_) {}
+
+    if (uidRaw.isNotEmpty) {
+      final hasIsDeleted = cols.contains('isDeleted');
+      final hasIsDeletedSnake = !hasIsDeleted && cols.contains('is_deleted');
+      final selectCols = <String>['id'];
+      if (hasIsDeleted) selectCols.add('isDeleted');
+      if (hasIsDeletedSnake) selectCols.add('is_deleted');
+      final existing = await db.query(
+        'doctors',
+        columns: selectCols,
+        where: 'userUid = ?',
+        whereArgs: [uidRaw],
+        limit: 1,
+      );
+      if (existing.isNotEmpty) {
+        final id = (existing.first['id'] as num).toInt();
+        // إلغاء الحذف إن كان محذوفًا
+        final updateMap = <String, dynamic>{}..addAll(map);
+        updateMap.remove('id');
+        if (hasIsDeleted) {
+          updateMap['isDeleted'] = 0;
+        } else if (hasIsDeletedSnake) {
+          updateMap['is_deleted'] = 0;
+        }
+        await db.update(
+          'doctors',
+          updateMap,
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+        await _markChanged('doctors');
+        return id;
+      }
+    }
+
+    final id = await db.insert(
+      'doctors',
+      map,
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+    if (id == 0 && uidRaw.isNotEmpty) {
+      final fallback = await db.query(
+        'doctors',
+        columns: const ['id'],
+        where: 'userUid = ?',
+        whereArgs: [uidRaw],
+        limit: 1,
+      );
+      if (fallback.isNotEmpty) {
+        final existingId = (fallback.first['id'] as num).toInt();
+        await _markChanged('doctors');
+        return existingId;
+      }
+    }
     await _markChanged('doctors');
     return id;
   }
@@ -2081,8 +2462,25 @@ class DBService {
   }
 
   Future<int> deleteDoctor(int id) async {
-    final rows = await _softDeleteById('doctors', id);
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    final rows = await db.transaction((txn) async {
+      final r = await txn.update(
+        'doctors',
+        {'isDeleted': 1, 'deletedAt': now},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      await txn.update(
+        'service_doctor_share',
+        {'isDeleted': 1, 'deletedAt': now},
+        where: 'doctorId = ?',
+        whereArgs: [id],
+      );
+      return r;
+    });
     await _markChanged('doctors');
+    await _markChanged('service_doctor_share');
     return rows;
   }
 
@@ -2158,8 +2556,25 @@ class DBService {
   }
 
   Future<int> deleteMedicalService(int id) async {
-    final rows = await _softDeleteById('medical_services', id);
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    final rows = await db.transaction((txn) async {
+      final r = await txn.update(
+        'medical_services',
+        {'isDeleted': 1, 'deletedAt': now},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      await txn.update(
+        'service_doctor_share',
+        {'isDeleted': 1, 'deletedAt': now},
+        where: 'serviceId = ?',
+        whereArgs: [id],
+      );
+      return r;
+    });
     await _markChanged('medical_services');
+    await _markChanged('service_doctor_share');
     return rows;
   }
 
@@ -2192,12 +2607,18 @@ class DBService {
     required double sharePercentage,
     double towerSharePercentage = 0.0,
   }) async {
+    double clampPct(double v) {
+      if (v.isNaN) return 0.0;
+      if (v < 0) return 0.0;
+      if (v > 100) return 100.0;
+      return v;
+    }
     final db = await database;
     final id = await db.insert('service_doctor_share', {
       'serviceId': serviceId,
       'doctorId': doctorId,
-      'sharePercentage': sharePercentage,
-      'towerSharePercentage': towerSharePercentage,
+      'sharePercentage': clampPct(sharePercentage),
+      'towerSharePercentage': clampPct(towerSharePercentage),
     });
     await _markChanged('service_doctor_share');
     return id;
@@ -2235,12 +2656,20 @@ class DBService {
     double? sharePercentage,
     double? towerSharePercentage,
   }) async {
+    double clampPct(double v) {
+      if (v.isNaN) return 0.0;
+      if (v < 0) return 0.0;
+      if (v > 100) return 100.0;
+      return v;
+    }
     final db = await database;
     final updateData = <String, dynamic>{};
-    if (sharePercentage != null)
-      updateData['sharePercentage'] = sharePercentage;
-    if (towerSharePercentage != null)
-      updateData['towerSharePercentage'] = towerSharePercentage;
+    if (sharePercentage != null) {
+      updateData['sharePercentage'] = clampPct(sharePercentage);
+    }
+    if (towerSharePercentage != null) {
+      updateData['towerSharePercentage'] = clampPct(towerSharePercentage);
+    }
     final rows = await db.update('service_doctor_share', updateData,
         where: 'id = ?', whereArgs: [id]);
     await _markChanged('service_doctor_share');
@@ -2304,8 +2733,16 @@ class DBService {
         ms.cost,
         sds.sharePercentage       AS doctorPercentRaw,
         sds.towerSharePercentage  AS clinicPercentRaw,
-        COALESCE(sds.sharePercentage, 0)      AS doctorPercentComputed,
-        COALESCE(sds.towerSharePercentage, 0) AS clinicPercentComputed
+        CASE
+          WHEN ms.serviceType IN ('doctor','doctorGeneral','طبيب')
+            THEN (100 - COALESCE(sds.towerSharePercentage, 0))
+          ELSE COALESCE(sds.sharePercentage, 0)
+        END AS doctorPercentComputed,
+        CASE
+          WHEN ms.serviceType IN ('doctor','doctorGeneral','طبيب')
+            THEN COALESCE(sds.towerSharePercentage, 0)
+          ELSE (100 - COALESCE(sds.sharePercentage, 0))
+        END AS clinicPercentComputed
       FROM service_doctor_share sds
       JOIN medical_services ms ON ms.id = sds.serviceId
       WHERE sds.doctorId = ?
@@ -2331,15 +2768,31 @@ class DBService {
         ms.cost,
         sds.sharePercentage      AS doctorPercentRaw,
         sds.towerSharePercentage AS clinicPercentRaw,
-        COALESCE(sds.sharePercentage, 0)      AS doctorPercentComputed,
-        COALESCE(sds.towerSharePercentage, 0) AS clinicPercentComputed,
+        CASE
+          WHEN ms.serviceType IN ('doctor','doctorGeneral','طبيب')
+            THEN (100 - COALESCE(sds.towerSharePercentage, 0))
+          ELSE COALESCE(sds.sharePercentage, 0)
+        END AS doctorPercentComputed,
+        CASE
+          WHEN ms.serviceType IN ('doctor','doctorGeneral','طبيب')
+            THEN COALESCE(sds.towerSharePercentage, 0)
+          ELSE (100 - COALESCE(sds.sharePercentage, 0))
+        END AS clinicPercentComputed,
         COUNT(ps.id)                      AS times,
         COALESCE(SUM(ps.serviceCost), 0)  AS totalRevenue,
         COALESCE(SUM(
-          ps.serviceCost * (COALESCE(sds.sharePercentage, 0)/100.0)
+          ps.serviceCost * (CASE
+            WHEN ms.serviceType IN ('doctor','doctorGeneral','طبيب')
+              THEN (100 - COALESCE(sds.towerSharePercentage, 0))
+            ELSE COALESCE(sds.sharePercentage, 0)
+          END / 100.0)
         ), 0) AS doctorTotalAmount,
         COALESCE(SUM(
-          ps.serviceCost * (COALESCE(sds.towerSharePercentage, 0)/100.0)
+          ps.serviceCost * (CASE
+            WHEN ms.serviceType IN ('doctor','doctorGeneral','طبيب')
+              THEN COALESCE(sds.towerSharePercentage, 0)
+            ELSE (100 - COALESCE(sds.sharePercentage, 0))
+          END / 100.0)
         ), 0) AS clinicTotalAmount
       FROM service_doctor_share sds
       JOIN medical_services ms ON ms.id = sds.serviceId
@@ -2351,7 +2804,7 @@ class DBService {
         AND (sds.isDeleted IS NULL OR sds.isDeleted = 0)
         AND (ms.isDeleted  IS NULL OR ms.isDeleted  = 0)
         AND sds.isHidden   = 0
-        AND (p.registerDate BETWEEN ? AND ? OR p.registerDate IS NULL)
+        AND (date(p.registerDate) BETWEEN date(?) AND date(?) OR p.registerDate IS NULL)
       GROUP BY ms.id, ms.name, ms.serviceType, ms.cost, sds.sharePercentage, sds.towerSharePercentage
       ORDER BY ms.name COLLATE NOCASE;
     ''', [doctorId, from.toIso8601String(), to.toIso8601String()]);
@@ -2383,8 +2836,19 @@ class DBService {
     final r = rows.first;
     final double shareP = (r['shareP'] as num).toDouble();
     final double towerP = (r['towerP'] as num).toDouble();
+    final String type = (r['serviceType'] ?? '').toString();
 
-    return {'doctor': shareP, 'clinic': towerP};
+    double clampPct(double v) => v < 0 ? 0 : (v > 100 ? 100 : v);
+
+    if (type == 'doctor' || type == 'doctorGeneral' || type == 'طبيب') {
+      final clinic = clampPct(towerP);
+      final doctor = clampPct(100 - clinic);
+      return {'doctor': doctor, 'clinic': clinic};
+    }
+
+    final doctor = clampPct(shareP);
+    final clinic = clampPct(100 - doctor);
+    return {'doctor': doctor, 'clinic': clinic};
   }
 
   //=============================== إدارة الموظفين ===============================
@@ -2392,6 +2856,7 @@ class DBService {
     final db = await database;
     final id = await db.insert('employees', employeeData);
     await _markChanged('employees');
+    await _ensureDoctorForEmployeeId(id, dataHint: employeeData);
     return id;
   }
 
@@ -2437,12 +2902,14 @@ class DBService {
     final rows = await db
         .update('employees', newData, where: 'id = ?', whereArgs: [employeeId]);
     await _markChanged('employees');
+    await _ensureDoctorForEmployeeId(employeeId, dataHint: newData);
     return rows;
   }
 
   Future<int> deleteEmployee(int employeeId) async {
     final rows = await _softDeleteById('employees', employeeId);
     await _markChanged('employees');
+    await _softDeleteDoctorsForEmployee(employeeId);
     return rows;
   }
 
@@ -2453,6 +2920,166 @@ class DBService {
         whereArgs: [employeeId],
         limit: 1);
     return res.isEmpty ? null : res.first;
+  }
+
+  Future<void> _ensureDoctorForEmployeeId(
+    int employeeId, {
+    Map<String, dynamic>? dataHint,
+  }) async {
+    try {
+      final db = await database;
+      Map<String, dynamic>? emp = dataHint;
+      if (emp == null ||
+          !(emp.containsKey('isDoctor') || emp.containsKey('isDoctor'.toLowerCase()))) {
+        final rows = await db.query(
+          'employees',
+          where: 'id = ? AND ifnull(isDeleted,0)=0',
+          whereArgs: [employeeId],
+          limit: 1,
+        );
+        if (rows.isEmpty) return;
+        emp = rows.first;
+      }
+
+      final isDoctor = (emp['isDoctor'] as num?)?.toInt() == 1;
+      if (!isDoctor) {
+        await _softDeleteDoctorsForEmployee(employeeId, dataHint: emp);
+        return;
+      }
+
+      final userUid = (emp['userUid'] ?? '').toString().trim();
+      final name = (emp['name'] ?? '').toString().trim();
+      final specialization = (emp['jobTitle'] ?? '').toString().trim();
+      final phone = (emp['phoneNumber'] ?? '').toString().trim();
+
+      // 1) Try by employeeId
+      final existingByEmp = await db.query(
+        'doctors',
+        where: 'employeeId = ? AND ifnull(isDeleted,0)=0',
+        whereArgs: [employeeId],
+        limit: 1,
+      );
+      if (existingByEmp.isNotEmpty) {
+        final row = existingByEmp.first;
+        final doc = Doctor.fromMap(row).copyWith(
+          userUid: userUid.isEmpty ? row['userUid']?.toString() : userUid,
+          name: name.isEmpty ? row['name']?.toString() ?? 'طبيب' : name,
+          specialization: specialization.isEmpty
+              ? row['specialization']?.toString() ?? 'عام'
+              : specialization,
+          phoneNumber: phone.isEmpty ? row['phoneNumber']?.toString() ?? '' : phone,
+        );
+        await updateDoctor(doc);
+        return;
+      }
+
+      // 2) Try by userUid
+      if (userUid.isNotEmpty) {
+        final existingByUid = await db.query(
+          'doctors',
+          where: 'userUid = ? AND ifnull(isDeleted,0)=0',
+          whereArgs: [userUid],
+          limit: 1,
+        );
+        if (existingByUid.isNotEmpty) {
+          final row = existingByUid.first;
+          final doc = Doctor.fromMap(row).copyWith(employeeId: employeeId);
+          await updateDoctor(doc);
+          return;
+        }
+      }
+
+      // 3) Create new doctor record
+      final doctor = Doctor(
+        employeeId: employeeId,
+        userUid: userUid.isEmpty ? null : userUid,
+        name: name.isEmpty ? 'طبيب' : name,
+        specialization: specialization.isEmpty ? 'عام' : specialization,
+        phoneNumber: phone,
+        startTime: '08:00',
+        endTime: '16:00',
+      );
+      await insertDoctor(doctor);
+    } catch (_) {
+      // ignore to avoid blocking employee save
+    }
+  }
+
+  Future<void> _softDeleteDoctorsForEmployee(
+    int employeeId, {
+    Map<String, dynamic>? dataHint,
+  }) async {
+    try {
+      final db = await database;
+      final now = DateTime.now().toIso8601String();
+      final ids = <int>{};
+
+      final rowsByEmp = await db.query(
+        'doctors',
+        columns: const ['id'],
+        where: 'employeeId = ? AND ifnull(isDeleted,0)=0',
+        whereArgs: [employeeId],
+      );
+      for (final r in rowsByEmp) {
+        final id = (r['id'] as num?)?.toInt();
+        if (id != null) ids.add(id);
+      }
+
+      String? userUid;
+      if (dataHint != null) {
+        userUid = (dataHint['userUid'] ?? '').toString().trim();
+      }
+      if (userUid == null || userUid.isEmpty) {
+        final empRows = await db.query(
+          'employees',
+          columns: const ['userUid'],
+          where: 'id = ?',
+          whereArgs: [employeeId],
+          limit: 1,
+        );
+        if (empRows.isNotEmpty) {
+          userUid = (empRows.first['userUid'] ?? '').toString().trim();
+        }
+      }
+
+      if (userUid != null && userUid.isNotEmpty) {
+        final rowsByUid = await db.query(
+          'doctors',
+          columns: const ['id'],
+          where: 'userUid = ? AND ifnull(isDeleted,0)=0',
+          whereArgs: [userUid],
+        );
+        for (final r in rowsByUid) {
+          final id = (r['id'] as num?)?.toInt();
+          if (id != null) ids.add(id);
+        }
+      }
+
+      if (ids.isEmpty) return;
+
+      final idArgs = ids.toList();
+      final whereIn = 'id IN (${List.filled(idArgs.length, '?').join(',')})';
+      await _softDeleteWhere('doctors', whereIn, idArgs);
+      await _markChanged('doctors');
+
+      final shareWhere =
+          'doctorId IN (${List.filled(idArgs.length, '?').join(',')})';
+      await _softDeleteWhere('service_doctor_share', shareWhere, idArgs);
+      await _markChanged('service_doctor_share');
+
+      await db.update(
+        'doctors',
+        {'deletedAt': now},
+        where: whereIn,
+        whereArgs: idArgs,
+      );
+      await db.update(
+        'service_doctor_share',
+        {'deletedAt': now},
+        where: shareWhere,
+        whereArgs: idArgs,
+      );
+    } catch (_) {}
   }
 
   Future<Set<String>> getLinkedUserUids() async {
@@ -2519,16 +3146,41 @@ class DBService {
     required int month,
   }) async {
     final db = await database;
+    final now = DateTime.now().toIso8601String();
     final rows = await db.rawUpdate('''
         UPDATE employees_loans
-        SET loanAmount = 0
+        SET isSettled = 1,
+            settledAt = ?,
+            leftover = 0
         WHERE employeeId = ?
           AND strftime('%Y', loanDateTime) = ?
           AND strftime('%m', loanDateTime) = ?
           AND ifnull(isDeleted,0)=0
-      ''', [employeeId, year.toString(), month.toString().padLeft(2, '0')]);
+      ''', [
+      now,
+      employeeId,
+      year.toString(),
+      month.toString().padLeft(2, '0')
+    ]);
     await _markChanged('employees_loans');
     return rows;
+  }
+
+  Future<double> getEmployeeLoansSumBetween({
+    required int employeeId,
+    required DateTime from,
+    required DateTime to,
+  }) async {
+    final db = await database;
+    final res = await db.rawQuery('''
+      SELECT COALESCE(SUM(loanAmount), 0) AS total
+      FROM employees_loans
+      WHERE employeeId = ?
+        AND date(loanDateTime) BETWEEN date(?) AND date(?)
+        AND ifnull(isSettled,0)=0
+        AND ifnull(isDeleted,0)=0
+    ''', [employeeId, from.toIso8601String(), to.toIso8601String()]);
+    return (res.first['total'] as num?)?.toDouble() ?? 0.0;
   }
 
   //=============================== رواتب الموظفين ===============================
@@ -2575,6 +3227,144 @@ class DBService {
       where: 'ifnull(isDeleted,0)=0',
       orderBy: 'discountDateTime DESC',
     );
+  }
+
+  Future<double> getEmployeeDiscountsSumBetween({
+    required int employeeId,
+    required DateTime from,
+    required DateTime to,
+  }) async {
+    final db = await database;
+    final res = await db.rawQuery('''
+      SELECT COALESCE(SUM(amount), 0) AS total
+      FROM employees_discounts
+      WHERE employeeId = ?
+        AND date(discountDateTime) BETWEEN date(?) AND date(?)
+        AND ifnull(isDeleted,0)=0
+    ''', [employeeId, from.toIso8601String(), to.toIso8601String()]);
+    return (res.first['total'] as num?)?.toDouble() ?? 0.0;
+  }
+
+  /// إصلاح سجلات السلف/الخصومات التي فقدت employeeId أثناء المزامنة.
+  /// يعتمد على مطابقة المبلغ ونطاق زمني قريب من سجل financial_logs.
+  Future<void> repairEmployeeLoansDiscountsMissingEmployeeId({
+    Duration tolerance = const Duration(minutes: 10),
+  }) async {
+    final db = await database;
+    var fixedLoans = false;
+    var fixedDiscounts = false;
+
+    final logs = await db.query(
+      'financial_logs',
+      columns: const ['transaction_type', 'amount', 'employee_id', 'timestamp'],
+      where: 'employee_id IS NOT NULL AND transaction_type IN (?,?)',
+      whereArgs: const ['Loan', 'Discount'],
+    );
+
+    if (logs.isEmpty) return;
+
+    DateTime? _parseTs(String? v) {
+      if (v == null || v.trim().isEmpty) return null;
+      try {
+        return DateTime.parse(v);
+      } catch (_) {
+        return null;
+      }
+    }
+
+    final loanLogs = <Map<String, dynamic>>[];
+    final discountLogs = <Map<String, dynamic>>[];
+    for (final l in logs) {
+      final type = (l['transaction_type'] ?? '').toString();
+      if (type == 'Loan') {
+        loanLogs.add(l);
+      } else if (type == 'Discount') {
+        discountLogs.add(l);
+      }
+    }
+
+    final missingLoans = await db.query(
+      'employees_loans',
+      columns: const ['id', 'loanAmount', 'loanDateTime', 'employeeId'],
+      where: 'employeeId IS NULL',
+    );
+    for (final row in missingLoans) {
+      final loanId = (row['id'] as num?)?.toInt();
+      if (loanId == null) continue;
+      final amount = (row['loanAmount'] as num?)?.toDouble() ?? 0.0;
+      final dt = _parseTs(row['loanDateTime']?.toString());
+      if (dt == null) continue;
+
+      Map<String, dynamic>? best;
+      Duration? bestDiff;
+      for (final l in loanLogs) {
+        final lAmt = (l['amount'] as num?)?.toDouble() ?? 0.0;
+        if ((lAmt - amount).abs() > 0.0001) continue;
+        final lTs = _parseTs(l['timestamp']?.toString());
+        if (lTs == null) continue;
+        final diff = lTs.difference(dt).abs();
+        if (diff > tolerance) continue;
+        if (bestDiff == null || diff < bestDiff) {
+          bestDiff = diff;
+          best = l;
+        }
+      }
+      final empIdRaw = best?['employee_id'];
+      final empId =
+          empIdRaw is num ? empIdRaw.toInt() : int.tryParse('$empIdRaw');
+      if (empId != null && empId > 0) {
+        await db.update(
+          'employees_loans',
+          {'employeeId': empId},
+          where: 'id = ?',
+          whereArgs: [loanId],
+        );
+        fixedLoans = true;
+      }
+    }
+
+    final missingDiscounts = await db.query(
+      'employees_discounts',
+      columns: const ['id', 'amount', 'discountDateTime', 'employeeId'],
+      where: 'employeeId IS NULL',
+    );
+    for (final row in missingDiscounts) {
+      final discId = (row['id'] as num?)?.toInt();
+      if (discId == null) continue;
+      final amount = (row['amount'] as num?)?.toDouble() ?? 0.0;
+      final dt = _parseTs(row['discountDateTime']?.toString());
+      if (dt == null) continue;
+
+      Map<String, dynamic>? best;
+      Duration? bestDiff;
+      for (final l in discountLogs) {
+        final lAmt = (l['amount'] as num?)?.toDouble() ?? 0.0;
+        if ((lAmt - amount).abs() > 0.0001) continue;
+        final lTs = _parseTs(l['timestamp']?.toString());
+        if (lTs == null) continue;
+        final diff = lTs.difference(dt).abs();
+        if (diff > tolerance) continue;
+        if (bestDiff == null || diff < bestDiff) {
+          bestDiff = diff;
+          best = l;
+        }
+      }
+      final empIdRaw = best?['employee_id'];
+      final empId =
+          empIdRaw is num ? empIdRaw.toInt() : int.tryParse('$empIdRaw');
+      if (empId != null && empId > 0) {
+        await db.update(
+          'employees_discounts',
+          {'employeeId': empId},
+          where: 'id = ?',
+          whereArgs: [discId],
+        );
+        fixedDiscounts = true;
+      }
+    }
+
+    if (fixedLoans) await _markChanged('employees_loans');
+    if (fixedDiscounts) await _markChanged('employees_discounts');
   }
 
   Future<List<Map<String, dynamic>>> getDiscountsByEmployee(int empId) async {
@@ -2705,12 +3495,30 @@ class DBService {
     final res = await db.rawQuery('''
         SELECT SUM(paidAmount) as total
         FROM patients
-        WHERE registerDate BETWEEN ? AND ?
+        WHERE date(registerDate) BETWEEN date(?) AND date(?)
           AND ifnull(isDeleted,0)=0
       ''', [from.toIso8601String(), to.toIso8601String()]);
     return res.first['total'] == null
         ? 0.0
         : (res.first['total'] as num).toDouble();
+  }
+
+  /// إجمالي قيمة الخدمات المقدمة خلال الفترة (يُستخدم كدخل عند عدم تسجيل الدفعات).
+  Future<double> getSumPatientServicesBetween(DateTime from, DateTime to) async {
+    final db = await database;
+    final res = await db.rawQuery('''
+        SELECT COALESCE(SUM(
+          COALESCE(ps.serviceCost, ms.cost, 0)
+        ), 0) as total
+        FROM ${PatientService.table} ps
+        JOIN patients p ON p.id = ps.patientId
+        LEFT JOIN medical_services ms ON ms.id = ps.serviceId
+        WHERE date(p.registerDate) BETWEEN date(?) AND date(?)
+          AND ifnull(ps.isDeleted,0)=0
+          AND ifnull(p.isDeleted,0)=0
+          AND (ps.serviceId IS NULL OR ifnull(ms.isDeleted,0)=0)
+      ''', [from.toIso8601String(), to.toIso8601String()]);
+    return (res.first['total'] as num?)?.toDouble() ?? 0.0;
   }
 
   Future<double> getSumConsumptionBetween(DateTime from, DateTime to) async {
@@ -2731,6 +3539,20 @@ class DBService {
     return res.first['total'] == null
         ? 0.0
         : (res.first['total'] as num).toDouble();
+  }
+
+  /// إجمالي المشتريات خلال الفترة (تحسب تكلفة المواد عند الشراء).
+  Future<double> getSumPurchasesBetween(DateTime from, DateTime to) async {
+    final db = await database;
+    final res = await db.rawQuery('''
+        SELECT COALESCE(SUM(
+          COALESCE(quantity, 0) * COALESCE(unit_price, 0)
+        ), 0) as total
+        FROM purchases
+        WHERE date(created_at) BETWEEN date(?) AND date(?)
+          AND ifnull(isDeleted,0)=0
+      ''', [from.toIso8601String(), to.toIso8601String()]);
+    return (res.first['total'] as num?)?.toDouble() ?? 0.0;
   }
 
   Future<double> getSumReturnsRemainingBetween(
@@ -2767,7 +3589,7 @@ class DBService {
         ON sds.serviceId = ps.serviceId
        AND sds.doctorId = ?
        AND ifnull(sds.isDeleted,0)=0
-      WHERE p.registerDate BETWEEN ? AND ?
+      WHERE date(p.registerDate) BETWEEN date(?) AND date(?)
         AND ms.serviceType IN ('radiology','lab','الأشعة','المختبر')
         AND ifnull(ps.isDeleted,0)=0
         AND ifnull(p.isDeleted,0)=0
@@ -2798,7 +3620,7 @@ class DBService {
         ON sds.serviceId = ps.serviceId
        AND sds.doctorId = ?
        AND ifnull(sds.isDeleted,0)=0
-      WHERE p.registerDate BETWEEN ? AND ?
+      WHERE date(p.registerDate) BETWEEN date(?) AND date(?)
         AND ifnull(ps.isDeleted,0)=0
         AND ifnull(p.isDeleted,0)=0
         AND (ps.serviceId IS NULL OR ifnull(ms.isDeleted,0)=0)
@@ -2834,7 +3656,7 @@ class DBService {
         ON sds.serviceId = ps.serviceId
        AND sds.doctorId = ?
        AND ifnull(sds.isDeleted,0)=0
-      WHERE p.registerDate BETWEEN ? AND ?
+      WHERE date(p.registerDate) BETWEEN date(?) AND date(?)
         AND ifnull(ps.isDeleted,0)=0
         AND ifnull(p.isDeleted,0)=0
         AND (ps.serviceId IS NULL OR ifnull(ms.isDeleted,0)=0)
@@ -2849,11 +3671,15 @@ class DBService {
       SELECT COALESCE(SUM(
         CASE
           -- سطور حرّة تُحسب لطبيب المريض
-          WHEN ps.serviceId IS NULL THEN ps.serviceCost
-          -- خدمات طبيب مُعرّفة تُنسب لطبيب الخدمة = طبيب المريض هنا
+          WHEN ps.serviceId IS NULL THEN
+            CASE WHEN p.doctorId IS NOT NULL THEN ps.serviceCost ELSE 0 END
+          -- خدمات طبيب مُعرّفة تُنسب لطبيب الخدمة عبر sds (إن وُجد)
           WHEN ms.serviceType IN ('doctor','doctorGeneral','طبيب')
-               AND sds.doctorId = p.doctorId
-            THEN ps.serviceCost * (1.0 - COALESCE(sds.towerSharePercentage, 0) / 100.0)
+            THEN CASE
+              WHEN sds.towerSharePercentage IS NULL
+                THEN ps.serviceCost
+              ELSE ps.serviceCost * (1.0 - COALESCE(sds.towerSharePercentage, 0) / 100.0)
+            END
           ELSE 0
         END
       ), 0) AS total
@@ -2862,9 +3688,8 @@ class DBService {
       LEFT JOIN medical_services ms ON ms.id = ps.serviceId
       LEFT JOIN service_doctor_share sds
         ON sds.serviceId = ps.serviceId
-       AND sds.doctorId = p.doctorId
        AND ifnull(sds.isDeleted,0)=0
-      WHERE p.registerDate BETWEEN ? AND ?
+      WHERE date(p.registerDate) BETWEEN date(?) AND date(?)
         AND (ps.serviceId IS NULL OR ms.serviceType IN ('doctor','doctorGeneral','طبيب'))
         AND ifnull(ps.isDeleted,0)=0
         AND ifnull(p.isDeleted,0)=0
@@ -2884,9 +3709,8 @@ class DBService {
       JOIN medical_services ms ON ms.id = ps.serviceId
       LEFT JOIN service_doctor_share sds
         ON sds.serviceId = ps.serviceId
-       AND sds.doctorId = p.doctorId
        AND ifnull(sds.isDeleted,0)=0
-      WHERE p.registerDate BETWEEN ? AND ?
+      WHERE date(p.registerDate) BETWEEN date(?) AND date(?)
         AND ms.serviceType IN ('radiology','lab','الأشعة','المختبر')
         AND ifnull(ps.isDeleted,0)=0
         AND ifnull(p.isDeleted,0)=0
@@ -2906,7 +3730,6 @@ class DBService {
         CASE
           WHEN ps.serviceId IS NULL THEN 0
           WHEN ms.serviceType IN ('radiology','lab','doctor','doctorGeneral','الأشعة','المختبر','طبيب')
-               AND sds.doctorId = p.doctorId
             THEN ps.serviceCost * (COALESCE(sds.towerSharePercentage, 0) / 100.0)
           ELSE 0
         END
@@ -2916,9 +3739,8 @@ class DBService {
       LEFT JOIN medical_services ms ON ms.id = ps.serviceId
       LEFT JOIN service_doctor_share sds
         ON sds.serviceId = ps.serviceId
-       AND sds.doctorId = p.doctorId
        AND ifnull(sds.isDeleted,0)=0
-      WHERE p.registerDate BETWEEN ? AND ?
+      WHERE date(p.registerDate) BETWEEN date(?) AND date(?)
         AND (ps.serviceId IS NULL OR ms.serviceType IN ('radiology','lab','doctor','doctorGeneral','الأشعة','المختبر','طبيب'))
         AND ifnull(ps.isDeleted,0)=0
         AND ifnull(p.isDeleted,0)=0
@@ -2941,9 +3763,8 @@ class DBService {
       JOIN medical_services ms ON ms.id = ps.serviceId
       LEFT JOIN service_doctor_share sds
         ON sds.serviceId = ps.serviceId
-       AND sds.doctorId = p.doctorId
        AND ifnull(sds.isDeleted,0)=0
-      WHERE p.registerDate BETWEEN ? AND ?
+      WHERE date(p.registerDate) BETWEEN date(?) AND date(?)
         AND ms.serviceType IN ('radiology','lab','الأشعة','المختبر')
         AND ifnull(ps.isDeleted,0)=0
         AND ifnull(p.isDeleted,0)=0
@@ -2968,10 +3789,14 @@ class DBService {
         date(p.registerDate) AS dayKey,
         COALESCE(SUM(
           CASE
-            WHEN ps.serviceId IS NULL THEN ps.serviceCost
-            WHEN ms.serviceType IN ('doctor','doctorGeneral','طبيب')
-                 AND sds.doctorId = p.doctorId
-              THEN ps.serviceCost * (COALESCE(sds.sharePercentage, 0) / 100.0)
+            WHEN ps.serviceId IS NULL THEN
+              CASE WHEN p.doctorId IS NOT NULL THEN ps.serviceCost ELSE 0 END
+            WHEN ms.serviceType IN ('doctor','doctorGeneral','طبيب') THEN
+              CASE
+                WHEN sds.towerSharePercentage IS NULL
+                  THEN ps.serviceCost
+                ELSE ps.serviceCost * (1.0 - COALESCE(sds.towerSharePercentage, 0) / 100.0)
+              END
             ELSE 0
           END
         ), 0) AS total
@@ -2980,9 +3805,8 @@ class DBService {
       LEFT JOIN medical_services ms ON ms.id = ps.serviceId
       LEFT JOIN service_doctor_share sds
         ON sds.serviceId = ps.serviceId
-       AND sds.doctorId = p.doctorId
        AND ifnull(sds.isDeleted,0)=0
-      WHERE p.registerDate BETWEEN ? AND ?
+      WHERE date(p.registerDate) BETWEEN date(?) AND date(?)
         AND (ps.serviceId IS NULL OR ms.serviceType IN ('doctor','doctorGeneral','طبيب'))
         AND ifnull(ps.isDeleted,0)=0
         AND ifnull(p.isDeleted,0)=0
@@ -2997,6 +3821,77 @@ class DBService {
       out[key] = (row['total'] as num?)?.toDouble() ?? 0.0;
     }
     return out;
+  }
+
+  Future<Map<String, double>> getNetProfitByDateBetween(
+      DateTime from, DateTime to) async {
+    final db = await database;
+    final incomeRows = await db.rawQuery('''
+      SELECT date(p.registerDate) AS dayKey,
+             COALESCE(SUM(
+               COALESCE(ps.serviceCost, ms.cost, 0)
+             ), 0) AS total
+      FROM ${PatientService.table} ps
+      JOIN patients p ON p.id = ps.patientId
+      LEFT JOIN medical_services ms ON ms.id = ps.serviceId
+      WHERE date(p.registerDate) BETWEEN date(?) AND date(?)
+        AND ifnull(ps.isDeleted,0)=0
+        AND ifnull(p.isDeleted,0)=0
+        AND (ps.serviceId IS NULL OR ifnull(ms.isDeleted,0)=0)
+      GROUP BY date(p.registerDate)
+    ''', [from.toIso8601String(), to.toIso8601String()]);
+
+    final consRows = await db.rawQuery('''
+      SELECT date(created_at) AS dayKey,
+             COALESCE(SUM(
+               COALESCE(quantity, 0) * COALESCE(unit_price, 0)
+             ), 0) AS total
+      FROM purchases
+      WHERE date(created_at) BETWEEN date(?) AND date(?)
+        AND ifnull(isDeleted,0)=0
+      GROUP BY date(created_at)
+    ''', [from.toIso8601String(), to.toIso8601String()]);
+
+    final salRows = await db.rawQuery('''
+      SELECT date(paymentDate) AS dayKey,
+             COALESCE(SUM(netPay), 0) AS total
+      FROM employees_salaries
+      WHERE paymentDate BETWEEN ? AND ?
+        AND ifnull(isDeleted,0)=0
+      GROUP BY date(paymentDate)
+    ''', [from.toIso8601String(), to.toIso8601String()]);
+
+    Map<String, double> mapFromRows(List<Map<String, dynamic>> rows) {
+      final out = <String, double>{};
+      for (final row in rows) {
+        final key = row['dayKey']?.toString() ?? '';
+        if (key.isEmpty) continue;
+        out[key] = (row['total'] as num?)?.toDouble() ?? 0.0;
+      }
+      return out;
+    }
+
+    final income = mapFromRows(incomeRows);
+    final cons = mapFromRows(consRows);
+    final salaries = mapFromRows(salRows);
+    final days = <String>{}
+      ..addAll(income.keys)
+      ..addAll(cons.keys)
+      ..addAll(salaries.keys);
+
+    final net = <String, double>{};
+    for (final k in days) {
+      net[k] = (income[k] ?? 0) -
+          (cons[k] ?? 0) -
+          (salaries[k] ?? 0);
+    }
+    return net;
+  }
+
+  Future<double> getNetProfitTotalBetween(
+      DateTime from, DateTime to) async {
+    final map = await getNetProfitByDateBetween(from, to);
+    return map.values.fold<double>(0.0, (sum, v) => sum + v);
   }
 
   Future<int> insertConsumptionType(String type) async {

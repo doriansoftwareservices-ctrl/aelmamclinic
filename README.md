@@ -7,7 +7,7 @@
 - Flutter 3.35 أو أحدث.
 - Dart 3.9 أو أحدث.
 - Nhost CLI 1.31 أو أحدث (`nhost config pull/apply`).
-- حساب Nhost مع مشروع مهيأ (mergrgclboxflnucehgb أو ما يعادله).
+- حساب Nhost مع مشروع مهيأ (ujxbrdbrjbujvlylpbbn أو ما يعادله).
 
 ## الإعداد السريع
 
@@ -32,12 +32,12 @@
 
    ```json
    {
-     "nhostSubdomain": "mergrgclboxflnucehgb",
+     "nhostSubdomain": "ujxbrdbrjbujvlylpbbn",
      "nhostRegion": "ap-southeast-1",
-     "nhostGraphqlUrl": "https://mergrgclboxflnucehgb.graphql.ap-southeast-1.nhost.run/v1",
-     "nhostAuthUrl": "https://mergrgclboxflnucehgb.auth.ap-southeast-1.nhost.run/v1",
-     "nhostStorageUrl": "https://mergrgclboxflnucehgb.storage.ap-southeast-1.nhost.run/v1",
-     "nhostFunctionsUrl": "https://mergrgclboxflnucehgb.functions.ap-southeast-1.nhost.run/v1"
+     "nhostGraphqlUrl": "https://ujxbrdbrjbujvlylpbbn.graphql.ap-southeast-1.nhost.run/v1",
+     "nhostAuthUrl": "https://ujxbrdbrjbujvlylpbbn.auth.ap-southeast-1.nhost.run/v1",
+     "nhostStorageUrl": "https://ujxbrdbrjbujvlylpbbn.storage.ap-southeast-1.nhost.run/v1",
+     "nhostFunctionsUrl": "https://ujxbrdbrjbujvlylpbbn.functions.ap-southeast-1.nhost.run/v1"
    }
    ```
 

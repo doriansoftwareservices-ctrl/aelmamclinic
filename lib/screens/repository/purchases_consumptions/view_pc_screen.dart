@@ -103,6 +103,7 @@ class _ItemTile extends StatelessWidget {
         SELECT quantity, date
           FROM ${Consumption.table}
          WHERE itemId = ?
+           AND ifnull(isDeleted,0)=0
       ORDER BY date DESC
          LIMIT 1
       ''', [item.id]);
@@ -176,6 +177,7 @@ class _ItemConsumptionsPageState extends State<_ItemConsumptionsPage> {
         FROM ${Consumption.table} c
    LEFT JOIN patients p ON p.id = c.patientId
        WHERE c.itemId = ?
+         AND ifnull(c.isDeleted,0)=0
     ORDER BY c.date DESC
     ''', [widget.item.id]);
     return rows
@@ -222,18 +224,46 @@ class _ItemConsumptionsPageState extends State<_ItemConsumptionsPage> {
 
     final diff = newQty - d.quantity;
     final db = await RepositoryService.instance.database;
-    await db.transaction((txn) async {
-      await txn.update(
-        Consumption.table,
-        {'quantity': newQty},
-        where: 'id = ?',
-        whereArgs: [d.id],
+    try {
+      await db.transaction((txn) async {
+        final itemRows = await txn.query(
+          Item.table,
+          columns: const ['stock', 'price'],
+          where: 'id = ?',
+          whereArgs: [widget.item.id],
+          limit: 1,
+        );
+        if (itemRows.isEmpty) {
+          throw StateError('الصنف غير موجود');
+        }
+        final currentStock =
+            (itemRows.first['stock'] as num?)?.toInt() ?? 0;
+        final unitPrice =
+            (itemRows.first['price'] as num?)?.toDouble() ?? 0.0;
+        final nextStock = currentStock - diff;
+        if (nextStock < 0) {
+          throw StateError('الكمية تتجاوز المخزون المتاح');
+        }
+        await txn.update(
+          Consumption.table,
+          {'quantity': newQty, 'amount': unitPrice * newQty},
+          where: 'id = ?',
+          whereArgs: [d.id],
+        );
+        await txn.update(
+          Item.table,
+          {'stock': nextStock},
+          where: 'id = ?',
+          whereArgs: [widget.item.id],
+        );
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذّر التعديل: $e')),
       );
-      await txn.rawUpdate(
-        'UPDATE ${Item.table} SET stock = stock - ? WHERE id = ?',
-        [diff, widget.item.id],
-      );
-    });
+      return;
+    }
 
     await DBService.instance.notifyTableChanged(Consumption.table);
     await DBService.instance.notifyTableChanged(Item.table);

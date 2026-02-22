@@ -75,6 +75,9 @@ class _PrescriptionListScreenState extends State<PrescriptionListScreen> {
       FROM prescriptions pr
       JOIN patients      p ON pr.patientId = p.id
       LEFT JOIN doctors  d ON pr.doctorId  = d.id
+      WHERE IFNULL(pr.isDeleted,0)=0
+        AND IFNULL(p.isDeleted,0)=0
+        AND (d.id IS NULL OR IFNULL(d.isDeleted,0)=0)
       ORDER BY pr.recordDate DESC
     ''');
 

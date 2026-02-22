@@ -5,6 +5,7 @@ analyzer:
     - build/**
     - .dart_tool/**
     - backup_stage0_*/**
+    - integration_test/**
   language:
     strict-raw-types: false
 

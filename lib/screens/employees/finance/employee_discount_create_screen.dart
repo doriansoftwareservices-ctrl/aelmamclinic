@@ -9,6 +9,7 @@ import 'package:aelmamclinic/core/formatters.dart';
 
 import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/services/logging_service.dart';
+import 'package:aelmamclinic/models/doctor.dart';
 import 'finance_access_guard.dart';
 
 class EmployeeDiscountCreateScreen extends StatefulWidget {
@@ -92,7 +93,7 @@ class _EmployeeDiscountCreateScreenState
       _ratioSum = 0.0;
 
       if (_isDoctor) {
-        _doctorId = await _resolveDoctorIdByEmployee(widget.empId);
+        _doctorId = await _ensureDoctorForEmployee(emp);
         // حتى لو لم يوجد doctorId، نكمل الواجهة ولكن ratioSum=0
         await _recomputeDoctorMonthlyAccruals();
       }
@@ -119,6 +120,59 @@ class _EmployeeDiscountCreateScreenState
     if (res.isEmpty) return null;
     final row = res.first;
     return (row['id'] as num).toInt();
+  }
+
+  Future<Doctor?> _resolveDoctorByUserUid(String userUid) async {
+    final trimmed = userUid.trim();
+    if (trimmed.isEmpty) return null;
+    try {
+      return await DBService.instance.getDoctorByUserUid(trimmed);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<int?> _ensureDoctorForEmployee(Map<String, dynamic> emp) async {
+    final empId = (emp['id'] as num?)?.toInt() ?? widget.empId;
+    final userUid = (emp['userUid'] ?? '').toString().trim();
+
+    final existing = await _resolveDoctorIdByEmployee(empId);
+    if (existing != null) return existing;
+
+    final byUid = await _resolveDoctorByUserUid(userUid);
+    if (byUid != null) {
+      if (byUid.employeeId == null || byUid.employeeId != empId) {
+        try {
+          await DBService.instance
+              .updateDoctor(byUid.copyWith(employeeId: empId));
+        } catch (_) {}
+      }
+      return byUid.id;
+    }
+
+    try {
+      final name = (emp['name'] ?? '').toString().trim();
+      final specialization = (emp['jobTitle'] ?? '').toString().trim();
+      final phone = (emp['phoneNumber'] ?? '').toString().trim();
+
+      final doctor = Doctor(
+        employeeId: empId,
+        userUid: userUid.isEmpty ? null : userUid,
+        name: name.isEmpty ? 'طبيب' : name,
+        specialization: specialization.isEmpty ? 'عام' : specialization,
+        phoneNumber: phone,
+        startTime: '08:00',
+        endTime: '16:00',
+      );
+      await DBService.instance.insertDoctor(doctor);
+    } catch (_) {
+      // ignore
+    }
+
+    final resolved = await _resolveDoctorIdByEmployee(empId);
+    if (resolved != null) return resolved;
+    final byUidAfter = await _resolveDoctorByUserUid(userUid);
+    return byUidAfter?.id;
   }
 
   // حساب فترة الشهر وفق تاريخ الخصم المحدّد

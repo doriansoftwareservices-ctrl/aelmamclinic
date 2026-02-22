@@ -1,6 +1,5 @@
 import 'dart:typed_data';
 
-import 'package:flutter/services.dart' show rootBundle;
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -10,6 +9,7 @@ import 'package:aelmamclinic/models/patient.dart';
 import 'package:aelmamclinic/models/patient_report.dart';
 import 'package:aelmamclinic/models/clinic_profile.dart';
 import 'package:aelmamclinic/services/clinic_profile_service.dart';
+import 'package:aelmamclinic/utils/pdf_fonts.dart';
 import 'package:aelmamclinic/utils/pdf_text.dart';
 
 const PdfColor kReportAccent = PdfColor.fromInt(0xFF004A61);
@@ -19,17 +19,9 @@ class PatientReportPdfService {
     required Patient patient,
     required PatientReport report,
   }) async {
-    pw.Font cairo;
-    pw.Font cairoBold;
-    try {
-      final fontData = await rootBundle.load('assets/fonts/Cairo-Regular.ttf');
-      final fontBold = await rootBundle.load('assets/fonts/Cairo-Bold.ttf');
-      cairo = pw.Font.ttf(fontData.buffer.asByteData());
-      cairoBold = pw.Font.ttf(fontBold.buffer.asByteData());
-    } catch (_) {
-      cairo = pw.Font.helvetica();
-      cairoBold = pw.Font.helveticaBold();
-    }
+    final fonts = await loadPdfFonts();
+    final cairo = fonts.regular;
+    final cairoBold = fonts.bold;
 
     Uint8List? logoData;
     try {
@@ -143,13 +135,26 @@ class PatientReportPdfService {
             border:
                 pw.Border(top: pw.BorderSide(width: 0.6, color: PdfColors.grey300)),
           ),
-          child: pw.Text(
-            pdfText(
-              '${clinic.nameAr} - ${clinic.addressAr} "هاتف : $clinicPhones  •  Page ${ctx.pageNumber}/${ctx.pagesCount}',
-            ),
-            style: pw.TextStyle(
-                font: cairo, fontSize: 9, color: PdfColors.blueGrey),
-            textAlign: pw.TextAlign.center,
+          child: pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.center,
+            children: [
+              pw.Text(
+                pdfText(
+                  '${clinic.nameAr} - ${clinic.addressAr} - هاتف: $clinicPhones',
+                ),
+                style: pw.TextStyle(
+                    font: cairo, fontSize: 9, color: PdfColors.blueGrey),
+              ),
+              pw.SizedBox(width: 8),
+              pw.Directionality(
+                textDirection: pw.TextDirection.ltr,
+                child: pw.Text(
+                  'Page ${ctx.pageNumber}/${ctx.pagesCount}',
+                  style: pw.TextStyle(
+                      font: cairo, fontSize: 9, color: PdfColors.blueGrey),
+                ),
+              ),
+            ],
           ),
         ),
         build: (_) => [
@@ -199,7 +204,7 @@ class PatientReportPdfService {
     return pw.Row(
       mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
       children: [
-        pw.Text('التاريخ: $date',
+        pw.Text(pdfText('التاريخ: $date'),
             style: pw.TextStyle(font: bold, fontSize: 11)),
         pw.Text('',
             style: pw.TextStyle(font: bold, fontSize: 16, color: kReportAccent)),
@@ -221,7 +226,7 @@ class PatientReportPdfService {
       child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.center,
         children: [
-          pw.Text(reportText.isEmpty ? '—' : reportText,
+          pw.Text(reportText.isEmpty ? '—' : pdfText(reportText),
               style: pw.TextStyle(font: base, fontSize: 11, height: 1.4),
               textAlign: pw.TextAlign.center),
         ],
@@ -240,9 +245,9 @@ class PatientReportPdfService {
     return pw.Row(
       mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
       children: [
-        pw.Text('الطبيب: ____________________',
+        pw.Text(pdfText('الطبيب: ____________________'),
             style: pw.TextStyle(font: base, fontSize: 10)),
-        pw.Text('التوقيع: ____________________',
+        pw.Text(pdfText('التوقيع: ____________________'),
             style: pw.TextStyle(font: base, fontSize: 10)),
       ],
     );

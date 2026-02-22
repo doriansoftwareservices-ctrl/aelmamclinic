@@ -210,6 +210,47 @@ class _LoginScreenState extends State<LoginScreen> {
     return re.hasMatch(email);
   }
 
+  Future<AuthSessionResult> _ensurePostLoginState(
+    AuthProvider auth, {
+    bool expectOwnerOrAdmin = false,
+  }) async {
+    AuthSessionResult result = await auth.refreshAndValidateCurrentUser();
+    if (!result.isSuccess) return result;
+
+    if (auth.isSuperAdmin) return result;
+
+    const int maxAttempts = 6;
+    for (int i = 0; i < maxAttempts; i++) {
+      final accId = auth.accountId ?? '';
+      if (accId.isEmpty) {
+        return const AuthSessionResult.noAccount();
+      }
+
+      final role = auth.role?.toLowerCase() ?? '';
+      if (expectOwnerOrAdmin &&
+          (role.isEmpty ||
+              (role != 'owner' &&
+                  role != 'admin' &&
+                  role != 'superadmin'))) {
+        // انتظار تحديث الدور بعد إنشاء الحساب
+        await Future.delayed(const Duration(milliseconds: 400));
+        result = await auth.refreshAndValidateCurrentUser();
+        if (!result.isSuccess) return result;
+        continue;
+      }
+
+      await auth.refreshPermissions();
+      if (auth.permissionsLoaded) {
+        return result;
+      }
+      await Future.delayed(const Duration(milliseconds: 400));
+      result = await auth.refreshAndValidateCurrentUser();
+      if (!result.isSuccess) return result;
+    }
+
+    return result;
+  }
+
   /// يقرر التوجيه حسب المستخدم الحالي (سوبر أدمن أو لا) ويضمن تشغيل المزامنة.
   Future<void> _checkAndRouteIfSignedIn({bool force = false}) async {
     if (_navigating || (!force && _loading) || !mounted) return;
@@ -221,7 +262,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if (force ||
         !authProv.isLoggedIn ||
         (authProv.accountId ?? '').isEmpty) {
-      final result = await authProv.refreshAndValidateCurrentUser();
+      final result = await _ensurePostLoginState(authProv);
       if (!mounted) return;
       if (!result.isSuccess) {
         var allowContinue = false;
@@ -328,7 +369,7 @@ class _LoginScreenState extends State<LoginScreen> {
       AuthRoleState.clear();
       NhostGraphqlService.refreshClient();
 
-      var result = await auth.refreshAndValidateCurrentUser();
+      var result = await _ensurePostLoginState(auth);
       if (!mounted) return;
 
       if (result.status == AuthSessionStatus.noAccount) {
@@ -345,7 +386,7 @@ class _LoginScreenState extends State<LoginScreen> {
         } catch (e) {
           createError = e;
         }
-        final recheck = await auth.refreshAndValidateCurrentUser();
+        final recheck = await _ensurePostLoginState(auth);
         if (!mounted) return;
         if (!recheck.isSuccess) {
           if (recheck.status == AuthSessionStatus.noAccount ||
@@ -472,10 +513,21 @@ class _LoginScreenState extends State<LoginScreen> {
         setState(() => _error = 'اسم العيادة مطلوب لإكمال إنشاء الحساب.');
         return;
       }
-      final result = await auth.refreshAndValidateCurrentUser();
+      final result = await _ensurePostLoginState(
+        auth,
+        expectOwnerOrAdmin: true,
+      );
       if (!mounted) return;
       if (!result.isSuccess) {
         setState(() => _error = _messageForStatus(result.status));
+        return;
+      }
+      final role = auth.role?.toLowerCase() ?? '';
+      if (!auth.isSuperAdmin &&
+          role != 'owner' &&
+          role != 'admin' &&
+          role != 'superadmin') {
+        setState(() => _error = 'تعذّر تحديد نوع الحساب. حاول تسجيل الدخول مرة أخرى.');
         return;
       }
       if (!auth.isSuperAdmin && (auth.accountId ?? '').isEmpty) {

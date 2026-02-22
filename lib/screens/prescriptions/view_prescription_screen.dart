@@ -37,23 +37,29 @@ class _ViewPrescriptionScreenState extends State<ViewPrescriptionScreen> {
     final db = await DBService.instance.database;
 
     // رأس الوصفة
-    final presRow = (await db.query(
+    final presRows = await db.query(
       'prescriptions',
-      where: 'id = ?',
+      where: 'id = ? AND ifnull(isDeleted,0)=0',
       whereArgs: [widget.prescriptionId],
       limit: 1,
-    ))
-        .first;
+    );
+    if (presRows.isEmpty) {
+      throw StateError('Prescription not found');
+    }
+    final presRow = presRows.first;
     final pres = Prescription.fromMap(presRow);
 
     // المريض
-    final patientRow = (await db.query(
+    final patientRows = await db.query(
       'patients',
-      where: 'id = ?',
+      where: 'id = ? AND ifnull(isDeleted,0)=0',
       whereArgs: [pres.patientId],
       limit: 1,
-    ))
-        .first;
+    );
+    if (patientRows.isEmpty) {
+      throw StateError('Patient not found');
+    }
+    final patientRow = patientRows.first;
     final patient = Patient.fromMap(patientRow);
 
     // الطبيب (قد يكون null)
@@ -61,7 +67,7 @@ class _ViewPrescriptionScreenState extends State<ViewPrescriptionScreen> {
     if (pres.doctorId != null) {
       final docRows = await db.query(
         'doctors',
-        where: 'id = ?',
+        where: 'id = ? AND ifnull(isDeleted,0)=0',
         whereArgs: [pres.doctorId],
         limit: 1,
       );
@@ -71,7 +77,7 @@ class _ViewPrescriptionScreenState extends State<ViewPrescriptionScreen> {
     // عناصر الوصفة + تفاصيل الدواء
     final itemsRows = await db.query(
       'prescription_items',
-      where: 'prescriptionId = ?',
+      where: 'prescriptionId = ? AND ifnull(isDeleted,0)=0',
       whereArgs: [pres.id],
       orderBy: 'id ASC',
     );

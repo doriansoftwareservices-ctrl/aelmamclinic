@@ -156,10 +156,15 @@ class StatisticsProvider extends ChangeNotifier {
     try {
       final db = DBService.instance;
 
-      // 1) إيرادات المرضى
-      final revenue = await db.getSumPatientsBetween(_from, _to);
-      // 2) استهلاكات المركز
-      final expense = await db.getSumConsumptionBetween(_from, _to);
+      // 1) إيرادات الفترة
+      // نعتمد إجمالي قيمة الخدمات، مع احتياط للأنظمة القديمة التي تسجّل المدفوع فقط.
+      final servicesRevenue =
+          await db.getSumPatientServicesBetween(_from, _to);
+      final paidRevenue = await db.getSumPatientsBetween(_from, _to);
+      final revenue =
+          servicesRevenue > 0 ? servicesRevenue : paidRevenue;
+      // 2) مشتريات المستودع (تُحسب عند الشراء)
+      final expense = await db.getSumPurchasesBetween(_from, _to);
       // 3) نسب الأطباء
       final ratios = await db.getSumAllDoctorShareBetween(_from, _to);
       // 4) مدخلات الأطباء بعد خصم المركز
@@ -168,7 +173,10 @@ class StatisticsProvider extends ChangeNotifier {
       final tower = await db.getSumAllTowerShareBetween(_from, _to);
       // 6) سلف مصروفة
       final loansRaw = await db.database.then((d) => d.rawQuery(
-          'SELECT SUM(loanAmount) AS total FROM employees_loans WHERE loanDateTime BETWEEN ? AND ? AND ifnull(isDeleted,0)=0',
+          'SELECT SUM(loanAmount) AS total FROM employees_loans '
+          'WHERE loanDateTime BETWEEN ? AND ? '
+          'AND ifnull(isSettled,0)=0 '
+          'AND ifnull(isDeleted,0)=0',
           [_from.toIso8601String(), _to.toIso8601String()]));
       final loans = (loansRaw.first['total'] as num?)?.toDouble() ?? 0.0;
       // 7) خصومات
@@ -182,7 +190,7 @@ class StatisticsProvider extends ChangeNotifier {
           [_from.toIso8601String(), _to.toIso8601String()]));
       final salaries = (salRaw.first['total'] as num?)?.toDouble() ?? 0.0;
       // صافي الربح
-      final netProfit = revenue - salaries - expense;
+      final netProfit = await db.getNetProfitTotalBetween(_from, _to);
 
       // 9) تعداد المرضى
       final monthlyPts = await _countPatientsBetween(_from, _to);

@@ -27,11 +27,9 @@ class AddItemScreen extends StatefulWidget {
 class _AddItemScreenState extends State<AddItemScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
-  final _priceCtrl = TextEditingController(text: '0');
   final _stockCtrl = TextEditingController(text: '0');
 
   final _nameNode = FocusNode();
-  final _priceNode = FocusNode();
   final _stockNode = FocusNode();
 
   ItemType? _selectedType;
@@ -40,10 +38,8 @@ class _AddItemScreenState extends State<AddItemScreen> {
   @override
   void dispose() {
     _nameCtrl.dispose();
-    _priceCtrl.dispose();
     _stockCtrl.dispose();
     _nameNode.dispose();
-    _priceNode.dispose();
     _stockNode.dispose();
     super.dispose();
   }
@@ -82,12 +78,11 @@ class _AddItemScreenState extends State<AddItemScreen> {
     }
     setState(() => _isSaving = true);
     try {
-      final price = double.parse(_priceCtrl.text);
       final stock = int.parse(_stockCtrl.text);
       await context.read<RepositoryProvider>().addItem(
             typeId: _selectedType!.id!,
             name: _nameCtrl.text.trim(),
-            price: price,
+            price: 0,
             initialStock: stock,
           );
       if (!mounted) return;
@@ -135,8 +130,12 @@ class _AddItemScreenState extends State<AddItemScreen> {
       final repo = context.read<RepositoryProvider>();
       await repo.addType(name);
       if (!mounted) return;
-      // اضبط النوع المختار على النوع الذي أضيف للتو
-      setState(() => _selectedType = repo.types.last);
+      // اضبط النوع المختار على النوع الذي أضيف للتو (بأمان)
+      final match = repo.types.firstWhere(
+        (t) => t.name.trim().toLowerCase() == name.toLowerCase(),
+        orElse: () => repo.types.isNotEmpty ? repo.types.last : ItemType(name: name),
+      );
+      setState(() => _selectedType = match);
       // وضع التركيز مباشرة على اسم الصنف
       await Future<void>.delayed(const Duration(milliseconds: 50));
       if (!mounted) return;
@@ -148,51 +147,106 @@ class _AddItemScreenState extends State<AddItemScreen> {
   Future<void> _importItemsFromExcel() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: const ['xlsx'],
+      allowedExtensions: const ['xlsx', 'xls'],
+      withData: true,
     );
-    if (result == null || result.files.single.path == null) return;
+    if (result == null) return;
+    final picked = result.files.single;
+    if (picked.bytes == null && picked.path == null) return;
 
     try {
-      final bytes = await File(result.files.single.path!).readAsBytes();
+      final bytes =
+          picked.bytes ?? await File(picked.path!).readAsBytes();
       if (!mounted) return;
       final excel = xls.Excel.decodeBytes(bytes);
 
       final repo = context.read<RepositoryProvider>();
-      final typesMap = {for (final t in repo.types) t.name.trim(): t};
+      if (repo.types.isEmpty) {
+        await repo.bootstrap();
+      }
+      final typesMap = {
+        for (final t in repo.types) t.name.trim().toLowerCase(): t
+      };
       final existingKeys =
           repo.allItems.map((it) => '${it.typeId}__${it.name.trim()}').toSet();
 
       int imported = 0;
+      int skipped = 0;
 
       for (final sheetName in excel.tables.keys) {
         final sheet = excel.tables[sheetName];
         if (sheet == null) continue;
 
-        // تخطّي الصف الأول كعناوين
-        for (final row in sheet.rows.skip(1)) {
-          if (row.length < 2) continue;
+        // محاولة اكتشاف الأعمدة من العناوين إن وُجدت
+        int? typeCol;
+        int? nameCol;
+        for (final row in sheet.rows.take(5)) {
+          for (var i = 0; i < row.length; i++) {
+            final v = (row[i]?.value?.toString() ?? '').trim().toLowerCase();
+            if (v.isEmpty) continue;
+            if (typeCol == null &&
+                (v.contains('نوع') ||
+                    v.contains('الصنف') ||
+                    v.contains('type'))) {
+              typeCol = i;
+            }
+            if (nameCol == null &&
+                (v.contains('اسم') ||
+                    v.contains('المادة') ||
+                    v.contains('الصنف') ||
+                    v.contains('name'))) {
+              nameCol = i;
+            }
+          }
+        }
+        typeCol ??= 0;
+        nameCol ??= 1;
 
-          final rawType = row[0]?.value?.toString().trim();
-          final rawName = row[1]?.value?.toString().trim();
+        for (final row in sheet.rows) {
+          if (row.isEmpty) continue;
+
+          final rawType = row.length > typeCol
+              ? row[typeCol]?.value?.toString().trim()
+              : null;
+          final rawName = row.length > nameCol
+              ? row[nameCol]?.value?.toString().trim()
+              : null;
           if (rawType == null ||
               rawType.isEmpty ||
               rawName == null ||
               rawName.isEmpty) {
+            skipped++;
+            continue;
+          }
+
+          // تخطّي صفوف العناوين
+          final head = rawName.toLowerCase();
+          if (head.contains('اسم') ||
+              head.contains('name') ||
+              head.contains('الصنف') ||
+              head.contains('المادة')) {
             continue;
           }
 
           // أنشئ النوع إن لم يكن موجودًا
           ItemType type;
-          if (typesMap.containsKey(rawType)) {
-            type = typesMap[rawType]!;
+          final typeKey = rawType.toLowerCase();
+          if (typesMap.containsKey(typeKey)) {
+            type = typesMap[typeKey]!;
           } else {
             await repo.addType(rawType);
-            type = repo.types.last;
-            typesMap[rawType] = type;
+            type = repo.types.firstWhere(
+              (t) => t.name.trim().toLowerCase() == typeKey,
+              orElse: () => repo.types.last,
+            );
+            typesMap[typeKey] = type;
           }
 
           final key = '${type.id}__${rawName.trim()}';
-          if (existingKeys.contains(key)) continue;
+          if (existingKeys.contains(key)) {
+            skipped++;
+            continue;
+          }
 
           await repo.addItem(
             typeId: type.id!,
@@ -207,7 +261,12 @@ class _AddItemScreenState extends State<AddItemScreen> {
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تم استيراد $imported صنف(ًا) بنجاح')),
+        SnackBar(
+          content: Text(
+            'تم استيراد $imported صنف(ًا) بنجاح'
+            '${skipped > 0 ? ' (تخطّي $skipped صف/تكرار)' : ''}',
+          ),
+        ),
       );
     } catch (e) {
       if (!mounted) return;
@@ -243,7 +302,37 @@ class _AddItemScreenState extends State<AddItemScreen> {
   @override
   Widget build(BuildContext context) {
     final repo = context.watch<RepositoryProvider>();
-    final types = repo.types;
+    final rawTypes = repo.types;
+    final dedup = <String, ItemType>{};
+    for (final t in rawTypes) {
+      final nameKey = t.name.trim().toLowerCase();
+      final key = t.id != null ? 'id:${t.id}' : 'name:$nameKey';
+      if (!dedup.containsKey(key)) {
+        dedup[key] = t;
+      }
+    }
+    final types = dedup.values.toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+
+    // تأكد أن القيمة المختارة تنتمي لقائمة الأنواع الحالية
+    ItemType? resolvedSelected = _selectedType;
+    final selected = resolvedSelected;
+    if (selected != null) {
+      final match = types.cast<ItemType?>().firstWhere(
+            (t) =>
+                t != null &&
+                ((selected.id != null && t.id == selected.id) ||
+                    t.name.trim() == selected.name.trim()),
+            orElse: () => null,
+          );
+      resolvedSelected = match;
+    }
+    if (resolvedSelected != _selectedType && mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() => _selectedType = resolvedSelected);
+      });
+    }
 
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -357,36 +446,11 @@ class _AddItemScreenState extends State<AddItemScreen> {
                       controller: _nameCtrl,
                       focusNode: _nameNode,
                       textInputAction: TextInputAction.next,
-                      onFieldSubmitted: (_) => _priceNode.requestFocus(),
+                      onFieldSubmitted: (_) => _stockNode.requestFocus(),
                       decoration: _dec('اسم الصنف',
                           prefixIcon: const Icon(Icons.inventory_2_outlined)),
                       validator: (v) =>
                           (v == null || v.trim().isEmpty) ? 'أدخل الاسم' : null,
-                    ),
-                    const SizedBox(height: 12),
-
-                    // السعر (اختياري)
-                    TextFormField(
-                      controller: _priceCtrl,
-                      focusNode: _priceNode,
-                      textInputAction: TextInputAction.next,
-                      onFieldSubmitted: (_) => _stockNode.requestFocus(),
-                      decoration: _dec(
-                        'السعر',
-                        prefixIcon: const Icon(Icons.attach_money_rounded),
-                        suffix: const Padding(
-                          padding: EdgeInsetsDirectional.only(end: 8.0),
-                          child: Text('USD',
-                              style: TextStyle(fontWeight: FontWeight.w700)),
-                        ),
-                      ),
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      validator: (v) {
-                        final d = double.tryParse(v ?? '');
-                        if (d == null || d < 0) return 'أدخل رقمًا صالحًا';
-                        return null;
-                      },
                     ),
                     const SizedBox(height: 12),
 

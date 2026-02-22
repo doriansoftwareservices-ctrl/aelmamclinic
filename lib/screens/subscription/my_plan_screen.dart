@@ -62,7 +62,7 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
 
   static const List<String> _employeesPolicy = [
     'الحد الأساسي: حتى 5 موظفين للعيادة.',
-    'كل موظف إضافي على العدد الأساسي: 50$.',
+    'كل موظف إضافي على العدد الأساسي: 50\$.',
   ];
 
   @override
@@ -145,13 +145,6 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
   bool _isAnnualByCode(String code) {
     final c = code.toLowerCase();
     return c.contains('year') || c.contains('annual') || c.contains('yearly');
-  }
-
-  String _cycleLabelByCode(String code) {
-    final c = code.toLowerCase();
-    if (c.contains('month') || c.contains('monthly')) return 'شهري';
-    if (_isAnnualByCode(c)) return 'سنوي';
-    return 'اشتراك';
   }
 
   @override

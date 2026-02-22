@@ -41,6 +41,7 @@ class LoggingService {
       'modification_details': modificationDetails ?? '',
       'timestamp': timestamp.toIso8601String(),
     });
+    await _dbService.notifyTableChanged('financial_logs');
   }
 
   /// استرجاع جميع سجلات المعاملات المالية مرتبة حسب التاريخ تنازلياً.
