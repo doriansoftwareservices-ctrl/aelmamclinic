@@ -1,8 +1,0 @@
-{
-  "nhostSubdomain": "ujxbrdbrjbujvlylpbbn",
-  "nhostRegion": "ap-southeast-1",
-  "nhostGraphqlUrl": "https://ujxbrdbrjbujvlylpbbn.hasura.ap-southeast-1.nhost.run/v1/graphql",
-  "nhostAuthUrl":    "https://ujxbrdbrjbujvlylpbbn.auth.ap-southeast-1.nhost.run/v1",
-  "nhostStorageUrl": "https://ujxbrdbrjbujvlylpbbn.storage.ap-southeast-1.nhost.run/v1",
-  "nhostFunctionsUrl":"https://ujxbrdbrjbujvlylpbbn.functions.ap-southeast-1.nhost.run/v1"
-}
