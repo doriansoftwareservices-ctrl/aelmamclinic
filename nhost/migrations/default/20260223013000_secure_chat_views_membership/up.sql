@@ -1,57 +1,99 @@
 -- Tighten chat views to exclude deleted participants and enforce membership.
 DO $m$
+DECLARE
+  has_attachments boolean := to_regclass('public.chat_attachments') IS NOT NULL;
 BEGIN
   IF to_regclass('public.chat_messages') IS NULL THEN
     RAISE NOTICE 'skip chat views: chat_messages not present';
     RETURN;
   END IF;
 
+  IF has_attachments THEN
+    EXECUTE $sql$
+      SET search_path TO public;
+
+      DROP VIEW IF EXISTS public.v_chat_messages_with_attachments;
+
+      CREATE OR REPLACE VIEW public.v_chat_messages_with_attachments AS
+      SELECT
+        m.id,
+        m.conversation_id,
+        m.sender_uid,
+        m.sender_email,
+        m.kind,
+        m.body,
+        m.created_at,
+        m.edited,
+        m.deleted,
+        m.edited_at,
+        m.deleted_at,
+        COALESCE(
+          jsonb_agg(
+            jsonb_build_object(
+              'id',       a.id,
+              'message_id', a.message_id,
+              'bucket',   a.bucket,
+              'path',     a.path,
+              'mime_type',a.mime_type,
+              'size_bytes', a.size_bytes,
+              'width',    a.width,
+              'height',   a.height,
+              'created_at', a.created_at
+            )
+          ) FILTER (WHERE a.id IS NOT NULL),
+          '[]'::jsonb
+        ) AS attachments
+      FROM public.chat_messages m
+      LEFT JOIN public.chat_attachments a
+        ON a.message_id = m.id
+      WHERE public.fn_is_super_admin() = true
+         OR EXISTS (
+           SELECT 1
+           FROM public.chat_participants p
+           WHERE p.conversation_id = m.conversation_id
+             AND p.user_uid = nullif(public.request_uid_text(), '')::uuid
+             AND COALESCE(p.is_deleted, false) = false
+         )
+      GROUP BY
+        m.id, m.conversation_id, m.sender_uid, m.sender_email, m.kind, m.body,
+        m.created_at, m.edited, m.deleted, m.edited_at, m.deleted_at;
+    $sql$;
+  ELSE
+    EXECUTE $sql$
+      SET search_path TO public;
+
+      DROP VIEW IF EXISTS public.v_chat_messages_with_attachments;
+
+      CREATE OR REPLACE VIEW public.v_chat_messages_with_attachments AS
+      SELECT
+        m.id,
+        m.conversation_id,
+        m.sender_uid,
+        m.sender_email,
+        m.kind,
+        m.body,
+        m.created_at,
+        m.edited,
+        m.deleted,
+        m.edited_at,
+        m.deleted_at,
+        '[]'::jsonb AS attachments
+      FROM public.chat_messages m
+      WHERE public.fn_is_super_admin() = true
+         OR EXISTS (
+           SELECT 1
+           FROM public.chat_participants p
+           WHERE p.conversation_id = m.conversation_id
+             AND p.user_uid = nullif(public.request_uid_text(), '')::uuid
+             AND COALESCE(p.is_deleted, false) = false
+         );
+    $sql$;
+  END IF;
+
   EXECUTE $sql$
     SET search_path TO public;
 
-    CREATE OR REPLACE VIEW public.v_chat_messages_with_attachments AS
-    SELECT
-      m.id,
-      m.conversation_id,
-      m.sender_uid,
-      m.sender_email,
-      m.kind,
-      m.body,
-      m.created_at,
-      m.edited,
-      m.deleted,
-      m.edited_at,
-      m.deleted_at,
-      COALESCE(
-        jsonb_agg(
-          jsonb_build_object(
-            'id',       a.id,
-            'message_id', a.message_id,
-            'bucket',   a.bucket,
-            'path',     a.path,
-            'mime_type',a.mime_type,
-            'size_bytes', a.size_bytes,
-            'width',    a.width,
-            'height',   a.height,
-            'created_at', a.created_at
-          )
-        ) FILTER (WHERE a.id IS NOT NULL),
-        '[]'::jsonb
-      ) AS attachments
-    FROM public.chat_messages m
-    LEFT JOIN public.chat_attachments a
-      ON a.message_id = m.id
-    WHERE public.fn_is_super_admin() = true
-       OR EXISTS (
-         SELECT 1
-         FROM public.chat_participants p
-         WHERE p.conversation_id = m.conversation_id
-           AND p.user_uid = nullif(public.request_uid_text(), '')::uuid
-           AND COALESCE(p.is_deleted, false) = false
-       )
-    GROUP BY
-      m.id, m.conversation_id, m.sender_uid, m.sender_email, m.kind, m.body,
-      m.created_at, m.edited, m.deleted, m.edited_at, m.deleted_at;
+    DROP VIEW IF EXISTS public.v_chat_conversations_for_me;
 
     CREATE OR REPLACE VIEW public.v_chat_conversations_for_me AS
     WITH mine AS (
