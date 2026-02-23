@@ -139,7 +139,9 @@ class RepositoryService {
 
     final db = await _db.database;
     await db.transaction((txn) async {
-      await txn.insert(Purchase.table, purchase.toMap());
+      final data =
+          await _db.prepareInsert(Purchase.table, purchase.toMap(), executor: txn);
+      await txn.insert(Purchase.table, data);
       final updatedItem = item.copyWith(stock: item.stock + quantity);
       await txn.update(
         Item.table,
@@ -182,7 +184,12 @@ class RepositoryService {
 
     final db = await _db.database;
     await db.transaction((txn) async {
-      await txn.insert(Consumption.table, consumption.toMap());
+      final data = await _db.prepareInsert(
+        Consumption.table,
+        consumption.toMap(),
+        executor: txn,
+      );
+      await txn.insert(Consumption.table, data);
       final updatedItem = item.copyWith(stock: item.stock - quantity);
       await txn.update(
         Item.table,

@@ -194,6 +194,58 @@ class DBService {
     }
   }
 
+  Future<String?> _currentDeviceId() async {
+    final db = await database;
+    try {
+      if (!await _tableExists(db, 'sync_identity')) return null;
+      if (!await _hasColumn(db, 'sync_identity', 'device_id')) return null;
+      final rows =
+          await db.rawQuery('SELECT device_id FROM sync_identity LIMIT 1');
+      if (rows.isEmpty) return null;
+      final raw = rows.first['device_id']?.toString().trim() ?? '';
+      return raw.isEmpty ? null : raw;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>> prepareInsert(
+    String table,
+    Map<String, dynamic> data, {
+    DatabaseExecutor? executor,
+  }) async {
+    final db = executor ?? await database;
+    final prepared = Map<String, dynamic>.from(data);
+
+    if (await _hasColumn(db, table, 'account_id')) {
+      final accountId = await _currentAccountId();
+      if (accountId == null || accountId.trim().isEmpty) {
+        throw StateError('لا يوجد حساب نشط للحفظ في $table');
+      }
+      prepared.putIfAbsent('account_id', () => accountId);
+    }
+
+    if (await _hasColumn(db, table, 'device_id')) {
+      final deviceId = await _currentDeviceId();
+      if (deviceId != null && deviceId.trim().isNotEmpty) {
+        prepared.putIfAbsent('device_id', () => deviceId);
+      }
+    }
+
+    if (await _hasColumn(db, table, 'updated_at')) {
+      prepared.putIfAbsent(
+        'updated_at',
+        () => DateTime.now().toIso8601String(),
+      );
+    }
+
+    if (await _hasColumn(db, table, 'isDeleted')) {
+      prepared.putIfAbsent('isDeleted', () => 0);
+    }
+
+    return prepared;
+  }
+
   Future<String> _accountFilterClause(
     DatabaseExecutor db,
     String table, {
@@ -1926,11 +1978,15 @@ class DBService {
     if (name.isEmpty) {
       throw ArgumentError('اسم نوع الصنف فارغ');
     }
+    final accountId = await _currentAccountId();
+    if (accountId == null || accountId.trim().isEmpty) {
+      throw StateError('لا يوجد حساب نشط لحفظ نوع الصنف');
+    }
     // إن وُجد نوع بنفس الاسم: استرجع/أعد استخدامه
     final exists = await db.query(
       ItemType.table,
-      where: 'lower(name)=lower(?)',
-      whereArgs: [name],
+      where: 'lower(name)=lower(?) AND account_id = ?',
+      whereArgs: [name, accountId],
       limit: 1,
     );
     if (exists.isNotEmpty) {
@@ -1948,7 +2004,12 @@ class DBService {
       await _markChanged(ItemType.table);
       return id;
     }
-    final id = await db.insert(ItemType.table, {...t.toMap(), 'name': name});
+    final data = await prepareInsert(
+      ItemType.table,
+      {...t.toMap(), 'name': name},
+      executor: db,
+    );
+    final id = await db.insert(ItemType.table, data);
     await _markChanged(ItemType.table);
     return id;
   }
@@ -2033,11 +2094,15 @@ class DBService {
     if (name.isEmpty) {
       throw ArgumentError('اسم الصنف فارغ');
     }
+    final accountId = await _currentAccountId();
+    if (accountId == null || accountId.trim().isEmpty) {
+      throw StateError('لا يوجد حساب نشط لحفظ الصنف');
+    }
     // إن وُجد صنف بنفس (type_id + name): استرجعه/أعد استخدامه
     final exists = await db.query(
       Item.table,
-      where: 'type_id = ? AND lower(name)=lower(?)',
-      whereArgs: [i.typeId, name],
+      where: 'type_id = ? AND lower(name)=lower(?) AND account_id = ?',
+      whereArgs: [i.typeId, name, accountId],
       limit: 1,
     );
     if (exists.isNotEmpty) {
@@ -2060,7 +2125,12 @@ class DBService {
       await _markChanged(Item.table);
       return id;
     }
-    final id = await db.insert(Item.table, {...i.toMap(), 'name': name});
+    final data = await prepareInsert(
+      Item.table,
+      {...i.toMap(), 'name': name},
+      executor: db,
+    );
+    final id = await db.insert(Item.table, data);
     await _markChanged(Item.table);
     return id;
   }
@@ -2322,7 +2392,8 @@ class DBService {
   //=============================== purchases ===============================
   Future<int> insertPurchase(Purchase p) async {
     final db = await database;
-    final id = await db.insert(Purchase.table, p.toMap());
+    final data = await prepareInsert(Purchase.table, p.toMap(), executor: db);
+    final id = await db.insert(Purchase.table, data);
     await _markChanged(Purchase.table);
     return id;
   }
@@ -2525,10 +2596,15 @@ class DBService {
         amount = price * c.quantity;
       }
     }
-    final id = await db.insert('consumptions', {
-      ...c.toMap(),
-      'amount': amount,
-    });
+    final data = await prepareInsert(
+      'consumptions',
+      {
+        ...c.toMap(),
+        'amount': amount,
+      },
+      executor: db,
+    );
+    final id = await db.insert('consumptions', data);
     await _markChanged('consumptions');
     return id;
   }

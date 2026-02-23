@@ -6,6 +6,8 @@ configuration:
   custom_root_fields: {}
   exposed_as: mutation
 permissions:
+  - role: owner
+  - role: employee
   - role: me
   - role: user
   - role: superadmin

@@ -798,6 +798,8 @@ class NhostAuthService {
     }
 
     String? accountId;
+    String? profileAccountId;
+    String? profileRoleName;
     String role = 'employee';
     bool roleResolved = false;
     bool disabled = false;
@@ -806,35 +808,38 @@ class NhostAuthService {
     try {
       final profile = await _fetchMyProfileRow();
       if (profile != null) {
-        final profileAccount = profile['account_id']?.toString();
-        if (profileAccount != null &&
-            profileAccount.isNotEmpty &&
-            profileAccount != 'null') {
-          accountId = profileAccount;
+        final pa = profile['account_id']?.toString();
+        if (pa != null && pa.isNotEmpty && pa != 'null') {
+          profileAccountId = pa;
         }
-        final profileRole = (profile['role'] as String?)?.trim();
-        if (profileRole != null && profileRole.isNotEmpty) {
-          role = profileRole;
-          roleResolved = true;
+        final pr = (profile['role'] as String?)?.trim();
+        if (pr != null && pr.isNotEmpty) {
+          profileRoleName = pr;
         }
       }
     } catch (_) {}
 
     try {
       final preferred = await ActiveAccountStore.readAccountId();
-      final row = await _fetchAccountUserRow(
-            uid: user.id,
-            accountId: preferred,
-          ) ??
-          await _fetchAccountUserRow(uid: user.id);
+      final rowPreferred = await _fetchAccountUserRow(
+        uid: user.id,
+        accountId: preferred,
+      );
+      final row = rowPreferred ?? await _fetchAccountUserRow(uid: user.id);
       if (row != null) {
-        accountId ??= row['account_id']?.toString();
+        accountId = row['account_id']?.toString();
         final rowRole = (row['role'] as String?)?.trim();
         if (rowRole != null && rowRole.isNotEmpty) {
           role = rowRole;
           roleResolved = true;
         }
-        disabled = disabled || row['disabled'] == true;
+        disabled = row['disabled'] == true;
+      } else if (profileAccountId != null) {
+        accountId = profileAccountId;
+        if (profileRoleName != null && profileRoleName.isNotEmpty) {
+          role = profileRoleName;
+          roleResolved = true;
+        }
       }
     } catch (_) {}
 

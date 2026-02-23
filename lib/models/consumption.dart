@@ -75,6 +75,10 @@ class Consumption {
         'amount': amount,
         'note': note,
         'date': _storedDate.toIso8601String(),
+        if (accountId != null) 'account_id': accountId,
+        if (deviceId != null) 'device_id': deviceId,
+        if (localId != null) 'local_id': localId,
+        if (updatedAt != null) 'updated_at': updatedAt?.toIso8601String(),
       };
 
   /// خريطة لاستخدامها في السحابة (snake_case)

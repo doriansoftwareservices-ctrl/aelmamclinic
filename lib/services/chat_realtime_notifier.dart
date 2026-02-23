@@ -215,6 +215,7 @@ class ChatRealtimeNotifier {
         .listen((result) async {
       if (result.hasException) return;
       final rows = (result.data?['chat_participants'] as List?) ?? const [];
+      final prevIds = Set<String>.from(_convIds);
       _convIds
         ..clear()
         ..addAll(
@@ -231,6 +232,9 @@ class ChatRealtimeNotifier {
             return MapEntry(cid, _ParticipantPrefs.fromRow(row));
           }).where((e) => e.key.isNotEmpty),
         );
+      if (!_setsEqual(prevIds, _convIds)) {
+        _startMessageSubscription();
+      }
       if (!_participantsCtrl.isClosed) _participantsCtrl.add(null);
       if (!_conversationsCtrl.isClosed) _conversationsCtrl.add(null);
     });
@@ -238,12 +242,16 @@ class ChatRealtimeNotifier {
 
   void _startMessageSubscription() {
     _messageSub?.cancel();
+    if (_convIds.isEmpty) {
+      _messageSub = null;
+      return;
+    }
     final subDoc = '''
-      subscription LatestMessages {
+      subscription LatestMessages(\$convIds: [uuid!]!) {
         chat_messages(
-          where: {deleted: {_neq: true}},
+          where: {deleted: {_neq: true}, conversation_id: {_in: \$convIds}},
           order_by: {created_at: desc},
-          limit: 50
+          limit: 500
         ) {
           id
           conversation_id
@@ -261,10 +269,19 @@ class ChatRealtimeNotifier {
         .subscribe(
           SubscriptionOptions(
             document: gql(subDoc),
+            variables: {'convIds': _convIds.toList()},
             fetchPolicy: FetchPolicy.noCache,
           ),
         )
         .listen(_handleMessageBatch);
+  }
+
+  bool _setsEqual(Set<String> a, Set<String> b) {
+    if (a.length != b.length) return false;
+    for (final v in a) {
+      if (!b.contains(v)) return false;
+    }
+    return true;
   }
 
   void _handleMessageBatch(QueryResult result) {
