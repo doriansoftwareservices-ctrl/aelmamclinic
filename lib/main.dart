@@ -54,6 +54,7 @@ import 'screens/repository/statistics/repository_statistics_screen.dart';
 import 'screens/repository/alerts/alert_menu_screen.dart';
 import 'screens/repository/alerts/create_alert_screen.dart';
 import 'screens/repository/alerts/view_alerts_screen.dart';
+import 'screens/repository/health/repository_health_screen.dart';
 
 // للدردشة
 import 'screens/chat/chat_room_screen.dart';
@@ -492,6 +493,9 @@ class MyApp extends StatelessWidget {
             break;
           case ViewAlertsScreen.routeName:
             page = const ViewAlertsScreen();
+            break;
+          case RepositoryHealthScreen.routeName:
+            page = const RepositoryHealthScreen();
             break;
           case '/admin':
             page = const AdminDashboardScreen();

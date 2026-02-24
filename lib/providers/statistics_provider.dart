@@ -98,6 +98,7 @@ class StatisticsProvider extends ChangeNotifier {
   double _monthlyLoansPaid = 0.0;
   double _monthlyDiscounts = 0.0;
   double _monthlySalariesPaid = 0.0;
+  double _monthlyFacilityConsumptions = 0.0;
   double _monthlyNetProfit = 0.0;
 
   int _monthlyPatients = 0;
@@ -119,6 +120,7 @@ class StatisticsProvider extends ChangeNotifier {
   double get monthlyLoansPaid => _monthlyLoansPaid;
   double get monthlyDiscounts => _monthlyDiscounts;
   double get monthlySalariesPaid => _monthlySalariesPaid;
+  double get monthlyFacilityConsumptions => _monthlyFacilityConsumptions;
   double get monthlyNetProfit => _monthlyNetProfit;
 
   int get monthlyPatients => _monthlyPatients;
@@ -141,6 +143,8 @@ class StatisticsProvider extends ChangeNotifier {
   String get fmtLoansPaid => _currency.format(_monthlyLoansPaid);
   String get fmtDiscounts => _currency.format(_monthlyDiscounts);
   String get fmtSalariesPaid => _currency.format(_monthlySalariesPaid);
+  String get fmtFacilityConsumptions =>
+      _currency.format(_monthlyFacilityConsumptions);
   String get fmtNetProfit => _currency.format(_monthlyNetProfit);
   String get fmtPendingLoans => _currency.format(_pendingLoans);
 
@@ -189,6 +193,9 @@ class StatisticsProvider extends ChangeNotifier {
           'SELECT SUM(netPay) AS total FROM employees_salaries WHERE paymentDate BETWEEN ? AND ? AND ifnull(isDeleted,0)=0',
           [_from.toIso8601String(), _to.toIso8601String()]));
       final salaries = (salRaw.first['total'] as num?)?.toDouble() ?? 0.0;
+      // 9) استهلاكات المرفق الصحي
+      final facilityConsumptions =
+          await db.getSumConsumptionsBetween(_from, _to);
       // صافي الربح
       final netProfit = await db.getNetProfitTotalBetween(_from, _to);
 
@@ -221,6 +228,7 @@ class StatisticsProvider extends ChangeNotifier {
       _monthlyLoansPaid = loans;
       _monthlyDiscounts = discounts;
       _monthlySalariesPaid = salaries;
+      _monthlyFacilityConsumptions = facilityConsumptions;
       _monthlyNetProfit = netProfit;
 
       _monthlyPatients = monthlyPts;

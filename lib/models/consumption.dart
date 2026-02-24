@@ -13,6 +13,9 @@ class Consumption {
     id        INTEGER PRIMARY KEY AUTOINCREMENT,
     patientId TEXT,
     itemId    TEXT,
+    itemNameSnapshot TEXT,
+    itemTypeNameSnapshot TEXT,
+    unitPriceSnapshot REAL,
     quantity  INTEGER NOT NULL DEFAULT 0,
     date      TEXT    NOT NULL,
     amount    REAL    NOT NULL DEFAULT 0,
@@ -28,6 +31,9 @@ class Consumption {
 
   /// نخزّنه نصاً محلياً (قد يكون رقم في الأصل)
   String? itemId;
+  String? itemNameSnapshot;
+  String? itemTypeNameSnapshot;
+  double? unitPriceSnapshot;
 
   int quantity;
   double amount;
@@ -52,6 +58,9 @@ class Consumption {
     this.id,
     this.patientId,
     this.itemId,
+    this.itemNameSnapshot,
+    this.itemTypeNameSnapshot,
+    this.unitPriceSnapshot,
     this.quantity = 0,
     this.amount = 0.0,
     this.note,
@@ -71,6 +80,10 @@ class Consumption {
         'id': id,
         'patientId': patientId,
         'itemId': itemId,
+        if (itemNameSnapshot != null) 'itemNameSnapshot': itemNameSnapshot,
+        if (itemTypeNameSnapshot != null)
+          'itemTypeNameSnapshot': itemTypeNameSnapshot,
+        if (unitPriceSnapshot != null) 'unitPriceSnapshot': unitPriceSnapshot,
         'quantity': quantity,
         'amount': amount,
         'note': note,
@@ -154,6 +167,16 @@ class Consumption {
       id: m['id'] as int?,
       patientId: _toStrOrNull(m['patientId'] ?? m['patient_id']),
       itemId: _toStrOrNull(m['itemId'] ?? m['item_id']),
+      itemNameSnapshot:
+          _toStrOrNull(m['itemNameSnapshot'] ?? m['item_name_snapshot']),
+      itemTypeNameSnapshot: _toStrOrNull(
+          m['itemTypeNameSnapshot'] ?? m['item_type_name_snapshot']),
+      unitPriceSnapshot: (() {
+        final v = m['unitPriceSnapshot'] ?? m['unit_price_snapshot'];
+        if (v == null) return null;
+        if (v is num) return v.toDouble();
+        return double.tryParse(v.toString());
+      })(),
       quantity: _toInt(m['quantity']),
       amount: _toDouble(m['amount']),
       note: m['note'] as String?,
@@ -180,6 +203,9 @@ class Consumption {
     int? id,
     String? patientId,
     String? itemId,
+    String? itemNameSnapshot,
+    String? itemTypeNameSnapshot,
+    double? unitPriceSnapshot,
     int? quantity,
     double? amount,
     String? note,
@@ -193,6 +219,9 @@ class Consumption {
       id: id ?? this.id,
       patientId: patientId ?? this.patientId,
       itemId: itemId ?? this.itemId,
+      itemNameSnapshot: itemNameSnapshot ?? this.itemNameSnapshot,
+      itemTypeNameSnapshot: itemTypeNameSnapshot ?? this.itemTypeNameSnapshot,
+      unitPriceSnapshot: unitPriceSnapshot ?? this.unitPriceSnapshot,
       quantity: quantity ?? this.quantity,
       amount: amount ?? this.amount,
       note: note ?? this.note,

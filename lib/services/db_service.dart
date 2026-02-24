@@ -33,6 +33,7 @@ import 'package:aelmamclinic/models/employee.dart';
 import 'package:aelmamclinic/models/item_type.dart';
 import 'package:aelmamclinic/models/item.dart';
 import 'package:aelmamclinic/models/purchase.dart';
+import 'package:aelmamclinic/models/inventory_health_report.dart';
 import 'package:aelmamclinic/models/alert_setting.dart';
 import 'package:aelmamclinic/models/attachment.dart';
 
@@ -108,6 +109,29 @@ class DBService {
   final _changeController = StreamController<String>.broadcast();
   Stream<String> get changes => _changeController.stream;
 
+  // Serialize write operations to avoid SQLite "database is locked" under sync load.
+  Future<void> _writeQueue = Future<void>.value();
+  static final Object _writeZoneKey = Object();
+
+  Future<T> runQueuedWrite<T>(Future<T> Function() op) {
+    if (Zone.current[_writeZoneKey] == true) {
+      return op();
+    }
+    final completer = Completer<T>();
+    _writeQueue = _writeQueue.then((_) async {
+      try {
+        final res = await runZoned(
+          () => op(),
+          zoneValues: {_writeZoneKey: true},
+        );
+        completer.complete(res);
+      } catch (e, st) {
+        completer.completeError(e, st);
+      }
+    });
+    return completer.future;
+  }
+
   /// يمكنك تعيينها من الخارج:
   /// DBService.instance.onLocalChange = (tbl) => sync.pushFor(tbl);
   LocalChangeCallback? onLocalChange;
@@ -116,6 +140,19 @@ class DBService {
   final Map<String, Timer> _pushDebouncers = <String, Timer>{};
   final Set<String> _pendingTables = <String>{};
   final Map<String, Set<String>> _tableColumnsCache = <String, Set<String>>{};
+  String? _cachedAccountId;
+  String? _cachedDeviceId;
+  DateTime? _lastRepairBackupAt;
+
+  void setCachedSyncIdentity({String? accountId, String? deviceId}) {
+    _cachedAccountId = accountId?.trim().isEmpty == true ? null : accountId;
+    _cachedDeviceId = deviceId?.trim().isEmpty == true ? null : deviceId;
+  }
+
+  void clearCachedSyncIdentity() {
+    _cachedAccountId = null;
+    _cachedDeviceId = null;
+  }
 
   /// ربط سريع مع SyncService.pushFor (تفادي الاستيراد الدائري) + تفريغ المعلّق
   void bindSyncPush(LocalChangeCallback callback) {
@@ -181,21 +218,41 @@ class DBService {
     return cols.contains(column);
   }
 
-  Future<String?> _currentAccountId() async {
-    final db = await database;
+  Future<bool> hasColumn(DatabaseExecutor db, String table, String column) async {
+    return _hasColumn(db, table, column);
+  }
+
+  Future<String?> _currentAccountIdFrom(DatabaseExecutor db) async {
+    if (_cachedAccountId != null && _cachedAccountId!.trim().isNotEmpty) {
+      return _cachedAccountId;
+    }
     try {
+      if (!await _tableExists(db, 'sync_identity')) return null;
       final rows =
           await db.rawQuery('SELECT account_id FROM sync_identity LIMIT 1');
       if (rows.isEmpty) return null;
       final raw = rows.first['account_id']?.toString().trim() ?? '';
-      return raw.isEmpty ? null : raw;
+      final acc = raw.isEmpty ? null : raw;
+      if (acc != null) _cachedAccountId = acc;
+      return acc;
     } catch (_) {
       return null;
     }
   }
 
-  Future<String?> _currentDeviceId() async {
+  Future<String?> _currentAccountId() async {
     final db = await database;
+    return _currentAccountIdFrom(db);
+  }
+
+  Future<String?> currentAccountId() async {
+    return _currentAccountId();
+  }
+
+  Future<String?> _currentDeviceIdFrom(DatabaseExecutor db) async {
+    if (_cachedDeviceId != null && _cachedDeviceId!.trim().isNotEmpty) {
+      return _cachedDeviceId;
+    }
     try {
       if (!await _tableExists(db, 'sync_identity')) return null;
       if (!await _hasColumn(db, 'sync_identity', 'device_id')) return null;
@@ -203,7 +260,9 @@ class DBService {
           await db.rawQuery('SELECT device_id FROM sync_identity LIMIT 1');
       if (rows.isEmpty) return null;
       final raw = rows.first['device_id']?.toString().trim() ?? '';
-      return raw.isEmpty ? null : raw;
+      final dev = raw.isEmpty ? null : raw;
+      if (dev != null) _cachedDeviceId = dev;
+      return dev;
     } catch (_) {
       return null;
     }
@@ -218,7 +277,7 @@ class DBService {
     final prepared = Map<String, dynamic>.from(data);
 
     if (await _hasColumn(db, table, 'account_id')) {
-      final accountId = await _currentAccountId();
+      final accountId = await _currentAccountIdFrom(db);
       if (accountId == null || accountId.trim().isEmpty) {
         throw StateError('لا يوجد حساب نشط للحفظ في $table');
       }
@@ -226,7 +285,7 @@ class DBService {
     }
 
     if (await _hasColumn(db, table, 'device_id')) {
-      final deviceId = await _currentDeviceId();
+      final deviceId = await _currentDeviceIdFrom(db);
       if (deviceId != null && deviceId.trim().isNotEmpty) {
         prepared.putIfAbsent('device_id', () => deviceId);
       }
@@ -260,6 +319,236 @@ class DBService {
     if (args != null) args.add(accountId);
     final col = alias != null ? '$alias.account_id' : 'account_id';
     return ' AND $col = ?';
+  }
+
+  Future<int> _countMissingAccount(DatabaseExecutor db, String table) async {
+    if (!await _hasColumn(db, table, 'account_id')) return 0;
+    final rows = await db.rawQuery(
+      'SELECT COUNT(*) AS c FROM $table '
+      "WHERE account_id IS NULL OR length(trim(account_id)) = 0",
+    );
+    return (rows.first['c'] as num).toInt();
+  }
+
+  Future<InventoryHealthReport> getInventoryHealthReport() async {
+    final db = await database;
+    final accountId = await currentAccountId();
+    if (accountId == null || accountId.trim().isEmpty) {
+      return InventoryHealthReport.empty(reason: 'missing_account');
+    }
+
+    Future<int> countTable(String table, {String? alias}) async {
+      final args = <Object?>[];
+      final clause = await _accountFilterClause(
+        db,
+        table,
+        alias: alias,
+        args: args,
+      );
+      final rows = await db.rawQuery(
+        'SELECT COUNT(*) AS c FROM $table ${alias != null ? '$alias' : ''} WHERE 1=1 $clause',
+        args,
+      );
+      return (rows.first['c'] as num).toInt();
+    }
+
+    final itemTypes = await countTable(ItemType.table);
+    final items = await countTable(Item.table);
+
+    final orphanItemArgs = <Object?>[];
+    final itemAcc = await _accountFilterClause(
+      db,
+      Item.table,
+      alias: 'i',
+      args: orphanItemArgs,
+    );
+    final typeAcc = await _accountFilterClause(
+      db,
+      ItemType.table,
+      alias: 't',
+      args: orphanItemArgs,
+    );
+    final orphanItemsRows = await db.rawQuery(
+      '''
+      SELECT COUNT(*) AS c
+        FROM ${Item.table} i
+        LEFT JOIN ${ItemType.table} t
+          ON t.id = i.type_id
+          $typeAcc
+       WHERE t.id IS NULL
+         $itemAcc
+      ''',
+      orphanItemArgs,
+    );
+    final orphanItems = (orphanItemsRows.first['c'] as num).toInt();
+
+    final orphanPurchaseArgs = <Object?>[];
+    final purchaseAcc = await _accountFilterClause(
+      db,
+      Purchase.table,
+      alias: 'p',
+      args: orphanPurchaseArgs,
+    );
+    final itemAccOnPurchase = await _accountFilterClause(
+      db,
+      Item.table,
+      alias: 'i',
+      args: orphanPurchaseArgs,
+    );
+    final orphanPurchasesRows = await db.rawQuery(
+      '''
+      SELECT COUNT(*) AS c
+        FROM ${Purchase.table} p
+        LEFT JOIN ${Item.table} i
+          ON i.id = p.item_id
+          $itemAccOnPurchase
+       WHERE i.id IS NULL
+         $purchaseAcc
+      ''',
+      orphanPurchaseArgs,
+    );
+    final orphanPurchases = (orphanPurchasesRows.first['c'] as num).toInt();
+
+    final orphanConsumptionArgs = <Object?>[];
+    final consumptionAcc = await _accountFilterClause(
+      db,
+      Consumption.table,
+      alias: 'c',
+      args: orphanConsumptionArgs,
+    );
+    final itemAccOnConsumption = await _accountFilterClause(
+      db,
+      Item.table,
+      alias: 'i',
+      args: orphanConsumptionArgs,
+    );
+    final orphanConsumptionsRows = await db.rawQuery(
+      '''
+      SELECT COUNT(*) AS c
+        FROM ${Consumption.table} c
+        LEFT JOIN ${Item.table} i
+          ON i.id = CAST(c.itemId AS INTEGER)
+          $itemAccOnConsumption
+       WHERE (c.itemId IS NULL OR trim(c.itemId) = '' OR i.id IS NULL)
+         $consumptionAcc
+      ''',
+      orphanConsumptionArgs,
+    );
+    final orphanConsumptions =
+        (orphanConsumptionsRows.first['c'] as num).toInt();
+
+    final missingAccountRows = await _countMissingAccount(db, ItemType.table) +
+        await _countMissingAccount(db, Item.table) +
+        await _countMissingAccount(db, Purchase.table) +
+        await _countMissingAccount(db, Consumption.table);
+
+    return InventoryHealthReport(
+      itemTypes: itemTypes,
+      items: items,
+      orphanItems: orphanItems,
+      orphanPurchases: orphanPurchases,
+      orphanConsumptions: orphanConsumptions,
+      missingAccountRows: missingAccountRows,
+    );
+  }
+
+  Future<Map<String, int>> auditSyncMappings({
+    int minGap = 1,
+  }) async {
+    final db = await database;
+    final accountId = await _currentAccountId();
+    if (accountId == null || accountId.trim().isEmpty) {
+      return {};
+    }
+
+    final gaps = <String, int>{};
+
+    Future<int> countTable(String table) async {
+      final args = <Object?>[];
+      final clause = await _accountFilterClause(db, table, args: args);
+      final rows = await db.rawQuery(
+        'SELECT COUNT(*) AS c FROM $table WHERE 1=1 $clause',
+        args,
+      );
+      return (rows.first['c'] as num).toInt();
+    }
+
+    final uuidRows = await db.rawQuery('''
+      SELECT table_name, COUNT(*) AS c
+        FROM sync_uuid_mapping
+       WHERE account_id = ?
+    GROUP BY table_name
+    ''', [accountId]);
+
+    for (final row in uuidRows) {
+      final table = (row['table_name'] ?? '').toString();
+      if (table.isEmpty) continue;
+      if (!await _tableExists(db, table)) continue;
+      final mappingCount = (row['c'] as num).toInt();
+      final tableCount = await countTable(table);
+      final gap = mappingCount - tableCount;
+      if (gap >= minGap) {
+        gaps['uuid:$table'] = gap;
+      }
+    }
+
+    final fkRows = await db.rawQuery('''
+      SELECT table_name, COUNT(*) AS c
+        FROM sync_fk_mapping
+    GROUP BY table_name
+    ''');
+    for (final row in fkRows) {
+      final table = (row['table_name'] ?? '').toString();
+      if (table.isEmpty) continue;
+      if (!await _tableExists(db, table)) continue;
+      final mappingCount = (row['c'] as num).toInt();
+      final tableCount = await countTable(table);
+      final gap = mappingCount - tableCount;
+      if (gap >= minGap) {
+        gaps['fk:$table'] = gap;
+      }
+    }
+
+    if (gaps.isNotEmpty) {
+      // لا نرمي استثناء هنا، فقط نطبع للتشخيص.
+      // المرحلة الثالثة ستستخدم هذا التقرير كتحذير بعد pull.
+      // ignore: avoid_print
+      print('[SYNC_AUDIT] mapping gaps detected: $gaps');
+    }
+
+    return gaps;
+  }
+
+  Future<String> accountFilterClause(
+    DatabaseExecutor db,
+    String table, {
+    String? alias,
+    List<Object?>? args,
+  }) async {
+    return _accountFilterClause(db, table, alias: alias, args: args);
+  }
+
+  Future<T> runWithDbRetry<T>(
+    Future<T> Function() op, {
+    int retries = 3,
+    Duration delay = const Duration(milliseconds: 200),
+  }) async {
+    var attempt = 0;
+    while (true) {
+      try {
+        return await op();
+      } on DatabaseException catch (e) {
+        final isLocked = _isDatabaseLockedError(e);
+        if (!isLocked || attempt >= retries) rethrow;
+        attempt += 1;
+        await Future<void>.delayed(delay * attempt);
+      }
+    }
+  }
+
+  bool _isDatabaseLockedError(DatabaseException e) {
+    final msg = e.toString().toLowerCase();
+    return msg.contains('database is locked') || msg.contains('locked');
   }
 
   /// بث تغيير دون جدولة دفع (للعمليات القادمة من المزامنة).
@@ -444,7 +733,7 @@ class DBService {
 
     return openDatabase(
       dbPath,
-      version: 34, // ↑ دعم شعار المرفق الصحي المحلي
+      version: 35, // ↑ إضافة حقول snapshot للمستودع
       onConfigure: (db) async {
         // ✅ على أندرويد: بعض أوامر PRAGMA يجب تنفيذها بـ rawQuery
         await db.rawQuery('PRAGMA foreign_keys = ON');
@@ -492,6 +781,182 @@ class DBService {
       return p.join(await getDatabasesPath(), 'clinic.db');
     }
   }
+
+  Future<String?> backupDatabase({
+    String reason = 'repair',
+    Duration minInterval = const Duration(minutes: 30),
+    bool force = false,
+  }) async {
+    try {
+      final now = DateTime.now();
+      if (!force &&
+          _lastRepairBackupAt != null &&
+          now.difference(_lastRepairBackupAt!) < minInterval) {
+        return null;
+      }
+      _lastRepairBackupAt = now;
+
+      final dbPath = await getDatabasePath();
+      final dbFile = File(dbPath);
+      if (!await dbFile.exists()) return null;
+
+      final dir = Directory(p.join(p.dirname(dbPath), 'backups'));
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+
+      final stamp = now
+          .toIso8601String()
+          .replaceAll(':', '')
+          .replaceAll('-', '')
+          .replaceAll('.', '');
+      final safeReason = reason.trim().isEmpty ? 'backup' : reason.trim();
+      final baseName = 'clinic_${safeReason}_$stamp.db';
+      final backupPath = p.join(dir.path, baseName);
+
+      await dbFile.copy(backupPath);
+
+      final walFile = File('$dbPath-wal');
+      if (await walFile.exists()) {
+        await walFile.copy('$backupPath-wal');
+      }
+      final shmFile = File('$dbPath-shm');
+      if (await shmFile.exists()) {
+        await shmFile.copy('$backupPath-shm');
+      }
+
+      return backupPath;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<InventoryRepairReport> repairInventoryIntegrity({
+    bool backup = true,
+  }) async {
+    final db = await database;
+    final accountId = await _currentAccountIdFrom(db);
+    if (accountId == null || accountId.trim().isEmpty) {
+      return InventoryRepairReport.skipped('missing_account');
+    }
+
+    if (backup) {
+      await backupDatabase(reason: 'inventory_repair');
+    }
+
+    final report = InventoryRepairReport();
+
+    await runQueuedWrite(() async {
+      await runWithDbRetry(() async {
+        await db.transaction((txn) async {
+          // إصلاح سريع لسجلات بدون account_id في الجداول الحساسة
+          Future<void> backfillAccount(String table) async {
+            final cols = await _getTableColumns(txn, table);
+            if (!cols.contains('account_id')) return;
+            await txn.update(
+              table,
+              {'account_id': accountId},
+              where: "account_id IS NULL OR length(trim(account_id)) = 0",
+            );
+          }
+
+          await backfillAccount(ItemType.table);
+          await backfillAccount(Item.table);
+          await backfillAccount('medical_services');
+          await backfillAccount('service_doctor_share');
+
+          final cols = await _getTableColumns(txn, 'item_types');
+          final nameCol = cols.contains('name') ? 'name' : null;
+          if (nameCol == null) return;
+
+          final accCol = cols.contains('account_id') ? 'account_id' : null;
+          final args = <Object?>['غير مصنف'];
+          var where = '$nameCol = ?';
+          if (accCol != null) {
+            where += ' AND $accCol = ?';
+            args.add(accountId);
+          }
+
+          final existing = await txn.query(
+            'item_types',
+            columns: const ['id'],
+            where: where,
+            whereArgs: args,
+            limit: 1,
+          );
+          final int fallbackId;
+          if (existing.isNotEmpty) {
+            fallbackId = (existing.first['id'] as num).toInt();
+          } else {
+            final row = <String, dynamic>{nameCol: 'غير مصنف'};
+            if (accCol != null) row[accCol] = accountId;
+            fallbackId = await txn.insert(
+              'item_types',
+              row,
+              conflictAlgorithm: ConflictAlgorithm.ignore,
+            );
+            report.createdFallbackType = fallbackId > 0;
+          }
+
+          if (fallbackId <= 0) return;
+
+          final itemCols = await _getTableColumns(txn, Item.table);
+          final itemAccCol =
+              itemCols.contains('account_id') ? 'account_id' : null;
+
+          final orphans = await txn.rawQuery('''
+            SELECT i.id
+              FROM ${Item.table} i
+         LEFT JOIN item_types t
+                ON t.id = i.type_id
+               ${itemAccCol != null ? 'AND t.account_id = i.account_id' : ''}
+             WHERE ifnull(i.isDeleted,0)=0
+               AND t.id IS NULL
+               ${itemAccCol != null ? 'AND i.account_id = ?' : ''}
+          ''', itemAccCol != null ? [accountId] : null);
+
+          if (orphans.isNotEmpty) {
+            final ids = orphans
+                .map((r) => (r['id'] as num).toInt())
+                .toList(growable: false);
+            final inClause = ids.map((_) => '?').join(',');
+            await txn.rawUpdate(
+              'UPDATE ${Item.table} SET type_id = ? WHERE id IN ($inClause)',
+              [fallbackId, ...ids],
+            );
+            report.orphanItemsFixed = ids.length;
+          }
+
+          if (itemCols.contains('name')) {
+            await txn.rawUpdate(
+              "UPDATE ${Item.table} SET name = 'بدون اسم' WHERE (name IS NULL OR trim(name) = '')"
+              '${itemAccCol != null ? ' AND account_id = ?' : ''}',
+              itemAccCol != null ? [accountId] : null,
+            );
+          }
+          if (itemCols.contains('price')) {
+            await txn.rawUpdate(
+              'UPDATE ${Item.table} SET price = 0 WHERE price IS NULL'
+              '${itemAccCol != null ? ' AND account_id = ?' : ''}',
+              itemAccCol != null ? [accountId] : null,
+            );
+          }
+          if (itemCols.contains('stock')) {
+            await txn.rawUpdate(
+              'UPDATE ${Item.table} SET stock = 0 WHERE stock IS NULL'
+              '${itemAccCol != null ? ' AND account_id = ?' : ''}',
+              itemAccCol != null ? [accountId] : null,
+            );
+          }
+        });
+      });
+    });
+
+    await notifyTableChanged(Item.table);
+    await notifyTableChanged(ItemType.table);
+    return report;
+  }
+
 
   /*──────────────── إنشاء بنية stats_dirty ───────────────*/
   Future<void> _createStatsDirtyStructure(Database db) async {
@@ -835,9 +1300,6 @@ class DBService {
   Map<String, dynamic> _normalizeEmployeeSalaryData(
       Map<String, dynamic> data) {
     final normalized = <String, dynamic>{};
-    void putIfPresent(String key, dynamic value) {
-      if (value != null) normalized[key] = value;
-    }
 
     final mapped = Map<String, dynamic>.from(data);
     if (mapped.containsKey('employeeld') && !mapped.containsKey('employeeId')) {
@@ -1338,6 +1800,9 @@ class DBService {
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     patientId TEXT,
     itemId TEXT,
+    itemNameSnapshot TEXT,
+    itemTypeNameSnapshot TEXT,
+    unitPriceSnapshot REAL,
     quantity INTEGER,
     date TEXT,
     amount REAL,
@@ -1915,6 +2380,57 @@ class DBService {
     if (oldVersion < 34) {
       await _addColumnIfMissing(db, 'clinic_profile', 'logo_path', 'TEXT');
     }
+
+    if (oldVersion < 35) {
+      await _addColumnIfMissing(
+        db,
+        'purchases',
+        'item_name_snapshot',
+        'TEXT',
+      );
+      await _addColumnIfMissing(
+        db,
+        'purchases',
+        'item_type_name_snapshot',
+        'TEXT',
+      );
+      await _addColumnIfMissing(
+        db,
+        'consumptions',
+        'itemNameSnapshot',
+        'TEXT',
+      );
+      await _addColumnIfMissing(
+        db,
+        'consumptions',
+        'itemTypeNameSnapshot',
+        'TEXT',
+      );
+      await _addColumnIfMissing(
+        db,
+        'consumptions',
+        'unitPriceSnapshot',
+        'REAL',
+      );
+      await _addColumnIfMissing(
+        db,
+        'consumptions',
+        'item_name_snapshot',
+        'TEXT',
+      );
+      await _addColumnIfMissing(
+        db,
+        'consumptions',
+        'item_type_name_snapshot',
+        'TEXT',
+      );
+      await _addColumnIfMissing(
+        db,
+        'consumptions',
+        'unit_price_snapshot',
+        'REAL',
+      );
+    }
   }
 
   /*─────────────────── المرفقات ───────────────────*/
@@ -2049,7 +2565,6 @@ class DBService {
   }
 
   Future<int> deleteItemType(int id) async {
-    // احذف النوع وكل الأصناف التابعة له (منطقيًا) لتجنّب عناصر يتيمة
     final db = await database;
     final itemRows = await db.query(
       Item.table,
@@ -2062,6 +2577,35 @@ class DBService {
         .whereType<int>()
         .toList();
     if (itemIds.isNotEmpty) {
+      final itemArgs = <Object?>[...itemIds];
+      final inClause = List.filled(itemIds.length, '?').join(',');
+      final pAcc = await _accountFilterClause(db, Purchase.table,
+          alias: 'p', args: itemArgs);
+      final cAcc = await _accountFilterClause(db, Consumption.table,
+          alias: 'c', args: itemArgs);
+
+      final hasPurchases = await db.rawQuery('''
+        SELECT 1 FROM ${Purchase.table} p
+         WHERE p.item_id IN ($inClause)
+           AND ifnull(p.isDeleted,0)=0
+           $pAcc
+         LIMIT 1
+      ''', itemArgs);
+      if (hasPurchases.isNotEmpty) {
+        throw StateError('لا يمكن حذف نوع الصنف لوجود مشتريات مرتبطة به');
+      }
+
+      final hasConsumptions = await db.rawQuery('''
+        SELECT 1 FROM ${Consumption.table} c
+         WHERE c.itemId IN ($inClause)
+           AND ifnull(c.isDeleted,0)=0
+           $cAcc
+         LIMIT 1
+      ''', itemArgs);
+      if (hasConsumptions.isNotEmpty) {
+        throw StateError('لا يمكن حذف نوع الصنف لوجود استهلاكات مرتبطة به');
+      }
+
       final args = List<Object?>.filled(itemIds.length, 0);
       for (var i = 0; i < itemIds.length; i++) {
         args[i] = itemIds[i];
@@ -2214,6 +2758,43 @@ class DBService {
   }
 
   Future<int> deleteItem(int id) async {
+    final db = await database;
+    final itemArgs = <Object?>[id];
+    final pAcc = await _accountFilterClause(db, Purchase.table,
+        alias: 'p', args: itemArgs);
+    final cAcc = await _accountFilterClause(db, Consumption.table,
+        alias: 'c', args: itemArgs);
+
+    final hasPurchases = await db.rawQuery('''
+      SELECT 1 FROM ${Purchase.table} p
+       WHERE p.item_id = ?
+         AND ifnull(p.isDeleted,0)=0
+         $pAcc
+       LIMIT 1
+    ''', itemArgs);
+    if (hasPurchases.isNotEmpty) {
+      throw StateError('لا يمكن حذف الصنف لوجود مشتريات مرتبطة به');
+    }
+
+    final hasConsumptions = await db.rawQuery('''
+      SELECT 1 FROM ${Consumption.table} c
+       WHERE c.itemId = ?
+         AND ifnull(c.isDeleted,0)=0
+         $cAcc
+       LIMIT 1
+    ''', itemArgs);
+    if (hasConsumptions.isNotEmpty) {
+      throw StateError('لا يمكن حذف الصنف لوجود استهلاكات مرتبطة به');
+    }
+
+    // احذف أي تنبيهات مرتبطة بالصنف
+    await _softDeleteWhere(
+      AlertSetting.table,
+      'item_id = ?',
+      [id],
+    );
+    await _markChanged(AlertSetting.table);
+
     final rows = await _softDeleteById(Item.table, id);
     await _markChanged(Item.table);
     return rows;
@@ -2936,11 +3517,16 @@ class DBService {
     required String serviceType,
   }) async {
     final db = await database;
-    final id = await db.insert('medical_services', {
-      'name': name,
-      'cost': cost,
-      'serviceType': serviceType,
-    });
+    final data = await prepareInsert(
+      'medical_services',
+      {
+        'name': name,
+        'cost': cost,
+        'serviceType': serviceType,
+      },
+      executor: db,
+    );
+    final id = await db.insert('medical_services', data);
     await _markChanged('medical_services');
     return id;
   }
@@ -2952,12 +3538,16 @@ class DBService {
     required String serviceType,
   }) async {
     final db = await database;
-    final rows = await db.update(
-      'medical_services',
-      {'name': name, 'cost': cost, 'serviceType': serviceType},
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    final data = <String, dynamic>{
+      'name': name,
+      'cost': cost,
+      'serviceType': serviceType,
+    };
+    if (await _hasColumn(db, 'medical_services', 'updated_at')) {
+      data['updated_at'] = DateTime.now().toIso8601String();
+    }
+    final rows =
+        await db.update('medical_services', data, where: 'id = ?', whereArgs: [id]);
     await _markChanged('medical_services');
     return rows;
   }
@@ -3044,12 +3634,17 @@ class DBService {
       return v;
     }
     final db = await database;
-    final id = await db.insert('service_doctor_share', {
-      'serviceId': serviceId,
-      'doctorId': doctorId,
-      'sharePercentage': clampPct(sharePercentage),
-      'towerSharePercentage': clampPct(towerSharePercentage),
-    });
+    final data = await prepareInsert(
+      'service_doctor_share',
+      {
+        'serviceId': serviceId,
+        'doctorId': doctorId,
+        'sharePercentage': clampPct(sharePercentage),
+        'towerSharePercentage': clampPct(towerSharePercentage),
+      },
+      executor: db,
+    );
+    final id = await db.insert('service_doctor_share', data);
     await _markChanged('service_doctor_share');
     return id;
   }
@@ -3121,6 +3716,9 @@ class DBService {
     }
     if (towerSharePercentage != null) {
       updateData['towerSharePercentage'] = clampPct(towerSharePercentage);
+    }
+    if (await _hasColumn(db, 'service_doctor_share', 'updated_at')) {
+      updateData['updated_at'] = DateTime.now().toIso8601String();
     }
     final rows = await db.update('service_doctor_share', updateData,
         where: 'id = ?', whereArgs: [id]);
@@ -4716,7 +5314,7 @@ class DBService {
         await _accountFilterClause(db, 'patients', alias: 'p', args: incomeArgs);
     String msAccount = '';
     if (await _hasColumn(db, 'medical_services', 'account_id')) {
-      final accountId = await _currentAccountId();
+      final accountId = await _currentAccountIdFrom(db);
       if (accountId == null || accountId.trim().isEmpty) return {};
       msAccount = ' AND (ms.account_id = ? OR ms.id IS NULL)';
       incomeArgs.add(accountId);
@@ -4752,6 +5350,33 @@ class DBService {
       GROUP BY date(created_at)
     ''', consArgs);
 
+    final facilityArgs = <Object?>[from.toIso8601String(), to.toIso8601String()];
+    final consumptionAccount =
+        await _accountFilterClause(db, 'consumptions', alias: 'c', args: facilityArgs);
+    String itemsAccount = '';
+    if (await _hasColumn(db, 'items', 'account_id')) {
+      final accountId = await _currentAccountIdFrom(db);
+      if (accountId == null || accountId.trim().isEmpty) return {};
+      itemsAccount = ' AND (i.account_id = ? OR i.id IS NULL)';
+      facilityArgs.add(accountId);
+    }
+    final facilityRows = await db.rawQuery('''
+      SELECT date(c.date) AS dayKey,
+             COALESCE(SUM(
+               CASE 
+                 WHEN (c.amount IS NULL OR c.amount = 0)
+                   THEN COALESCE(i.price, 0) * COALESCE(c.quantity, 0)
+                 ELSE c.amount
+               END
+             ), 0) AS total
+      FROM consumptions c
+      LEFT JOIN items i ON i.id = c.itemId
+      WHERE date(c.date) BETWEEN date(?) AND date(?)
+        AND ifnull(c.isDeleted,0)=0
+        $consumptionAccount$itemsAccount
+      GROUP BY date(c.date)
+    ''', facilityArgs);
+
     final salArgs = <Object?>[from.toIso8601String(), to.toIso8601String()];
     final salariesAccount =
         await _accountFilterClause(db, 'employees_salaries', args: salArgs);
@@ -4777,16 +5402,19 @@ class DBService {
 
     final income = mapFromRows(incomeRows);
     final cons = mapFromRows(consRows);
+    final facility = mapFromRows(facilityRows);
     final salaries = mapFromRows(salRows);
     final days = <String>{}
       ..addAll(income.keys)
       ..addAll(cons.keys)
+      ..addAll(facility.keys)
       ..addAll(salaries.keys);
 
     final net = <String, double>{};
     for (final k in days) {
       net[k] = (income[k] ?? 0) -
           (cons[k] ?? 0) -
+          (facility[k] ?? 0) -
           (salaries[k] ?? 0);
     }
     return net;
@@ -4796,6 +5424,35 @@ class DBService {
       DateTime from, DateTime to) async {
     final map = await getNetProfitByDateBetween(from, to);
     return map.values.fold<double>(0.0, (sum, v) => sum + v);
+  }
+
+  Future<double> getSumConsumptionsBetween(DateTime from, DateTime to) async {
+    final db = await database;
+    final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
+    final consumptionAccount =
+        await _accountFilterClause(db, 'consumptions', alias: 'c', args: args);
+    String itemsAccount = '';
+    if (await _hasColumn(db, 'items', 'account_id')) {
+      final accountId = await _currentAccountIdFrom(db);
+      if (accountId == null || accountId.trim().isEmpty) return 0.0;
+      itemsAccount = ' AND (i.account_id = ? OR i.id IS NULL)';
+      args.add(accountId);
+    }
+    final rows = await db.rawQuery('''
+      SELECT COALESCE(SUM(
+        CASE 
+          WHEN (c.amount IS NULL OR c.amount = 0)
+            THEN COALESCE(i.price, 0) * COALESCE(c.quantity, 0)
+          ELSE c.amount
+        END
+      ), 0) AS total
+      FROM consumptions c
+      LEFT JOIN items i ON i.id = c.itemId
+      WHERE date(c.date) BETWEEN date(?) AND date(?)
+        AND ifnull(c.isDeleted,0)=0
+        $consumptionAccount$itemsAccount
+    ''', args);
+    return (rows.first['total'] as num?)?.toDouble() ?? 0.0;
   }
 
   Future<int> insertConsumptionType(String type) async {
@@ -4931,5 +5588,30 @@ class DBService {
     } catch (_) {
       // قد يُستدعى أثناء ترقية دفاعية قبل إنشاء الجدول، لذا نتجاهل الخطأ.
     }
+  }
+}
+
+class InventoryRepairReport {
+  InventoryRepairReport();
+
+  bool createdFallbackType = false;
+  int orphanItemsFixed = 0;
+  String? skippedReason;
+
+  InventoryRepairReport.skipped(this.skippedReason);
+
+  bool get skipped => skippedReason != null;
+
+  Map<String, dynamic> toMap() => {
+        'createdFallbackType': createdFallbackType,
+        'orphanItemsFixed': orphanItemsFixed,
+        'skippedReason': skippedReason,
+      };
+
+  @override
+  String toString() {
+    if (skipped) return 'InventoryRepairReport(skipped: $skippedReason)';
+    return 'InventoryRepairReport(createdFallbackType: $createdFallbackType, '
+        'orphanItemsFixed: $orphanItemsFixed)';
   }
 }

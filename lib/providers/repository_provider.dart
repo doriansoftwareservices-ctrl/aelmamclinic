@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import 'package:aelmamclinic/models/item_type.dart';
 import 'package:aelmamclinic/models/item.dart';
+import 'package:aelmamclinic/models/inventory_health_report.dart';
 import 'package:aelmamclinic/services/repository_service.dart';
 
 /* ربط مباشر مع الـ DB + Sync */
@@ -39,12 +40,14 @@ class RepositoryProvider extends ChangeNotifier {
   /* ─── البيانات المجمَّعة في الذاكرة ─── */
   List<ItemType> _types = [];
   final Map<int, List<Item>> _itemsByType = {}; // key = typeId
+  List<Item> _orphanItems = []; // أصناف بدون نوع
   List<Item> _lowStock = []; // الأصناف منخفضة المخزون
   bool _hasLowStockAlerts = false;
 
   /* ─── getters للويدجتات ─── */
   List<ItemType> get types => _types;
   List<Item> itemsOf(int typeId) => _itemsByType[typeId] ?? [];
+  List<Item> get orphanItems => _orphanItems;
   List<Item> get lowStockItems => _lowStock;
   bool get hasLowStockBadge => _hasLowStockAlerts;
 
@@ -53,7 +56,7 @@ class RepositoryProvider extends ChangeNotifier {
 
   /// 🆕 جميع الأصناف من كافة الأنواع
   List<Item> get allItems =>
-      _itemsByType.values.expand((list) => list).toList();
+      _itemsByType.values.expand((list) => list).toList() + _orphanItems;
 
   /* ─── ربط المزامنة (اختياري) ─── */
   /// اربط الدفع المؤجّل لكل جدول بدون استيراد دائري.
@@ -64,8 +67,18 @@ class RepositoryProvider extends ChangeNotifier {
 
   /* ─── عمليات التهيئة ─── */
   Future<void> loadAllData() => bootstrap();
-  Future<void> bootstrap() async => _refreshAll();
+  Future<void> bootstrap() async => _refreshAll(repair: true);
   Future<void> loadAlerts() async => _checkAlerts();
+
+  Future<InventoryRepairReport> repairInventoryIntegrity({
+    bool backup = true,
+  }) async {
+    return _service.repairInventoryIntegrity(backup: backup);
+  }
+
+  Future<InventoryHealthReport> fetchHealthReport() async {
+    return _service.fetchInventoryHealth();
+  }
 
   /* ─── CRUD: نوع الصنف ─── */
   Future<void> addType(String name) async {
@@ -175,10 +188,23 @@ class RepositoryProvider extends ChangeNotifier {
   }
 
   /* ─── داخليّات ─── */
-  Future<void> _refreshAll() async {
+  Future<void> _refreshAll({bool repair = false}) async {
     if (_refreshBusy) return;
     _refreshBusy = true;
     try {
+      final accountId = await _db.currentAccountId();
+      if (accountId == null || accountId.trim().isEmpty) {
+        if (_types.isNotEmpty || _itemsByType.isNotEmpty || _orphanItems.isNotEmpty) {
+          return;
+        }
+      }
+
+      if (repair) {
+        try {
+          await _service.repairInventoryIntegrity(backup: true);
+        } catch (_) {}
+      }
+
       final fetched = await _service.fetchItemTypes();
       final dedup = <String, ItemType>{};
       for (final t in fetched) {
@@ -190,10 +216,26 @@ class RepositoryProvider extends ChangeNotifier {
       }
       _types = dedup.values.toList()
         ..sort((a, b) => a.name.compareTo(b.name));
+      final allItems = await _service.fetchAllItems();
       _itemsByType.clear();
+      _orphanItems = [];
       for (final t in _types) {
-        _itemsByType[t.id!] = await _service.fetchItemsByType(t.id!);
+        if (t.id != null) {
+          _itemsByType[t.id!] = <Item>[];
+        }
       }
+      for (final item in allItems) {
+        final list = _itemsByType[item.typeId];
+        if (list != null) {
+          list.add(item);
+        } else {
+          _orphanItems.add(item);
+        }
+      }
+      for (final entry in _itemsByType.entries) {
+        entry.value.sort((a, b) => a.name.compareTo(b.name));
+      }
+      _orphanItems.sort((a, b) => a.name.compareTo(b.name));
       await _checkAlerts(notify: false);
       notifyListeners();
     } finally {
@@ -212,6 +254,15 @@ class RepositoryProvider extends ChangeNotifier {
       } else {
         // لو كان العنصر غير موجود محليًا ضمن نوعه لأي سبب:
         list.add(item);
+      }
+    }
+    if (list == null) {
+      final idx = _orphanItems.indexWhere((e) => e.id == item.id);
+      if (idx >= 0) {
+        _orphanItems[idx] = item;
+      } else {
+        _orphanItems.add(item);
+        _orphanItems.sort((a, b) => a.name.compareTo(b.name));
       }
     }
     await _checkAlerts();
@@ -237,13 +288,13 @@ class RepositoryProvider extends ChangeNotifier {
     _dbSub?.cancel();
     _dbSub = _db.changes.listen((table) {
       if (_interestingTables.contains(table)) {
-        _debounceTimer?.cancel();
-        _debounceTimer = Timer(_changeDebounce, () {
-          // تغييرات المخزون والتنبيهات تؤثّر على الشارات واللوائح:
-          _refreshAll();
-        });
-      }
-    });
+          _debounceTimer?.cancel();
+          _debounceTimer = Timer(_changeDebounce, () {
+            // تغييرات المخزون والتنبيهات تؤثّر على الشارات واللوائح:
+            _refreshAll(repair: false);
+          });
+        }
+      });
   }
 
   /// تحديث فوري يدوي (مثلاً عند سحب-لتحديث)

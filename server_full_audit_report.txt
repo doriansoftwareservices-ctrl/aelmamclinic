@@ -1,0 +1,72 @@
+Server Full Audit Report
+Generated: 2026-02-24T05:09:57
+Hasura: https://ujxbrdbrjbujvlylpbbn.hasura.ap-southeast-1.nhost.run
+
+Metadata consistency:
+- is_consistent: true
+
+Metadata snapshot saved: server_full_audit_metadata.json
+
+Table row counts and null checks:
+- _debug_sa_ctx: 0
+- account_feature_permissions: 34 | account_id NULL: 0
+- account_subscriptions: 34 | account_id NULL: 0
+- account_users: 21 | account_id NULL: 0 | device_id NULL: 0
+- accounts: 16
+- alert_settings: 3 | account_id NULL: 0 | device_id NULL: 0 | deleted: 0 | is_deleted NULL: 0
+- appointments: 0 | account_id NULL: 0 | device_id NULL: 0 | deleted: 0 | is_deleted NULL: 0
+- audit_logs: 14 | account_id NULL: 0
+- chat_aliases: 5
+- chat_conversations: 5 | account_id NULL: 0 | deleted: 0 | is_deleted NULL: 0
+- chat_delivery_receipts: 0
+- chat_messages: 26 | account_id NULL: 0 | device_id NULL: 0 | deleted: 0 | is_deleted NULL: 0
+- chat_participants: 10 | account_id NULL: 0 | deleted: 0 | is_deleted NULL: 0
+- chat_reactions: 0 | account_id NULL: 0 | device_id NULL: 0 | deleted: 0 | is_deleted NULL: 0
+- chat_reads: 6 | account_id NULL: 6
+- chat_support_agent_gql_result: 0
+- chat_support_agents: 0
+- chat_typing: 7
+- complaint_questions: 35 | account_id NULL: 0
+- complaint_templates: 6 | account_id NULL: 0
+- complaints: 0 | account_id NULL: 0 | device_id NULL: 0 | deleted: 0 | is_deleted NULL: 0
+- consumption_types: 5 | account_id NULL: 0 | device_id NULL: 0 | deleted: 0 | is_deleted NULL: 0
+- consumptions: 12 | account_id NULL: 0 | device_id NULL: 0 | deleted: 0 | is_deleted NULL: 0
+- debug_hasura_ctx_rows: 0
+- doctors: 6 | account_id NULL: 0 | device_id NULL: 0 | deleted: 0 | is_deleted NULL: 0
+- drugs: 12 | account_id NULL: 0 | device_id NULL: 0 | deleted: 0 | is_deleted NULL: 0
+- employee_seat_pricing: 1
+- employee_seat_requests: 1 | account_id NULL: 0
+- employees: 7 | account_id NULL: 0 | device_id NULL: 0 | deleted: 0 | is_deleted NULL: 0
+- employees_discounts: 4 | account_id NULL: 0 | device_id NULL: 0 | deleted: 0 | is_deleted NULL: 0
+- employees_loans: 4 | account_id NULL: 0 | device_id NULL: 0 | deleted: 0 | is_deleted NULL: 0
+- employees_salaries: 4 | account_id NULL: 0 | device_id NULL: 0 | deleted: 0 | is_deleted NULL: 0
+- financial_logs: 24 | account_id NULL: 0 | device_id NULL: 0 | deleted: 0 | is_deleted NULL: 0
+- item_types: 46 | account_id NULL: 0 | device_id NULL: 0 | deleted: 0 | is_deleted NULL: 0
+- items: 175 | account_id NULL: 0 | device_id NULL: 0 | deleted: 0 | is_deleted NULL: 0
+- medical_services: 397 | account_id NULL: 0 | device_id NULL: 0 | deleted: 0 | is_deleted NULL: 0
+- patient_complaint_answers: 40 | account_id NULL: 0
+- patient_complaints: 8 | account_id NULL: 0
+- patient_reports: 8 | account_id NULL: 0
+- patient_services: 36 | account_id NULL: 0 | device_id NULL: 0 | deleted: 0 | is_deleted NULL: 0
+- patients: 15 | account_id NULL: 0 | device_id NULL: 0 | deleted: 0 | is_deleted NULL: 0
+- payment_methods: 3
+- plan_features: 40
+- prescription_items: 14 | account_id NULL: 0 | device_id NULL: 0 | deleted: 0 | is_deleted NULL: 0
+- prescriptions: 4 | account_id NULL: 0 | device_id NULL: 0 | deleted: 0 | is_deleted NULL: 0
+- profiles: 30 | account_id NULL: 11
+- purchases: 177 | account_id NULL: 0 | device_id NULL: 0 | deleted: 0 | is_deleted NULL: 0
+- returns: 2 | account_id NULL: 0 | device_id NULL: 0 | deleted: 0 | is_deleted NULL: 0
+- service_doctor_share: 331 | account_id NULL: 0 | device_id NULL: 0 | deleted: 0 | is_deleted NULL: 0
+- subscription_payments: 8 | account_id NULL: 0
+- subscription_plans: 3
+- subscription_requests: 7 | account_id NULL: 0
+- super_admin_tab_permissions: 2
+- super_admins: 3 | account_id NULL: 3 | device_id NULL: 3
+- superadmin_whitelist: 4
+- user_current_account: 13 | account_id NULL: 0
+
+Duplicate checks:
+- item_types duplicates: 0
+- items duplicates: 0
+
+Foreign key integrity (orphan counts):

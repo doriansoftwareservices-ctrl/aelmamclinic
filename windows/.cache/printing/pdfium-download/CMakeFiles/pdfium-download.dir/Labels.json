@@ -1,0 +1,46 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "C:/Users/zidan/AndroidStudioProjects/aelmamclinic/windows/.cache/printing/pdfium-download/CMakeFiles/pdfium-download"
+		},
+		{
+			"file" : "C:/Users/zidan/AndroidStudioProjects/aelmamclinic/windows/.cache/printing/pdfium-download/CMakeFiles/59ecc3913d930fdd6614410ad0093327/pdfium-download.rule"
+		},
+		{
+			"file" : "C:/Users/zidan/AndroidStudioProjects/aelmamclinic/windows/.cache/printing/pdfium-download/CMakeFiles/f4363e97483b66ca2df8f569cae4757d/pdfium-download-complete.rule"
+		},
+		{
+			"file" : "C:/Users/zidan/AndroidStudioProjects/aelmamclinic/windows/.cache/printing/pdfium-download/CMakeFiles/964020abf390e3b98347eecbe872c44a/pdfium-download-build.rule"
+		},
+		{
+			"file" : "C:/Users/zidan/AndroidStudioProjects/aelmamclinic/windows/.cache/printing/pdfium-download/CMakeFiles/964020abf390e3b98347eecbe872c44a/pdfium-download-configure.rule"
+		},
+		{
+			"file" : "C:/Users/zidan/AndroidStudioProjects/aelmamclinic/windows/.cache/printing/pdfium-download/CMakeFiles/964020abf390e3b98347eecbe872c44a/pdfium-download-download.rule"
+		},
+		{
+			"file" : "C:/Users/zidan/AndroidStudioProjects/aelmamclinic/windows/.cache/printing/pdfium-download/CMakeFiles/964020abf390e3b98347eecbe872c44a/pdfium-download-install.rule"
+		},
+		{
+			"file" : "C:/Users/zidan/AndroidStudioProjects/aelmamclinic/windows/.cache/printing/pdfium-download/CMakeFiles/964020abf390e3b98347eecbe872c44a/pdfium-download-mkdir.rule"
+		},
+		{
+			"file" : "C:/Users/zidan/AndroidStudioProjects/aelmamclinic/windows/.cache/printing/pdfium-download/CMakeFiles/964020abf390e3b98347eecbe872c44a/pdfium-download-patch.rule"
+		},
+		{
+			"file" : "C:/Users/zidan/AndroidStudioProjects/aelmamclinic/windows/.cache/printing/pdfium-download/CMakeFiles/964020abf390e3b98347eecbe872c44a/pdfium-download-test.rule"
+		},
+		{
+			"file" : "C:/Users/zidan/AndroidStudioProjects/aelmamclinic/windows/.cache/printing/pdfium-download/CMakeFiles/964020abf390e3b98347eecbe872c44a/pdfium-download-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"pdfium-download"
+		],
+		"name" : "pdfium-download"
+	}
+}

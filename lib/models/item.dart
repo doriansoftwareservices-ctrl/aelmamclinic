@@ -100,6 +100,10 @@ class Item {
         'price': price,
         'stock': stock,
         'created_at': createdAt.toIso8601String(),
+        if (accountId != null) 'account_id': accountId,
+        if (deviceId != null) 'device_id': deviceId,
+        if (localId != null) 'local_id': localId,
+        if (updatedAt != null) 'updated_at': updatedAt?.toIso8601String(),
       };
 
   /// تمثيل مخصص للسحابة (snake_case) مع حقول المزامنة الاختيارية.

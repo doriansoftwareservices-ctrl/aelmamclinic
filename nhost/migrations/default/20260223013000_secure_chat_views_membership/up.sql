@@ -111,6 +111,8 @@ BEGIN
           FROM public.chat_messages m
           WHERE m.conversation_id = c.id
             AND COALESCE(m.deleted, false) = false
+            AND (m.sender_uid IS NULL
+                 OR m.sender_uid <> nullif(public.request_uid_text(), '')::uuid)
             AND (
               r.last_read_at IS NULL
               OR m.created_at > r.last_read_at

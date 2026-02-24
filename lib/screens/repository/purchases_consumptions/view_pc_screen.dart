@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:aelmamclinic/models/item.dart';
 import 'package:aelmamclinic/models/item_type.dart';
 import 'package:aelmamclinic/models/consumption.dart';
+import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:aelmamclinic/providers/repository_provider.dart';
 import 'package:aelmamclinic/services/repository_service.dart';
 import 'package:aelmamclinic/services/db_service.dart';
@@ -23,6 +24,7 @@ class ViewPCScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final repo = context.watch<RepositoryProvider>();
+    final auth = context.watch<AuthProvider>();
 
     return Directionality(
       textDirection: ui.TextDirection.rtl,
@@ -49,21 +51,52 @@ class ViewPCScreen extends StatelessWidget {
               end: Alignment.bottomCenter,
             ),
           ),
-          child: repo.types.isEmpty
+          child: (repo.types.isEmpty && repo.orphanItems.isEmpty)
               ? const Center(child: Text('لا بيانات بعد.'))
-              : ListView.builder(
+              : ListView(
                   padding: const EdgeInsets.all(16),
-                  itemCount: repo.types.length,
-                  itemBuilder: (ctx, i) => Card(
-                    margin:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20)),
-                    elevation: 2,
-                    child: _TypeSection(type: repo.types[i]),
-                  ),
+                  children: [
+                    _permissionBanner(auth),
+                    for (final type in repo.types)
+                      Card(
+                        margin: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 6),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20)),
+                        elevation: 2,
+                        child: _TypeSection(type: type),
+                      ),
+                    if (repo.orphanItems.isNotEmpty)
+                      Card(
+                        margin: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 6),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20)),
+                        elevation: 2,
+                        child: _OrphanSection(items: repo.orphanItems),
+                      ),
+                  ],
                 ),
         ),
+      ),
+    );
+  }
+
+  Widget _permissionBanner(AuthProvider auth) {
+    if (auth.isOwnerOrAdmin || auth.isSuperAdmin) {
+      return const SizedBox.shrink();
+    }
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.amber.withValues(alpha: .15),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.amber.withValues(alpha: .4)),
+      ),
+      child: const Text(
+        'تنبيه: بعض البيانات قد تكون مخفية حسب صلاحيات الحساب.',
+        style: TextStyle(fontWeight: FontWeight.w700),
       ),
     );
   }
@@ -99,14 +132,18 @@ class _ItemTile extends StatelessWidget {
   Future<Map<String, dynamic>?> _fetchLastConsumption() async {
     try {
       final db = await RepositoryService.instance.database;
+      final args = <Object?>[item.id];
+      final acc = await DBService.instance
+          .accountFilterClause(db, Consumption.table, alias: 'c', args: args);
       final result = await db.rawQuery('''
-        SELECT quantity, date
-          FROM ${Consumption.table}
-         WHERE itemId = ?
-           AND ifnull(isDeleted,0)=0
+        SELECT c.quantity, c.date
+          FROM ${Consumption.table} c
+         WHERE c.itemId = ?
+           AND ifnull(c.isDeleted,0)=0
+           $acc
       ORDER BY date DESC
          LIMIT 1
-      ''', [item.id]);
+      ''', args);
       return result.isEmpty ? null : result.first;
     } catch (_) {
       return null;
@@ -153,6 +190,27 @@ class _ItemTile extends StatelessWidget {
   }
 }
 
+class _OrphanSection extends StatelessWidget {
+  final List<Item> items;
+  const _OrphanSection({required this.items});
+
+  @override
+  Widget build(BuildContext context) {
+    return ExpansionTile(
+      tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      leading: const Icon(Icons.report_gmailerrorred, color: accentColor),
+      title: const Text('أصناف بدون نوع',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+      childrenPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      children: items.isEmpty
+          ? const [
+              Padding(padding: EdgeInsets.all(8), child: Text('— لا أصناف —'))
+            ]
+          : items.map((it) => _ItemTile(item: it)).toList(),
+    );
+  }
+}
+
 class _ItemConsumptionsPage extends StatefulWidget {
   final Item item;
   const _ItemConsumptionsPage({required this.item});
@@ -172,14 +230,20 @@ class _ItemConsumptionsPageState extends State<_ItemConsumptionsPage> {
 
   Future<List<_ConsumptionDetail>> _load() async {
     final db = await RepositoryService.instance.database;
+    final args = <Object?>[widget.item.id];
+    final cAcc = await DBService.instance
+        .accountFilterClause(db, Consumption.table, alias: 'c', args: args);
+    final pAcc = await DBService.instance
+        .accountFilterClause(db, 'patients', alias: 'p', args: args);
     final rows = await db.rawQuery('''
       SELECT c.id, c.quantity, c.date, c.patientId, p.name AS patient_name
         FROM ${Consumption.table} c
    LEFT JOIN patients p ON p.id = c.patientId
        WHERE c.itemId = ?
          AND ifnull(c.isDeleted,0)=0
+         $cAcc$pAcc
     ORDER BY c.date DESC
-    ''', [widget.item.id]);
+    ''', args);
     return rows
         .map((m) => _ConsumptionDetail(
               id: (m['id'] as num).toInt(),
@@ -223,39 +287,44 @@ class _ItemConsumptionsPageState extends State<_ItemConsumptionsPage> {
     if (newQty == null || newQty <= 0 || newQty == d.quantity) return;
 
     final diff = newQty - d.quantity;
-    final db = await RepositoryService.instance.database;
+    final dbService = DBService.instance;
     try {
-      await db.transaction((txn) async {
-        final itemRows = await txn.query(
-          Item.table,
-          columns: const ['stock', 'price'],
-          where: 'id = ?',
-          whereArgs: [widget.item.id],
-          limit: 1,
-        );
-        if (itemRows.isEmpty) {
-          throw StateError('الصنف غير موجود');
-        }
-        final currentStock =
-            (itemRows.first['stock'] as num?)?.toInt() ?? 0;
-        final unitPrice =
-            (itemRows.first['price'] as num?)?.toDouble() ?? 0.0;
-        final nextStock = currentStock - diff;
-        if (nextStock < 0) {
-          throw StateError('الكمية تتجاوز المخزون المتاح');
-        }
-        await txn.update(
-          Consumption.table,
-          {'quantity': newQty, 'amount': unitPrice * newQty},
-          where: 'id = ?',
-          whereArgs: [d.id],
-        );
-        await txn.update(
-          Item.table,
-          {'stock': nextStock},
-          where: 'id = ?',
-          whereArgs: [widget.item.id],
-        );
+      await dbService.runQueuedWrite(() async {
+        await dbService.runWithDbRetry(() async {
+          final db = await RepositoryService.instance.database;
+          await db.transaction((txn) async {
+          final itemRows = await txn.query(
+            Item.table,
+            columns: const ['stock', 'price'],
+            where: 'id = ?',
+            whereArgs: [widget.item.id],
+            limit: 1,
+          );
+          if (itemRows.isEmpty) {
+            throw StateError('الصنف غير موجود');
+          }
+          final currentStock =
+              (itemRows.first['stock'] as num?)?.toInt() ?? 0;
+          final unitPrice =
+              (itemRows.first['price'] as num?)?.toDouble() ?? 0.0;
+          final nextStock = currentStock - diff;
+          if (nextStock < 0) {
+            throw StateError('الكمية تتجاوز المخزون المتاح');
+          }
+          await txn.update(
+            Consumption.table,
+            {'quantity': newQty, 'amount': unitPrice * newQty},
+            where: 'id = ?',
+            whereArgs: [d.id],
+          );
+          await txn.update(
+            Item.table,
+            {'stock': nextStock},
+            where: 'id = ?',
+            whereArgs: [widget.item.id],
+          );
+          });
+        });
       });
     } catch (e) {
       if (!mounted) return;

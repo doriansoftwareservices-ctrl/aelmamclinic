@@ -8,6 +8,7 @@ import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/widgets/feature_hub.dart';
 
 import 'package:aelmamclinic/providers/repository_provider.dart';
+import 'package:aelmamclinic/screens/repository/health/repository_health_screen.dart';
 
 class RepositoryMenuScreen extends StatelessWidget {
   const RepositoryMenuScreen({super.key});
@@ -83,6 +84,15 @@ class RepositoryMenuScreen extends StatelessWidget {
                   badgeText: repoProvider.hasLowStockBadge ? 'تنبيه' : null,
                   onTap: () =>
                       Navigator.pushNamed(context, '/repository/alerts'),
+                ),
+                FeatureHubItem(
+                  icon: Icons.health_and_safety_outlined,
+                  title: 'تشخيص صحة المستودع',
+                  subtitle: 'فحص سريع للعلاقات والبيانات المفقودة.',
+                  onTap: () => Navigator.pushNamed(
+                    context,
+                    RepositoryHealthScreen.routeName,
+                  ),
                 ),
               ],
             ),

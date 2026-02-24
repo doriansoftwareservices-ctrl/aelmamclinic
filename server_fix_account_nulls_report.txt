@@ -1,0 +1,9 @@
+Server Fix account_id NULLs Report
+Generated: 2026-02-24T04:49:01
+Hasura: https://ujxbrdbrjbujvlylpbbn.hasura.ap-southeast-1.nhost.run
+Apply: False
+
+chat_participants: can fix 0 rows via conversation_id
+chat_reads: skip (no message id column found)
+profiles: account_id NULL = 11 (no auto-fix)
+super_admins: account_id NULL = 3 (no auto-fix)

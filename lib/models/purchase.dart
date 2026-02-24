@@ -12,6 +12,8 @@ class Purchase {
   CREATE TABLE IF NOT EXISTS $table (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     item_id    INTEGER NOT NULL,
+    item_name_snapshot TEXT,
+    item_type_name_snapshot TEXT,
     quantity   INTEGER NOT NULL,
     unit_price REAL    NOT NULL,
     created_at TEXT    NOT NULL,
@@ -30,6 +32,8 @@ class Purchase {
   final int quantity;
   final double unitPrice;
   final DateTime createdAt;
+  final String? itemNameSnapshot;
+  final String? itemTypeNameSnapshot;
 
   /* ─── حقول مزامنة اختيارية (لا تُحفَظ محليًا) ─── */
   final String? accountId;
@@ -43,6 +47,8 @@ class Purchase {
     required this.quantity,
     required this.unitPrice,
     DateTime? createdAt,
+    this.itemNameSnapshot,
+    this.itemTypeNameSnapshot,
     this.accountId,
     this.deviceId,
     this.localId,
@@ -86,9 +92,16 @@ class Purchase {
   Map<String, dynamic> toMap() => {
         'id': id,
         'item_id': itemId,
+        if (itemNameSnapshot != null) 'item_name_snapshot': itemNameSnapshot,
+        if (itemTypeNameSnapshot != null)
+          'item_type_name_snapshot': itemTypeNameSnapshot,
         'quantity': quantity,
         'unit_price': unitPrice,
         'created_at': createdAt.toIso8601String(),
+        if (accountId != null) 'account_id': accountId,
+        if (deviceId != null) 'device_id': deviceId,
+        if (localId != null) 'local_id': localId,
+        if (updatedAt != null) 'updated_at': updatedAt?.toIso8601String(),
       };
 
   /// تمثيل مخصص للسحابة (snake_case) مع حقول المزامنة الاختيارية.
@@ -114,6 +127,10 @@ class Purchase {
         createdAt: _asDate(
           map['createdAt'] ?? map['created_at'] ?? map['purchased_at'],
         ),
+        itemNameSnapshot: _asStrN(
+            map['itemNameSnapshot'] ?? map['item_name_snapshot']),
+        itemTypeNameSnapshot: _asStrN(
+            map['itemTypeNameSnapshot'] ?? map['item_type_name_snapshot']),
         accountId: _asStrN(map['accountId'] ?? map['account_id']),
         deviceId: _asStrN(map['deviceId'] ?? map['device_id']),
         localId: map['localId'] is int
@@ -130,6 +147,8 @@ class Purchase {
     int? quantity,
     double? unitPrice,
     DateTime? createdAt,
+    String? itemNameSnapshot,
+    String? itemTypeNameSnapshot,
     String? accountId,
     String? deviceId,
     int? localId,
@@ -141,6 +160,8 @@ class Purchase {
         quantity: quantity ?? this.quantity,
         unitPrice: unitPrice ?? this.unitPrice,
         createdAt: createdAt ?? this.createdAt,
+        itemNameSnapshot: itemNameSnapshot ?? this.itemNameSnapshot,
+        itemTypeNameSnapshot: itemTypeNameSnapshot ?? this.itemTypeNameSnapshot,
         accountId: accountId ?? this.accountId,
         deviceId: deviceId ?? this.deviceId,
         localId: localId ?? this.localId,
@@ -163,6 +184,8 @@ class Purchase {
           quantity == other.quantity &&
           unitPrice == other.unitPrice &&
           createdAt == other.createdAt &&
+          itemNameSnapshot == other.itemNameSnapshot &&
+          itemTypeNameSnapshot == other.itemTypeNameSnapshot &&
           accountId == other.accountId &&
           deviceId == other.deviceId &&
           localId == other.localId &&
@@ -175,6 +198,8 @@ class Purchase {
         quantity,
         unitPrice,
         createdAt,
+        itemNameSnapshot,
+        itemTypeNameSnapshot,
         accountId,
         deviceId,
         localId,

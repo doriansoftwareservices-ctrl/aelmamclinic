@@ -5,10 +5,11 @@ import 'package:sqflite/sqflite.dart';
 import 'package:aelmamclinic/models/item_type.dart';
 import 'package:aelmamclinic/models/item.dart';
 import 'package:aelmamclinic/models/purchase.dart';
-import 'package:aelmamclinic/models/consumption.dart'; // ← أضفنا هذا السطر
+import 'package:aelmamclinic/models/consumption.dart';
 import 'package:aelmamclinic/models/alert_setting.dart';
 import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/utils/notifications_helper.dart';
+import 'package:aelmamclinic/models/inventory_health_report.dart';
 
 /// طبقة الأعمال للمستودع.
 /// تعتمد على DBService للوصول إلى SQLite، وعلى NotificationsHelper
@@ -37,12 +38,18 @@ class RepositoryService {
     return filtered;
   }
 
+  Future<List<Item>> fetchAllItems() async {
+    return _db.getAllItems();
+  }
+
   Future<Item?> fetchItem(int id) async {
     final db = await _db.database;
+    final args = <Object?>[id];
+    final acc = await _db.accountFilterClause(db, Item.table, args: args);
     final maps = await db.query(
       Item.table,
-      where: 'id = ? AND ifnull(isDeleted, 0) = 0',
-      whereArgs: [id],
+      where: 'id = ? AND ifnull(isDeleted, 0) = 0 $acc',
+      whereArgs: args,
       limit: 1,
     );
     return maps.isEmpty ? null : Item.fromMap(maps.first);
@@ -55,7 +62,7 @@ class RepositoryService {
       throw ArgumentError('اسم نوع الصنف فارغ');
     }
     final type = ItemType(name: sanitized);
-    final id = await _db.insertItemType(type);
+    final id = await _db.runQueuedWrite(() => _db.insertItemType(type));
     return type.copyWith(id: id);
   }
 
@@ -79,39 +86,86 @@ class RepositoryService {
       typeId: typeId,
       name: sanitized,
       price: price,
-      stock: initialStock,
+      stock: 0,
     );
-    final id = await _db.insertItem(item);
-    return item.copyWith(id: id);
+    final id = await _db.runQueuedWrite(() => _db.insertItem(item));
+    if (initialStock > 0) {
+      await createPurchase(
+        itemId: id,
+        quantity: initialStock,
+        unitPrice: 0,
+      );
+    }
+    return item.copyWith(id: id, stock: initialStock);
   }
 
   Future<void> updateItem(Item item) async {
-    await _db.updateItem(item);
+    await _db.runQueuedWrite(() => _db.updateItem(item));
   }
 
   Future<void> deleteItem(int id) async {
-    final db = await _db.database;
-    final existingAlert = await db.query(
-      AlertSetting.table,
-      where: 'item_id = ?',
-      whereArgs: [id],
-      limit: 1,
-    );
-    if (existingAlert.isNotEmpty) {
-      final alert = AlertSetting.fromMap(existingAlert.first);
-      if (alert.id != null) {
-        await _db.deleteAlert(alert.id!);
-      } else {
-        await db.delete(
-          AlertSetting.table,
-          where: 'item_id = ?',
-          whereArgs: [id],
-        );
-        await _db.notifyTableChanged(AlertSetting.table);
-      }
-    }
+    await _db.runQueuedWrite(() async {
+      final db = await _db.database;
+      final args = <Object?>[id];
+      final pAcc =
+          await _db.accountFilterClause(db, Purchase.table, alias: 'p', args: args);
+      final cAcc = await _db.accountFilterClause(db, Consumption.table,
+          alias: 'c', args: args);
 
-    await _db.deleteItem(id);
+      final hasPurchases = await db.rawQuery('''
+        SELECT 1 FROM ${Purchase.table} p
+         WHERE p.item_id = ?
+           AND ifnull(p.isDeleted,0)=0
+           $pAcc
+         LIMIT 1
+      ''', args);
+      if (hasPurchases.isNotEmpty) {
+        throw StateError('لا يمكن حذف الصنف لوجود مشتريات مرتبطة به');
+      }
+
+      final hasConsumptions = await db.rawQuery('''
+        SELECT 1 FROM ${Consumption.table} c
+         WHERE c.itemId = ?
+           AND ifnull(c.isDeleted,0)=0
+           $cAcc
+         LIMIT 1
+      ''', args);
+      if (hasConsumptions.isNotEmpty) {
+        throw StateError('لا يمكن حذف الصنف لوجود استهلاكات مرتبطة به');
+      }
+
+      final existingAlert = await db.query(
+        AlertSetting.table,
+        where: 'item_id = ?',
+        whereArgs: [id],
+        limit: 1,
+      );
+      if (existingAlert.isNotEmpty) {
+        final alert = AlertSetting.fromMap(existingAlert.first);
+        if (alert.id != null) {
+          await _db.deleteAlert(alert.id!);
+        } else {
+          await db.delete(
+            AlertSetting.table,
+            where: 'item_id = ?',
+            whereArgs: [id],
+          );
+          await _db.notifyTableChanged(AlertSetting.table);
+        }
+      }
+
+      await _db.deleteItem(id);
+    });
+  }
+
+  Future<InventoryRepairReport> repairInventoryIntegrity({
+    bool backup = true,
+  }) async {
+    return _db.repairInventoryIntegrity(backup: backup);
+  }
+
+  Future<InventoryHealthReport> fetchInventoryHealth() async {
+    return _db.getInventoryHealthReport();
   }
 
   /*────────── مشتريات ──────────*/
@@ -131,24 +185,31 @@ class RepositoryService {
       throw StateError('Item $itemId not found when creating purchase');
     }
 
+    final typeName = await _fetchItemTypeName(item.typeId);
     final purchase = Purchase(
       itemId: itemId,
       quantity: quantity,
       unitPrice: unitPrice,
+      itemNameSnapshot: item.name,
+      itemTypeNameSnapshot: typeName,
     );
 
-    final db = await _db.database;
-    await db.transaction((txn) async {
-      final data =
-          await _db.prepareInsert(Purchase.table, purchase.toMap(), executor: txn);
-      await txn.insert(Purchase.table, data);
-      final updatedItem = item.copyWith(stock: item.stock + quantity);
-      await txn.update(
-        Item.table,
-        updatedItem.toMap(),
-        where: 'id = ?',
-        whereArgs: [itemId],
-      );
+    await _db.runQueuedWrite(() async {
+      await _db.runWithDbRetry(() async {
+        final db = await _db.database;
+        await db.transaction((txn) async {
+          final data = await _db.prepareInsert(
+            Purchase.table,
+            purchase.toMap(),
+            executor: txn,
+          );
+          await txn.insert(Purchase.table, data);
+          await txn.rawUpdate(
+            'UPDATE ${Item.table} SET stock = stock + ? WHERE id = ?',
+            [quantity, itemId],
+          );
+        });
+      });
     });
     await _db.notifyTableChanged(Purchase.table);
     await _db.notifyTableChanged(Item.table);
@@ -174,29 +235,34 @@ class RepositoryService {
     }
 
     final unitPrice = item.price;
+    final typeName = await _fetchItemTypeName(item.typeId);
     final consumption = Consumption(
       patientId: patientId,
       itemId: itemId.toString(),
       quantity: quantity,
       amount: unitPrice * quantity,
       date: DateTime.now(),
+      itemNameSnapshot: item.name,
+      itemTypeNameSnapshot: typeName,
+      unitPriceSnapshot: unitPrice,
     );
 
-    final db = await _db.database;
-    await db.transaction((txn) async {
-      final data = await _db.prepareInsert(
-        Consumption.table,
-        consumption.toMap(),
-        executor: txn,
-      );
-      await txn.insert(Consumption.table, data);
-      final updatedItem = item.copyWith(stock: item.stock - quantity);
-      await txn.update(
-        Item.table,
-        updatedItem.toMap(),
-        where: 'id = ?',
-        whereArgs: [itemId],
-      );
+    await _db.runQueuedWrite(() async {
+      await _db.runWithDbRetry(() async {
+        final db = await _db.database;
+        await db.transaction((txn) async {
+          final data = await _db.prepareInsert(
+            Consumption.table,
+            consumption.toMap(),
+            executor: txn,
+          );
+          await txn.insert(Consumption.table, data);
+          await txn.rawUpdate(
+            'UPDATE ${Item.table} SET stock = stock - ? WHERE id = ?',
+            [quantity, itemId],
+          );
+        });
+      });
     });
     await _db.notifyTableChanged(Consumption.table);
     await _db.notifyTableChanged(Item.table);
@@ -209,42 +275,61 @@ class RepositoryService {
     required int itemId,
     required double threshold,
   }) async {
-    final db = await _db.database;
+    await _db.runQueuedWrite(() async {
+      final db = await _db.database;
 
-    final existing = await db.query(
-      AlertSetting.table,
-      where: 'item_id = ?',
-      whereArgs: [itemId],
-      limit: 1,
-    );
-
-    if (existing.isEmpty) {
-      final alert = AlertSetting(
-        itemId: itemId,
-        threshold: threshold,
-        isEnabled: true,
+      final existing = await db.query(
+        AlertSetting.table,
+        where: 'item_id = ?',
+        whereArgs: [itemId],
+        limit: 1,
       );
-      await _db.insertAlert(alert);
-    } else {
-      final alert = AlertSetting.fromMap(existing.first)
-          .copyWith(threshold: threshold, isEnabled: true);
-      if (alert.id != null) {
-        await _db.updateAlert(alert);
-      } else {
-        await db.update(
-          AlertSetting.table,
-          {
-            'threshold': threshold,
-            'is_enabled': 1,
-          },
-          where: 'item_id = ?',
-          whereArgs: [itemId],
+
+      if (existing.isEmpty) {
+        final alert = AlertSetting(
+          itemId: itemId,
+          threshold: threshold,
+          isEnabled: true,
         );
-        await _db.notifyTableChanged(AlertSetting.table);
+        await _db.insertAlert(alert);
+      } else {
+        final alert = AlertSetting.fromMap(existing.first)
+            .copyWith(threshold: threshold, isEnabled: true);
+        if (alert.id != null) {
+          await _db.updateAlert(alert);
+        } else {
+          await db.update(
+            AlertSetting.table,
+            {
+              'threshold': threshold,
+              'is_enabled': 1,
+            },
+            where: 'item_id = ?',
+            whereArgs: [itemId],
+          );
+          await _db.notifyTableChanged(AlertSetting.table);
+        }
       }
-    }
+    });
 
     await _evaluateAlertForItem(itemId);
+  }
+
+  Future<String?> _fetchItemTypeName(int typeId) async {
+    if (typeId <= 0) return null;
+    final db = await _db.database;
+    final args = <Object?>[typeId];
+    final acc =
+        await _db.accountFilterClause(db, ItemType.table, args: args);
+    final rows = await db.query(
+      ItemType.table,
+      columns: const ['name'],
+      where: 'id = ? $acc',
+      whereArgs: args,
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return rows.first['name']?.toString();
   }
 
   /*────────── فحص وتنفيذ التنبيه ──────────*/

@@ -62,6 +62,11 @@ class _ViewAlertsScreenState extends State<ViewAlertsScreen> {
 
   Future<List<_AlertInfo>> _load() async {
     final db = await RepositoryService.instance.database;
+    final args = <Object?>[];
+    final aAcc = await DBService.instance
+        .accountFilterClause(db, AlertSetting.table, alias: 'a', args: args);
+    final iAcc = await DBService.instance
+        .accountFilterClause(db, Item.table, alias: 'i', args: args);
     final rows = await db.rawQuery('''
       SELECT a.id, a.item_id, a.threshold, a.is_enabled,
              i.name AS item_name, i.stock AS current_stock
@@ -69,8 +74,9 @@ class _ViewAlertsScreenState extends State<ViewAlertsScreen> {
       JOIN ${Item.table} AS i ON i.id = a.item_id
       WHERE ifnull(a.isDeleted,0)=0
         AND ifnull(i.isDeleted,0)=0
+        $aAcc$iAcc
       ORDER BY i.name
-    ''');
+    ''', args);
 
     return rows
         .map((m) => _AlertInfo(
@@ -90,17 +96,23 @@ class _ViewAlertsScreenState extends State<ViewAlertsScreen> {
   }
 
   Future<void> _toggleEnabled(_AlertInfo a) async {
-    final db = await RepositoryService.instance.database;
-    await db.update(
-      AlertSetting.table,
-      {
+    final dbService = DBService.instance;
+    await dbService.runQueuedWrite(() async {
+      final db = await RepositoryService.instance.database;
+      final data = <String, Object?>{
         'is_enabled': a.isEnabled ? 0 : 1,
-        'isEnabled': a.isEnabled ? 0 : 1,
-      },
-      where: 'id = ?',
-      whereArgs: [a.id],
-    );
-    await DBService.instance.notifyTableChanged(AlertSetting.table);
+      };
+      if (await dbService.hasColumn(db, AlertSetting.table, 'isEnabled')) {
+        data['isEnabled'] = a.isEnabled ? 0 : 1;
+      }
+      await db.update(
+        AlertSetting.table,
+        data,
+        where: 'id = ?',
+        whereArgs: [a.id],
+      );
+      await dbService.notifyTableChanged(AlertSetting.table);
+    });
     await _refresh();
   }
 
@@ -129,14 +141,17 @@ class _ViewAlertsScreenState extends State<ViewAlertsScreen> {
     if (ok == true) {
       final v = double.tryParse(ctrl.text.trim());
       if (v == null || v <= 0) return;
-      final db = await RepositoryService.instance.database;
-      await db.update(
-        AlertSetting.table,
-        {'threshold': v},
-        where: 'id = ?',
-        whereArgs: [a.id],
-      );
-      await DBService.instance.notifyTableChanged(AlertSetting.table);
+      final dbService = DBService.instance;
+      await dbService.runQueuedWrite(() async {
+        final db = await RepositoryService.instance.database;
+        await db.update(
+          AlertSetting.table,
+          {'threshold': v},
+          where: 'id = ?',
+          whereArgs: [a.id],
+        );
+        await dbService.notifyTableChanged(AlertSetting.table);
+      });
       await _refresh();
     }
   }
@@ -160,7 +175,8 @@ class _ViewAlertsScreenState extends State<ViewAlertsScreen> {
       ),
     );
     if (ok == true) {
-      await DBService.instance.deleteAlert(a.id);
+      final dbService = DBService.instance;
+      await dbService.runQueuedWrite(() => dbService.deleteAlert(a.id));
       await _refresh();
     }
   }

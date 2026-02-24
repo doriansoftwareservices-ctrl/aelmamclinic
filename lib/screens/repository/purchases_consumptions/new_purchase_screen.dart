@@ -127,12 +127,30 @@ class _NewPurchaseScreenState extends State<NewPurchaseScreen> {
     setState(() => _qtyCtrl.text = v.toString());
   }
 
+  List<ItemType> _dedupTypes(List<ItemType> input) {
+    final byId = <int, ItemType>{};
+    for (final t in input) {
+      final id = t.id;
+      if (id == null) continue;
+      byId[id] = t;
+    }
+    final list = byId.values.toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+    return list;
+  }
+
   @override
   Widget build(BuildContext context) {
     final repo = context.watch<RepositoryProvider>();
-    final types = repo.types;
+    final types = _dedupTypes(repo.types);
+    ItemType? selectedType;
+    if (_selectedType?.id != null) {
+      final match =
+          types.where((t) => t.id == _selectedType!.id).toList(growable: false);
+      selectedType = match.isNotEmpty ? match.first : null;
+    }
     final rawItems =
-        _selectedType == null ? <Item>[] : repo.itemsOf(_selectedType!.id!);
+        selectedType == null ? <Item>[] : repo.itemsOf(selectedType.id!);
     final seenIds = <int>{};
     final items = <Item>[];
     for (final it in rawItems) {
@@ -175,8 +193,7 @@ class _NewPurchaseScreenState extends State<NewPurchaseScreen> {
               children: [
                 // نوع الصنف
                 DropdownButtonFormField<ItemType>(
-                  initialValue:
-                      types.contains(_selectedType) ? _selectedType : null,
+                  initialValue: selectedType,
                   decoration: _dec('نوع الصنف'),
                   items: types
                       .map((t) =>

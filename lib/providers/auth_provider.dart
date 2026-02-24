@@ -27,6 +27,7 @@ import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/services/device_id_service.dart';
 import 'package:aelmamclinic/services/notification_service.dart';
 import 'package:aelmamclinic/services/nhost_graphql_service.dart';
+import 'package:aelmamclinic/services/sync_service.dart';
 import 'package:aelmamclinic/services/backup_restore_service.dart';
 import 'package:aelmamclinic/core/active_account_store.dart';
 import 'package:aelmamclinic/models/storage_type.dart';
@@ -216,6 +217,12 @@ class AuthProvider extends ChangeNotifier {
   String? get email => currentUser?['email'] as String?;
   String? get role => currentUser?['role'] as String?;
   String? get accountId => currentUser?['accountId'] as String?;
+  SyncService? get sync => _auth.sync;
+
+  Future<void> pauseSync() => _auth.pauseSync();
+  Future<void> resumeSync() => _auth.resumeSync();
+  Future<void> waitForSyncIdle({Duration timeout = const Duration(seconds: 10)}) =>
+      _auth.waitForSyncIdle(timeout: timeout);
   String get planCode =>
       (currentUser?['planCode'] as String?)?.toLowerCase() ?? 'free';
   DateTime? get planEndAt => _readPlanEndAt(currentUser?['planEndAt']);

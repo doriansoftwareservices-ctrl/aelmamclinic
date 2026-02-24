@@ -70,6 +70,10 @@ class ItemType {
   Map<String, dynamic> toMap() => {
         'id': id,
         'name': name,
+        if (accountId != null) 'account_id': accountId,
+        if (deviceId != null) 'device_id': deviceId,
+        if (localId != null) 'local_id': localId,
+        if (updatedAt != null) 'updated_at': updatedAt?.toIso8601String(),
       };
 
   /// تمثيل مناسب للسحابة (snake_case) مع حقول المزامنة الاختيارية.

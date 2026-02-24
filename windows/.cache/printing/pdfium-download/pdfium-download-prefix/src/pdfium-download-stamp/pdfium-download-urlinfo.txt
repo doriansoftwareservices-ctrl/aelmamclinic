@@ -1,0 +1,12 @@
+# This is a generated file and its contents are an internal implementation detail.
+# The download step will be re-executed if anything in this file changes.
+# No other meaning or use of this file is supported.
+
+method=url
+command=C:/Program Files/Microsoft Visual Studio/2022/Enterprise/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe;-DCMAKE_MESSAGE_LOG_LEVEL=VERBOSE;-P;C:/Users/zidan/AndroidStudioProjects/aelmamclinic/windows/.cache/printing/pdfium-download/pdfium-download-prefix/src/pdfium-download-stamp/download-pdfium-download.cmake;COMMAND;C:/Program Files/Microsoft Visual Studio/2022/Enterprise/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe;-DCMAKE_MESSAGE_LOG_LEVEL=VERBOSE;-P;C:/Users/zidan/AndroidStudioProjects/aelmamclinic/windows/.cache/printing/pdfium-download/pdfium-download-prefix/src/pdfium-download-stamp/verify-pdfium-download.cmake;COMMAND;C:/Program Files/Microsoft Visual Studio/2022/Enterprise/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe;-DCMAKE_MESSAGE_LOG_LEVEL=VERBOSE;-P;C:/Users/zidan/AndroidStudioProjects/aelmamclinic/windows/.cache/printing/pdfium-download/pdfium-download-prefix/src/pdfium-download-stamp/extract-pdfium-download.cmake
+source_dir=C:/Users/zidan/AndroidStudioProjects/aelmamclinic/windows/.cache/printing/pdfium-src
+work_dir=C:/Users/zidan/AndroidStudioProjects/aelmamclinic/windows/.cache/printing
+url(s)=https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/5200/pdfium-win-x64.tgz
+hash=
+      no_extract=
+

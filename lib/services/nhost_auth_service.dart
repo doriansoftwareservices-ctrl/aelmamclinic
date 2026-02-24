@@ -45,6 +45,7 @@ class NhostAuthService {
   static const String _rootSuperAdminEmail = 'elmam.clinic.c.s@elmam.com';
 
   NhostClient get client => _client;
+  SyncService? get sync => _sync;
 
   /// يسجّل الدخول بواسطة البريد وكلمة السر.
   Future<AuthResponse> signInWithEmailPassword({
@@ -60,7 +61,20 @@ class NhostAuthService {
   /// يسجّل الخروج من الجلسة الحالية.
   Future<void> signOut() async {
     await _client.auth.signOut();
+    DBService.instance.clearCachedSyncIdentity();
     await _disposeSync();
+  }
+
+  Future<void> pauseSync() async {
+    await _sync?.pauseSync();
+  }
+
+  Future<void> resumeSync() async {
+    await _sync?.resumeSync();
+  }
+
+  Future<void> waitForSyncIdle({Duration timeout = const Duration(seconds: 10)}) async {
+    await _sync?.waitForIdle(timeout: timeout);
   }
 
   /// يسجّل حسابًا جديدًا بالبريد وكلمة السر.
@@ -974,6 +988,10 @@ class NhostAuthService {
     }
 
     await _upsertSyncIdentity(db, accountId: acc.id, deviceId: devId);
+    DBService.instance.setCachedSyncIdentity(
+      accountId: acc.id,
+      deviceId: devId,
+    );
 
     try {
       await DBParityV3().run(db, accountId: acc.id, verbose: enableLogs);

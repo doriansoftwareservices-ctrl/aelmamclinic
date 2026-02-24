@@ -1037,7 +1037,6 @@ class ChatService {
     }
     final me = await _myAccountRow();
     final myRole = (me.role?.toLowerCase() ?? '');
-    final myAcc = (me.accountId ?? '').trim();
 
     final query = '''
       query FindAccountUser(\$email: String!) {
@@ -1065,7 +1064,6 @@ class ChatService {
       throw 'حدث خلل أثناء جلب المستخدم الهدف.';
     }
 
-    final otherEmail = (targetRow['email']?.toString() ?? email).toLowerCase();
 
     final targetRole = (targetRow['role']?.toString() ?? '').toLowerCase();
     if (targetRole == 'superadmin' &&

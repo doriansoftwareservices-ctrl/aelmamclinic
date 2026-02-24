@@ -1203,9 +1203,9 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                       icon: Icons.local_hospital_outlined,
                     ),
                     _StatCard(
-                      title: 'نسبة الأطباء أشعة/مختبر',
-                      value: stats.fmtDoctorRatios,
-                      icon: Icons.percent_outlined,
+                      title: 'استهلاكات المرفق الصحي',
+                      value: stats.fmtFacilityConsumptions,
+                      icon: Icons.local_fire_department_outlined,
                     ),
                     _StatCard(
                       title: 'مدخلات الأطباء',
@@ -1236,6 +1236,12 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                       title: 'صافي الربح',
                       value: stats.fmtNetProfit,
                       icon: Icons.attach_money_outlined,
+                    ),
+                    _StatCard(
+                      title: 'نسبة الأطباء أشعة/مختبر',
+                      value: stats.fmtDoctorRatios,
+                      icon: Icons.percent_outlined,
+                      badgeText: 'تحت التطوير',
                     ),
                     _StatCard(
                       title: 'مرضى الفترة',
@@ -1621,17 +1627,21 @@ class _StatCard extends StatelessWidget {
   final String value;
   final IconData icon;
   final VoidCallback? onTap;
+  final String? badgeText;
 
   const _StatCard({
     required this.title,
     required this.value,
     required this.icon,
     this.onTap,
+    this.badgeText,
   });
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+
+    final badge = badgeText?.trim();
 
     return NeuCard(
       onTap: onTap,
@@ -1639,43 +1649,68 @@ class _StatCard extends StatelessWidget {
       margin: const EdgeInsets.symmetric(vertical: 2),
       child: SizedBox(
         width: 260,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Stack(
           children: [
-            Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: kPrimaryColor.withValues(alpha: .10),
-                  borderRadius: BorderRadius.circular(14),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: kPrimaryColor.withValues(alpha: .10),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    padding: const EdgeInsets.all(10),
+                    child: Icon(icon, color: kPrimaryColor, size: 24),
+                  ),
                 ),
-                padding: const EdgeInsets.all(10),
-                child: Icon(icon, color: kPrimaryColor, size: 24),
-              ),
+                const SizedBox(height: 12),
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: scheme.onSurface.withValues(alpha: .85),
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textDirection: ui.TextDirection.rtl,
+                  style: TextStyle(
+                    color: scheme.onSurface,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 12),
-            Text(
-              title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: scheme.onSurface.withValues(alpha: .85),
-                fontSize: 14.5,
-                fontWeight: FontWeight.w800,
+            if (badge != null && badge.isNotEmpty)
+              PositionedDirectional(
+                top: 0,
+                end: 0,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: scheme.error.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    badge,
+                    style: TextStyle(
+                      color: scheme.error,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
               ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              value,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textDirection: ui.TextDirection.rtl,
-              style: TextStyle(
-                color: scheme.onSurface,
-                fontSize: 20,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
           ],
         ),
       ),

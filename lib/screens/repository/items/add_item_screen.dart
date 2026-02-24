@@ -9,12 +9,49 @@ import 'package:excel/excel.dart' as xls;
 import 'package:archive/archive.dart';
 
 import 'package:aelmamclinic/models/item_type.dart';
+import 'package:aelmamclinic/models/item.dart';
+import 'package:aelmamclinic/models/purchase.dart';
+import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:aelmamclinic/providers/repository_provider.dart';
+import 'package:aelmamclinic/services/repository_service.dart';
+import 'package:aelmamclinic/services/db_service.dart';
 
 /*──────── لوحة ألوان TBIAN الموحدة ────────*/
 const Color accentColor = Color(0xFF004A61);
 const Color lightAccentColor = Color(0xFF9ED9E6);
 const Color veryLightBg = Color(0xFFF7F9F9);
+
+// صفّ خام من ملف Excel.
+// نحتفظ بالقيم كنصوص ثم نحولها عند الإدخال لتقليل الأعطال.
+class _ImportRow {
+  _ImportRow({
+    required this.typeName,
+    required this.itemName,
+    required this.qtyRaw,
+  });
+
+  final String typeName;
+  final String itemName;
+  final String? qtyRaw;
+}
+
+class _ImportPreflightResult {
+  const _ImportPreflightResult({
+    required this.rows,
+    required this.total,
+    required this.kept,
+    required this.duplicates,
+    required this.invalidQty,
+    required this.skipped,
+  });
+
+  final List<_ImportRow> rows;
+  final int total;
+  final int kept;
+  final int duplicates;
+  final int invalidQty;
+  final int skipped;
+}
 
 class AddItemScreen extends StatefulWidget {
   const AddItemScreen({super.key});
@@ -35,6 +72,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
 
   int? _selectedTypeId;
   bool _isSaving = false;
+  bool _isImporting = false;
 
   @override
   void dispose() {
@@ -109,6 +147,99 @@ class _AddItemScreenState extends State<AddItemScreen> {
     }
   }
 
+  Future<void> _tryPauseSync(AuthProvider auth) async {
+    final dynamic dyn = auth;
+    try {
+      await dyn.pauseSync();
+    } catch (_) {}
+    try {
+      await dyn.waitForSyncIdle();
+    } catch (_) {}
+  }
+
+  Future<void> _tryResumeSync(AuthProvider auth) async {
+    final dynamic dyn = auth;
+    try {
+      await dyn.resumeSync();
+    } catch (_) {}
+  }
+
+  String _normalizeText(String value) {
+    return value.replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
+  _ImportPreflightResult _preflightImport(List<_ImportRow> input) {
+    final seen = <String>{};
+    final cleaned = <_ImportRow>[];
+    var duplicates = 0;
+    var invalidQty = 0;
+    var skipped = 0;
+    for (final row in input) {
+      final typeName = _normalizeText(row.typeName);
+      final itemName = _normalizeText(row.itemName);
+      if (typeName.isEmpty || itemName.isEmpty) {
+        skipped++;
+        continue;
+      }
+      final key = '${typeName.toLowerCase()}|${itemName.toLowerCase()}';
+      if (seen.contains(key)) {
+        duplicates++;
+        continue;
+      }
+      seen.add(key);
+      final qtyRaw = (row.qtyRaw ?? '').toString().trim();
+      if (qtyRaw.isNotEmpty &&
+          int.tryParse(qtyRaw.replaceAll(',', '')) == null) {
+        invalidQty++;
+      }
+      cleaned.add(
+        _ImportRow(
+          typeName: typeName,
+          itemName: itemName,
+          qtyRaw: qtyRaw,
+        ),
+      );
+    }
+    return _ImportPreflightResult(
+      rows: cleaned,
+      total: input.length,
+      kept: cleaned.length,
+      duplicates: duplicates,
+      invalidQty: invalidQty,
+      skipped: skipped,
+    );
+  }
+
+  Future<bool> _showPreflightDialog(_ImportPreflightResult result) async {
+    if (!mounted) return false;
+    final msg = [
+      'إجمالي الصفوف: ${result.total}',
+      'صفوف صالحة: ${result.kept}',
+      'صفوف مكررة: ${result.duplicates}',
+      'كميات غير صالحة: ${result.invalidQty}',
+      'صفوف فارغة: ${result.skipped}',
+      'سيتم اعتبار الكميات غير الصالحة بقيمة 0.',
+    ].join('\n');
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('مراجعة قبل الاستيراد'),
+        content: Text(msg),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('إلغاء'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('متابعة'),
+          ),
+        ],
+      ),
+    );
+    return confirmed ?? false;
+  }
+
   Future<void> _createNewType() async {
     final ctrl = TextEditingController();
     final ok = await showDialog<bool>(
@@ -162,6 +293,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
 
   /// استيراد أصناف من ملف Excel (عمود A: نوع الصنف، عمود B: اسم الصنف، عمود C: الكمية)
   Future<void> _importItemsFromExcel() async {
+    if (_isImporting) return;
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: const ['xlsx', 'xls'],
@@ -171,23 +303,51 @@ class _AddItemScreenState extends State<AddItemScreen> {
     final picked = result.files.single;
     if (picked.bytes == null && picked.path == null) return;
 
+    if (!mounted) return;
+    setState(() => _isImporting = true);
+    final auth = context.read<AuthProvider>();
+    final progressText = ValueNotifier<String>('جاري قراءة الملف...');
+    var dialogClosed = false;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        content: Row(
+          children: [
+            const SizedBox(
+              height: 20,
+              width: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: ValueListenableBuilder<String>(
+                valueListenable: progressText,
+                builder: (_, value, __) => Text(value),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
     try {
+      await _tryPauseSync(auth);
       final bytes = picked.bytes ?? await File(picked.path!).readAsBytes();
-      if (!mounted) return;
+      progressText.value = 'جاري تحليل الملف...';
       final excel = _decodeExcelWithRepair(bytes);
 
       final repo = context.read<RepositoryProvider>();
       if (repo.types.isEmpty) {
         await repo.bootstrap();
       }
-      final typesMap = {
-        for (final t in repo.types) t.name.trim().toLowerCase(): t
-      };
-      final existingKeys =
-          repo.allItems.map((it) => '${it.typeId}__${it.name.trim()}').toSet();
+      final existingKeys = repo.allItems
+          .map((it) => '${it.typeId}__${it.name.trim().toLowerCase()}')
+          .toSet();
 
       int imported = 0;
       int skipped = 0;
+      var rawRows = <_ImportRow>[];
 
       for (final sheetName in excel.tables.keys) {
         final sheet = excel.tables[sheetName];
@@ -226,52 +386,174 @@ class _AddItemScreenState extends State<AddItemScreen> {
               head.contains('المادة')) {
             continue;
           }
-
-          // أنشئ النوع إن لم يكن موجودًا
-          ItemType type;
-          final typeKey = rawType.toLowerCase();
-          if (typesMap.containsKey(typeKey)) {
-            type = typesMap[typeKey]!;
-          } else {
-            try {
-              await repo.addType(rawType);
-            } catch (_) {
-              await repo.bootstrap();
-            }
-            type = repo.types.firstWhere(
-              (t) => t.name.trim().toLowerCase() == typeKey,
-              orElse: () => repo.types.isNotEmpty ? repo.types.last : ItemType(name: rawType),
-            );
-            if (type.id != null) {
-              typesMap[typeKey] = type;
-            }
-          }
-
-          if (type.id == null) {
-            skipped++;
-            continue;
-          }
-
-          final key = '${type.id}__${rawName.trim()}';
-          if (existingKeys.contains(key)) {
-            skipped++;
-            continue;
-          }
-
-          try {
-            final qty = int.tryParse((rawQty ?? '').replaceAll(',', '')) ?? 0;
-            await repo.addItem(
-              typeId: type.id!,
-              name: rawName.trim(),
-              price: 0,
-              initialStock: qty < 0 ? 0 : qty,
-            );
-            existingKeys.add(key);
-            imported++;
-          } catch (_) {
-            skipped++;
-          }
+          rawRows.add(_ImportRow(
+            typeName: rawType,
+            itemName: rawName,
+            qtyRaw: rawQty,
+          ));
         }
+      }
+
+      if (rawRows.isEmpty) {
+        throw StateError('لا توجد بيانات صالحة في الملف');
+      }
+
+      final preflight = _preflightImport(rawRows);
+      rawRows = preflight.rows;
+      skipped += preflight.skipped + preflight.duplicates;
+      if (rawRows.isEmpty) {
+        throw StateError('لا توجد بيانات صالحة بعد التحقق');
+      }
+      final confirmed = await _showPreflightDialog(preflight);
+      if (!confirmed) {
+        throw StateError('تم إلغاء الاستيراد');
+      }
+
+      progressText.value = 'جاري تجهيز الأنواع...';
+      final typesMap = {
+        for (final t in repo.types) t.name.trim().toLowerCase(): t
+      };
+      final neededTypes = <String>{};
+      for (final row in rawRows) {
+        neededTypes.add(row.typeName.trim().toLowerCase());
+      }
+      for (final typeKey in neededTypes) {
+        if (typesMap.containsKey(typeKey)) continue;
+        final originalName = rawRows
+            .firstWhere((r) => r.typeName.trim().toLowerCase() == typeKey)
+            .typeName
+            .trim();
+        try {
+          await repo.addType(originalName);
+        } catch (_) {
+          await repo.bootstrap();
+        }
+      }
+      for (final t in repo.types) {
+        typesMap[t.name.trim().toLowerCase()] = t;
+      }
+      final typeNameById = {
+        for (final t in repo.types)
+          if (t.id != null) t.id!: t.name,
+      };
+
+      progressText.value = 'جاري إدخال الأصناف...';
+      final itemsToInsert = <Item>[];
+      final qtyByKey = <String, int>{};
+      for (final row in rawRows) {
+        final typeKey = row.typeName.trim().toLowerCase();
+        final type = typesMap[typeKey];
+        if (type?.id == null) {
+          skipped++;
+          continue;
+        }
+        final name = row.itemName.trim();
+        final key = '${type!.id}__${name.toLowerCase()}';
+        if (existingKeys.contains(key)) {
+          skipped++;
+          continue;
+        }
+        final qty = int.tryParse((row.qtyRaw ?? '').replaceAll(',', '')) ?? 0;
+        itemsToInsert.add(Item(
+          typeId: type.id!,
+          name: name,
+          price: 0,
+          stock: 0,
+        ));
+        qtyByKey[key] = qty < 0 ? 0 : qty;
+        existingKeys.add(key);
+      }
+
+      if (itemsToInsert.isNotEmpty) {
+        final DBService db = RepositoryService.instance.db;
+        await db.runQueuedWrite(() async {
+          await db.runWithDbRetry(() async {
+            final database = await db.database;
+            const chunkSize = 300;
+            final total = itemsToInsert.length;
+            for (var i = 0; i < total; i += chunkSize) {
+              final end = (i + chunkSize > total) ? total : i + chunkSize;
+              progressText.value = 'جاري إدخال الأصناف... ($end / $total)';
+              await database.transaction((txn) async {
+                final batch = txn.batch();
+                for (var j = i; j < end; j++) {
+                  final item = itemsToInsert[j];
+                  final data = await db.prepareInsert(
+                    Item.table,
+                    item.toMap(),
+                    executor: txn,
+                  );
+                  batch.insert(Item.table, data);
+                }
+                await batch.commit(noResult: true);
+
+                for (var j = i; j < end; j++) {
+                  final item = itemsToInsert[j];
+                  final key = '${item.typeId}__${item.name.toLowerCase()}';
+                  final qty = qtyByKey[key] ?? 0;
+                  if (qty <= 0) continue;
+
+                  final args = <Object?>[item.typeId, item.name.trim()];
+                  final acc = await db.accountFilterClause(
+                    txn,
+                    Item.table,
+                    args: args,
+                  );
+                  final rows = await txn.rawQuery(
+                    '''
+                    SELECT id FROM ${Item.table}
+                     WHERE type_id = ?
+                       AND lower(name) = lower(?)
+                       $acc
+                     ORDER BY id DESC
+                     LIMIT 1
+                    ''',
+                    args,
+                  );
+                  if (rows.isEmpty) continue;
+                  final itemId = (rows.first['id'] as num).toInt();
+
+                  final purchase = Purchase(
+                    itemId: itemId,
+                    quantity: qty,
+                    unitPrice: 0,
+                  );
+                  final pData = await db.prepareInsert(
+                    Purchase.table,
+                    purchase.toMap()
+                      ..addAll({
+                        if (typeNameById[item.typeId] != null)
+                          'item_type_name_snapshot': typeNameById[item.typeId],
+                        'item_name_snapshot': item.name,
+                      }),
+                    executor: txn,
+                  );
+                  await txn.insert(Purchase.table, pData);
+                  await txn.rawUpdate(
+                    'UPDATE ${Item.table} SET stock = stock + ? WHERE id = ?',
+                    [qty, itemId],
+                  );
+                }
+              });
+              // إتاحة تحديث واجهة المستخدم بين الدُفعات
+              await Future<void>.delayed(Duration.zero);
+            }
+          });
+        });
+        await db.notifyTableChanged(Item.table);
+        await db.notifyTableChanged(Purchase.table);
+        imported = itemsToInsert.length;
+        if (mounted && !dialogClosed) {
+          dialogClosed = true;
+          Navigator.of(context, rootNavigator: true).pop();
+        }
+        // تحديث البيانات في الخلفية بدون حبس واجهة المستخدم
+        Future(() async {
+          try {
+            await DBService.instance.repairInventoryIntegrity(backup: true);
+            await repo.bootstrap();
+          } catch (_) {}
+        });
       }
 
       if (!mounted) return;
@@ -288,6 +570,14 @@ class _AddItemScreenState extends State<AddItemScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('تعذّر الاستيراد: $e')),
       );
+    } finally {
+      await _tryResumeSync(auth);
+      if (mounted) {
+        if (!dialogClosed) {
+          Navigator.of(context, rootNavigator: true).pop();
+        }
+        setState(() => _isImporting = false);
+      }
     }
   }
 
@@ -394,7 +684,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
             IconButton(
               icon: const Icon(Icons.upload_file, color: Colors.white),
               tooltip: 'استيراد من Excel',
-              onPressed: _importItemsFromExcel,
+              onPressed: _isImporting ? null : _importItemsFromExcel,
             ),
             IconButton(
               icon: const Icon(Icons.download_outlined, color: Colors.white),
@@ -526,7 +816,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
                       children: [
                         Expanded(
                           child: OutlinedButton.icon(
-                            onPressed: _importItemsFromExcel,
+                            onPressed: _isImporting ? null : _importItemsFromExcel,
                             icon: const Icon(Icons.upload_file),
                             label: const Text('استيراد Excel'),
                             style: OutlinedButton.styleFrom(
