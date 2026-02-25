@@ -112,7 +112,17 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
       if (query.isEmpty) return true;
       final title = chat.displayTitleOf(conv.id).toLowerCase();
       final snippet = (conv.lastMsgSnippet ?? '').toLowerCase();
-      return title.contains(query) || snippet.contains(query);
+      final parts = chat.participantsOf(conv.id);
+      final partsHay = parts
+          .map((p) => [
+                p.nickname ?? '',
+                p.email ?? '',
+              ].join(' '))
+          .join(' ')
+          .toLowerCase();
+      return title.contains(query) ||
+          snippet.contains(query) ||
+          partsHay.contains(query);
     }).toList()
       ..sort((a, b) {
         final aTime = a.lastMsgAt ?? a.updatedAt ?? a.createdAt;
@@ -181,7 +191,8 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
                               );
                             },
                             decoration: InputDecoration(
-                              hintText: 'ابحث باسم الشخص أو محتوى الرسائل',
+                              hintText:
+                                  'ابحث بالرقم أو البريد أو محتوى الرسائل',
                               prefixIcon: const Icon(Icons.search_rounded),
                               suffixIcon: _query.isEmpty
                                   ? null
@@ -441,7 +452,7 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
   }
 
   Future<void> _showNewConversationDialog(BuildContext context) async {
-    final emailCtrl = TextEditingController();
+    final inputCtrl = TextEditingController();
     final result = await showDialog<String>(
       context: context,
       builder: (_) => Directionality(
@@ -449,10 +460,10 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
         child: AlertDialog(
           title: const Text('بدء محادثة جديدة'),
           content: TextField(
-            controller: emailCtrl,
+            controller: inputCtrl,
             keyboardType: TextInputType.emailAddress,
             decoration: const InputDecoration(
-              hintText: 'أدخل البريد الإلكتروني',
+              hintText: 'أدخل البريد الإلكتروني أو الرقم',
             ),
             textDirection: ui.TextDirection.ltr,
           ),
@@ -464,7 +475,7 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
             FilledButton(
               onPressed: () => Navigator.of(
                 context,
-              ).pop(emailCtrl.text.trim().toLowerCase()),
+              ).pop(inputCtrl.text.trim().toLowerCase()),
               child: const Text('بدء'),
             ),
           ],
@@ -473,7 +484,7 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
     );
 
     if (result == null || result.isEmpty) {
-      emailCtrl.dispose();
+      inputCtrl.dispose();
       return;
     }
 
@@ -495,7 +506,7 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
         context,
       ).showSnackBar(SnackBar(content: Text('تعذر إنشاء المحادثة: $e')));
     } finally {
-      emailCtrl.dispose();
+      inputCtrl.dispose();
     }
   }
 }

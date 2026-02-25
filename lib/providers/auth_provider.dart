@@ -41,6 +41,7 @@ const _kRole = 'auth.role';
 const _kDisabled = 'auth.disabled';
 const _kPlanCode = 'auth.planCode';
 const _kPlanEndAt = 'auth.planEndAt';
+const _kChatCode = 'auth.chatCode';
 const _kDeviceId = 'auth.deviceId';
 const _kLastNetCheckAt = 'auth.lastNetCheckAt';
 const int _kNetCheckIntervalMinutes = 5; // فحص شبكة كل 5 دقائق
@@ -217,6 +218,14 @@ class AuthProvider extends ChangeNotifier {
   String? get email => currentUser?['email'] as String?;
   String? get role => currentUser?['role'] as String?;
   String? get accountId => currentUser?['accountId'] as String?;
+  String? get chatCode => currentUser?['chatCode'] as String?;
+  String? get chatCodeSafe {
+    final raw = currentUser?['chatCode'] ?? currentUser?['chat_code'];
+    final value = raw?.toString();
+    if (value == null) return null;
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
   SyncService? get sync => _auth.sync;
 
   Future<void> pauseSync() => _auth.pauseSync();
@@ -723,6 +732,7 @@ class AuthProvider extends ChangeNotifier {
     final infoIsSuper = info?['isSuperAdmin'] == true;
     final infoPlan = (info?['planCode'] as String?)?.toLowerCase();
     final infoPlanEndAt = _readPlanEndAt(info?['planEndAt']);
+    final infoChatCode = info?['chatCode'] as String?;
     final prevPlanEndAt = _readPlanEndAt(currentUser?['planEndAt']);
     final role = infoIsSuper ? 'superadmin' : (infoRole ?? 'employee');
     final isSuper = infoIsSuper;
@@ -736,6 +746,8 @@ class AuthProvider extends ChangeNotifier {
       'isSuperAdmin': isSuper,
       'planCode': infoPlan ?? 'free',
       'planEndAt': infoPlanEndAt ?? prevPlanEndAt,
+      if (infoChatCode != null && infoChatCode.isNotEmpty)
+        'chatCode': infoChatCode,
       if (deviceId != null) _kDeviceId: deviceId,
     };
 
@@ -1124,6 +1136,9 @@ class AuthProvider extends ChangeNotifier {
     await sp.setBool(_kDisabled, currentUser!['disabled'] ?? false);
     await sp.setString(_kPlanCode,
         (currentUser!['planCode'] ?? 'free').toString().toLowerCase());
+    if ((currentUser?['chatCode'] ?? '').toString().isNotEmpty) {
+      await sp.setString(_kChatCode, currentUser!['chatCode'] ?? '');
+    }
     final storedPlanEnd = _readPlanEndAt(currentUser?['planEndAt']);
     if (storedPlanEnd != null) {
       await sp.setString(_kPlanEndAt, storedPlanEnd.toIso8601String());
@@ -1143,6 +1158,7 @@ class AuthProvider extends ChangeNotifier {
     final disabled = sp.getBool(_kDisabled);
     final planCode = sp.getString(_kPlanCode);
     final planEndRaw = sp.getString(_kPlanEndAt);
+    final chatCode = sp.getString(_kChatCode);
     final planEndAt = _readPlanEndAt(planEndRaw);
     final savedDev = sp.getString(_kDeviceId);
 
@@ -1157,6 +1173,7 @@ class AuthProvider extends ChangeNotifier {
         'isSuperAdmin': isSuper,
         'planCode': (planCode ?? 'free').toLowerCase(),
         if (planEndAt != null) 'planEndAt': planEndAt,
+        if (chatCode != null && chatCode.isNotEmpty) 'chatCode': chatCode,
       };
       if (savedDev != null && savedDev.isNotEmpty) {
         deviceId = savedDev;

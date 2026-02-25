@@ -220,6 +220,7 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
             role
             account_id
             email
+            chat_code
             created_at
           }
         }
@@ -297,6 +298,7 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
         final ownerEmail = (other.email.isNotEmpty)
             ? other.email
             : ((latest['email']?.toString() ?? '').toLowerCase());
+        final ownerCode = (latest['chat_code']?.toString() ?? '').trim();
 
         final lastAt = c.lastMsgAt;
         final lastReadAt = readAtByConv[c.id];
@@ -309,6 +311,7 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
         items.add(_AdminItem(
           conversation: c,
           ownerEmail: ownerEmail,
+          ownerCode: ownerCode,
           clinicName: (clinicName.trim().isEmpty ? null : clinicName.trim()),
           lastSnippet: c.lastMsgSnippet,
           hasUnread: hasUnread,
@@ -434,8 +437,8 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
           controller: emailCtrl,
           keyboardType: TextInputType.emailAddress,
           decoration: const InputDecoration(
-            hintText: 'البريد الإلكتروني للمالك',
-            prefixIcon: Icon(Icons.alternate_email_rounded),
+            hintText: 'البريد الإلكتروني أو الرقم',
+            prefixIcon: Icon(Icons.person_search_rounded),
           ),
           textDirection: ui.TextDirection.ltr,
         ),
@@ -454,6 +457,8 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
     if (targetEmail == null || targetEmail.isEmpty) return;
 
     try {
+      final resolvedEmail = await _resolveEmailForIdentifier(targetEmail);
+      if (resolvedEmail == null || resolvedEmail.isEmpty) return;
       // تستدعي دالة chat_admin_start_dm(target_email text) وترجع conv_id (uuid)
       final mutation = '''
         mutation StartAdminDM(\$email: String!) {
@@ -462,7 +467,7 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
           }
         }
       ''';
-      final data = await _runMutation(mutation, {'email': targetEmail});
+      final data = await _runMutation(mutation, {'email': resolvedEmail});
       final rows = _rowsFromData(data, 'chat_admin_start_dm');
       final convId = rows.isEmpty ? null : rows.first['id']?.toString();
 
@@ -523,6 +528,7 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
       if (q.isEmpty) return true;
       final hay = [
         e.ownerEmail,
+        e.ownerCode ?? '',
         e.clinicName ?? '',
         e.conversation.title ?? '',
         e.lastSnippet ?? '',
@@ -647,7 +653,7 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
                           onChanged: (_) => setState(() {}),
                           decoration: const InputDecoration(
                             hintText:
-                                'ابحث ببريد المالك، اسم العيادة، أو الملخّص…',
+                                'ابحث بالبريد أو الرقم أو اسم العيادة…',
                             border: InputBorder.none,
                             prefixIcon: Icon(Icons.search_rounded),
                           ),
@@ -711,7 +717,9 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
 
                         return ConversationTile(
                           conversation: it.conversation,
-                          titleOverride: it.ownerEmail,
+                          titleOverride: (it.ownerCode?.isNotEmpty ?? false)
+                              ? it.ownerCode
+                              : it.ownerEmail,
                           subtitleOverride: subtitle,
                           lastMessage: null,
                           clinicLabel:
@@ -754,12 +762,44 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
+
+  Future<String?> _resolveEmailForIdentifier(String input) async {
+    final lookup = input.trim().toLowerCase();
+    if (lookup.isEmpty) return null;
+    if (lookup.contains('@')) return lookup;
+    try {
+      const query = r'''
+        query ResolveChatUser($ident: String!) {
+          chat_resolve_user_for_dm(args: {p_identifier: $ident}) {
+            email
+            chat_code
+          }
+        }
+      ''';
+      final data = await _runQuery(query, {'ident': lookup});
+      final rows = _rowsFromData(data, 'chat_resolve_user_for_dm');
+      if (rows.isEmpty) {
+        _snack('لا يوجد مستخدم بالرقم: $lookup');
+        return null;
+      }
+      final email = (rows.first['email']?.toString() ?? '').trim();
+      if (email.isEmpty) {
+        _snack('تعذّر العثور على بريد المستخدم.');
+        return null;
+      }
+      return email.toLowerCase();
+    } catch (e) {
+      _snack('تعذّر البحث عن المستخدم: $e');
+      return null;
+    }
+  }
 }
 
 /*�������� ????? ?????? ��������*/
 class _AdminItem {
   final ChatConversation conversation;
   final String ownerEmail;
+  final String? ownerCode;
   final String? clinicName;
   final String? lastSnippet;
   final bool hasUnread;
@@ -767,6 +807,7 @@ class _AdminItem {
   const _AdminItem({
     required this.conversation,
     required this.ownerEmail,
+    required this.ownerCode,
     required this.clinicName,
     required this.lastSnippet,
     required this.hasUnread,

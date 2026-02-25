@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:ui' as ui show TextDirection;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -1585,6 +1586,8 @@ class _DrawerHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final auth = Provider.of<AuthProvider>(context);
+    final code = (auth.chatCodeSafe ?? '').trim();
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: NeuCard(
@@ -1604,14 +1607,54 @@ class _DrawerHeader extends StatelessWidget {
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(
-                'ELMAM CLINIC',
-                textAlign: TextAlign.right,
-                style: TextStyle(
-                  color: scheme.onSurface,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'ELMAM CLINIC',
+                    textAlign: TextAlign.right,
+                    style: TextStyle(
+                      color: scheme.onSurface,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  if (code.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Row(
+                        children: [
+                          Icon(Icons.badge_rounded,
+                              size: 16, color: scheme.primary),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              code,
+                              style: TextStyle(
+                                color: scheme.primary,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: 'نسخ الرقم',
+                            onPressed: () async {
+                              await Clipboard.setData(
+                                  ClipboardData(text: code));
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('تم نسخ الرقم.')),
+                              );
+                            },
+                            icon: Icon(
+                              Icons.copy_rounded,
+                              size: 18,
+                              color: scheme.primary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
               ),
             ),
           ],

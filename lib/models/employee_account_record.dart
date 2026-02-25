@@ -6,6 +6,7 @@ class EmployeeAccountRecord {
   final DateTime? createdAt;
   final String? employeeId;
   final String? doctorId;
+  final String? chatCode;
 
   const EmployeeAccountRecord({
     required this.userUid,
@@ -15,7 +16,14 @@ class EmployeeAccountRecord {
     this.createdAt,
     this.employeeId,
     this.doctorId,
+    this.chatCode,
   });
+
+  String? get chatCodeSafe {
+    final value = chatCode?.trim();
+    if (value == null || value.isEmpty) return null;
+    return value;
+  }
 
   static String _toStr0(dynamic v) => v?.toString() ?? '';
   static String? _toStrN(dynamic v) => v?.toString();
@@ -42,6 +50,7 @@ class EmployeeAccountRecord {
       createdAt: _toDateN(map['created_at']),
       employeeId: _toStrN(map['employee_id']),
       doctorId: _toStrN(map['doctor_id']),
+      chatCode: _toStrN(map['chat_code']),
     );
   }
 }

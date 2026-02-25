@@ -708,7 +708,12 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
                                   ),
                                 ),
                                 subtitle: Text(
-                                  'الدور: ${_roleLabel(emp.role)} • ${_fmtDate(emp.createdAt)}',
+                                  [
+                                    if ((emp.chatCodeSafe ?? '').trim().isNotEmpty)
+                                      'الرقم: ${emp.chatCodeSafe}',
+                                    'الدور: ${_roleLabel(emp.role)}',
+                                    _fmtDate(emp.createdAt),
+                                  ].where((e) => e.isNotEmpty).join(' • '),
                                   style: TextStyle(
                                     color:
                                         scheme.onSurface.withValues(alpha: .7),
