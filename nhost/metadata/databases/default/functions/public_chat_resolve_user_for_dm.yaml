@@ -1,10 +1,14 @@
 function:
-  name: admin_get_super_admin_tabs
+  name: chat_resolve_user_for_dm
   schema: public
 configuration:
-  custom_name: admin_get_super_admin_tabs
+  custom_name: chat_resolve_user_for_dm
   custom_root_fields: {}
   exposed_as: query
   session_argument: hasura_session
 permissions:
+  - role: me
+  - role: user
+  - role: employee
+  - role: owner
   - role: superadmin

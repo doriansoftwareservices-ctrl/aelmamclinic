@@ -38,7 +38,6 @@ insert_permissions:
                   _eq: false
                 user_uid:
                   _eq: X-Hasura-User-Id
-          
 select_permissions:
   - role: me
     permission:
@@ -64,25 +63,15 @@ select_permissions:
       columns: '*'
       filter:
         _exists:
-
           _table:
-
             name: account_users
-
             schema: public
-
           _where:
-
             account_id:
-
               _ceq: account_id
-
             disabled:
-
               _eq: false
-
             user_uid:
-
               _eq: X-Hasura-User-Id
 update_permissions:
   - role: me

@@ -1,17 +1,32 @@
 table:
-  name: v_list_employees_with_email
+  name: v_chat_user_lookup
   schema: public
 select_permissions:
+  - role: employee
+    permission:
+      columns:
+        - user_uid
+        - email
+        - account_id
+        - role
+        - chat_code
+      filter: {}
   - role: me
     permission:
       columns:
         - user_uid
         - email
+        - account_id
         - role
-        - disabled
-        - created_at
-        - employee_id
-        - doctor_id
+        - chat_code
+      filter: {}
+  - role: owner
+    permission:
+      columns:
+        - user_uid
+        - email
+        - account_id
+        - role
         - chat_code
       filter: {}
   - role: superadmin
@@ -19,11 +34,8 @@ select_permissions:
       columns:
         - user_uid
         - email
+        - account_id
         - role
-        - disabled
-        - created_at
-        - employee_id
-        - doctor_id
         - chat_code
       filter: {}
   - role: user
@@ -31,10 +43,7 @@ select_permissions:
       columns:
         - user_uid
         - email
+        - account_id
         - role
-        - disabled
-        - created_at
-        - employee_id
-        - doctor_id
         - chat_code
       filter: {}

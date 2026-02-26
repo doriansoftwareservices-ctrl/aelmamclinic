@@ -12,4 +12,5 @@ select_permissions:
         - role
         - disabled
         - created_at
+        - chat_code
       filter: {}

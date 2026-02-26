@@ -27,13 +27,13 @@ insert_permissions:
             name: chat_participants
             schema: public
           _where:
-            conversation_id:
-              _ceq: conversation_id
             _or:
               - is_deleted:
                   _eq: false
               - is_deleted:
                   _is_null: true
+            conversation_id:
+              _ceq: conversation_id
             user_uid:
               _eq: X-Hasura-User-Id
         sender_uid:
@@ -47,13 +47,13 @@ insert_permissions:
             name: chat_participants
             schema: public
           _where:
-            conversation_id:
-              _ceq: conversation_id
             _or:
               - is_deleted:
                   _eq: false
               - is_deleted:
                   _is_null: true
+            conversation_id:
+              _ceq: conversation_id
             user_uid:
               _eq: X-Hasura-User-Id
         sender_uid:
@@ -67,13 +67,13 @@ insert_permissions:
             name: chat_participants
             schema: public
           _where:
-            conversation_id:
-              _ceq: conversation_id
             _or:
               - is_deleted:
                   _eq: false
               - is_deleted:
                   _is_null: true
+            conversation_id:
+              _ceq: conversation_id
             user_uid:
               _eq: X-Hasura-User-Id
         sender_uid:
@@ -91,13 +91,13 @@ insert_permissions:
             name: chat_participants
             schema: public
           _where:
-            conversation_id:
-              _ceq: conversation_id
             _or:
               - is_deleted:
                   _eq: false
               - is_deleted:
                   _is_null: true
+            conversation_id:
+              _ceq: conversation_id
             user_uid:
               _eq: X-Hasura-User-Id
         sender_uid:
@@ -113,13 +113,13 @@ select_permissions:
             name: chat_participants
             schema: public
           _where:
-            conversation_id:
-              _ceq: conversation_id
             _or:
               - is_deleted:
                   _eq: false
               - is_deleted:
                   _is_null: true
+            conversation_id:
+              _ceq: conversation_id
             user_uid:
               _eq: X-Hasura-User-Id
   - role: me
@@ -131,13 +131,13 @@ select_permissions:
             name: chat_participants
             schema: public
           _where:
-            conversation_id:
-              _ceq: conversation_id
             _or:
               - is_deleted:
                   _eq: false
               - is_deleted:
                   _is_null: true
+            conversation_id:
+              _ceq: conversation_id
             user_uid:
               _eq: X-Hasura-User-Id
   - role: owner
@@ -149,13 +149,13 @@ select_permissions:
             name: chat_participants
             schema: public
           _where:
-            conversation_id:
-              _ceq: conversation_id
             _or:
               - is_deleted:
                   _eq: false
               - is_deleted:
                   _is_null: true
+            conversation_id:
+              _ceq: conversation_id
             user_uid:
               _eq: X-Hasura-User-Id
   - role: superadmin
@@ -171,13 +171,13 @@ select_permissions:
             name: chat_participants
             schema: public
           _where:
-            conversation_id:
-              _ceq: conversation_id
             _or:
               - is_deleted:
                   _eq: false
               - is_deleted:
                   _is_null: true
+            conversation_id:
+              _ceq: conversation_id
             user_uid:
               _eq: X-Hasura-User-Id
 update_permissions:
@@ -246,3 +246,14 @@ delete_permissions:
       filter:
         sender_uid:
           _eq: X-Hasura-User-Id
+event_triggers:
+  - name: notify_chat_message
+    definition:
+      enable_manual: false
+      insert:
+        columns: '*'
+    retry_conf:
+      interval_sec: 10
+      num_retries: 3
+      timeout_sec: 60
+    webhook: https://ujxbrdbrjbujvlylpbbn.functions.ap-southeast-1.nhost.run/v1/notify-chat-message

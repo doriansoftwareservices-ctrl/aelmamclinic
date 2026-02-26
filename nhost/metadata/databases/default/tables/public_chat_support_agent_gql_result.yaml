@@ -2,12 +2,6 @@ table:
   name: chat_support_agent_gql_result
   schema: public
 select_permissions:
-  - role: owner
-    permission:
-      columns:
-        - user_uid
-        - display_name
-      filter: {}
   - role: employee
     permission:
       columns:
@@ -15,6 +9,12 @@ select_permissions:
         - display_name
       filter: {}
   - role: me
+    permission:
+      columns:
+        - user_uid
+        - display_name
+      filter: {}
+  - role: owner
     permission:
       columns:
         - user_uid
