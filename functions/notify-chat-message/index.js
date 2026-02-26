@@ -51,6 +51,35 @@ module.exports = async (req, res) => {
       return;
     }
 
+    // استبعاد المؤرشفة (صامتة حتى مع إغلاق التطبيق)
+    try {
+      const prefs = await gqlRequest(
+        `query Prefs($cid: uuid!, $uids: [uuid!]!) {
+          chat_participants(
+            where: {conversation_id: {_eq: $cid}, user_uid: {_in: $uids}}
+          ) {
+            user_uid
+            archived
+          }
+        }`,
+        { cid: conversationId, uids: targetUids },
+      );
+      const archivedSet = new Set(
+        (prefs?.chat_participants || [])
+          .filter((p) => p.archived === true || p.archived === 1)
+          .map((p) => p.user_uid)
+          .filter(Boolean),
+      );
+      if (archivedSet.size > 0) {
+        targetUids = targetUids.filter((u) => !archivedSet.has(u));
+      }
+    } catch (_) {}
+
+    if (targetUids.length === 0) {
+      res.status(200).json({ ok: true, skipped: 'archived_targets' });
+      return;
+    }
+
     const tokensData = await gqlRequest(
       `query Tokens($uids: [uuid!]!) {
         push_device_tokens(
