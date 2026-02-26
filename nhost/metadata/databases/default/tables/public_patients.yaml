@@ -325,3 +325,14 @@ delete_permissions:
           - doctor:
               user_uid:
                 _eq: X-Hasura-User-Id
+event_triggers:
+  - name: notify_new_patient
+    definition:
+      enable_manual: false
+      insert:
+        columns: '*'
+    retry_conf:
+      interval_sec: 10
+      num_retries: 3
+      timeout_sec: 60
+    webhook: https://ujxbrdbrjbujvlylpbbn.functions.ap-southeast-1.nhost.run/v1/notify-new-patient
