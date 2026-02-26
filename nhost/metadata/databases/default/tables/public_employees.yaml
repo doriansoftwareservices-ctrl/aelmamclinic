@@ -35,7 +35,6 @@ insert_permissions:
               _eq: false
             user_uid:
               _eq: X-Hasura-User-Id
-          
 select_permissions:
   - role: me
     permission:
@@ -119,7 +118,7 @@ update_permissions:
               _eq: false
             user_uid:
               _eq: X-Hasura-User-Id
-          
+      check: {}
 delete_permissions:
   - role: me
     permission:
@@ -152,4 +151,3 @@ delete_permissions:
               _eq: false
             user_uid:
               _eq: X-Hasura-User-Id
-          
