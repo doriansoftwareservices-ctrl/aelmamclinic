@@ -83,7 +83,7 @@ const resolveRunSqlUrl = () => {
 async function runSql(sql) {
   const url = resolveRunSqlUrl();
   const adminSecret =
-    process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
+    process.env.GRAPHQL_ADMIN_SECRET || process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
   if (!url || !adminSecret) {
     throw new Error('Missing HASURA admin secret for SQL');
   }
@@ -180,7 +180,7 @@ async function createOrGetUser(email, password) {
 async function deleteUser(userId) {
   const authUrl = resolveAuthUrl();
   const adminSecret =
-    process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
+    process.env.GRAPHQL_ADMIN_SECRET || process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
   if (!authUrl || !adminSecret || !userId) return;
   const headers = {
     'x-hasura-admin-secret': adminSecret,
@@ -234,7 +234,7 @@ async function callAdminCreateEmployee(
 ) {
   const gqlUrl = process.env.NHOST_GRAPHQL_URL;
   const adminSecret =
-    process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
+    process.env.GRAPHQL_ADMIN_SECRET || process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
   if (!gqlUrl) {
     throw new Error('Missing NHOST_GRAPHQL_URL');
   }
@@ -359,7 +359,7 @@ async function ensureSuperAdmin(authHeader) {
 async function ensureAccountPaid(accountId, authHeader) {
   const gqlUrl = process.env.NHOST_GRAPHQL_URL;
   const adminSecret =
-    process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
+    process.env.GRAPHQL_ADMIN_SECRET || process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
   if (!gqlUrl) {
     throw new Error('Missing NHOST_GRAPHQL_URL');
   }

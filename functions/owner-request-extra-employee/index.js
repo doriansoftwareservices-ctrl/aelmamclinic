@@ -73,10 +73,10 @@ const resolveAuthUrl = () => {
 async function createOrGetUser(email, password) {
   const authUrl = resolveAuthUrl();
   const adminSecret =
-    process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
+    process.env.GRAPHQL_ADMIN_SECRET || process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
   if (!authUrl || !adminSecret) {
     throw new Error(
-      'Missing NHOST_AUTH_URL or NHOST_ADMIN_SECRET/HASURA_GRAPHQL_ADMIN_SECRET',
+      'Missing NHOST_AUTH_URL or GRAPHQL_ADMIN_SECRET',
     );
   }
 
@@ -129,7 +129,7 @@ async function createOrGetUser(email, password) {
 async function deleteUser(userId) {
   const authUrl = resolveAuthUrl();
   const adminSecret =
-    process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
+    process.env.GRAPHQL_ADMIN_SECRET || process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
   if (!authUrl || !adminSecret || !userId) return;
   await fetch(`${authUrl}/admin/users/${userId}`, {
     method: 'DELETE',

@@ -85,7 +85,7 @@ const resolveRunSqlUrl = () => {
 async function runSql(sql, readOnly = false) {
   const url = resolveRunSqlUrl();
   const adminSecret =
-    process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
+    process.env.GRAPHQL_ADMIN_SECRET || process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
   if (!url || !adminSecret) {
     throw new Error('Missing HASURA admin secret for SQL');
   }

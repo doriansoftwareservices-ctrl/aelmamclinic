@@ -83,7 +83,7 @@ const resolveRunSqlUrl = () => {
 async function runSql(sql) {
   const url = resolveRunSqlUrl();
   const adminSecret =
-    process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
+    process.env.GRAPHQL_ADMIN_SECRET || process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
   if (!url || !adminSecret) {
     throw new Error('Missing HASURA admin secret for SQL');
   }
@@ -177,7 +177,7 @@ const adminUserEndpoints = (authUrl) => {
 async function createOrGetUser(email, password) {
   const authUrl = resolveAuthUrl();
   const adminSecret =
-    process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
+    process.env.GRAPHQL_ADMIN_SECRET || process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
   if (!authUrl || !adminSecret) {
     return ensureAuthUserWithState(email, password);
   }
@@ -254,7 +254,7 @@ async function createOrGetUser(email, password) {
 async function deleteUser(userId) {
   const authUrl = resolveAuthUrl();
   const adminSecret =
-    process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
+    process.env.GRAPHQL_ADMIN_SECRET || process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
   if (!authUrl || !adminSecret || !userId) return;
   const headers = {
     'x-hasura-admin-secret': adminSecret,
