@@ -6,6 +6,9 @@ module.exports = async (req, res) => {
     const row = payload?.event?.data?.new || payload?.data?.new || {};
     const planCode = row.plan_code || row.planCode || '';
     const clinicName = row.clinic_name || row.clinicName || '';
+    const seatKind = row.seat_kind || row.seatKind || '';
+    const seatStatus = row.status || '';
+    const employeeEmail = row.employee_email || row.employeeEmail || '';
 
     const admins = await gqlRequest(`query { super_admins { user_uid } }`, {});
     const uids = (admins?.super_admins || [])
@@ -32,19 +35,31 @@ module.exports = async (req, res) => {
       return;
     }
 
-    const title = 'طلب ترقية جديد';
-    const planLabel = planCode ? ` (${planCode})` : '';
-    const body =
-      clinicName
-        ? `تم استلام طلب ترقية من ${clinicName}${planLabel}`
-        : `تم استلام طلب ترقية جديد${planLabel}`;
+    let title = 'طلب ترقية جديد';
+    let body = 'تم استلام طلب ترقية جديد';
+    let type = 'plan_request';
+    let payloadTag = 'plan_request';
 
-    const data = {
-      type: 'plan_request',
-      title,
-      body,
-      payload: 'plan_request',
-    };
+    if (seatKind && String(seatKind).toLowerCase() === 'extra') {
+      if (String(seatStatus).toLowerCase() !== 'submitted') {
+        res.status(200).json({ ok: true, skipped: 'seat_not_submitted' });
+        return;
+      }
+      title = 'طلب مقعد موظف إضافي';
+      body = employeeEmail
+        ? `تم إرسال طلب إضافة موظف: ${employeeEmail}`
+        : 'تم إرسال طلب إضافة موظف إضافي';
+      type = 'seat_request';
+      payloadTag = 'seat_request';
+    } else {
+      const planLabel = planCode ? ` (${planCode})` : '';
+      body =
+        clinicName
+          ? `تم استلام طلب ترقية من ${clinicName}${planLabel}`
+          : `تم استلام طلب ترقية جديد${planLabel}`;
+    }
+
+    const data = { type, title, body, payload: payloadTag };
 
     const result = await sendFcm(tokens, {
       notification: { title, body },

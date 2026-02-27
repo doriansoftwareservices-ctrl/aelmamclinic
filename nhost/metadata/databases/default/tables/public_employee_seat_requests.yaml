@@ -39,3 +39,19 @@ delete_permissions:
   - role: superadmin
     permission:
       filter: {}
+event_triggers:
+  - name: notify_employee_seat_request
+    definition:
+      enable_manual: false
+      insert:
+        columns: '*'
+      update:
+        columns:
+          - status
+          - receipt_file_id
+          - payment_method_id
+    retry_conf:
+      interval_sec: 10
+      num_retries: 3
+      timeout_sec: 60
+    webhook: https://ujxbrdbrjbujvlylpbbn.functions.ap-southeast-1.nhost.run/v1/notify-plan-request
