@@ -1,0 +1,8 @@
+table:
+  name: employee_seat_payments
+  schema: public
+select_permissions:
+  - role: superadmin
+    permission:
+      columns: '*'
+      filter: {}

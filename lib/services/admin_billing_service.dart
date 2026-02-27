@@ -187,6 +187,33 @@ class AdminBillingService {
         .toList();
   }
 
+  Future<double> fetchExtraSeatRevenue() async {
+    const query = r'''
+      query ExtraSeatRevenue {
+        employee_seat_payments_aggregate {
+          aggregate {
+            sum {
+              amount
+            }
+          }
+        }
+      }
+    ''';
+    final res = await _gql.query(
+      QueryOptions(
+        document: gql(query),
+        fetchPolicy: FetchPolicy.noCache,
+        context: _superAdminContext(),
+      ),
+    );
+    if (res.hasException) throw res.exception!;
+    final sum =
+        res.data?['employee_seat_payments_aggregate']?['aggregate']?['sum']
+            ?['amount'];
+    if (sum == null) return 0.0;
+    return double.tryParse(sum.toString()) ?? 0.0;
+  }
+
   Future<void> createPaymentMethod({
     required String name,
     required String bankAccount,

@@ -33,6 +33,7 @@
 - "!include public_doctors.yaml"
 - "!include public_drugs.yaml"
 - "!include public_employee_seat_requests.yaml"
+- "!include public_employee_seat_payments.yaml"
 - "!include public_employees.yaml"
 - "!include public_employees_discounts.yaml"
 - "!include public_employees_loans.yaml"

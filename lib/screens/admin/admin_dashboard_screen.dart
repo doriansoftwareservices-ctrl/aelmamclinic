@@ -1,9 +1,9 @@
 // lib/screens/admin/admin_dashboard_screen.dart
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/models/admin_account_member.dart';
@@ -24,6 +24,8 @@ import 'package:aelmamclinic/services/employee_seat_service.dart';
 import 'package:aelmamclinic/services/nhost_storage_service.dart';
 import 'package:aelmamclinic/services/nhost_admin_service.dart';
 import 'package:aelmamclinic/services/super_admin_accounts_service.dart';
+import 'package:aelmamclinic/core/nhost_config.dart';
+import 'package:aelmamclinic/utils/chat_code_utils.dart';
 import 'package:provider/provider.dart';
 import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -48,7 +50,8 @@ class AdminDashboardScreen extends StatefulWidget {
 
 class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
-  static const String _rootSuperAdminEmail = 'elmam.clinic.c.s@elmam.com';
+  static String get _rootSuperAdminEmail =>
+      NhostConfig.rootSuperAdminEmail.toLowerCase().trim();
   static const List<String> _baseAdminTabs = [
     'clinics',
     'chats',
@@ -102,6 +105,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   bool _loadingAdminTabs = true;
   String? _tabsError;
   Timer? _pendingPollTimer;
+  bool _isRootCached = false;
 
   // اشتراكات ودفع وشكاوى
   List<SubscriptionRequest> _subscriptionRequests = [];
@@ -113,6 +117,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   bool _loadingSeatPrice = false;
   double? _seatDefaultPrice;
   int _lastSeatPending = 0;
+  String _seatFilter = 'submitted'; // submitted | awaiting_payment | approved | rejected | all
 
   List<PaymentMethod> _paymentMethods = [];
   bool _loadingPaymentMethods = false;
@@ -123,6 +128,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
 
   List<PaymentStat> _paymentStats = [];
   bool _loadingStats = false;
+  bool _loadingExtraSeatRevenue = false;
+  double _extraSeatRevenue = 0;
   List<PaymentPlanStat> _paymentPlanStats = [];
   List<PaymentTimeStat> _paymentMonthlyStats = [];
   List<PaymentTimeStat> _paymentDailyStats = [];
@@ -176,9 +183,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         Navigator.of(context).pushReplacementNamed('/');
         return;
       }
+      _isRootCached = _computeIsRoot(auth.email);
     });
 
     final auth = context.read<AuthProvider>();
+    _isRootCached = _computeIsRoot(auth.email);
     _tabController = TabController(length: 3, vsync: this);
     _tabController.addListener(() {
       // حدّث القائمة كلما فتحنا تبويب "موظف جديد" أو "إدارة العيادات"
@@ -251,10 +260,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
 
   void _openDrawer() => _scaffoldKey.currentState?.openDrawer();
 
-  bool get _isRootSuperAdmin {
-    final auth = context.read<AuthProvider>();
-    final email = auth.email?.toLowerCase().trim();
-    return email != null && email == _rootSuperAdminEmail;
+  bool _computeIsRoot(String? email) {
+    if (email == null) return false;
+    return email.toLowerCase().trim() == _rootSuperAdminEmail;
   }
 
   String get _activeSectionKey {
@@ -267,7 +275,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
 
   void _rebuildVisibleSections() {
     final keys = <String>[];
-    if (_isRootSuperAdmin) {
+    if (_isRootCached) {
       keys.addAll(_baseAdminTabs);
       keys.add('superadmins');
     } else {
@@ -283,27 +291,45 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     _loadingAdminTabs = true;
     _tabsError = null;
     try {
-      if (_isRootSuperAdmin) {
+      if (!mounted) return;
+      final auth = context.read<AuthProvider>();
+      _isRootCached = _computeIsRoot(auth.email);
+      if (_isRootCached) {
         _allowedAdminTabs = List.of(_baseAdminTabs);
       } else {
-        final tabs = await _superAdminService.fetchMyAllowedTabs();
-        _allowedAdminTabs =
-            tabs.isEmpty ? List.of(_baseAdminTabs) : tabs.toList();
+        var tabs = await _superAdminService.fetchMyAllowedTabs();
+        // Retry once if auth/session was not fully ready.
+        if (tabs.isEmpty) {
+          await auth.refreshAndValidateCurrentUser();
+          tabs = await _superAdminService.fetchMyAllowedTabs();
+        }
+        _allowedAdminTabs = tabs.toList();
+        if (_allowedAdminTabs.isEmpty) {
+          _tabsError = 'تعذّر تحميل التبويبات أو لم يتم تحديد تبويبات للحساب.';
+        }
       }
     } catch (e) {
-      _allowedAdminTabs = const [];
-      _tabsError = 'تعذّر تحميل التبويبات. يرجى إعادة المحاولة.';
-    } finally {
-      _rebuildVisibleSections();
-      if (mounted) {
-        setState(() => _loadingAdminTabs = false);
+      if (_isRootCached) {
+        // Root keeps full access even if the fetch fails.
+        _allowedAdminTabs = List.of(_baseAdminTabs);
+      } else {
+        // Fail-closed for non-root to avoid showing tabs without confirmation.
+        _allowedAdminTabs = const [];
       }
+      _tabsError = kDebugMode
+          ? 'تعذّر تحميل التبويبات: $e'
+          : 'تعذّر تحميل التبويبات. يرجى إعادة المحاولة.';
+    } finally {
+      if (!mounted) return;
+      _rebuildVisibleSections();
+      setState(() => _loadingAdminTabs = false);
     }
   }
 
   int get _pendingSubscriptionCount =>
       _subscriptionRequests.where((r) => r.status == 'pending').length;
-  int get _pendingSeatCount => _seatRequests.length;
+  int get _pendingSeatCount =>
+      _seatRequests.where((r) => r.status == 'submitted').length;
   int get _pendingComplaintCount => _complaints
       .where((c) => (c.status.isEmpty || c.status == 'open' || c.status == 'in_progress'))
       .length;
@@ -785,10 +811,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   Future<void> _fetchSeatRequests() async {
     try {
       setState(() => _loadingSeatRequests = true);
-      final rows = await _seatService.fetchPendingSeatRequests();
+      final rows = await _seatService.fetchSeatRequests();
       await _fetchSeatPrice();
       if (!mounted) return;
-      final pending = rows.length;
+      final pending =
+          rows.where((r) => r.status == 'submitted').length;
       setState(() {
         _seatRequests = rows;
         _loadingSeatRequests = false;
@@ -801,6 +828,22 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       if (!mounted) return;
       setState(() => _loadingSeatRequests = false);
       _snack('تعذّر تحميل طلبات الموظفين: $e');
+    }
+  }
+
+  Future<void> _fetchExtraSeatRevenue() async {
+    try {
+      setState(() => _loadingExtraSeatRevenue = true);
+      final value = await _billingService.fetchExtraSeatRevenue();
+      if (!mounted) return;
+      setState(() {
+        _extraSeatRevenue = value;
+        _loadingExtraSeatRevenue = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loadingExtraSeatRevenue = false);
+      _snack('تعذّر تحميل دخل المقاعد الإضافية: $e');
     }
   }
 
@@ -869,6 +912,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         _paymentDailyStats = bundle.daily;
         _loadingStats = false;
       });
+      await _fetchExtraSeatRevenue();
     } catch (e) {
       if (!mounted) return;
       setState(() => _loadingStats = false);
@@ -1246,6 +1290,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         break;
       case 'stats':
         await _fetchPaymentStats();
+        await _fetchExtraSeatRevenue();
         break;
       case 'members':
         await _fetchMemberCounts();
@@ -1273,7 +1318,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       case 'chats':
         return const ChatAdminInboxScreen();
       case 'subscriptions':
-        return _buildSubscriptionRequestsSection();
+        return SizedBox.expand(child: _buildSubscriptionRequestsSection());
       case 'payments':
         return _buildPaymentMethodsSection(scheme);
       case 'complaints':
@@ -1362,7 +1407,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   }
 
   Widget _buildSuperAdminAccountsSection(ColorScheme scheme) {
-    if (!_isRootSuperAdmin) {
+    if (!_isRootCached) {
       return Center(
         child: Text(
           'هذه الشاشة متاحة للحساب الجذري فقط.',
@@ -1559,33 +1604,45 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     );
   }
 
-  Widget _statChip(String label, int value) {
-    return Expanded(
+  Widget _statChip(
+    String label,
+    int value, {
+    VoidCallback? onTap,
+    bool selected = false,
+    bool expand = true,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    final chip = InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: onTap,
       child: NeuCard(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Text(
               '$value',
-              style: const TextStyle(fontWeight: FontWeight.w800),
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                color: selected ? scheme.primary : scheme.onSurface,
+              ),
             ),
             const SizedBox(width: 6),
-            Expanded(
-              child: Text(
-                label,
-                style: TextStyle(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .onSurface
-                      .withValues(alpha: .7),
-                  fontSize: 12,
-                ),
+            Text(
+              label,
+              style: TextStyle(
+                color: selected
+                    ? scheme.primary
+                    : scheme.onSurface.withValues(alpha: .7),
+                fontSize: 12,
               ),
             ),
           ],
         ),
       ),
     );
+    if (!expand) return chip;
+    return Expanded(child: chip);
   }
 
   int _sumMemberCounts(int Function(AdminAccountMemberCount row) getter) {
@@ -1613,7 +1670,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   }
 
   Future<void> _fetchSuperAdmins() async {
-    if (!_isRootSuperAdmin) return;
+    if (!_isRootCached) return;
     setState(() => _loadingSuperAdmins = true);
     try {
       final rows = await _superAdminService.fetchSuperAdmins();
@@ -1870,12 +1927,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         final ref = (req.referenceText ?? '').trim();
         final sender = (req.senderName ?? '').trim();
         final clinic = (req.clinicName ?? '').trim();
+        final amount = req.amount.isFinite ? req.amount : 0.0;
+        final planLabel =
+            (req.planCode.isNotEmpty ? req.planCode : '—').toUpperCase();
         return NeuCard(
           margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
           padding: const EdgeInsets.all(12),
           child: ListTile(
             title: Text(
-              'خطة: ${req.planCode} • ${req.amount.toStringAsFixed(0)}\$',
+              'خطة: $planLabel • ${amount.toStringAsFixed(0)}\$',
             ),
             subtitle: Text(
               [
@@ -1957,14 +2017,86 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     if (_loadingSeatRequests) {
       return const Center(child: CircularProgressIndicator());
     }
+    final all = _seatRequests;
+    final filtered = _seatFilter == 'all'
+        ? all
+        : all.where((r) => r.status == _seatFilter).toList();
+    final submittedCount =
+        all.where((r) => r.status == 'submitted').length;
+    final awaitingCount =
+        all.where((r) => r.status == 'awaiting_payment').length;
+    final approvedCount =
+        all.where((r) => r.status == 'approved').length;
+    final rejectedCount =
+        all.where((r) => r.status == 'rejected').length;
+    final totalAmount = all.fold<double>(
+      0,
+      (sum, r) => sum + (r.priceUsd > 0 ? r.priceUsd : 0),
+    );
     final children = <Widget>[
       _buildSeatDefaultPriceCard(),
-      if (_seatRequests.isEmpty)
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _statChip('الكل', all.length,
+                onTap: () => setState(() {
+                      _seatFilter = 'all';
+                    }),
+                selected: _seatFilter == 'all',
+                expand: false),
+            _statChip('بانتظار الدفع', awaitingCount,
+                onTap: () => setState(() {
+                      _seatFilter = 'awaiting_payment';
+                    }),
+                selected: _seatFilter == 'awaiting_payment',
+                expand: false),
+            _statChip('قيد المراجعة', submittedCount,
+                onTap: () => setState(() {
+                      _seatFilter = 'submitted';
+                    }),
+                selected: _seatFilter == 'submitted',
+                expand: false),
+            _statChip('معتمد', approvedCount, onTap: () => setState(() {
+                  _seatFilter = 'approved';
+                }), selected: _seatFilter == 'approved', expand: false),
+            _statChip('مرفوض', rejectedCount, onTap: () => setState(() {
+                  _seatFilter = 'rejected';
+                }), selected: _seatFilter == 'rejected', expand: false),
+          ],
+        ),
+      ),
+      NeuCard(
+        margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            Icon(Icons.receipt_long_rounded, color: Theme.of(context).colorScheme.primary),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'إجمالي قيمة طلبات المقاعد الإضافية',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+            Text(
+              '\$${totalAmount.toStringAsFixed(0)}',
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+          ],
+        ),
+      ),
+      if (filtered.isEmpty)
         const Padding(
           padding: EdgeInsets.symmetric(vertical: 16),
           child: Center(child: Text('لا توجد طلبات موظفين إضافيين حاليًا')),
         ),
-      ..._seatRequests.map((req) {
+      ...filtered.map((req) {
         final status = req.status;
         final note = req.adminNote?.trim() ?? '';
         final priceLabel =
@@ -2439,6 +2571,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                 final created = row.createdAt == null
                     ? ''
                     : DateFormat('yyyy-MM-dd').format(row.createdAt!);
+                final codeRaw = (row.chatCode ?? '').trim();
+                final code = codeRaw.isEmpty
+                    ? ''
+                    : ChatCodeUtils.format(codeRaw);
                 return ListTile(
                   contentPadding: EdgeInsets.zero,
                   title: Text(title),
@@ -2446,10 +2582,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                     [
                       if (_membersAccountId == null)
                         'الحساب: ${row.accountName}',
+                      if (code.isNotEmpty) 'الرقم: $code',
                       'الدور: $roleLabel',
                       'الحالة: $statusLabel',
                       if (created.isNotEmpty) 'تاريخ الإضافة: $created',
-                    ].join(' • '),
+                    ].where((e) => e.isNotEmpty).join(' • '),
                   ),
                 );
               },
@@ -2467,7 +2604,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         _paymentPlanStats.isNotEmpty ||
         _paymentMonthlyStats.isNotEmpty ||
         _paymentDailyStats.isNotEmpty;
-    if (!hasAny) {
+    if (!hasAny && !_loadingExtraSeatRevenue && _extraSeatRevenue <= 0) {
       return const Center(child: Text('لا توجد بيانات مالية بعد'));
     }
 
@@ -2477,11 +2614,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     if (_statsMode == 1) {
       listBody = ListView(
         children: _paymentPlanStats.map((s) {
+          final planLabel = (s.planCode ?? '').toLowerCase() == 'extra_seat'
+              ? 'مقاعد إضافية'
+              : s.planCode?.toUpperCase() ?? 'غير محدد';
           return NeuCard(
             margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
             padding: const EdgeInsets.all(12),
             child: ListTile(
-              title: Text(s.planCode?.toUpperCase() ?? 'غير محدد'),
+              title: Text(planLabel),
               subtitle: Text('المدفوعات: ${s.paymentsCount}'),
               trailing: Text(
                 '\$${s.totalAmount.toStringAsFixed(0)}',
@@ -2562,6 +2702,26 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
 
     return Column(
       children: [
+        NeuCard(
+          margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+          padding: const EdgeInsets.all(12),
+          child: ListTile(
+            leading: Icon(Icons.group_add_rounded, color: scheme.primary),
+            title: const Text('إجمالي دخل المقاعد الإضافية'),
+            subtitle: Text(
+              _loadingExtraSeatRevenue ? 'جاري التحميل...' : 'رسوم المقاعد الإضافية',
+            ),
+            trailing: Text(
+              _loadingExtraSeatRevenue
+                  ? '—'
+                  : '\$${_extraSeatRevenue.toStringAsFixed(0)}',
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                color: scheme.primary,
+              ),
+            ),
+          ),
+        ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           child: SingleChildScrollView(

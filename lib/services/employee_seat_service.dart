@@ -72,12 +72,16 @@ class EmployeeSeatService {
     return Map<String, dynamic>.from(rows.first as Map);
   }
 
-  Future<List<EmployeeSeatRequest>> fetchPendingSeatRequests() async {
-    const query = r'''
-      query PendingSeatRequests {
+  Future<List<EmployeeSeatRequest>> fetchSeatRequests({
+    List<String>? statuses,
+    int limit = 200,
+  }) async {
+    final hasFilter = statuses != null && statuses.isNotEmpty;
+    const queryAll = r'''
+      query SeatRequests($limit: Int!) {
         employee_seat_requests(
-          where: {status: {_eq: "submitted"}}
           order_by: {created_at: desc}
+          limit: $limit
         ) {
           id
           account_id
@@ -92,9 +96,34 @@ class EmployeeSeatService {
         }
       }
     ''';
+    const queryFiltered = r'''
+      query SeatRequests($statuses: [String!], $limit: Int!) {
+        employee_seat_requests(
+          where: {status: {_in: $statuses}}
+          order_by: {created_at: desc}
+          limit: $limit
+        ) {
+          id
+          account_id
+          requested_by_uid
+          employee_user_uid
+          employee_email
+          status
+          price_usd
+          receipt_file_id
+          admin_note
+          created_at
+        }
+      }
+    ''';
+    final vars = <String, dynamic>{'limit': limit};
+    if (hasFilter) {
+      vars['statuses'] = statuses;
+    }
     final res = await _gql.query(
       QueryOptions(
-        document: gql(query),
+        document: gql(hasFilter ? queryFiltered : queryAll),
+        variables: vars,
         fetchPolicy: FetchPolicy.noCache,
         context: _superAdminContext(),
       ),

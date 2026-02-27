@@ -70,76 +70,6 @@ const resolveAuthUrl = () => {
   return null;
 };
 
-async function createOrGetUser(email, password) {
-  const authUrl = resolveAuthUrl();
-  const adminSecret =
-    process.env.GRAPHQL_ADMIN_SECRET || process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
-  if (!authUrl || !adminSecret) {
-    throw new Error(
-      'Missing NHOST_AUTH_URL or GRAPHQL_ADMIN_SECRET',
-    );
-  }
-
-  const adminHeaders = {
-    'Content-Type': 'application/json',
-    'x-hasura-admin-secret': adminSecret,
-    Authorization: `Bearer ${adminSecret}`,
-  };
-
-  const createRes = await fetch(`${authUrl}/admin/users`, {
-    method: 'POST',
-    headers: adminHeaders,
-    body: JSON.stringify({
-      email,
-      password,
-      emailVerified: true,
-      active: true,
-    }),
-  });
-
-  if (createRes.status === 409) {
-    const listRes = await fetch(
-      `${authUrl}/admin/users?email=${encodeURIComponent(email)}`,
-      {
-        headers: adminHeaders,
-      },
-    );
-    if (!listRes.ok) {
-      throw new Error(`Auth lookup failed: ${listRes.status}`);
-    }
-    const listJson = await listRes.json();
-    const user = Array.isArray(listJson?.users) ? listJson.users[0] : null;
-    if (!user || !user.id) {
-      throw new Error('Auth user not found');
-    }
-    return { id: user.id, existed: true };
-  }
-
-  if (!createRes.ok) {
-    const txt = await createRes.text();
-    throw new Error(`Auth create failed: ${createRes.status} ${txt}`);
-  }
-  const json = await createRes.json();
-  if (!json?.id) {
-    throw new Error('Auth create returned no id');
-  }
-  return { id: json.id, existed: false };
-}
-
-async function deleteUser(userId) {
-  const authUrl = resolveAuthUrl();
-  const adminSecret =
-    process.env.GRAPHQL_ADMIN_SECRET || process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
-  if (!authUrl || !adminSecret || !userId) return;
-  await fetch(`${authUrl}/admin/users/${userId}`, {
-    method: 'DELETE',
-    headers: {
-      'x-hasura-admin-secret': adminSecret,
-      Authorization: `Bearer ${adminSecret}`,
-    },
-  });
-}
-
 async function ensureOwner(authHeader) {
   const gqlUrl = process.env.NHOST_GRAPHQL_URL;
   if (!gqlUrl) throw new Error('Missing NHOST_GRAPHQL_URL');
@@ -219,7 +149,6 @@ async function callOwnerRequestExtra(authHeader, email, password) {
 }
 
 module.exports = async function handler(req, res) {
-  let created = null;
   try {
     const body = await readBody(req);
     const authHeader = req.headers?.authorization;
@@ -236,13 +165,9 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    created = await createOrGetUser(email, password);
     const result = await callOwnerRequestExtra(authHeader, email, password);
     res.json(result);
   } catch (err) {
-    if (created && created.id && created.existed === false) {
-      await deleteUser(created.id);
-    }
     const code = err?.statusCode ?? 500;
     res.status(code).json({ ok: false, error: err?.message ?? 'Failed' });
   }
