@@ -68,6 +68,7 @@
 - "!include public_v_admin_dashboard_payments.yaml"
 - "!include public_v_admin_dashboard_pending_subscription_requests.yaml"
 - "!include public_v_admin_dashboard_revenue_monthly.yaml"
+- "!include public_v_admin_payment_stats_by_plan.yaml"
 - "!include public_v_admin_list_clinics.yaml"
 - "!include public_v_bool_result.yaml"
 - "!include public_v_chat_conversations_for_me.yaml"

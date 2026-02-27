@@ -195,7 +195,7 @@ class AdminBillingService {
   Future<Map<String, double>> fetchPlanRevenueTotals() async {
     const query = r'''
       query PlanRevenueTotals {
-        admin_payment_stats_by_plan {
+        v_admin_payment_stats_by_plan {
           plan_code
           total_amount
         }
@@ -209,7 +209,8 @@ class AdminBillingService {
       ),
     );
     if (res.hasException) throw res.exception!;
-    final rows = (res.data?['admin_payment_stats_by_plan'] as List?) ?? const [];
+    final rows =
+        (res.data?['v_admin_payment_stats_by_plan'] as List?) ?? const [];
     final map = <String, double>{};
     for (final row in rows.whereType<Map>()) {
       final code = row['plan_code']?.toString().toLowerCase().trim() ?? '';
