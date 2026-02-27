@@ -1,6 +1,7 @@
 // lib/screens/admin/admin_dashboard_screen.dart
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
@@ -130,6 +131,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   bool _loadingStats = false;
   bool _loadingExtraSeatRevenue = false;
   double _extraSeatRevenue = 0;
+  double _monthlySubRevenue = 0;
+  double _annualSubRevenue = 0;
+  late final PageController _revenueController =
+      PageController(viewportFraction: 0.78, initialPage: 1);
+  double _revenuePage = 1.0;
   List<PaymentPlanStat> _paymentPlanStats = [];
   List<PaymentTimeStat> _paymentMonthlyStats = [];
   List<PaymentTimeStat> _paymentDailyStats = [];
@@ -171,6 +177,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _revenueController.addListener(() {
+      final page = _revenueController.page;
+      if (page == null) return;
+      if (!mounted) return;
+      setState(() => _revenuePage = page);
+    });
 
     // حارس وصول: إن لم يكن المستخدم سوبر أدمن، لا يسمح بالبقاء هنا
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -233,6 +245,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   void dispose() {
     _pendingPollTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
+    _revenueController.dispose();
     _tabController.dispose();
     _clinicNameCtrl.dispose();
     _ownerEmailCtrl.dispose();
@@ -587,67 +600,92 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
 
   Future<void> _openProof(SubscriptionRequest req) async {
     final proofId = req.proofUrl ?? '';
-    if (proofId.isEmpty) {
-      _snack('لا يوجد إثبات دفع لهذا الطلب.');
-      return;
-    }
-    if (proofId.startsWith('http://') ||
-        proofId.startsWith('https://') ||
-        proofId.startsWith('data:')) {
-      final dataBytes = _decodeDataUrl(proofId);
-      if (dataBytes != null) {
-        _showProofDialogBytes(title: 'إثبات الدفع', bytes: dataBytes);
-      } else {
-        _showProofDialog(title: 'إثبات الدفع', url: proofId);
-      }
-      return;
-    }
-    final signed = await _storageService.createAdminSignedUrl(proofId);
-    if (signed == null || signed.trim().isEmpty) {
-      _snack('تعذر جلب رابط الإثبات.');
-      return;
-    }
-    final dataBytes = _decodeDataUrl(signed);
-    if (dataBytes != null) {
-      _showProofDialogBytes(title: 'إثبات الدفع', bytes: dataBytes);
-    } else {
-      _showProofDialog(
-        title: 'إثبات الدفع',
-        url: signed,
-      );
-    }
+    await _openStorageProof(
+      value: proofId,
+      title: 'إثبات الدفع',
+      emptyMessage: 'لا يوجد إثبات دفع لهذا الطلب.',
+    );
   }
 
   Future<void> _openSeatProof(String fileId) async {
-    if (fileId.isEmpty) {
-      _snack('لا يوجد وصل مرفق.');
+    await _openStorageProof(
+      value: fileId,
+      title: 'وصل الدفع',
+      emptyMessage: 'لا يوجد وصل مرفق.',
+    );
+  }
+
+  Future<void> _openStorageProof({
+    required String value,
+    required String title,
+    required String emptyMessage,
+  }) async {
+    final raw = value.trim();
+    if (raw.isEmpty) {
+      _snack(emptyMessage);
       return;
     }
-    if (fileId.startsWith('http://') ||
-        fileId.startsWith('https://') ||
-        fileId.startsWith('data:')) {
-      final dataBytes = _decodeDataUrl(fileId);
+
+    // 1) Data URL مباشرة
+    if (raw.startsWith('data:')) {
+      final dataBytes = _decodeDataUrl(raw);
       if (dataBytes != null) {
-        _showProofDialogBytes(title: 'وصل الدفع', bytes: dataBytes);
-      } else {
-        _showProofDialog(title: 'وصل الدفع', url: fileId);
+        _showProofDialogBytes(title: title, bytes: dataBytes);
+        return;
       }
-      return;
     }
-    final signed = await _storageService.createAdminSignedUrl(fileId);
-    if (signed == null || signed.trim().isEmpty) {
-      _snack('تعذر جلب رابط الوصل.');
-      return;
-    }
-    final dataBytes = _decodeDataUrl(signed);
-    if (dataBytes != null) {
-      _showProofDialogBytes(title: 'وصل الدفع', bytes: dataBytes);
+
+    String? signedUrl;
+    Uint8List? bytes;
+
+    // 2) storage://bucket/path
+    if (raw.startsWith('storage://')) {
+      final rest = raw.substring('storage://'.length);
+      final idx = rest.indexOf('/');
+      if (idx > 0 && idx < rest.length - 1) {
+        final bucket = rest.substring(0, idx);
+        final path = rest.substring(idx + 1);
+        signedUrl =
+            await _storageService.resolveSignedUrlForPath(bucket: bucket, path: path);
+      }
+    } else if (raw.startsWith('http://') || raw.startsWith('https://')) {
+      // 3) رابط مباشر (قد يحتوي fileId)
+      signedUrl = await _storageService.resolveSignedUrlFromUrl(raw) ?? raw;
     } else {
-      _showProofDialog(
-        title: 'وصل الدفع',
-        url: signed,
-      );
+      // 4) يفترض أنه fileId
+      signedUrl = await _storageService.createAdminSignedUrl(raw);
+      if (signedUrl == null || signedUrl.isEmpty) {
+        signedUrl = await _storageService.createSignedUrl(raw);
+      }
     }
+
+    if (signedUrl == null || signedUrl.isEmpty) {
+      // محاولة تحميل مباشر بالجلسة الحالية
+      final fileId = _storageService.extractFileIdFromUrl(raw) ??
+          (_looksLikeUuid(raw) ? raw : null);
+      if (fileId != null) {
+        try {
+          bytes = Uint8List.fromList(await _storageService.downloadFile(fileId));
+        } catch (_) {}
+      }
+    }
+
+    if (bytes != null) {
+      _showProofDialogBytes(title: title, bytes: bytes);
+      return;
+    }
+    if (signedUrl != null && signedUrl.isNotEmpty) {
+      _showProofDialog(title: title, url: signedUrl);
+      return;
+    }
+    _snack('تعذر عرض الصورة.');
+  }
+
+  bool _looksLikeUuid(String v) {
+    final re = RegExp(
+      r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+    );
+    return re.hasMatch(v.trim());
   }
 
   void _showProofDialog({
@@ -834,10 +872,18 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   Future<void> _fetchExtraSeatRevenue() async {
     try {
       setState(() => _loadingExtraSeatRevenue = true);
-      final value = await _billingService.fetchExtraSeatRevenue();
+      final totals = await _billingService.fetchPlanRevenueTotals();
+      final monthly = _pickPlanRevenue(totals, (code) => code.contains('month'));
+      final annual = _pickPlanRevenue(
+        totals,
+        (code) => code.contains('year') || code.contains('annual'),
+      );
+      final extra = totals['extra_seat'] ?? 0.0;
       if (!mounted) return;
       setState(() {
-        _extraSeatRevenue = value;
+        _monthlySubRevenue = monthly;
+        _annualSubRevenue = annual;
+        _extraSeatRevenue = extra;
         _loadingExtraSeatRevenue = false;
       });
     } catch (e) {
@@ -845,6 +891,17 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       setState(() => _loadingExtraSeatRevenue = false);
       _snack('تعذّر تحميل دخل المقاعد الإضافية: $e');
     }
+  }
+
+  double _pickPlanRevenue(
+    Map<String, double> totals,
+    bool Function(String code) test,
+  ) {
+    double sum = 0.0;
+    for (final entry in totals.entries) {
+      if (test(entry.key)) sum += entry.value;
+    }
+    return sum;
   }
 
   Future<void> _fetchSeatPrice() async {
@@ -1534,7 +1591,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                 ],
               ),
               const SizedBox(height: 6),
-              Row(
+              Wrap(
+                spacing: 10,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   Text(
                     'الحالة: $statusText',
@@ -1543,7 +1603,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                       fontWeight: FontWeight.w700,
                     ),
                   ),
-                  const SizedBox(width: 10),
                   if (!account.hasUser)
                     Text(
                       'غير مرتبط بحساب بعد',
@@ -2604,7 +2663,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         _paymentPlanStats.isNotEmpty ||
         _paymentMonthlyStats.isNotEmpty ||
         _paymentDailyStats.isNotEmpty;
-    if (!hasAny && !_loadingExtraSeatRevenue && _extraSeatRevenue <= 0) {
+    if (!hasAny &&
+        !_loadingExtraSeatRevenue &&
+        _extraSeatRevenue <= 0 &&
+        _monthlySubRevenue <= 0 &&
+        _annualSubRevenue <= 0) {
       return const Center(child: Text('لا توجد بيانات مالية بعد'));
     }
 
@@ -2702,26 +2765,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
 
     return Column(
       children: [
-        NeuCard(
-          margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-          padding: const EdgeInsets.all(12),
-          child: ListTile(
-            leading: Icon(Icons.group_add_rounded, color: scheme.primary),
-            title: const Text('إجمالي دخل المقاعد الإضافية'),
-            subtitle: Text(
-              _loadingExtraSeatRevenue ? 'جاري التحميل...' : 'رسوم المقاعد الإضافية',
-            ),
-            trailing: Text(
-              _loadingExtraSeatRevenue
-                  ? '—'
-                  : '\$${_extraSeatRevenue.toStringAsFixed(0)}',
-              style: TextStyle(
-                fontWeight: FontWeight.w800,
-                color: scheme.primary,
-              ),
-            ),
-          ),
-        ),
+        _buildRevenueCarousel(scheme),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           child: SingleChildScrollView(
@@ -2748,6 +2792,142 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         const SizedBox(height: 6),
         Expanded(child: listBody),
       ],
+    );
+  }
+
+  Widget _buildRevenueCarousel(ColorScheme scheme) {
+    final items = <_RevenueCardData>[
+      _RevenueCardData(
+        title: 'إجمالي دخل الاشتراكات السنوية',
+        subtitle: 'الاشتراكات السنوية',
+        amount: _annualSubRevenue,
+        icon: Icons.auto_awesome_rounded,
+        gradient: [
+          const Color(0xFF0B6E99),
+          const Color(0xFF2BB2A0),
+        ],
+      ),
+      _RevenueCardData(
+        title: 'إجمالي دخل الاشتراكات الشهرية',
+        subtitle: 'الاشتراكات الشهرية',
+        amount: _monthlySubRevenue,
+        icon: Icons.calendar_month_rounded,
+        gradient: [
+          const Color(0xFF1C4FB6),
+          const Color(0xFF6A8CFF),
+        ],
+      ),
+      _RevenueCardData(
+        title: 'إجمالي دخل المقاعد الإضافية',
+        subtitle: 'رسوم المقاعد الإضافية',
+        amount: _extraSeatRevenue,
+        icon: Icons.group_add_rounded,
+        gradient: [
+          const Color(0xFF7A3E9D),
+          const Color(0xFFB062C7),
+        ],
+      ),
+    ];
+
+    return SizedBox(
+      height: 150,
+      child: PageView.builder(
+        controller: _revenueController,
+        itemCount: items.length,
+        itemBuilder: (context, index) {
+          final item = items[index];
+          final delta = (index - _revenuePage).clamp(-1.0, 1.0);
+          final scale = 0.92 + (1 - delta.abs()) * 0.08;
+          final tilt = delta * 0.10;
+          return AnimatedBuilder(
+            animation: _revenueController,
+            builder: (context, child) {
+              return Transform(
+                alignment: Alignment.center,
+                transform: Matrix4.identity()
+                  ..setEntry(3, 2, 0.001)
+                  ..rotateY(tilt)
+                  ..scale(scale),
+                child: child,
+              );
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(18),
+                  gradient: LinearGradient(
+                    colors: item.gradient,
+                    begin: Alignment.topRight,
+                    end: Alignment.bottomLeft,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: item.gradient.first.withValues(alpha: 0.35),
+                      blurRadius: 20,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.12),
+                      width: 1,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.18),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Icon(item.icon, color: Colors.white),
+                          ),
+                          const Spacer(),
+                          Text(
+                            _loadingExtraSeatRevenue ? '—' : '\$${item.amount.toStringAsFixed(0)}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 18,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        item.title,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _loadingExtraSeatRevenue ? 'جاري التحميل...' : item.subtitle,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.85),
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -3047,4 +3227,20 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       ),
     );
   }
+}
+
+class _RevenueCardData {
+  final String title;
+  final String subtitle;
+  final double amount;
+  final IconData icon;
+  final List<Color> gradient;
+
+  const _RevenueCardData({
+    required this.title,
+    required this.subtitle,
+    required this.amount,
+    required this.icon,
+    required this.gradient,
+  });
 }

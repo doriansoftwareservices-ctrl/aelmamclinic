@@ -188,14 +188,16 @@ class AdminBillingService {
   }
 
   Future<double> fetchExtraSeatRevenue() async {
+    final totals = await fetchPlanRevenueTotals();
+    return totals['extra_seat'] ?? 0.0;
+  }
+
+  Future<Map<String, double>> fetchPlanRevenueTotals() async {
     const query = r'''
-      query ExtraSeatRevenue {
-        employee_seat_payments_aggregate {
-          aggregate {
-            sum {
-              amount
-            }
-          }
+      query PlanRevenueTotals {
+        admin_payment_stats_by_plan {
+          plan_code
+          total_amount
         }
       }
     ''';
@@ -207,11 +209,16 @@ class AdminBillingService {
       ),
     );
     if (res.hasException) throw res.exception!;
-    final sum =
-        res.data?['employee_seat_payments_aggregate']?['aggregate']?['sum']
-            ?['amount'];
-    if (sum == null) return 0.0;
-    return double.tryParse(sum.toString()) ?? 0.0;
+    final rows = (res.data?['admin_payment_stats_by_plan'] as List?) ?? const [];
+    final map = <String, double>{};
+    for (final row in rows.whereType<Map>()) {
+      final code = row['plan_code']?.toString().toLowerCase().trim() ?? '';
+      if (code.isEmpty) continue;
+      final amount = row['total_amount'];
+      final value = amount == null ? 0.0 : double.tryParse(amount.toString()) ?? 0.0;
+      map[code] = value;
+    }
+    return map;
   }
 
   Future<void> createPaymentMethod({
