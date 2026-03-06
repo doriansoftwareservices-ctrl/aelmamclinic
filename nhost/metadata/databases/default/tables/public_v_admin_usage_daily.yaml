@@ -1,0 +1,11 @@
+table:
+  name: v_admin_usage_daily
+  schema: public
+select_permissions:
+  - role: superadmin
+    permission:
+      columns:
+        - day
+        - messages
+        - attachments
+      filter: {}

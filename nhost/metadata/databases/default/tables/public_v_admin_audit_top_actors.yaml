@@ -1,0 +1,12 @@
+table:
+  name: v_admin_audit_top_actors
+  schema: public
+select_permissions:
+  - role: superadmin
+    permission:
+      columns:
+        - actor_uid
+        - actor_email
+        - events
+        - last_at
+      filter: {}

@@ -99,6 +99,19 @@ select_permissions:
                     _eq: false
                 - is_deleted:
                     _is_null: true
+  - role: support
+    permission:
+      columns: '*'
+      filter:
+        chat_participants:
+          _and:
+            - user_uid:
+                _eq: X-Hasura-User-Id
+            - _or:
+                - is_deleted:
+                    _eq: false
+                - is_deleted:
+                    _is_null: true
   - role: me
     permission:
       columns: '*'

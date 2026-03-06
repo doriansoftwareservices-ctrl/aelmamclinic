@@ -7,6 +7,9 @@ configuration:
   exposed_as: query
   session_argument: hasura_session
 permissions:
+  - role: employee
+  - role: owner
+  - role: support
   - role: me
   - role: user
   - role: superadmin

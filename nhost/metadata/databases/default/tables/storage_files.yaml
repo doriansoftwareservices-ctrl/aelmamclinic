@@ -64,7 +64,9 @@ insert_permissions:
       check:
         _and:
           - bucket_id:
-              _eq: subscription-proofs
+              _in:
+                - subscription-proofs
+                - chat-images
           - _exists:
               _table:
                 name: account_users
@@ -86,7 +88,9 @@ insert_permissions:
       check:
         _and:
           - bucket_id:
-              _eq: subscription-proofs
+              _in:
+                - subscription-proofs
+                - chat-images
           - _exists:
               _table:
                 name: account_users
@@ -108,7 +112,9 @@ insert_permissions:
       check:
         _and:
           - bucket_id:
-              _eq: subscription-proofs
+              _in:
+                - subscription-proofs
+                - chat-images
           - _exists:
               _table:
                 name: account_users
@@ -134,7 +140,9 @@ insert_permissions:
       check:
         _and:
           - bucket_id:
-              _eq: subscription-proofs
+              _in:
+                - subscription-proofs
+                - chat-images
           - _exists:
               _table:
                 name: account_users
@@ -156,53 +164,65 @@ select_permissions:
     permission:
       columns: '*'
       filter:
-        _and:
-          - bucket_id:
-              _eq: subscription-proofs
-          - _or:
-              - uploaded_by_user_id:
-                  _eq: X-Hasura-User-Id
-              - _exists:
-                  _table:
-                    name: super_admins
-                    schema: public
-                  _where:
-                    user_uid:
+        _or:
+          - _and:
+              - bucket_id:
+                  _eq: subscription-proofs
+              - _or:
+                  - uploaded_by_user_id:
                       _eq: X-Hasura-User-Id
+                  - _exists:
+                      _table:
+                        name: super_admins
+                        schema: public
+                      _where:
+                        user_uid:
+                          _eq: X-Hasura-User-Id
+          - _and:
+              - bucket_id:
+                  _eq: chat-images
   - role: me
     permission:
       columns: '*'
       filter:
-        _and:
-          - bucket_id:
-              _eq: subscription-proofs
-          - _or:
-              - uploaded_by_user_id:
-                  _eq: X-Hasura-User-Id
-              - _exists:
-                  _table:
-                    name: super_admins
-                    schema: public
-                  _where:
-                    user_uid:
+        _or:
+          - _and:
+              - bucket_id:
+                  _eq: subscription-proofs
+              - _or:
+                  - uploaded_by_user_id:
                       _eq: X-Hasura-User-Id
+                  - _exists:
+                      _table:
+                        name: super_admins
+                        schema: public
+                      _where:
+                        user_uid:
+                          _eq: X-Hasura-User-Id
+          - _and:
+              - bucket_id:
+                  _eq: chat-images
   - role: owner
     permission:
       columns: '*'
       filter:
-        _and:
-          - bucket_id:
-              _eq: subscription-proofs
-          - _or:
-              - uploaded_by_user_id:
-                  _eq: X-Hasura-User-Id
-              - _exists:
-                  _table:
-                    name: super_admins
-                    schema: public
-                  _where:
-                    user_uid:
+        _or:
+          - _and:
+              - bucket_id:
+                  _eq: subscription-proofs
+              - _or:
+                  - uploaded_by_user_id:
                       _eq: X-Hasura-User-Id
+                  - _exists:
+                      _table:
+                        name: super_admins
+                        schema: public
+                      _where:
+                        user_uid:
+                          _eq: X-Hasura-User-Id
+          - _and:
+              - bucket_id:
+                  _eq: chat-images
   - role: superadmin
     permission:
       columns: '*'
@@ -211,19 +231,23 @@ select_permissions:
     permission:
       columns: '*'
       filter:
-        _and:
-          - bucket_id:
-              _eq: subscription-proofs
-          - _or:
-              - uploaded_by_user_id:
-                  _eq: X-Hasura-User-Id
-              - _exists:
-                  _table:
-                    name: super_admins
-                    schema: public
-                  _where:
-                    user_uid:
+        _or:
+          - _and:
+              - bucket_id:
+                  _eq: subscription-proofs
+              - _or:
+                  - uploaded_by_user_id:
                       _eq: X-Hasura-User-Id
+                  - _exists:
+                      _table:
+                        name: super_admins
+                        schema: public
+                      _where:
+                        user_uid:
+                          _eq: X-Hasura-User-Id
+          - _and:
+              - bucket_id:
+                  _eq: chat-images
 update_permissions:
   - role: employee
     permission:

@@ -1,0 +1,1 @@
+-- No-op: previous definitions are superseded in up.sql

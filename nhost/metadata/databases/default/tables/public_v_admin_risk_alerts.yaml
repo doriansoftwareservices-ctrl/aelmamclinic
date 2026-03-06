@@ -1,0 +1,13 @@
+table:
+  name: v_admin_risk_alerts
+  schema: public
+select_permissions:
+  - role: superadmin
+    permission:
+      columns:
+        - code
+        - severity
+        - title
+        - count
+        - hint
+      filter: {}

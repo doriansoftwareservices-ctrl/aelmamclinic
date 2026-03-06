@@ -8,6 +8,12 @@ insert_permissions:
         owner_uid:
           _eq: X-Hasura-User-Id
       columns: '*'
+  - role: support
+    permission:
+      check:
+        owner_uid:
+          _eq: X-Hasura-User-Id
+      columns: '*'
   - role: superadmin
     permission:
       check: {}
@@ -20,6 +26,12 @@ insert_permissions:
       columns: '*'
 select_permissions:
   - role: me
+    permission:
+      columns: '*'
+      filter:
+        owner_uid:
+          _eq: X-Hasura-User-Id
+  - role: support
     permission:
       columns: '*'
       filter:
@@ -45,6 +57,15 @@ update_permissions:
       check:
         owner_uid:
           _eq: X-Hasura-User-Id
+  - role: support
+    permission:
+      columns: '*'
+      filter:
+        owner_uid:
+          _eq: X-Hasura-User-Id
+      check:
+        owner_uid:
+          _eq: X-Hasura-User-Id
   - role: superadmin
     permission:
       columns: '*'
@@ -61,6 +82,11 @@ update_permissions:
           _eq: X-Hasura-User-Id
 delete_permissions:
   - role: me
+    permission:
+      filter:
+        owner_uid:
+          _eq: X-Hasura-User-Id
+  - role: support
     permission:
       filter:
         owner_uid:

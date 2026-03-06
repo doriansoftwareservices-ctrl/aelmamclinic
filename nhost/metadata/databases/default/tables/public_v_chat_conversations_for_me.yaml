@@ -18,6 +18,10 @@ select_permissions:
     permission:
       columns: '*'
       filter: {}
+  - role: support
+    permission:
+      columns: '*'
+      filter: {}
   - role: user
     permission:
       columns: '*'

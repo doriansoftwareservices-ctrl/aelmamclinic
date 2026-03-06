@@ -1,0 +1,12 @@
+table:
+  name: v_admin_audit_activity_daily
+  schema: public
+select_permissions:
+  - role: superadmin
+    permission:
+      columns:
+        - day
+        - table_name
+        - op
+        - events
+      filter: {}

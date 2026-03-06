@@ -1,0 +1,12 @@
+table:
+  name: v_admin_system_health
+  schema: public
+select_permissions:
+  - role: superadmin
+    permission:
+      columns:
+        - storage_files
+        - chat_attachments
+        - pending_subscriptions
+        - server_time
+      filter: {}

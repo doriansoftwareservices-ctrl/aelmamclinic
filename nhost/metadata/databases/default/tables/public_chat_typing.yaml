@@ -17,6 +17,21 @@ insert_permissions:
         user_uid:
           _eq: X-Hasura-User-Id
       columns: '*'
+  - role: support
+    permission:
+      check:
+        _exists:
+          _table:
+            name: chat_participants
+            schema: public
+          _where:
+            conversation_id:
+              _ceq: conversation_id
+            user_uid:
+              _eq: X-Hasura-User-Id
+        user_uid:
+          _eq: X-Hasura-User-Id
+      columns: '*'
   - role: superadmin
     permission:
       check: {}
@@ -38,6 +53,19 @@ insert_permissions:
       columns: '*'
 select_permissions:
   - role: employee
+    permission:
+      columns: '*'
+      filter:
+        _exists:
+          _table:
+            name: chat_participants
+            schema: public
+          _where:
+            conversation_id:
+              _ceq: conversation_id
+            user_uid:
+              _eq: X-Hasura-User-Id
+  - role: support
     permission:
       columns: '*'
       filter:
@@ -103,6 +131,15 @@ update_permissions:
       check:
         user_uid:
           _eq: X-Hasura-User-Id
+  - role: support
+    permission:
+      columns: '*'
+      filter:
+        user_uid:
+          _eq: X-Hasura-User-Id
+      check:
+        user_uid:
+          _eq: X-Hasura-User-Id
   - role: superadmin
     permission:
       columns: '*'
@@ -119,6 +156,11 @@ update_permissions:
           _eq: X-Hasura-User-Id
 delete_permissions:
   - role: me
+    permission:
+      filter:
+        user_uid:
+          _eq: X-Hasura-User-Id
+  - role: support
     permission:
       filter:
         user_uid:

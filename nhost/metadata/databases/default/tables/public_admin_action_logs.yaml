@@ -1,0 +1,16 @@
+table:
+  name: admin_action_logs
+  schema: public
+select_permissions:
+  - role: superadmin
+    permission:
+      columns:
+        - id
+        - actor_uid
+        - actor_email
+        - action
+        - entity_type
+        - entity_id
+        - details
+        - created_at
+      filter: {}

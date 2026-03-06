@@ -55,6 +55,7 @@ select_permissions:
         id:
           _in:
             - chat-attachments
+            - chat-images
             - subscription-proofs
   - role: me
     permission:
@@ -63,6 +64,7 @@ select_permissions:
         id:
           _in:
             - chat-attachments
+            - chat-images
             - subscription-proofs
   - role: owner
     permission:
@@ -71,6 +73,7 @@ select_permissions:
         id:
           _in:
             - chat-attachments
+            - chat-images
             - subscription-proofs
   - role: superadmin
     permission:
@@ -83,4 +86,5 @@ select_permissions:
         id:
           _in:
             - chat-attachments
+            - chat-images
             - subscription-proofs

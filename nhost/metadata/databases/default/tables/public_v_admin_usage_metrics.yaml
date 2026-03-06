@@ -1,0 +1,15 @@
+table:
+  name: v_admin_usage_metrics
+  schema: public
+select_permissions:
+  - role: superadmin
+    permission:
+      columns:
+        - accounts
+        - account_users
+        - chat_messages_30d
+        - chat_attachments
+        - audit_events_7d
+        - active_users_30d
+        - server_time
+      filter: {}
