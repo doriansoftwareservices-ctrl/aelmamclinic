@@ -127,8 +127,6 @@ module.exports = async (req, res) => {
     );
 
     const form = new _FormData();
-    form.append('bucketId', bucketId);
-
     const meta = {
       name: filename,
       bucketId,
