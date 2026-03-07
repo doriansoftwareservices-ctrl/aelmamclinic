@@ -120,16 +120,14 @@ module.exports = async (req, res) => {
     }
 
     const buf = Buffer.from(base64, 'base64');
-    const fileObj = new _File(
-      [buf],
-      safeBasename(filename),
-      { type: mimeType || 'application/octet-stream' },
-    );
+    const fileBlob = new _Blob([buf], {
+      type: mimeType || 'application/octet-stream',
+    });
 
     const form = new _FormData();
+    form.append('bucketId', bucketId);
     const meta = {
       name: filename,
-      bucketId,
       metadata: {
         ...metadata,
         conversation_id: metadata.conversation_id || conversationId,
@@ -138,7 +136,7 @@ module.exports = async (req, res) => {
       },
     };
     form.append('metadata', JSON.stringify(meta));
-    form.append('file', fileObj);
+    form.append('file', fileBlob, safeBasename(filename));
 
     const upRes = await _fetch(`${storageUrl}/files`, {
       method: 'POST',
