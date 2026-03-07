@@ -98,18 +98,13 @@ module.exports = async (req, res) => {
     }
 
     const storageUrl = resolveStorageUrl();
-    const secret = adminSecret();
-    if (!storageUrl || !secret) {
+    if (!storageUrl) {
       return res
         .status(500)
-        .json({ error: 'internal', message: 'missing storage/admin secret' });
+        .json({ error: 'internal', message: 'missing storage url' });
     }
 
     const buf = Buffer.from(base64, 'base64');
-    const fields = {
-      'bucket-id': bucketId,
-      bucketId,
-    };
     const meta = {
       name: filename,
       bucketId,
@@ -121,27 +116,23 @@ module.exports = async (req, res) => {
       },
     };
     const metaJson = JSON.stringify(meta);
-    const extraFiles = [
-      {
-        name: 'metadata[]',
-        filename: '',
-        contentType: 'application/json',
-        buffer: Buffer.from(metaJson, 'utf8'),
-      },
-    ];
+    const fields = {
+      'bucket-id': bucketId,
+      bucketId,
+      'metadata[]': metaJson,
+    };
     const multipart = buildMultipart({
       fieldName: 'file[]',
       filename: safeBasename(filename),
       contentType: mimeType || 'application/octet-stream',
       buffer: buf,
       fields,
-      extraFiles,
     });
 
     const uploadResp = await postMultipart(
       `${storageUrl}/files`,
       {
-        'x-hasura-admin-secret': secret,
+        Authorization: `Bearer ${token}`,
         ...multipart.headers,
       },
       multipart.body,

@@ -74,10 +74,6 @@ insert_permissions:
               _where:
                 disabled:
                   _eq: false
-                role:
-                  _in:
-                    - owner
-                    - admin
                 user_uid:
                   _eq: X-Hasura-User-Id
       set:
@@ -98,10 +94,6 @@ insert_permissions:
               _where:
                 disabled:
                   _eq: false
-                role:
-                  _in:
-                    - owner
-                    - admin
                 user_uid:
                   _eq: X-Hasura-User-Id
       set:
@@ -122,10 +114,6 @@ insert_permissions:
               _where:
                 disabled:
                   _eq: false
-                role:
-                  _in:
-                    - owner
-                    - admin
                 user_uid:
                   _eq: X-Hasura-User-Id
       set:
@@ -150,10 +138,6 @@ insert_permissions:
               _where:
                 disabled:
                   _eq: false
-                role:
-                  _in:
-                    - owner
-                    - admin
                 user_uid:
                   _eq: X-Hasura-User-Id
       set:
