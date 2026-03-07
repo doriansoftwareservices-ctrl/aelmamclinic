@@ -154,8 +154,13 @@ module.exports = async (req, res) => {
       try {
         parsed = JSON.parse(txt);
       } catch (_) {}
+      const details =
+        typeof parsed === 'string'
+          ? parsed
+          : JSON.stringify(parsed ?? txt);
       return res.status(upRes.status).json({
         error: 'storage-upload-failed',
+        message: `status=${upRes.status} body=${details}`,
         status: upRes.status,
         body: parsed ?? txt,
       });
