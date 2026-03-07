@@ -48,7 +48,7 @@ module.exports = async (req, res) => {
     const bucketId = `${pick(
       body,
       ['bucketId', 'bucket_id', 'bucket'],
-      'chat-attachments',
+      'chat-images',
     )}`.trim();
     const mimeType = `${pick(
       body,
@@ -126,6 +126,7 @@ module.exports = async (req, res) => {
 
     const form = new _FormData();
     form.append('bucketId', bucketId);
+    form.append('bucket-id', bucketId); // compatibility
     const meta = {
       name: filename,
       bucketId,
@@ -136,11 +137,8 @@ module.exports = async (req, res) => {
         uploaded_by_user_id: uid,
       },
     };
-    const metaBlob = new _Blob([JSON.stringify(meta)], {
-      type: 'application/json',
-    });
-    form.append('metadata', metaBlob);
-    form.append('file', fileBlob, safeBasename(filename));
+    form.append('metadata[]', JSON.stringify(meta));
+    form.append('file[]', fileBlob, safeBasename(filename));
 
     const upRes = await _fetch(`${storageUrl}/files`, {
       method: 'POST',

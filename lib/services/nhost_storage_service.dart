@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:nhost_storage_dart/nhost_storage_dart.dart';
 import 'package:http_parser/http_parser.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import 'package:path/path.dart' as p;
 
 import '../core/constants.dart';
 import '../core/nhost_config.dart';
@@ -165,16 +166,22 @@ class NhostStorageService {
     String? mimeType,
     Map<String, dynamic>? metadata,
   }) async {
-    final bucket = bucketId?.trim();
+    final isChat = _isChatAttachmentUpload(metadata);
+    final bucket = (bucketId == null || bucketId.trim().isEmpty)
+        ? (isChat ? AppConstants.chatBucketName : null)
+        : bucketId.trim();
     final filename = (name == null || name.trim().isEmpty)
         ? file.uri.pathSegments.last
         : name.trim();
+    final safeMultipartFilename = p.basename(filename).trim().isEmpty
+        ? 'file.bin'
+        : p.basename(filename);
     try {
       // Prefer SDK first; fallback to REST only on auth/transport errors.
       final bytes = await file.readAsBytes();
       final fileData = FileData(
         Uint8List.fromList(bytes),
-        filename: filename,
+        filename: safeMultipartFilename,
         contentType: mimeType,
       );
       final meta = UploadFileMetadata(name: filename);
@@ -199,7 +206,38 @@ class NhostStorageService {
       _logBucketMismatch(res, bucket);
       return res;
     } catch (e) {
+      // ignore: avoid_print
+      print('[STORAGE] SDK upload failed -> fallback REST. err=$e');
+      final isChatBucket = _isFunctionUploadBucket(bucket);
+      if (isChat && isChatBucket) {
+        try {
+          final res = await _uploadFileViaFunction(
+            file: file,
+            filename: filename,
+            bucketId: bucket,
+            mimeType: mimeType,
+            metadata: metadata,
+          );
+          _logBucketMismatch(res, bucket);
+          return res;
+        } catch (fnError) {
+          // ignore: avoid_print
+          print('[STORAGE] function upload failed: $fnError');
+          throw HttpException('Upload failed: $fnError');
+        }
+      }
       try {
+        if (_shouldRetryWithFunction(e) && isChatBucket) {
+          final res = await _uploadFileViaFunction(
+            file: file,
+            filename: filename,
+            bucketId: bucket,
+            mimeType: mimeType,
+            metadata: metadata,
+          );
+          _logBucketMismatch(res, bucket);
+          return res;
+        }
         final res = await _uploadFileViaRest(
           file: file,
           filename: filename,
@@ -210,9 +248,7 @@ class NhostStorageService {
         _logBucketMismatch(res, bucket);
         return res;
       } catch (restError) {
-        if (_shouldRetryWithFunction(restError) &&
-            _isFunctionUploadBucket(bucket) &&
-            !_isChatAttachmentUpload(metadata)) {
+        if (_shouldRetryWithFunction(restError) && isChatBucket) {
           final res = await _uploadFileViaFunction(
             file: file,
             filename: filename,
@@ -284,33 +320,19 @@ class NhostStorageService {
     request.headers.addAll(headers);
 
     final bucket = bucketId?.trim();
-    if (bucket != null && bucket.isNotEmpty) {
-      // Nhost accepts bucketId in multipart form. Keep bucket-id for backward compatibility.
-      request.fields['bucketId'] = bucket;
-      request.fields['bucket-id'] = bucket;
-    }
+    final safeMultipartFilename = p.basename(filename).trim().isNotEmpty
+        ? p.basename(filename)
+        : 'file.bin';
 
     final bytes = await file.readAsBytes();
     final contentType = (mimeType == null || mimeType.trim().isEmpty)
         ? null
         : MediaType.parse(mimeType);
-    // Send both single and array-style parts to maximize compatibility.
-    request.files.add(
-      http.MultipartFile.fromBytes(
-        'file',
-        bytes,
-        filename: filename,
-        contentType: contentType,
-      ),
-    );
-    request.files.add(
-      http.MultipartFile.fromBytes(
-        'file[]',
-        bytes,
-        filename: filename,
-        contentType: contentType,
-      ),
-    );
+
+    if (bucket != null && bucket.isNotEmpty) {
+      request.fields['bucketId'] = bucket;
+      request.fields['bucket-id'] = bucket; // compatibility
+    }
 
     final meta = <String, dynamic>{'name': filename};
     if (metadata != null && metadata.isNotEmpty) {
@@ -318,22 +340,16 @@ class NhostStorageService {
     }
     if (bucket != null && bucket.isNotEmpty) {
       meta['bucketId'] = bucket;
-      meta['bucket_id'] = bucket;
     }
+
+    request.fields['metadata[]'] = jsonEncode(meta);
+
     request.files.add(
       http.MultipartFile.fromBytes(
-        'metadata',
-        utf8.encode(jsonEncode(meta)),
-        filename: '',
-        contentType: MediaType('application', 'json'),
-      ),
-    );
-    request.files.add(
-      http.MultipartFile.fromBytes(
-        'metadata[]',
-        utf8.encode(jsonEncode(meta)),
-        filename: '',
-        contentType: MediaType('application', 'json'),
+        'file[]',
+        bytes,
+        filename: safeMultipartFilename,
+        contentType: contentType,
       ),
     );
 

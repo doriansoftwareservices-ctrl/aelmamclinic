@@ -261,6 +261,11 @@ update_permissions:
                   _eq: X-Hasura-User-Id
           - _and:
               - bucket_id:
+                  _eq: chat-images
+              - uploaded_by_user_id:
+                  _eq: X-Hasura-User-Id
+          - _and:
+              - bucket_id:
                   _eq: subscription-proofs
               - uploaded_by_user_id:
                   _eq: X-Hasura-User-Id
@@ -282,6 +287,11 @@ update_permissions:
           - _and:
               - bucket_id:
                   _eq: chat-attachments
+              - uploaded_by_user_id:
+                  _eq: X-Hasura-User-Id
+          - _and:
+              - bucket_id:
+                  _eq: chat-images
               - uploaded_by_user_id:
                   _eq: X-Hasura-User-Id
           - _and:
@@ -314,6 +324,11 @@ update_permissions:
                   _eq: X-Hasura-User-Id
           - _and:
               - bucket_id:
+                  _eq: chat-images
+              - uploaded_by_user_id:
+                  _eq: X-Hasura-User-Id
+          - _and:
+              - bucket_id:
                   _eq: subscription-proofs
               - uploaded_by_user_id:
                   _eq: X-Hasura-User-Id
@@ -335,6 +350,11 @@ update_permissions:
           - _and:
               - bucket_id:
                   _eq: chat-attachments
+              - uploaded_by_user_id:
+                  _eq: X-Hasura-User-Id
+          - _and:
+              - bucket_id:
+                  _eq: chat-images
               - uploaded_by_user_id:
                   _eq: X-Hasura-User-Id
           - _and:
@@ -367,6 +387,11 @@ update_permissions:
                   _eq: X-Hasura-User-Id
           - _and:
               - bucket_id:
+                  _eq: chat-images
+              - uploaded_by_user_id:
+                  _eq: X-Hasura-User-Id
+          - _and:
+              - bucket_id:
                   _eq: subscription-proofs
               - uploaded_by_user_id:
                   _eq: X-Hasura-User-Id
@@ -388,6 +413,11 @@ update_permissions:
           - _and:
               - bucket_id:
                   _eq: chat-attachments
+              - uploaded_by_user_id:
+                  _eq: X-Hasura-User-Id
+          - _and:
+              - bucket_id:
+                  _eq: chat-images
               - uploaded_by_user_id:
                   _eq: X-Hasura-User-Id
           - _and:
@@ -425,6 +455,11 @@ update_permissions:
                   _eq: X-Hasura-User-Id
           - _and:
               - bucket_id:
+                  _eq: chat-images
+              - uploaded_by_user_id:
+                  _eq: X-Hasura-User-Id
+          - _and:
+              - bucket_id:
                   _eq: subscription-proofs
               - uploaded_by_user_id:
                   _eq: X-Hasura-User-Id
@@ -446,6 +481,11 @@ update_permissions:
           - _and:
               - bucket_id:
                   _eq: chat-attachments
+              - uploaded_by_user_id:
+                  _eq: X-Hasura-User-Id
+          - _and:
+              - bucket_id:
+                  _eq: chat-images
               - uploaded_by_user_id:
                   _eq: X-Hasura-User-Id
           - _and:
@@ -478,6 +518,11 @@ delete_permissions:
                   _eq: X-Hasura-User-Id
           - _and:
               - bucket_id:
+                  _eq: chat-images
+              - uploaded_by_user_id:
+                  _eq: X-Hasura-User-Id
+          - _and:
+              - bucket_id:
                   _eq: subscription-proofs
               - uploaded_by_user_id:
                   _eq: X-Hasura-User-Id
@@ -501,6 +546,11 @@ delete_permissions:
           - _and:
               - bucket_id:
                   _eq: chat-attachments
+              - uploaded_by_user_id:
+                  _eq: X-Hasura-User-Id
+          - _and:
+              - bucket_id:
+                  _eq: chat-images
               - uploaded_by_user_id:
                   _eq: X-Hasura-User-Id
           - _and:
@@ -532,6 +582,11 @@ delete_permissions:
                   _eq: X-Hasura-User-Id
           - _and:
               - bucket_id:
+                  _eq: chat-images
+              - uploaded_by_user_id:
+                  _eq: X-Hasura-User-Id
+          - _and:
+              - bucket_id:
                   _eq: subscription-proofs
               - uploaded_by_user_id:
                   _eq: X-Hasura-User-Id
@@ -558,6 +613,11 @@ delete_permissions:
           - _and:
               - bucket_id:
                   _eq: chat-attachments
+              - uploaded_by_user_id:
+                  _eq: X-Hasura-User-Id
+          - _and:
+              - bucket_id:
+                  _eq: chat-images
               - uploaded_by_user_id:
                   _eq: X-Hasura-User-Id
           - _and:

@@ -15,7 +15,7 @@ class ChatAttachmentRecord {
   // حقول قاعدة البيانات
   final String? id; // uuid (قد تكون null قبل الإدراج)
   final String messageId; // uuid
-  final String bucket; // افتراضيًا 'chat-attachments'
+  final String bucket; // افتراضيًا 'chat-images'
   final String path; // مسار داخل البكت
   final String mimeType; // مثل image/png
   final int sizeBytes; // الحجم بالبايت
