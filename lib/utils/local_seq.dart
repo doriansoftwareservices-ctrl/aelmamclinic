@@ -5,8 +5,12 @@
 // - يدعم مفاتيح/Scopes متعددة: عام، لكل محادثة، أو لكل (accountId, deviceId).
 // - مناسب لعمود local_id/localSeq ورسائل التفاؤل.
 
+import 'dart:io';
+
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
+
+import 'package:aelmamclinic/utils/app_paths.dart';
 
 class LocalSeq {
   LocalSeq._();
@@ -19,8 +23,10 @@ class LocalSeq {
 
   Future<Database> _open() async {
     if (_db != null) return _db!;
-    final dir = await getDatabasesPath();
-    final path = p.join(dir, _dbName);
+    final baseDir = (Platform.isWindows || Platform.isLinux || Platform.isMacOS)
+        ? (await AppPaths.dbRootDir()).path
+        : await getDatabasesPath();
+    final path = p.join(baseDir, _dbName);
     _db = await openDatabase(
       path,
       version: 1,

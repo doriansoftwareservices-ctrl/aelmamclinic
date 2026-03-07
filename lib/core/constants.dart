@@ -23,12 +23,12 @@ class AppConstants {
 
   static bool _overridesLoaded = false;
 
-  /// Loads runtime overrides for Nhost configuration from the platform
-  /// data directory (e.g. `C:\aelmam_clinic\config.json` on Windows).
+  /// Loads runtime overrides for Nhost configuration from the app bundle
+  /// (assets/config.json).
   ///
   /// The JSON file supports the keys `nhostSubdomain`, `nhostRegion`,
   /// `nhostGraphqlUrl`, `nhostAuthUrl`, `nhostStorageUrl`, `nhostFunctionsUrl`,
-  /// and `resetPasswordRedirectUrl`.
+  /// `resetPasswordRedirectUrl`, and `rootSuperAdminEmail`.
   static Future<void> loadRuntimeOverrides() async {
     if (_overridesLoaded) {
       return;
@@ -70,6 +70,7 @@ class AppConstants {
       String? nhostStorageUrl,
       String? nhostFunctionsUrl,
       String? resetPasswordRedirectUrl,
+      String? rootSuperAdminEmail,
       String? source,
     }) overrides = result;
 
@@ -81,6 +82,7 @@ class AppConstants {
     final nhostStorageUrl = overrides.nhostStorageUrl;
     final nhostFunctionsUrl = overrides.nhostFunctionsUrl;
     final resetPasswordRedirectUrl = overrides.resetPasswordRedirectUrl;
+    final rootSuperAdminEmail = overrides.rootSuperAdminEmail;
 
     NhostConfig.applyOverrides(
       subdomain: nhostSubdomain,
@@ -90,6 +92,7 @@ class AppConstants {
       storageUrl: nhostStorageUrl,
       functionsUrl: nhostFunctionsUrl,
       resetPasswordRedirectUrl: resetPasswordRedirectUrl,
+      rootSuperAdminEmail: rootSuperAdminEmail,
     );
 
     if (source != null && source.isNotEmpty) {
@@ -101,11 +104,12 @@ class AppConstants {
   }
 
   // -------------------- مخازن محلية --------------------
-  static const String windowsDataDir = r'C:\aelmam_clinic';
-  static const String legacyWindowsDataDir = r'D:\aelmam_clinic';
-  static const String linuxDataDir = r'~/.aelmam_clinic';
+  // Deprecated: use AppPaths for resolved Windows paths.
+  static const String windowsDataDir = r'ElmamClinic';
+  static const String legacyWindowsDataDir = r'C:\aelmam_clinic';
+  static const String linuxDataDir = r'~/.ElmamClinic';
   static const String macOsDataDir =
-      r'~/Library/Application Support/aelmam_clinic';
+      r'~/Library/Application Support/ElmamClinic';
   static const String androidDataDir =
       r'/sdcard/Android/data/com.aelmam.clinic/files';
   static const String iosLogicalDataDir = r'Documents';
@@ -122,9 +126,9 @@ class AppConstants {
   static const bool activationGateEnabled = false;
 
   // -------------------- دردشة/تخزين --------------------
-  static const bool chatAllowAttachments = false;
+  static const bool chatAllowAttachments = true;
   static const bool chatAllowGroups = false;
-  static const String chatBucketName = 'chat-attachments';
+  static const String chatBucketName = 'chat-images';
   static const int storageSignedUrlTTLSeconds = 60 * 60; // 1 ساعة
   static const int chatPageSize = 30;
 

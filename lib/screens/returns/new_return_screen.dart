@@ -319,13 +319,6 @@ class _NewReturnScreenState extends State<NewReturnScreen> {
                       child: Column(
                         children: [
                           NeuField(
-                            controller: _remainingCtrl,
-                            labelText: 'المبلغ المتبقي عليه',
-                            keyboardType: const TextInputType.numberWithOptions(
-                                decimal: true, signed: false),
-                          ),
-                          const SizedBox(height: 10),
-                          NeuField(
                             controller: _notesCtrl,
                             labelText: 'ملاحظات',
                             maxLines: 3,

@@ -64,10 +64,24 @@ class _PaymentRequestScreenState extends State<PaymentRequestScreen> {
   }
 
   Future<void> _pickProof() async {
-    final result = await FilePicker.platform.pickFiles(allowMultiple: false);
+    final result = await FilePicker.platform.pickFiles(
+      allowMultiple: false,
+      type: FileType.image,
+    );
     if (result == null || result.files.isEmpty) return;
     final path = result.files.first.path;
     if (path == null || path.isEmpty) return;
+    final ext = (result.files.first.extension ?? '')
+        .toLowerCase()
+        .replaceAll('.', '');
+    const allowed = {'png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'};
+    if (ext.isNotEmpty && !allowed.contains(ext)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('يرجى اختيار صورة فقط.')),
+      );
+      return;
+    }
     setState(() => _proofFile = File(path));
   }
 

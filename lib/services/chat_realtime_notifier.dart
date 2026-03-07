@@ -36,6 +36,8 @@ class ChatRealtimeNotifier {
   final Set<String> _convIds = <String>{};
   final Map<String, _ParticipantPrefs> _convPrefs =
       <String, _ParticipantPrefs>{};
+  final Map<String, DateTime> _localLastRead = <String, DateTime>{};
+  Future<bool> Function(String messageId)? messageKnownCheck;
   final Set<String> _seenMsgIds = <String>{};
   static const int _seenCap = 6000;
 
@@ -88,6 +90,7 @@ class ChatRealtimeNotifier {
     _participantsSub = null;
     _convIds.clear();
     _convPrefs.clear();
+    _localLastRead.clear();
     _activeConversationId = null;
     _pruneSeenIfNeeded(force: true);
   }
@@ -137,11 +140,30 @@ class ChatRealtimeNotifier {
   Future<void> setLastRead(String conversationId, DateTime at) async {
     final uid = _myUid;
     if (uid == null || conversationId.trim().isEmpty) return;
+    _localLastRead[conversationId] = at.toUtc();
     await _updateParticipantPrefs(
       conversationId,
       uid,
       lastReadAt: at.toUtc(),
     );
+  }
+
+  void setLocalLastRead(String conversationId, DateTime at) {
+    if (conversationId.trim().isEmpty) return;
+    final prev = _localLastRead[conversationId];
+    final next = at.toUtc();
+    if (prev == null || next.isAfter(prev)) {
+      _localLastRead[conversationId] = next;
+    }
+  }
+
+  void setLocalLastReads(Map<String, DateTime?> reads) {
+    for (final entry in reads.entries) {
+      final ts = entry.value;
+      if (ts != null) {
+        setLocalLastRead(entry.key, ts);
+      }
+    }
   }
 
   Future<void> _loadConversationIds() async {
@@ -158,6 +180,7 @@ class ChatRealtimeNotifier {
             conversation_id
             muted
             last_read_at
+            archived
           }
         }
       ''';
@@ -201,6 +224,7 @@ class ChatRealtimeNotifier {
           conversation_id
           muted
           last_read_at
+          archived
         }
       }
     ''';
@@ -289,11 +313,11 @@ class ChatRealtimeNotifier {
     final rows = (result.data?['chat_messages'] as List?) ?? const [];
     for (final raw in rows.whereType<Map>()) {
       final row = Map<String, dynamic>.from(raw);
-      _handleMessageRow(row);
+      unawaited(_handleMessageRow(row));
     }
   }
 
-  void _handleMessageRow(Map<String, dynamic> row) {
+  Future<void> _handleMessageRow(Map<String, dynamic> row) async {
     final cid = (row['conversation_id'] ?? '').toString();
     if (cid.isEmpty || (_convIds.isNotEmpty && !_convIds.contains(cid))) {
       return;
@@ -321,16 +345,33 @@ class ChatRealtimeNotifier {
           (row['created_at'] ?? '').toString(),
         )?.toUtc() ??
         DateTime.now().toUtc();
-    final lastRead = _convPrefs[cid]?.lastReadAt;
-    if (lastRead != null && !createdAt.isAfter(lastRead)) return;
+    final serverLastRead = _convPrefs[cid]?.lastReadAt;
+    final localLastRead = _localLastRead[cid];
+    final effectiveLastRead = (serverLastRead == null)
+        ? localLastRead
+        : (localLastRead == null
+            ? serverLastRead
+            : (localLastRead.isAfter(serverLastRead)
+                ? localLastRead
+                : serverLastRead));
+    if (effectiveLastRead != null && !createdAt.isAfter(effectiveLastRead)) {
+      return;
+    }
 
     final id = (row['id'] ?? '').toString();
     if (id.isEmpty || _seenMsgIds.contains(id)) return;
+    if (messageKnownCheck != null) {
+      try {
+        final known = await messageKnownCheck!(id);
+        if (known) return;
+      } catch (_) {}
+    }
     _seenMsgIds.add(id);
     _pruneSeenIfNeeded();
 
-    final muted = _convPrefs[cid]?.muted ?? false;
-    if (muted) return;
+    final prefs = _convPrefs[cid];
+    if (prefs?.muted == true) return;
+    if (prefs?.archived == true) return;
 
     final kind = (row['kind']?.toString() ?? 'text').toLowerCase();
     final bodyRaw = (row['body'] ?? row['text'] ?? '').toString().trim();
@@ -403,24 +444,36 @@ class ChatRealtimeNotifier {
 
 class _ParticipantPrefs {
   final bool muted;
+  final bool archived;
   final DateTime? lastReadAt;
 
   const _ParticipantPrefs({
     this.muted = false,
+    this.archived = false,
     this.lastReadAt,
   });
 
   static _ParticipantPrefs fromRow(Map row) {
     final muted = row['muted'] == true;
+    final archived = row['archived'] == true || row['archived'] == 1;
     final lastReadRaw = row['last_read_at']?.toString();
     final lastReadAt =
         (lastReadRaw == null || lastReadRaw.isEmpty) ? null : DateTime.tryParse(lastReadRaw)?.toUtc();
-    return _ParticipantPrefs(muted: muted, lastReadAt: lastReadAt);
+    return _ParticipantPrefs(
+      muted: muted,
+      archived: archived,
+      lastReadAt: lastReadAt,
+    );
   }
 
-  _ParticipantPrefs copyWith({bool? muted, DateTime? lastReadAt}) {
+  _ParticipantPrefs copyWith({
+    bool? muted,
+    bool? archived,
+    DateTime? lastReadAt,
+  }) {
     return _ParticipantPrefs(
       muted: muted ?? this.muted,
+      archived: archived ?? this.archived,
       lastReadAt: lastReadAt ?? this.lastReadAt,
     );
   }

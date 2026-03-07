@@ -41,6 +41,8 @@ class _EmployeeSalaryDetailScreenState
   double _totalLoans = 0.0;
   double _totalDiscounts = 0.0;
   double _netPay = 0.0;
+  DateTime? _periodStart;
+  DateTime? _periodEnd;
 
   double _asDouble(dynamic v) =>
       (v is num) ? v.toDouble() : double.tryParse('$v') ?? 0.0;
@@ -69,10 +71,45 @@ class _EmployeeSalaryDetailScreenState
       _employeeName = (emp['name'] ?? '').toString();
       final baseSalary = _asDouble(emp['finalSalary']);
 
-      // نطاق الشهر
-      final from = DateTime(widget.year, widget.month, 1);
-      final to = DateTime(widget.year, widget.month + 1, 1)
+      // نطاق الفترة الفعلية: من آخر صرف (إن وجد) إلى الآن/نهاية الشهر (أيهما أقرب)
+      final monthStart = DateTime(widget.year, widget.month, 1);
+      final monthEnd = DateTime(widget.year, widget.month + 1, 1)
           .subtract(const Duration(seconds: 1));
+      final now = DateTime.now();
+      final lastPaidAt =
+          await DBService.instance.getLastSalaryPaymentDate(widget.empId);
+
+      if (lastPaidAt != null && lastPaidAt.isAfter(monthEnd)) {
+        if (!mounted) return;
+        setState(() {
+          _loading = false;
+          _periodStart = null;
+          _periodEnd = null;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content:
+                  Text('تم صرف راتب أحدث من هذه الفترة، اختر شهرًا أحدث.')),
+        );
+        return;
+      }
+
+      final from = lastPaidAt == null
+          ? monthStart
+          : lastPaidAt.add(const Duration(seconds: 1));
+      final to = now.isBefore(monthEnd) ? now : monthEnd;
+      if (from.isAfter(to)) {
+        if (!mounted) return;
+        setState(() {
+          _loading = false;
+          _periodStart = null;
+          _periodEnd = null;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('لا توجد فترة صالحة لهذا الشهر بعد')),
+        );
+        return;
+      }
 
       // نسب ومدخلات الطبيب وحصة المركز
       final ratioSum =
@@ -105,6 +142,8 @@ class _EmployeeSalaryDetailScreenState
         _totalLoans = loans;
         _totalDiscounts = discounts;
         _netPay = net;
+        _periodStart = from;
+        _periodEnd = to;
         _loading = false;
       });
     } catch (e) {
@@ -117,6 +156,13 @@ class _EmployeeSalaryDetailScreenState
   }
 
   Future<void> _confirmSalaryPayment() async {
+    if (_periodStart == null || _periodEnd == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('الفترة غير صالحة لصرف الراتب')),
+      );
+      return;
+    }
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => Directionality(
@@ -126,6 +172,10 @@ class _EmployeeSalaryDetailScreenState
           content: Text(
             'سيتم صرف راتب $_employeeName لشهر ${widget.month}/${widget.year} '
             'بمبلغ صافي ${_fmt(_netPay)}.\n'
+            'الفترة الفعلية: '
+            '${_periodStart!.toLocal().toIso8601String().substring(0, 10)}'
+            ' → '
+            '${_periodEnd!.toLocal().toIso8601String().substring(0, 10)}\n'
             '${_netPay < 0 ? '⚠️ الصافي بالسالب! سيتم تسجيله كما هو.' : ''}',
           ),
           actions: [
@@ -142,7 +192,7 @@ class _EmployeeSalaryDetailScreenState
     );
     if (ok != true) return;
 
-      final nowIso = DateTime.now().toIso8601String();
+    final nowIso = DateTime.now().toIso8601String();
       final row = {
         'employeeId': widget.empId,
         'year': widget.year,
@@ -154,6 +204,8 @@ class _EmployeeSalaryDetailScreenState
         'netPay': _netPay,
         'isPaid': 1,
         'paymentDate': nowIso,
+        'periodStart': _periodStart!.toIso8601String(),
+        'periodEnd': _periodEnd!.toIso8601String(),
       };
 
     try {
@@ -184,14 +236,13 @@ class _EmployeeSalaryDetailScreenState
                 settledAt = ?,
                 leftover = 0
             WHERE employeeId = ?
-              AND strftime('%Y', loanDateTime) = ?
-              AND strftime('%m', loanDateTime) = ?
+              AND loanDateTime BETWEEN ? AND ?
               AND ifnull(isDeleted,0)=0
           ''', [
           nowIso,
           widget.empId,
-          widget.year.toString(),
-          widget.month.toString().padLeft(2, '0')
+          _periodStart!.toIso8601String(),
+          _periodEnd!.toIso8601String(),
         ]);
 
         await txn.insert('financial_logs', {

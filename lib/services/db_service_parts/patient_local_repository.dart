@@ -9,7 +9,11 @@ class PatientLocalRepository {
 
   Future<int> insertPatient(Patient patient) async {
     final db = await _dbService.database;
-    final data = patient.toMap();
+    final data = await _dbService.prepareInsert(
+      'patients',
+      patient.toMap(),
+      executor: db,
+    );
     if ((patient.doctorId ?? 0) != 0) {
       data['doctorReviewPending'] = 1;
       data['doctorReviewedAt'] = null;
@@ -208,10 +212,21 @@ class PatientLocalRepository {
                 ? (c['quantity'] as num).toInt()
                 : int.tryParse('${c['quantity'] ?? 0}') ?? 0;
             if (itemId != null && itemId > 0 && qty > 0) {
-              await txn.rawUpdate(
-                'UPDATE items SET stock = stock + ? WHERE id = ?',
-                [qty, itemId],
+              final hasUpdatedAt =
+                  await _dbService.hasColumn(txn, 'items', 'updated_at');
+              final args = <Object?>[qty, itemId];
+              final accClause = await _dbService.accountFilterClause(
+                txn,
+                'items',
+                args: args,
               );
+              final sql = hasUpdatedAt
+                  ? 'UPDATE items SET stock = stock + ?, updated_at = ? WHERE id = ? $accClause'
+                  : 'UPDATE items SET stock = stock + ? WHERE id = ? $accClause';
+              if (hasUpdatedAt) {
+                args.insert(1, DateTime.now().toIso8601String());
+              }
+              await txn.rawUpdate(sql, args);
               touchedItems = true;
             }
           }

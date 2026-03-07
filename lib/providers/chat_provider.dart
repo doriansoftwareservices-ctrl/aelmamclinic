@@ -16,6 +16,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:path/path.dart' as p;
 
 import 'package:aelmamclinic/local/chat_local_store.dart';
 import 'package:aelmamclinic/models/chat_invitation.dart';
@@ -28,11 +29,16 @@ import 'package:aelmamclinic/services/chat_realtime_notifier.dart';
 import 'package:aelmamclinic/services/attachment_cache.dart';
 import 'package:aelmamclinic/services/nhost_graphql_service.dart';
 import 'package:aelmamclinic/services/nhost_storage_service.dart';
+import 'package:aelmamclinic/services/network_status_service.dart';
 import 'package:aelmamclinic/utils/logger.dart';
 import 'package:aelmamclinic/utils/app_error_reporter.dart';
+import 'package:aelmamclinic/utils/chat_code_utils.dart';
+import 'package:aelmamclinic/utils/device_id.dart';
 
 class ChatProvider extends ChangeNotifier {
-  ChatProvider();
+  ChatProvider() {
+    _initNetworkMonitor();
+  }
 
   // جداول
   static const String tableParticipants = 'chat_participants';
@@ -52,6 +58,11 @@ class ChatProvider extends ChangeNotifier {
   final ChatRealtimeNotifier _rt = ChatRealtimeNotifier.instance;
   final AttachmentCache _attCache = AttachmentCache.instance; // ✅
   final Map<String, ({String url, DateTime expiresAt})> _signedUrlCache = {};
+  final Map<String, DateTime> _recentIncomingMessageIds = {};
+  String? _deviceId;
+  DateTime? _lastDeviceRegAt;
+  Timer? _deviceRegTimer;
+  Timer? _attachmentCleanupTimer;
 
   // هوية
   String get currentUid => NhostManager.client.auth.currentUser?.id ?? '';
@@ -61,6 +72,17 @@ class ChatProvider extends ChangeNotifier {
   bool ready = false;
   bool busy = false;
   String? lastError;
+  bool _isOnline = true;
+  bool get isOnline => _isOnline;
+  String? _accountFilter;
+  bool _isSuperAdmin = false;
+  bool _isSupportAgent = false;
+  String? _supportAgentUidCache;
+  static const String _kSupportAgentUid = 'chat.support_agent_uid';
+  static const String _kSupportConvId = 'chat.support_conversation_id';
+  static const String _kSupportDisplayName = 'chat.support_display_name';
+  static const String _kSupportFollowupSent = 'chat.support_followup_sent';
+  bool get isSupportAgent => _isSupportAgent;
 
   // كاش محلي
   final ChatLocalStore _local = ChatLocalStore.instance;
@@ -77,17 +99,162 @@ class ChatProvider extends ChangeNotifier {
   final Map<String, String> _aliasByUser = {};
   final Map<String, String> _aliasCache = {};
   final Map<String, String> _displayTitleByConv = {};
-  String displayTitleOf(String conversationId) =>
-      _displayTitleByConv[conversationId] ?? 'محادثة';
+  String _displayTitleForDirect(
+    CM.ChatConversation conv,
+    ChatParticipantLocal other, {
+    String? alias,
+  }) {
+    final label = _displayLabelForParticipant(other, alias: alias).trim();
+    if (label.isNotEmpty && label != 'بدون رقم') return label;
+
+    final title = (conv.title ?? '').trim();
+    if (title.isNotEmpty) {
+      return ChatCodeUtils.isChatCode(title)
+          ? ChatCodeUtils.format(title)
+          : title;
+    }
+
+    final cached = _displayTitleByConv[conv.id];
+    if (cached != null && cached.trim().isNotEmpty && cached != 'بدون رقم') {
+      return cached.trim();
+    }
+
+    return label.isNotEmpty ? label : 'بدون رقم';
+  }
+  String displayTitleOf(String conversationId) {
+    final alias = aliasForConversation(conversationId);
+    if (alias != null && alias.trim().isNotEmpty) return alias.trim();
+    final cached = _displayTitleByConv[conversationId];
+    if (cached != null && cached.trim().isNotEmpty) return cached;
+    try {
+      final conv = _conversations.firstWhere(
+        (c) => c.id == conversationId,
+        orElse: () => _conversations.isNotEmpty
+            ? _conversations.first
+            : CM.ChatConversation(
+                id: conversationId,
+                type: CM.ChatConversationType.direct,
+                createdAt: DateTime.now().toUtc(),
+              ),
+      );
+      if (conv.type == CM.ChatConversationType.direct) {
+        final participants =
+            _participantsByConv[conversationId] ?? const <ChatParticipantLocal>[];
+        if (participants.isNotEmpty) {
+          final other = participants.firstWhere(
+            (p) => p.userUid != currentUid,
+            orElse: () => participants.first,
+          );
+          final label = _displayTitleForDirect(conv, other).trim();
+          if (label.isNotEmpty) return label;
+        }
+      }
+      final t = (conv.title ?? '').trim();
+      if (t.isNotEmpty) return t;
+    } catch (_) {}
+    return 'محادثة';
+  }
 
   String? _supportConversationId;
   String _supportDisplayName = 'خدمة العملاء';
   bool _supportReady = false;
+  final Set<String> _supportFollowupSentSessions = <String>{};
+  DateTime _bootAt = DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
 
   String? get supportConversationId => _supportConversationId;
   String get supportDisplayName => _supportDisplayName;
-  bool isSupportConversation(String conversationId) =>
-      _supportConversationId == conversationId;
+  bool isSupportConversation(String conversationId) {
+    if (_supportConversationId == conversationId) return true;
+    final supportUid = _supportAgentUidCache;
+    if (supportUid == null || supportUid.trim().isEmpty) return false;
+    final participants =
+        _participantsByConv[conversationId] ?? const <ChatParticipantLocal>[];
+    if (participants.isEmpty) return false;
+    return participants.any((p) => p.userUid == supportUid);
+  }
+
+  static const Set<String> _ownerRoles = {
+    'owner',
+    'admin',
+    'owner_admin',
+  };
+
+  bool _isOwnerConversation(String conversationId) {
+    final participants =
+        _participantsByConv[conversationId] ?? const <ChatParticipantLocal>[];
+    if (participants.isEmpty) return false;
+    for (final p in participants) {
+      final role = (p.role ?? '').toLowerCase().trim();
+      if (_ownerRoles.contains(role)) return true;
+    }
+    return false;
+  }
+
+  CM.ChatSupportStatus? supportStatusOf(String conversationId) {
+    final conv = _conversations
+        .firstWhere((c) => c.id == conversationId, orElse: () => CM.ChatConversation(
+              id: conversationId,
+              type: CM.ChatConversationType.direct,
+              createdAt: DateTime.now().toUtc(),
+            ));
+    return conv.supportStatus;
+  }
+
+  Future<void> setSupportStatus(
+    String conversationId,
+    CM.ChatSupportStatus status, {
+    bool syncRemote = true,
+  }) async {
+    if (conversationId.trim().isEmpty) return;
+    final idx = _conversations.indexWhere((c) => c.id == conversationId);
+    if (idx == -1) return;
+    var c = _conversations[idx];
+    if (c.supportStatus == status) return;
+    c = c.copyWith(supportStatus: status);
+    _conversations[idx] = c;
+    _safeNotify();
+    unawaited(_local.upsertConversations([c]));
+    if (syncRemote && _isOnline) {
+      unawaited(
+        _chat.updateConversationSupportStatus(
+          conversationId: conversationId,
+          status: status,
+        ),
+      );
+    }
+  }
+
+  Future<void> _maybeSetPendingOnIncoming(
+    String conversationId,
+    String fromUid,
+  ) async {
+    if (!_isSupportAgent || !_isSuperAdmin) return;
+    if (!isSupportConversation(conversationId)) return;
+    if (!_isOwnerConversation(conversationId)) return;
+    if (fromUid.trim().isEmpty || fromUid == currentUid) return;
+    final current = supportStatusOf(conversationId);
+    if (current == null ||
+        current == CM.ChatSupportStatus.closed ||
+        current == CM.ChatSupportStatus.responded) {
+      await setSupportStatus(
+        conversationId,
+        CM.ChatSupportStatus.pendingReply,
+      );
+    }
+  }
+
+  Future<void> _maybeAdvanceToUnderReview(String conversationId) async {
+    if (!_isSupportAgent) return;
+    if (!isSupportConversation(conversationId)) return;
+    if (!_isOwnerConversation(conversationId)) return;
+    final current = supportStatusOf(conversationId);
+    if (current == CM.ChatSupportStatus.pendingReply || current == null) {
+      await setSupportStatus(
+        conversationId,
+        CM.ChatSupportStatus.underReview,
+      );
+    }
+  }
 
   final Map<String, List<CM.ChatMessage>> _messagesByConv = {};
   List<CM.ChatMessage> messagesOf(String conversationId) =>
@@ -98,6 +265,8 @@ class ChatProvider extends ChangeNotifier {
 
   final Map<String, DateTime?> _olderCursorByConv = {};
   final Map<String, DateTime?> _myLastReadByConv = {};
+  DateTime? lastReadAtOf(String conversationId) =>
+      _myLastReadByConv[conversationId];
 
   String? _openedConversationId;
   String? get openedConversationId => _openedConversationId;
@@ -119,6 +288,53 @@ class ChatProvider extends ChangeNotifier {
     return _lastLocalSeq;
   }
 
+  Future<String?> _ensureDeviceId() async {
+    if (_deviceId != null && _deviceId!.trim().isNotEmpty) {
+      return _deviceId;
+    }
+    try {
+      _deviceId = await DeviceId.get();
+      return _deviceId;
+    } catch (_) {
+      return _deviceId;
+    }
+  }
+
+  String _platformTag() {
+    if (kIsWeb) return 'web';
+    try {
+      return Platform.operatingSystem;
+    } catch (_) {
+      return 'unknown';
+    }
+  }
+
+  Future<void> _ensureDeviceRegistration({bool force = false}) async {
+    if (!_isOnline) return;
+    final dev = await _ensureDeviceId();
+    if (dev == null || dev.trim().isEmpty) return;
+    final now = DateTime.now();
+    if (!force && _lastDeviceRegAt != null) {
+      final delta = now.difference(_lastDeviceRegAt!);
+      if (delta.inMinutes < 5) return;
+    }
+    try {
+      await _chat.registerDevice(
+        deviceId: dev,
+        platform: _platformTag(),
+        appVersion: null,
+      );
+      _lastDeviceRegAt = now;
+    } catch (_) {}
+  }
+
+  void _startDeviceRegistrationTimer() {
+    _deviceRegTimer?.cancel();
+    _deviceRegTimer = Timer.periodic(const Duration(minutes: 5), (_) {
+      unawaited(_ensureDeviceRegistration());
+    });
+  }
+
   // اشتراكات
   StreamSubscription<List<CM.ChatMessage>>? _roomMsgsSub;
   StreamSubscription<Map<String, dynamic>>? _typingSub;
@@ -128,6 +344,7 @@ class ChatProvider extends ChangeNotifier {
   StreamSubscription<void>? _rtConvSub;
   StreamSubscription<void>? _rtPartSub;
   StreamSubscription<Map<String, dynamic>>? _rtMsgSub;
+  StreamSubscription<bool>? _netSub;
 
   // Anti-dup / Throttling
   bool _listLoading = false;
@@ -141,9 +358,57 @@ class ChatProvider extends ChangeNotifier {
     if (!_disposed) notifyListeners();
   }
 
+  void onSignedOut() {
+    if (_disposed) return;
+    ready = false;
+    busy = false;
+    lastError = null;
+    _isOnline = true;
+    _isSuperAdmin = false;
+    _isSupportAgent = false;
+    _supportAgentUidCache = null;
+    _accountFilter = null;
+    _myEmailCache = null;
+    _recentIncomingMessageIds.clear();
+    _signedUrlCache.clear();
+    _conversations.clear();
+    _invitations.clear();
+    _participantsByConv.clear();
+    _readStatesByConv.clear();
+    _aliasByUser.clear();
+    _aliasCache.clear();
+    _displayTitleByConv.clear();
+    _deviceRegTimer?.cancel();
+    _deviceRegTimer = null;
+    _attachmentCleanupTimer?.cancel();
+    _attachmentCleanupTimer = null;
+    _safeNotify();
+  }
+
   void _setError(String message) {
-    lastError = message;
-    AppErrorReporter.report(message);
+    final msg = message.trim();
+    final lower = msg.toLowerCase();
+    final isNetwork = !NetworkStatusService.instance.isOnline ||
+        lower.contains('network') ||
+        lower.contains('socket') ||
+        lower.contains('timeout') ||
+        lower.contains('timed out') ||
+        lower.contains('failed host lookup') ||
+        lower.contains('semaphore timeout') ||
+        lower.contains('semaphore') ||
+        lower.contains('bad gateway') ||
+        lower.contains('service temporarily unavailable') ||
+        lower.contains('503') ||
+        lower.contains('502') ||
+        lower.contains('document is empty') ||
+        lower.contains('responseformatexception') ||
+        lower.contains('formatexception');
+    lastError = isNetwork ? 'يبدو ان الشبكة غير مستقرة لديك' : msg;
+    if (isNetwork) {
+      AppErrorReporter.info(lastError!);
+    } else {
+      AppErrorReporter.report(lastError!);
+    }
   }
 
   void _scheduleConversationsRefresh() {
@@ -154,22 +419,122 @@ class ChatProvider extends ChangeNotifier {
     });
   }
 
+  void _initNetworkMonitor() {
+    _isOnline = NetworkStatusService.instance.isOnline;
+    unawaited(NetworkStatusService.instance.start());
+    _netSub?.cancel();
+    _netSub = NetworkStatusService.instance.changes.listen((online) {
+      if (_disposed) return;
+      _isOnline = online;
+      if (online) {
+        unawaited(_resumeOnline());
+      } else {
+        unawaited(_pauseOnline());
+      }
+      _safeNotify();
+    });
+  }
+
+  Future<void> _pauseOnline() async {
+    try {
+      await _roomMsgsSub?.cancel();
+    } catch (_) {}
+    _roomMsgsSub = null;
+    try {
+      await _rtConvSub?.cancel();
+    } catch (_) {}
+    _rtConvSub = null;
+    try {
+      await _rtPartSub?.cancel();
+    } catch (_) {}
+    _rtPartSub = null;
+    try {
+      await _rtMsgSub?.cancel();
+    } catch (_) {}
+    _rtMsgSub = null;
+    try {
+      await _rt.stop();
+    } catch (_) {}
+    _attachmentCleanupTimer?.cancel();
+    _attachmentCleanupTimer = null;
+    _deviceRegTimer?.cancel();
+    _deviceRegTimer = null;
+  }
+
+  Future<void> _resumeOnline() async {
+    if (_disposed || currentUid.isEmpty) return;
+    if (_accountFilter == null && !_isSuperAdmin) return;
+    await _ensureDeviceRegistration(force: true);
+    _startDeviceRegistrationTimer();
+    try {
+      await _rt.start(accountId: _accountFilter, myUid: currentUid);
+    } catch (_) {}
+    unawaited(_loadMyConversationsAndParticipants());
+    unawaited(refreshInvitations());
+    if (_openedConversationId != null) {
+      if (_allowRemoteHistory(_openedConversationId!)) {
+        unawaited(_refreshLatestMessages(_openedConversationId!));
+      }
+      unawaited(_refreshReadStatesForConversation(_openedConversationId!));
+      try {
+        await _roomMsgsSub?.cancel();
+      } catch (_) {}
+      final cached = _messagesByConv[_openedConversationId!] ?? const [];
+      final since = cached.isNotEmpty
+          ? cached.first.createdAt
+          : DateTime.now().toUtc().subtract(const Duration(seconds: 5));
+      _roomMsgsSub = _chat
+          .watchMessages(
+            _openedConversationId!,
+            since: _allowRemoteHistory(_openedConversationId!) ? null : since,
+            seedFromServer: _allowRemoteHistory(_openedConversationId!),
+          )
+          .listen(
+        (remoteList) async {
+          if (_disposed) return;
+          final latest = List<CM.ChatMessage>.from(remoteList);
+          await _local.upsertMessages(latest);
+          if (_disposed) return;
+          _mergeIncomingMessages(_openedConversationId!, latest);
+          _scheduleConversationsRefresh();
+          _safeNotify();
+          unawaited(
+            prefetchVisibleAttachments(_openedConversationId!, maxMessages: 30),
+          );
+          await _applyReadsToOutgoing(_openedConversationId!);
+        },
+      );
+    }
+    _startOutboxWorker();
+    _startAttachmentCleanupWorker();
+  }
+
   Future<void> _loadLocalSnapshot() async {
     try {
       final localConvs = await _local.getConversations();
-      final visibleConvs =
-          localConvs.where((c) => !c.isDeleted && !c.isGroup).toList();
-      if (visibleConvs.isEmpty) return;
+      if (localConvs.isEmpty) return;
+      final visibleConvs = <CM.ChatConversation>[];
 
       final tmpParts = <String, List<ChatParticipantLocal>>{};
       final tmpReads = <String, List<CM.ChatReadState>>{};
       final tmpDisplay = <String, String>{};
 
-      for (final c in visibleConvs) {
+      for (final c in localConvs) {
+        if (c.isDeleted || c.isGroup) {
+          continue;
+        }
         final partsRaw = await _local.getParticipants(c.id);
         final parts = partsRaw
             .map((m) => ChatParticipantLocal.fromMap(m))
             .toList();
+
+        final isMine = parts.any((p) => p.userUid == currentUid);
+        if (!isMine && c.createdBy != currentUid) {
+          // لا تعرض محادثات من مستخدمين آخرين في نفس الجهاز.
+          continue;
+        }
+
+        visibleConvs.add(c);
         tmpParts[c.id] = parts;
 
         final reads = await _local.getReadStates(c.id);
@@ -185,12 +550,7 @@ class ChatProvider extends ChangeNotifier {
                 ? parts.first
                 : ChatParticipantLocal.fallback(c.id),
           );
-          final nick = (other.nickname ?? '').trim();
-          tmpDisplay[c.id] = nick.isNotEmpty
-              ? nick
-              : ((other.email?.isNotEmpty == true)
-                  ? other.email!
-                  : 'بدون بريد');
+          tmpDisplay[c.id] = _displayTitleForDirect(c, other);
         }
 
         final lastRead = await _local.getLastRead(c.id);
@@ -218,6 +578,9 @@ class ChatProvider extends ChangeNotifier {
         ..clear()
         ..addAll(visibleConvs);
 
+      _rt.setLocalLastReads(_myLastReadByConv);
+      _rt.messageKnownCheck = (id) => _local.hasMessage(id);
+
       _safeNotify();
     } catch (_) {}
   }
@@ -235,6 +598,35 @@ class ChatProvider extends ChangeNotifier {
           ..clear()
           ..addAll(decoded.map((k, v) => MapEntry(k.toString(), v.toString())));
       }
+    } catch (_) {}
+  }
+
+  Future<void> _loadSupportFollowupSessions() async {
+    try {
+      final uid = currentUid;
+      if (uid.isEmpty) return;
+      final sp = await SharedPreferences.getInstance();
+      final raw = sp.getString('$_kSupportFollowupSent.$uid');
+      if (raw == null || raw.trim().isEmpty) return;
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        _supportFollowupSentSessions
+          ..clear()
+          ..addAll(decoded.whereType<String>());
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _persistSupportFollowupSessions() async {
+    try {
+      final uid = currentUid;
+      if (uid.isEmpty) return;
+      final sp = await SharedPreferences.getInstance();
+      final list = _supportFollowupSentSessions.toList();
+      const maxKeep = 500;
+      final trimmed =
+          list.length > maxKeep ? list.sublist(list.length - maxKeep) : list;
+      await sp.setString('$_kSupportFollowupSent.$uid', jsonEncode(trimmed));
     } catch (_) {}
   }
 
@@ -264,72 +656,97 @@ class ChatProvider extends ChangeNotifier {
     busy = true;
     _safeNotify();
     try {
+      _bootAt = DateTime.now().toUtc();
       await _primeMyEmail();
+      await _loadSupportFollowupSessions();
       await _loadLocalSnapshot();
       await _loadAliasCache();
+      await _resolveSupportAgentCache();
+      if (_isOnline) {
+        await _ensureDeviceRegistration(force: true);
+        _startDeviceRegistrationTimer();
+      }
+      final supportUid = await _resolveSupportAgentUid();
+      _isSupportAgent =
+          supportUid != null && supportUid.trim() == currentUid.trim();
       final accId = accountId ??
           await fetchAccountIdForCurrentUser(isSuperAdmin: isSuperAdmin);
       final accountFilter =
           (accId == null || accId.trim().isEmpty) ? null : accId.trim();
+      _accountFilter = accountFilter;
+      _isSuperAdmin = isSuperAdmin;
 
-      if (accountFilter == null && !isSuperAdmin) {
+      if (accountFilter == null && !isSuperAdmin && !_isSupportAgent) {
         _setError('لا يمكن تحميل المحادثات لأن الحساب الحالي غير محدد.');
         return;
       }
 
-      if (accountFilter == null && isSuperAdmin) {
+      if (accountFilter == null && (isSuperAdmin || _isSupportAgent)) {
         _rpcWarn(
           'super_admin_missing_account_filter',
           StateError('no account binding for super admin; using global view'),
         );
       }
 
-      // بدء Realtime الموحّد
-      try {
-        await _rt.start(accountId: accountFilter, myUid: currentUid);
-      } catch (error, stackTrace) {
-        debugPrint(
-          'ChatProvider.bootstrap: فشل بدء Realtime: $error\n$stackTrace',
-        );
-        _setError('تعذّرت تهيئة المحادثات، حاول مرة أخرى لاحقًا.');
-        return;
+      // بدء Realtime الموحّد (تجاوز في وضع Offline)
+      if (_isOnline) {
+        try {
+          await _rt.start(accountId: accountFilter, myUid: currentUid);
+        } catch (error, stackTrace) {
+          debugPrint(
+            'ChatProvider.bootstrap: فشل بدء Realtime: $error\n$stackTrace',
+          );
+          _isOnline = false;
+          unawaited(_pauseOnline());
+        }
       }
 
       // تحميل القائمة والمشاركين مبدئياً
-      await _loadMyConversationsAndParticipants();
-      await refreshInvitations();
+      if (_isOnline) {
+        await _loadMyConversationsAndParticipants();
+        await refreshInvitations();
+      }
       if (_disposed) return;
 
       // الاشتراك في التيارات الموحّدة
       _rtConvSub?.cancel();
-      _rtConvSub = _rt.conversationsTicks.listen((_) {
-        if (_disposed) return;
-        _scheduleConversationsRefresh();
-      });
+      if (_isOnline) {
+        _rtConvSub = _rt.conversationsTicks.listen((_) {
+          if (_disposed) return;
+          _scheduleConversationsRefresh();
+        });
+      }
 
       _rtPartSub?.cancel();
-      _rtPartSub = _rt.participantsTicks.listen((_) {
-        if (_disposed) return;
-        _scheduleConversationsRefresh();
-      });
+      if (_isOnline) {
+        _rtPartSub = _rt.participantsTicks.listen((_) {
+          if (_disposed) return;
+          _scheduleConversationsRefresh();
+        });
+      }
 
       _rtMsgSub?.cancel();
-      _rtMsgSub = _rt.messageEvents.listen((payload) {
-        if (_disposed) return;
-        try {
-          _handleMessageInsert(payload);
-        } catch (_) {}
-        _scheduleConversationsRefresh();
-      });
+      if (_isOnline) {
+        _rtMsgSub = _rt.messageEvents.listen((payload) {
+          if (_disposed) return;
+          try {
+            _handleMessageInsert(payload);
+          } catch (_) {}
+          _scheduleConversationsRefresh();
+        });
+      }
 
       ready = true;
-      _startOutboxWorker();
+      if (_isOnline) {
+        _startOutboxWorker();
+        _startAttachmentCleanupWorker();
+      }
     } catch (e, stackTrace) {
       debugPrint('ChatProvider.bootstrap: حدث خطأ غير متوقّع: $e');
       debugPrint('$stackTrace');
       lastError ??= 'حدث خطأ غير متوقع أثناء تجهيز المحادثات.';
       if (lastError != null) {
-        AppErrorReporter.report(lastError!);
+        AppErrorReporter.report(lastError!, error: e, stack: stackTrace);
       }
     } finally {
       busy = false;
@@ -340,6 +757,14 @@ class ChatProvider extends ChangeNotifier {
   Future<void> ensureSupportConversation({bool force = false}) async {
     if (_disposed) return;
     if (_supportReady && !force) return;
+    if (_isSupportAgent) {
+      _supportReady = true;
+      return;
+    }
+    if (!_isOnline) {
+      _supportReady = true;
+      return;
+    }
 
     try {
       final agent = await _chat.fetchSupportAgent();
@@ -360,12 +785,56 @@ class ChatProvider extends ChangeNotifier {
       final conv = await _chat.startDMWithUid(uid);
       _supportConversationId = conv.id;
       _displayTitleByConv[conv.id] = name;
+      try {
+        final sp = await SharedPreferences.getInstance();
+        await sp.setString(_kSupportConvId, conv.id);
+        await sp.setString(_kSupportDisplayName, name);
+        if (uid.isNotEmpty) {
+          await sp.setString(_kSupportAgentUid, uid);
+        }
+      } catch (_) {}
     } catch (e, st) {
       _rpcWarn('ensureSupportConversation failed', e, st);
     } finally {
       _supportReady = true;
       _safeNotify();
     }
+  }
+
+  Future<void> _resolveSupportAgentCache() async {
+    try {
+      final sp = await SharedPreferences.getInstance();
+      _supportAgentUidCache = sp.getString(_kSupportAgentUid);
+      final cachedConv = sp.getString(_kSupportConvId);
+      if (cachedConv != null && cachedConv.trim().isNotEmpty) {
+        _supportConversationId = cachedConv.trim();
+      }
+      final cachedName = sp.getString(_kSupportDisplayName);
+      if (cachedName != null && cachedName.trim().isNotEmpty) {
+        _supportDisplayName = cachedName.trim();
+      }
+    } catch (_) {}
+  }
+
+  Future<String?> _resolveSupportAgentUid() async {
+    if (!_isOnline) return _supportAgentUidCache;
+    try {
+      final agent = await _chat.fetchSupportAgent();
+      if (agent == null) return _supportAgentUidCache;
+      final uid = (agent['user_uid'] ?? '').toString().trim();
+      if (uid.isNotEmpty) {
+        _supportDisplayName =
+            (agent['display_name'] ?? 'خدمة العملاء').toString();
+        _supportAgentUidCache = uid;
+        try {
+          final sp = await SharedPreferences.getInstance();
+          await sp.setString(_kSupportAgentUid, uid);
+          await sp.setString(_kSupportDisplayName, _supportDisplayName);
+        } catch (_) {}
+        return uid;
+      }
+    } catch (_) {}
+    return _supportAgentUidCache;
   }
 
   Future<String?> fetchAccountIdForCurrentUser(
@@ -550,10 +1019,12 @@ class ChatProvider extends ChangeNotifier {
     final myRev = ++_listRev;
 
     try {
-      final List<CM.ConversationListItem> overview = (await _chat
-              .fetchMyConversationsOverview())
-          .where((item) => !item.conversation.isGroup)
-          .toList();
+      final List<CM.ConversationListItem> overview =
+          (await _chat.fetchMyConversationsOverview(
+            includeLastMessageText: false,
+          ))
+              .where((item) => !item.conversation.isGroup)
+              .toList();
       final convIds = overview
           .map((item) => item.conversation.id)
           .where((id) => id.isNotEmpty)
@@ -561,14 +1032,8 @@ class ChatProvider extends ChangeNotifier {
           .toList();
 
       if (convIds.isEmpty) {
-        if (myRev == _listRev) {
-          if (_conversations.isEmpty) {
-            _participantsByConv..clear();
-            _displayTitleByConv..clear();
-            _myLastReadByConv..clear();
-            _safeNotify();
-          }
-        }
+        // لا تتخلص من المؤرشفة المحلية في حال لم يُعد الخادم أي محادثة.
+        await _loadLocalSnapshot();
         return;
       }
 
@@ -588,6 +1053,7 @@ class ChatProvider extends ChangeNotifier {
               email
               joined_at
               nickname
+              display_name
               role
               archived
               pinned
@@ -672,16 +1138,7 @@ class ChatProvider extends ChangeNotifier {
                 : ChatParticipantLocal.fallback(cid),
           );
           final alias = aliasByUser[other.userUid];
-          if (alias != null && alias.trim().isNotEmpty) {
-            tmpDisplay[cid] = alias.trim();
-            continue;
-          }
-          final nick = (other.nickname ?? '').trim();
-          tmpDisplay[cid] = nick.isNotEmpty
-              ? nick
-              : ((other.email?.isNotEmpty == true)
-                  ? other.email!
-                  : 'بدون بريد');
+          tmpDisplay[cid] = _displayTitleForDirect(c, other, alias: alias);
         }
       }
       if (_supportConversationId != null) {
@@ -695,6 +1152,47 @@ class ChatProvider extends ChangeNotifier {
           lastReadByConv[cid] = item.lastReadAt;
         }
       }
+
+      // ── دمج المحادثات المؤرشفة محليًا (قد لا يعيدها السيرفر في القائمة) ──
+      final serverIds = serverList.map((c) => c.id).toSet();
+      final localArchived = <CM.ChatConversation>[];
+      try {
+        final localConvs = await _local.getConversations();
+        for (final c in localConvs) {
+          if (c.isDeleted || c.isGroup) continue;
+          if (serverIds.contains(c.id)) continue;
+          final partsRaw = await _local.getParticipants(c.id);
+          final parts =
+              partsRaw.map((m) => ChatParticipantLocal.fromMap(m)).toList();
+          final me = parts.firstWhere(
+            (p) => p.userUid == currentUid,
+            orElse: () => ChatParticipantLocal.fallback(c.id),
+          );
+          if (me.userUid != currentUid || me.archived != true) {
+            continue;
+          }
+
+          tmpParticipantsByConv[c.id] = parts;
+          final reads = await _local.getReadStates(c.id);
+          if (reads.isNotEmpty) {
+            tmpReadsByConv[c.id] = reads;
+          }
+          if (!tmpDisplay.containsKey(c.id)) {
+            final other = parts.firstWhere(
+              (p) => p.userUid != currentUid,
+              orElse: () => parts.isNotEmpty
+                  ? parts.first
+                  : ChatParticipantLocal.fallback(c.id),
+            );
+            tmpDisplay[c.id] = _displayTitleForDirect(c, other);
+          }
+          final lastRead = await _local.getLastRead(c.id);
+          if (lastRead != null) {
+            lastReadByConv[c.id] = lastRead;
+          }
+          localArchived.add(c);
+        }
+      } catch (_) {}
 
       // دمج مع الحالة السابقة لمنع رجوع الخلف في snippet/lastMsgAt + منع وميض unread
       final prevById = {for (final c in _conversations) c.id: c};
@@ -730,16 +1228,27 @@ class ChatProvider extends ChangeNotifier {
           }
         }
 
+        final effTitle = (srv.title?.trim().isNotEmpty ?? false)
+            ? srv.title
+            : prev?.title;
+
         return srv.copyWith(
           lastMsgAt: effAt,
           lastMsgSnippet: effSnippet,
           unreadCount: uc,
+          title: effTitle,
         );
       }
 
       final merged = <CM.ChatConversation>[];
       for (final c in serverList) {
         merged.add(_mergeConv(c, prevById[c.id]));
+      }
+      if (localArchived.isNotEmpty) {
+        for (final c in localArchived) {
+          if (merged.any((m) => m.id == c.id)) continue;
+          merged.add(c);
+        }
       }
 
       // ترتيب حسب الأحدث
@@ -803,6 +1312,10 @@ class ChatProvider extends ChangeNotifier {
   }
 
   Future<void> refreshConversations() async {
+    if (!_isOnline) {
+      await _loadLocalSnapshot();
+      return;
+    }
     await _loadMyConversationsAndParticipants();
     await refreshInvitations();
   }
@@ -817,6 +1330,7 @@ class ChatProvider extends ChangeNotifier {
 
   Future<void> refreshInvitations() async {
     if (_disposed) return;
+    if (!_isOnline) return;
     if (_invitations.isNotEmpty) {
       _invitations.clear();
       _safeNotify();
@@ -905,9 +1419,7 @@ class ChatProvider extends ChangeNotifier {
       } catch (_) {}
     }
 
-    if (archived) {
-      _conversations.removeWhere((c) => c.id == conversationId);
-    }
+    // لا نحذفها من القائمة، لأن شاشة "المؤرشفة" تحتاجها للعرض.
     _safeNotify();
   }
 
@@ -986,6 +1498,7 @@ class ChatProvider extends ChangeNotifier {
     String doc,
     Map<String, dynamic> variables,
   ) async {
+    if (!_isOnline) return <String, dynamic>{};
     final result = await _gql.query(
       QueryOptions(
         document: gql(doc),
@@ -1045,9 +1558,12 @@ class ChatProvider extends ChangeNotifier {
     final cid = (rec['conversation_id'] ?? '').toString();
     if (cid.isEmpty) return;
 
-    final createdAt =
-        DateTime.tryParse((rec['created_at'] ?? '').toString())?.toUtc() ??
-            DateTime.now().toUtc();
+    final createdAtRaw = (rec['created_at'] ?? '').toString().trim();
+    final createdAt = createdAtRaw.isNotEmpty
+        ? DateTime.tryParse(createdAtRaw)?.toUtc()
+        : null;
+    final effectiveCreatedAt = createdAt ??
+        DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
     final senderUid = (rec['sender_uid'] ?? '').toString();
     final kind = (rec['kind'] ?? '').toString().toLowerCase();
     final body = ((rec['body'] ?? rec['text']) ?? '').toString().trim();
@@ -1056,6 +1572,8 @@ class ChatProvider extends ChangeNotifier {
       snippet = '📷 صورة';
     } else if (kind == 'file') {
       snippet = '📎 ملف';
+    } else if (kind == 'system') {
+      snippet = _supportSnippetFromBody(body) ?? 'رسالة نظام';
     } else if (body.isNotEmpty) {
       snippet = body;
     } else {
@@ -1065,10 +1583,85 @@ class ChatProvider extends ChangeNotifier {
 
     _fastBumpConversationOnNewMessage(
       cid: cid,
-      createdAt: createdAt,
+      createdAt: effectiveCreatedAt,
       snippet: snippet,
       fromUid: senderUid,
     );
+
+    if (!(kind == 'system' && _isSupportRatingResponseBody(body))) {
+      unawaited(_maybeSetPendingOnIncoming(cid, senderUid));
+    } else {
+      unawaited(
+        _maybeSendSupportFollowupFromResponse(
+          cid,
+          body,
+          senderUid,
+          effectiveCreatedAt,
+        ),
+      );
+    }
+  }
+
+  String? _supportSnippetFromBody(String body) {
+    if (body.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map) {
+        final type = decoded['type']?.toString();
+        if (type == 'support_rating_request') {
+          return 'استمارة تقييم خدمة العملاء';
+        }
+        if (type == 'support_rating_response') {
+          return 'تم تقييم خدمة العملاء';
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  bool _isSupportRatingResponseBody(String body) {
+    if (body.isEmpty) return false;
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map) {
+        return decoded['type']?.toString() == 'support_rating_response';
+      }
+    } catch (_) {}
+    return false;
+  }
+
+  Future<void> _maybeSendSupportFollowupFromResponse(
+    String conversationId,
+    String body,
+    String senderUid,
+    DateTime createdAt,
+  ) async {
+    if (!_isSupportAgent) return;
+    if (!isSupportConversation(conversationId)) return;
+    if (senderUid.isEmpty) return;
+    if (senderUid == currentUid) return;
+    if (createdAt.millisecondsSinceEpoch == 0) return;
+    if (_bootAt.millisecondsSinceEpoch > 0 &&
+        createdAt.isBefore(_bootAt.subtract(const Duration(seconds: 10)))) {
+      return;
+    }
+    String sessionId = '';
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map) {
+        sessionId = decoded['session_id']?.toString() ?? '';
+      }
+    } catch (_) {}
+    if (sessionId.isEmpty) return;
+    if (_supportFollowupSentSessions.contains(sessionId)) return;
+    _supportFollowupSentSessions.add(sessionId);
+    unawaited(_persistSupportFollowupSessions());
+    try {
+      await sendText(
+        conversationId: conversationId,
+        text: 'لا تتردد في أي استفسار سنسعد بخدمتكم في أي وقت',
+      );
+    } catch (_) {}
   }
 
   void _fastBumpConversationOnNewMessage({
@@ -1142,6 +1735,9 @@ class ChatProvider extends ChangeNotifier {
       _readStatesByConv[conversationId] = states;
       await _local.upsertReadStates(states);
       _applyReadsToOutgoing(conversationId);
+      if (_isOnline) {
+        unawaited(_scheduleAttachmentCleanupForConversation(conversationId));
+      }
     } catch (_) {}
   }
 
@@ -1149,8 +1745,10 @@ class ChatProvider extends ChangeNotifier {
     if (conversationId.isEmpty || _disposed) return;
 
     if (_openedConversationId == conversationId && _roomMsgsSub != null) {
-      await markConversationRead(conversationId);
-      await _applyReadsToOutgoing(conversationId);
+      if (_isOnline) {
+        await markConversationRead(conversationId);
+        await _applyReadsToOutgoing(conversationId);
+      }
       return;
     }
 
@@ -1164,13 +1762,22 @@ class ChatProvider extends ChangeNotifier {
         cached.isNotEmpty ? cached.last.createdAt : null;
     _safeNotify();
 
-    await _refreshReadStatesForConversation(conversationId);
+    if (_isOnline) {
+      await _refreshReadStatesForConversation(conversationId);
+    }
 
-    // ✅ حمّل دفعة حديثة فقط إذا لا يوجد كاش محلي
-    if (cached.isEmpty) {
-      await loadMoreMessages(conversationId);
-    } else {
-      unawaited(_refreshLatestMessages(conversationId));
+    // ✅ حمّل دفعة حديثة للمحادثات الدائمة (الدعم)
+    if (_isOnline && _allowRemoteHistory(conversationId)) {
+      if (cached.isEmpty) {
+        await loadMoreMessages(conversationId);
+      } else {
+        unawaited(_refreshLatestMessages(conversationId));
+      }
+    }
+
+    // ✅ للمحادثات العادية: إذا كانت فارغة محليًا، اسحب أحدث الرسائل مرة واحدة
+    if (_isOnline && !_allowRemoteHistory(conversationId)) {
+      await _seedRecentMessagesIfNeeded(conversationId);
     }
     if (_disposed) return;
 
@@ -1180,49 +1787,65 @@ class ChatProvider extends ChangeNotifier {
     try {
       await _roomMsgsSub?.cancel();
     } catch (_) {}
-    _roomMsgsSub = _chat.watchMessages(conversationId).listen(
-      (remoteList) async {
-        if (_disposed) return;
-        final latest = List<CM.ChatMessage>.from(remoteList);
-        await _local.upsertMessages(latest);
-        if (_disposed) return;
-        _mergeIncomingMessages(conversationId, latest);
+    if (_isOnline) {
+      final refreshed = _messagesByConv[conversationId] ?? const [];
+      final since = refreshed.isNotEmpty
+          ? refreshed.first.createdAt
+          : DateTime.now().toUtc().subtract(const Duration(seconds: 5));
+      _roomMsgsSub = _chat
+          .watchMessages(
+            conversationId,
+            since: _allowRemoteHistory(conversationId) ? null : since,
+            seedFromServer: _allowRemoteHistory(conversationId),
+          )
+          .listen(
+        (remoteList) async {
+          if (_disposed) return;
+          final latest = List<CM.ChatMessage>.from(remoteList);
+          await _local.upsertMessages(latest);
+          if (_disposed) return;
+          _mergeIncomingMessages(conversationId, latest);
 
-        _scheduleConversationsRefresh();
-        _safeNotify();
+          _scheduleConversationsRefresh();
+          _safeNotify();
 
-        // ✅ Prefetch بعد كل دفعة واردة
-        unawaited(
-          prefetchVisibleAttachments(conversationId, maxMessages: 30),
-        );
+          // ✅ Prefetch بعد كل دفعة واردة
+          unawaited(
+            prefetchVisibleAttachments(conversationId, maxMessages: 30),
+          );
 
-        await _applyReadsToOutgoing(conversationId);
-      },
-      onError: (e) {
-        if (_disposed) return;
-        _setError('Realtime error: $e');
-        _safeNotify();
-      },
-    );
+          await _applyReadsToOutgoing(conversationId);
+        },
+        onError: (e) {
+          if (_disposed) return;
+          // تجاهل أخطاء Realtime عند انقطاع الشبكة
+          if (!_isOnline) return;
+          _setError('Realtime error: $e');
+          _safeNotify();
+        },
+      );
+    }
 
     try {
       await _typingSub?.cancel();
     } catch (_) {}
-    _typingSub = _chat.typingStream(conversationId).listen((payload) {
-      if (_disposed) return;
-      final String convId = (payload['conversation_id'] ?? '').toString();
-      if (convId.isEmpty || convId != conversationId) return;
-      final active = (payload['active_uids'] as List?) ?? const [];
-      final set = <String>{};
-      for (final raw in active) {
-        final uid = raw?.toString();
-        if (uid != null && uid.isNotEmpty && uid != currentUid) {
-          set.add(uid);
+    if (_isOnline) {
+      _typingSub = _chat.typingStream(conversationId).listen((payload) {
+        if (_disposed) return;
+        final String convId = (payload['conversation_id'] ?? '').toString();
+        if (convId.isEmpty || convId != conversationId) return;
+        final active = (payload['active_uids'] as List?) ?? const [];
+        final set = <String>{};
+        for (final raw in active) {
+          final uid = raw?.toString();
+          if (uid != null && uid.isNotEmpty && uid != currentUid) {
+            set.add(uid);
+          }
         }
-      }
-      _typingUidsByConv[convId] = set;
-      _safeNotify();
-    });
+        _typingUidsByConv[convId] = set;
+        _safeNotify();
+      });
+    }
 
     try {
       await _readsSub?.cancel();
@@ -1239,18 +1862,22 @@ class ChatProvider extends ChangeNotifier {
         }
       }
     ''';
-    _readsSub = _gql
-        .subscribe(
-          SubscriptionOptions(
-            document: gql(readsSubDoc),
-            variables: {'cid': conversationId},
-            fetchPolicy: FetchPolicy.noCache,
-          ),
-        )
-        .listen((_) => _refreshReadStatesForConversation(conversationId));
+    if (_isOnline) {
+      _readsSub = _gql
+          .subscribe(
+            SubscriptionOptions(
+              document: gql(readsSubDoc),
+              variables: {'cid': conversationId},
+              fetchPolicy: FetchPolicy.noCache,
+            ),
+          )
+          .listen((_) => _refreshReadStatesForConversation(conversationId));
+    }
 
-    await markConversationRead(conversationId);
-    await _applyReadsToOutgoing(conversationId);
+    if (_isOnline) {
+      await markConversationRead(conversationId);
+      await _applyReadsToOutgoing(conversationId);
+    }
   }
 
   Future<void> closeConversation() async {
@@ -1303,6 +1930,33 @@ class ChatProvider extends ChangeNotifier {
   // تحميل المزيد
   // --------------------------------------------------------------------------
   Future<void> loadMoreMessages(String conversationId) async {
+    if (!_allowRemoteHistory(conversationId)) {
+      final DateTime? before = _olderCursorByConv[conversationId];
+      List<CM.ChatMessage> cached;
+      if (before != null) {
+        cached = await _local.getMessages(
+          conversationId,
+          beforeIso: before.toUtc().toIso8601String(),
+          limit: 40,
+        );
+      } else {
+        cached = await _local.getMessages(conversationId, limit: 40);
+      }
+      if (cached.isNotEmpty) {
+        final existing = List<CM.ChatMessage>.from(
+          _messagesByConv[conversationId] ?? const [],
+        );
+        final existingIds = existing.map((m) => m.id).toSet();
+        for (final m in cached) {
+          if (!existingIds.contains(m.id)) existing.add(m);
+        }
+        _messagesByConv[conversationId] = existing;
+        _olderCursorByConv[conversationId] = cached.last.createdAt;
+        _safeNotify();
+        await _applyReadsToOutgoing(conversationId);
+      }
+      return;
+    }
     try {
       final DateTime? before = _olderCursorByConv[conversationId];
 
@@ -1369,6 +2023,7 @@ class ChatProvider extends ChangeNotifier {
   }
 
   Future<void> _refreshLatestMessages(String conversationId) async {
+    if (!_allowRemoteHistory(conversationId)) return;
     try {
       final listDesc = await _fetchRecentBatchFromBackend(
         conversationId: conversationId,
@@ -1381,6 +2036,24 @@ class ChatProvider extends ChangeNotifier {
     } catch (_) {}
   }
 
+  Future<void> _seedRecentMessagesIfNeeded(String conversationId) async {
+    if (!_isOnline || _allowRemoteHistory(conversationId)) return;
+    final existing = _messagesByConv[conversationId] ?? const [];
+    if (existing.isNotEmpty) return;
+    try {
+      final listDesc = await _fetchRecentBatchFromBackend(
+        conversationId: conversationId,
+        limit: 40,
+      );
+      if (listDesc.isEmpty) return;
+      await _local.upsertMessages(listDesc);
+      _mergeIncomingMessages(conversationId, listDesc);
+      _safeNotify();
+    } catch (_) {
+      // تجاهل الخطأ لتفادي كسر فتح المحادثة
+    }
+  }
+
   void _mergeIncomingMessages(
     String conversationId,
     List<CM.ChatMessage> incoming,
@@ -1388,12 +2061,27 @@ class ChatProvider extends ChangeNotifier {
     final existing =
         List<CM.ChatMessage>.from(_messagesByConv[conversationId] ?? const []);
     final map = <String, CM.ChatMessage>{};
+    final existingIds = <String>{};
     for (final m in existing) {
-      if (m.id.isNotEmpty) map[m.id] = m;
+      if (m.id.isNotEmpty) {
+        map[m.id] = m;
+        existingIds.add(m.id);
+      }
     }
     for (final m in incoming) {
-      if (m.id.isNotEmpty) map[m.id] = m;
+      if (m.id.isNotEmpty) {
+        final prev = map[m.id];
+        if (prev != null && m.attachments.isEmpty && prev.attachments.isNotEmpty) {
+          map[m.id] = prev.copyWith(attachments: prev.attachments);
+        } else {
+          map[m.id] = m;
+        }
+        if (!existingIds.contains(m.id) && m.senderUid != currentUid) {
+          _recentIncomingMessageIds[m.id] = DateTime.now().toUtc();
+        }
+      }
     }
+    _pruneRecentIncoming();
     final merged = map.values.toList()
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     if (merged.length > 500) {
@@ -1445,6 +2133,7 @@ class ChatProvider extends ChangeNotifier {
 
   Future<void> _flushOutbox() async {
     if (_disposed) return;
+    if (!_isOnline) return;
     final items = await _local.getOutbox();
     if (items.isEmpty) return;
 
@@ -1459,6 +2148,29 @@ class ChatProvider extends ChangeNotifier {
       }
 
       try {
+        if (kind == 'att_downloaded' || kind == 'att_opened') {
+          final dev = await _ensureDeviceId();
+          if (dev == null || dev.trim().isEmpty) {
+            continue;
+          }
+          if (body.trim().isEmpty) {
+            await _local.deleteOutboxMessage(localId);
+            continue;
+          }
+          if (kind == 'att_downloaded') {
+            await _chat.markAttachmentDownloaded(
+              attachmentId: body.trim(),
+              deviceId: dev,
+            );
+          } else {
+            await _chat.markAttachmentOpened(
+              attachmentId: body.trim(),
+              deviceId: dev,
+            );
+          }
+          await _local.deleteOutboxMessage(localId);
+          continue;
+        }
         if (kind == 'image' || kind == 'file') {
           if (!AppConstants.chatAllowAttachments) {
             await _local.deleteOutboxMessage(localId);
@@ -1490,6 +2202,7 @@ class ChatProvider extends ChangeNotifier {
                   optionalText: body.isEmpty ? null : body,
                   localSeq: _generateLocalSeq(),
                   clientMsgId: localId,
+                  combineTextWithImages: true,
                 );
           if (sent.isNotEmpty) {
             await _local.deleteOutboxMessage(localId);
@@ -1504,6 +2217,26 @@ class ChatProvider extends ChangeNotifier {
             _safeNotify();
             await _local.upsertMessages(sent);
           }
+        } else if (kind == 'system') {
+          final real = await _chat.sendSystemMessage(
+            conversationId: cid,
+            body: body,
+            localSeq: _generateLocalSeq(),
+            clientMsgId: localId,
+          );
+          await _local.deleteOutboxMessage(localId);
+          final list = List<CM.ChatMessage>.from(
+            _messagesByConv[cid] ?? const [],
+          );
+          final idx = list.indexWhere((m) => m.id == localId);
+          if (idx != -1) {
+            list[idx] = real.copyWith(status: CM.ChatMessageStatus.sent);
+          } else {
+            list.insert(0, real.copyWith(status: CM.ChatMessageStatus.sent));
+          }
+          _messagesByConv[cid] = list;
+          _safeNotify();
+          await _local.upsertMessages([real]);
         } else {
           final real = await _chat.sendText(
             conversationId: cid,
@@ -1531,6 +2264,92 @@ class ChatProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> sendSystemMessage({
+    required String conversationId,
+    required Map<String, dynamic> payload,
+    String? snippetLabel,
+  }) async {
+    if (_disposed) return;
+    final body = jsonEncode(payload);
+    final now = DateTime.now().toUtc();
+    final optimistic = CM.ChatMessage(
+      id: 'local-${now.microsecondsSinceEpoch}',
+      conversationId: conversationId,
+      senderUid: currentUid,
+      senderEmail: myEmail,
+      kind: CM.ChatMessageKind.system,
+      body: body,
+      createdAt: now,
+      status: CM.ChatMessageStatus.sending,
+    );
+
+    final list = List<CM.ChatMessage>.from(
+      _messagesByConv[conversationId] ?? const [],
+    );
+    list.insert(0, optimistic);
+    _messagesByConv[conversationId] = list;
+    _safeNotify();
+
+    _applyOutgoingToConversationList(
+      conversationId,
+      snippetLabel ?? 'رسالة نظام',
+    );
+    unawaited(_maybeAdvanceToUnderReview(conversationId));
+
+    await _local.upsertMessages([optimistic]);
+
+    if (!_isOnline) {
+      try {
+        await _enqueueOutbox(
+          localId: optimistic.id,
+          conversationId: conversationId,
+          kind: 'system',
+          body: body,
+        );
+      } catch (_) {}
+      return;
+    }
+
+    try {
+      final real = await _chat.sendSystemMessage(
+        conversationId: conversationId,
+        body: body,
+        localSeq: _generateLocalSeq(),
+        clientMsgId: optimistic.id,
+      );
+      final replaced = List<CM.ChatMessage>.from(
+        _messagesByConv[conversationId] ?? const [],
+      );
+      final idx = replaced.indexWhere((m) => m.id == optimistic.id);
+      if (idx != -1) {
+        replaced[idx] = real.copyWith(status: CM.ChatMessageStatus.sent);
+      } else {
+        replaced.insert(0, real.copyWith(status: CM.ChatMessageStatus.sent));
+      }
+      _messagesByConv[conversationId] = replaced;
+      _safeNotify();
+      await _local.deleteMessage(optimistic.id);
+      await _local.upsertMessages([real]);
+      _scheduleConversationsRefresh();
+    } catch (_) {
+      final replaced = List<CM.ChatMessage>.from(
+        _messagesByConv[conversationId] ?? const [],
+      );
+      final idx = replaced.indexWhere((m) => m.id == optimistic.id);
+      if (idx != -1) {
+        replaced[idx] = replaced[idx].copyWith(
+          status: CM.ChatMessageStatus.failed,
+        );
+        _messagesByConv[conversationId] = replaced;
+        _safeNotify();
+      }
+      await _local.updateMessageStatus(
+        messageId: optimistic.id,
+        status: CM.ChatMessageStatus.failed,
+      );
+    }
+  }
+
   Future<void> sendText({
     required String conversationId,
     required String text,
@@ -1553,8 +2372,24 @@ class ChatProvider extends ChangeNotifier {
     _safeNotify();
 
     _applyOutgoingToConversationList(conversationId, body);
+    unawaited(_maybeAdvanceToUnderReview(conversationId));
 
     await _local.upsertMessages([optimistic]);
+
+    if (!_isOnline) {
+      try {
+        await _enqueueOutbox(
+          localId: optimistic.id,
+          conversationId: conversationId,
+          kind: 'text',
+          body: body,
+          replyToMessageId: optimistic.replyToMessageId,
+          replyToSnippet: optimistic.replyToSnippet,
+          mentions: optimistic.mentions,
+        );
+      } catch (_) {}
+      return;
+    }
 
     try {
       final real = await _chat.sendText(
@@ -1649,11 +2484,8 @@ class ChatProvider extends ChangeNotifier {
       return;
     }
 
-    if ((optionalText ?? '').trim().isNotEmpty) {
-      _applyOutgoingToConversationList(conversationId, optionalText!.trim());
-    } else {
-      _applyOutgoingToConversationList(conversationId, '📷 صورة');
-    }
+    _applyOutgoingToConversationList(conversationId, '📷 صورة');
+    unawaited(_maybeAdvanceToUnderReview(conversationId));
 
     final prepared = await _chat.prepareImageFiles(files);
     final optimistic = CM.ChatMessage.optimisticImages(
@@ -1671,6 +2503,19 @@ class ChatProvider extends ChangeNotifier {
     _safeNotify();
     await _local.upsertMessages([optimistic]);
 
+    if (!_isOnline) {
+      try {
+        await _enqueueOutbox(
+          localId: optimistic.id,
+          conversationId: conversationId,
+          kind: 'image',
+          body: (optionalText ?? '').trim(),
+          attachmentPaths: files.map((f) => f.path).toList(),
+        );
+      } catch (_) {}
+      return;
+    }
+
     try {
       final sent = await _chat.sendImages(
         conversationId: conversationId,
@@ -1678,6 +2523,7 @@ class ChatProvider extends ChangeNotifier {
         optionalText: optionalText,
         localSeq: _generateLocalSeq(),
         clientMsgId: optimistic.localId,
+        combineTextWithImages: true,
       );
 
       if (sent.isNotEmpty) {
@@ -1700,6 +2546,7 @@ class ChatProvider extends ChangeNotifier {
 
         await _local.upsertMessages(sent);
         await _local.deleteMessage(optimistic.id);
+        unawaited(_seedLocalAttachmentsFromSent(sent, prepared));
       }
 
       _scheduleConversationsRefresh();
@@ -1751,7 +2598,88 @@ class ChatProvider extends ChangeNotifier {
     required List<File> files,
     String? optionalText,
   }) async {
-    throw 'تم إيقاف إرسال المرفقات في هذا الإصدار.';
+    if (_disposed) return;
+    if (!AppConstants.chatAllowAttachments) {
+      throw 'تم إيقاف إرسال المرفقات في هذا الإصدار.';
+    }
+    if (files.isEmpty &&
+        (optionalText == null || optionalText.trim().isEmpty)) {
+      return;
+    }
+
+    _applyOutgoingToConversationList(conversationId, '📎 ملف');
+    unawaited(_maybeAdvanceToUnderReview(conversationId));
+
+    final optimistic = CM.ChatMessage.optimisticFiles(
+      conversationId: conversationId,
+      senderUid: currentUid,
+      senderEmail: myEmail,
+      files: files,
+      caption: optionalText,
+    );
+    final list = List<CM.ChatMessage>.from(
+      _messagesByConv[conversationId] ?? const [],
+    );
+    list.insert(0, optimistic);
+    _messagesByConv[conversationId] = list;
+    _safeNotify();
+    await _local.upsertMessages([optimistic]);
+
+    if (!_isOnline) {
+      try {
+        await _enqueueOutbox(
+          localId: optimistic.id,
+          conversationId: conversationId,
+          kind: 'file',
+          body: (optionalText ?? '').trim(),
+          attachmentPaths: files.map((f) => f.path).toList(),
+        );
+      } catch (_) {}
+      return;
+    }
+
+    try {
+      final sent = await _chat.sendFiles(
+        conversationId: conversationId,
+        files: files,
+        optionalText: (optionalText ?? '').trim(),
+      );
+      final latest = List<CM.ChatMessage>.from(sent);
+      await _local.upsertMessages(latest);
+      _mergeIncomingMessages(conversationId, latest);
+      _scheduleConversationsRefresh();
+      _safeNotify();
+      unawaited(_seedLocalAttachmentsFromSent(latest, files));
+    } catch (e) {
+      final failedList = List<CM.ChatMessage>.from(
+        _messagesByConv[conversationId] ?? const [],
+      );
+      final idx = failedList.indexWhere((m) => m.id == optimistic.id);
+      if (idx != -1) {
+        failedList[idx] =
+            failedList[idx].copyWith(status: CM.ChatMessageStatus.failed);
+        _messagesByConv[conversationId] = failedList;
+        _safeNotify();
+      }
+      try {
+        await _local.updateMessageStatus(
+          messageId: optimistic.id,
+          status: CM.ChatMessageStatus.failed,
+        );
+      } catch (_) {}
+      try {
+        await _enqueueOutbox(
+          localId: optimistic.id,
+          conversationId: conversationId,
+          kind: 'file',
+          body: (optionalText ?? '').trim(),
+          attachmentPaths: files.map((f) => f.path).toList(),
+        );
+      } catch (_) {}
+      _setError('تعذّر إرسال الملفات: $e');
+      _safeNotify();
+      rethrow;
+    }
   }
 
   // --------------------------------------------------------------------------
@@ -1877,13 +2805,30 @@ class ChatProvider extends ChangeNotifier {
   // --------------------------------------------------------------------------
   Future<void> markConversationRead(String conversationId) async {
     DateTime? effective;
-    try {
-      effective = await _chat.markReadUpToLatest(conversationId);
-    } catch (_) {}
-    final ts = effective ?? DateTime.now().toUtc();
+    if (_isOnline) {
+      try {
+        if (_allowRemoteHistory(conversationId)) {
+          effective = await _chat.markReadUpToLatest(conversationId);
+        } else {
+          final lastReadable = _lastReadableMessage(conversationId);
+          if (lastReadable != null) {
+            await _chat.markReadUpTo(
+              conversationId: conversationId,
+              messageId: lastReadable.id,
+              createdAt: lastReadable.createdAt,
+            );
+            effective = lastReadable.createdAt;
+          }
+        }
+      } catch (_) {}
+    }
+    final ts = effective ?? _myLastReadByConv[conversationId] ?? DateTime.now().toUtc();
     _myLastReadByConv[conversationId] = ts;
     unawaited(_local.upsertRead(conversationId, ts));
-    unawaited(_rt.setLastRead(conversationId, ts));
+    if (_isOnline) {
+      unawaited(_rt.setLastRead(conversationId, ts));
+    }
+    _rt.setLocalLastRead(conversationId, ts);
     final i = _conversations.indexWhere((c) => c.id == conversationId);
     if (i != -1) {
       _conversations[i] = _conversations[i].copyWith(unreadCount: 0);
@@ -1927,15 +2872,16 @@ class ChatProvider extends ChangeNotifier {
     try {
       final states = _readStatesByConv[conversationId] ?? <CM.ChatReadState>[];
       final idx = states.indexWhere((s) => s.userUid == currentUid);
+      final lastReadable = _lastReadableMessage(conversationId);
+      final lastId = lastReadable?.id ??
+          (list?.isNotEmpty == true ? list!.first.id : null);
       final updatedState = CM.ChatReadState(
         conversationId: conversationId,
         userUid: currentUid,
         lastReadAt: ts,
-        lastReadMessageId:
-            list?.isNotEmpty == true ? list!.first.id : null,
+        lastReadMessageId: lastId,
         lastDeliveredAt: ts,
-        lastDeliveredMessageId:
-            list?.isNotEmpty == true ? list!.first.id : null,
+        lastDeliveredMessageId: lastId,
       );
       if (idx == -1) {
         states.add(updatedState);
@@ -1945,6 +2891,10 @@ class ChatProvider extends ChangeNotifier {
       _readStatesByConv[conversationId] = states;
       await _local.upsertReadStates([updatedState]);
     } catch (_) {}
+
+    if (_isOnline) {
+      unawaited(_scheduleAttachmentCleanupForConversation(conversationId));
+    }
   }
 
   CM.ChatMessageStatus computeStatusFor(
@@ -2061,6 +3011,7 @@ class ChatProvider extends ChangeNotifier {
     _typingPingDebounce?.cancel();
     _typingPingDebounce = Timer(const Duration(milliseconds: 400), () {
       if (_disposed) return;
+      if (!_isOnline) return;
       _chat.pingTyping(conversationId, typing: isTyping);
     });
   }
@@ -2070,13 +3021,38 @@ class ChatProvider extends ChangeNotifier {
         _participantsByConv[conversationId] ?? const <ChatParticipantLocal>[];
     for (final p in parts) {
       if (p.userUid == uid) {
-        final nick = (p.nickname ?? '').trim();
-        if (nick.isNotEmpty) return nick;
-        final email = (p.email ?? '').trim();
-        return email.isNotEmpty ? email : uid;
+        final alias = _aliasByUser[p.userUid];
+        return _displayLabelForParticipant(p, alias: alias);
       }
     }
-    return uid;
+    return 'بدون رقم';
+  }
+
+  String _displayLabelForParticipant(
+    ChatParticipantLocal p, {
+    String? alias,
+  }) {
+    final aliasTrimmed = (alias ?? '').trim();
+    if (aliasTrimmed.isNotEmpty) return aliasTrimmed;
+    final displayName = (p.displayName ?? '').trim();
+    if (displayName.isNotEmpty) return displayName;
+    final nick = (p.nickname ?? '').trim();
+    if (nick.isNotEmpty) {
+      return ChatCodeUtils.isChatCode(nick)
+          ? ChatCodeUtils.format(nick)
+          : nick;
+    }
+    final code = (p.chatCode ?? '').trim();
+    if (code.isNotEmpty) {
+      return ChatCodeUtils.isChatCode(code)
+          ? ChatCodeUtils.format(code)
+          : code;
+    }
+    final email = (p.email ?? '').trim();
+    final digits = ChatCodeUtils.normalize(email);
+    if (ChatCodeUtils.isChatCode(digits)) return ChatCodeUtils.format(digits);
+    if (email.isNotEmpty) return email;
+    return 'بدون رقم';
   }
 
   List<ChatParticipantLocal> participantsOf(String conversationId) {
@@ -2111,11 +3087,13 @@ class ChatProvider extends ChangeNotifier {
   }
 
   // إنشاء DM / مجموعة
-  Future<CM.ChatConversation> startDirectByEmail(String email) async {
-    final conv = await _chat.startDMWithEmail(email);
+  Future<CM.ChatConversation> startDirectByEmail(String emailOrCode) async {
+    final conv = await _chat.startDMWithEmail(emailOrCode);
     _ensureConversationVisible(
       conv,
-      displayTitle: email.trim(),
+      displayTitle: ChatCodeUtils.isChatCode(emailOrCode.trim())
+          ? emailOrCode.trim()
+          : null,
     );
     _scheduleConversationsRefresh();
     return conv;
@@ -2134,10 +3112,17 @@ class ChatProvider extends ChangeNotifier {
   }) {
     if (conv.id.isEmpty) return;
     final now = DateTime.now().toUtc();
-    final normalized = conv.copyWith(
+    var normalized = conv.copyWith(
       lastMsgAt: conv.lastMsgAt ?? conv.updatedAt ?? now,
       updatedAt: conv.updatedAt ?? now,
     );
+    final trimmed = displayTitle?.trim();
+    if (!normalized.isGroup &&
+        trimmed != null &&
+        trimmed.isNotEmpty &&
+        (normalized.title == null || normalized.title!.trim().isEmpty)) {
+      normalized = normalized.copyWith(title: trimmed);
+    }
     final idx = _conversations.indexWhere((c) => c.id == conv.id);
     if (idx == -1) {
       _conversations.insert(0, normalized);
@@ -2145,7 +3130,6 @@ class ChatProvider extends ChangeNotifier {
       _conversations[idx] = normalized;
     }
 
-    final trimmed = displayTitle?.trim();
     if (trimmed != null && trimmed.isNotEmpty) {
       _displayTitleByConv[conv.id] = trimmed;
     }
@@ -2263,11 +3247,17 @@ class ChatProvider extends ChangeNotifier {
     int maxMessages = 24,
   }) async {
     final msgs = _messagesByConv[conversationId] ?? const <CM.ChatMessage>[];
+    final allowRemote = _allowRemoteHistory(conversationId);
     int processed = 0;
     for (final m in msgs) {
       if (processed >= maxMessages) break;
       processed++;
 
+      if (!allowRemote && !_recentIncomingMessageIds.containsKey(m.id)) {
+        continue;
+      }
+
+      bool allCached = true;
       final atts = _attachmentsOf(m);
       for (final a in atts) {
         // حاول الحصول على URL، وإلا اشتقّه من bucket/path
@@ -2283,11 +3273,48 @@ class ChatProvider extends ChangeNotifier {
             url = await _signedOrPublicUrl(bucket, path);
           } catch (_) {}
         }
-        if (url == null || url.isEmpty) continue;
-        try {
-          await _attCache.ensureFileFor(url);
-        } catch (_) {}
+        if (url == null || url.isEmpty) {
+          allCached = false;
+          continue;
+        }
+        String? localPath;
+        if (bucket != null && path != null && bucket.isNotEmpty && path.isNotEmpty) {
+          localPath = await _attCache.ensureFileForStorage(
+            bucket,
+            path,
+            url: url,
+          );
+        } else {
+          localPath = await _attCache.ensureFileFor(url);
+        }
+        if (localPath == null || localPath.isEmpty) {
+          allCached = false;
+          continue;
+        }
+        final expectedSize = _attSizeBytes(a);
+        if (expectedSize != null) {
+          try {
+            final actual = await File(localPath).length();
+            if (actual != expectedSize) {
+              allCached = false;
+              continue;
+            }
+          } catch (_) {}
+        }
+        final attId = _attId(a);
+        if (attId != null && attId.isNotEmpty) {
+          unawaited(_recordAttachmentDownloaded(attId, conversationId));
+        }
       }
+      // بعد محاولة تنزيل مرفقات الرسالة، أزلها من قائمة "الواردة حديثًا"
+      if (!allowRemote && allCached) {
+        _recentIncomingMessageIds.remove(m.id);
+      }
+    }
+    _pruneRecentIncoming();
+    if (_isOnline) {
+      await _maybeMarkDeliveredAfterDownloads(conversationId);
+      await _scheduleAttachmentCleanupForConversation(conversationId);
     }
   }
 
@@ -2325,6 +3352,315 @@ class ChatProvider extends ChangeNotifier {
     } catch (_) {}
     if (a is Map) return a['url']?.toString();
     return null;
+  }
+
+  String? _attFileId(dynamic a) {
+    try {
+      final extra = (a as dynamic).extra;
+      if (extra is Map) {
+        final v = extra['file_id']?.toString();
+        if (v != null && v.trim().isNotEmpty) return v.trim();
+        final v2 = extra['fileId']?.toString();
+        if (v2 != null && v2.trim().isNotEmpty) return v2.trim();
+      }
+    } catch (_) {}
+    if (a is Map && a['file_id'] != null) {
+      final v = a['file_id']?.toString();
+      if (v != null && v.trim().isNotEmpty) return v.trim();
+    }
+    return null;
+  }
+
+  String? _attId(dynamic a) {
+    try {
+      final v = (a as dynamic).id;
+      if (v != null) {
+        final s = v.toString().trim();
+        if (s.isNotEmpty) return s;
+      }
+    } catch (_) {}
+    if (a is Map) {
+      final v = a['id']?.toString().trim();
+      if (v != null && v.isNotEmpty) return v;
+    }
+    return null;
+  }
+
+  int? _attSizeBytes(dynamic a) {
+    try {
+      final v = (a as dynamic).sizeBytes;
+      if (v is int) return v;
+    } catch (_) {}
+    if (a is Map) {
+      final v = a['size_bytes'];
+      if (v is int) return v;
+      if (v is num) return v.toInt();
+      if (v is String) return int.tryParse(v);
+    }
+    return null;
+  }
+
+  Future<void> _seedLocalAttachmentsFromSent(
+    List<CM.ChatMessage> sent,
+    List<File> localFiles,
+  ) async {
+    if (sent.isEmpty || localFiles.isEmpty) return;
+    final byName = <String, File>{};
+    for (final f in localFiles) {
+      byName[p.basename(f.path)] = f;
+    }
+    for (final m in sent) {
+      final atts = _attachmentsOf(m);
+      if (atts.isEmpty) continue;
+      for (final a in atts) {
+        final fid = _attFileId(a);
+        if (fid == null || fid.isEmpty) continue;
+        String? url;
+        try {
+          final v = (a as dynamic).url;
+          if (v != null) url = v.toString();
+        } catch (_) {}
+        if (url == null || url.trim().isEmpty) {
+          try {
+            final v = (a as dynamic).signedUrl;
+            if (v != null) url = v.toString();
+          } catch (_) {}
+        }
+        url ??= _storage.publicFileUrl(fid);
+        File? local;
+        try {
+          final extra = (a as dynamic).extra;
+          if (extra is Map && extra['local_path'] is String) {
+            final lp = (extra['local_path'] as String).trim();
+            if (lp.isNotEmpty && File(lp).existsSync()) {
+              local = File(lp);
+            }
+          }
+        } catch (_) {}
+        local ??= byName[p.basename(_attPath(a) ?? '')];
+        if (local == null || !local.existsSync()) continue;
+        await _attCache.seedFromLocalFile(url, local);
+      }
+    }
+  }
+
+  bool _allowRemoteHistory(String conversationId) {
+    return true;
+  }
+
+  bool allowRemoteAttachmentDownload(
+    String conversationId,
+    CM.ChatMessage message,
+  ) {
+    if (_allowRemoteHistory(conversationId)) return true;
+    if (message.senderUid == currentUid) return true;
+    if (_isMessageAttachmentsCached(message)) return true;
+    return _recentIncomingMessageIds.containsKey(message.id);
+  }
+
+  void _pruneRecentIncoming() {
+    if (_recentIncomingMessageIds.isEmpty) return;
+    final cutoff = DateTime.now().toUtc().subtract(const Duration(hours: 24));
+    _recentIncomingMessageIds.removeWhere((_, ts) => ts.isBefore(cutoff));
+  }
+
+  bool _isAttachmentCached(dynamic a) {
+    // مسار محلي صريح
+    try {
+      final extra = (a as dynamic).extra;
+      if (extra is Map && extra['local_path'] is String) {
+        final lp = (extra['local_path'] as String).trim();
+        if (lp.isNotEmpty && File(lp).existsSync()) return true;
+      }
+    } catch (_) {}
+    // file_id → URL ثابت
+    try {
+      final extra = (a as dynamic).extra;
+      if (extra is Map) {
+        final fid = extra['file_id']?.toString().trim();
+        if (fid != null && fid.isNotEmpty) {
+          final url = _storage.publicFileUrl(fid);
+          if (_attCache.localPathSyncIfAny(url) != null) return true;
+        }
+      }
+    } catch (_) {}
+    // url مباشر
+    final url = _attUrl(a);
+    if (url != null && url.isNotEmpty) {
+      if (_attCache.localPathSyncIfAny(url) != null) return true;
+    }
+    // path محلي محتمل
+    final pth = _attPath(a);
+    if (pth != null && pth.isNotEmpty && File(pth).existsSync()) return true;
+    return false;
+  }
+
+  bool _isMessageAttachmentsCached(CM.ChatMessage m) {
+    final atts = _attachmentsOf(m);
+    if (atts.isEmpty) return true;
+    for (final a in atts) {
+      if (!_isAttachmentCached(a)) return false;
+    }
+    return true;
+  }
+
+  CM.ChatMessage? _lastReadableMessage(String conversationId) {
+    final list = _messagesByConv[conversationId] ?? const <CM.ChatMessage>[];
+    if (list.isEmpty) return null;
+    final sorted = List<CM.ChatMessage>.from(list)
+      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    CM.ChatMessage? lastOk;
+    for (final m in sorted) {
+      if (!_isMessageAttachmentsCached(m)) break;
+      lastOk = m;
+    }
+    return lastOk;
+  }
+
+  CM.ChatReadState? _myReadState(String conversationId) {
+    final states = _readStatesByConv[conversationId] ?? const <CM.ChatReadState>[];
+    return states.firstWhere(
+      (s) => s.userUid == currentUid,
+      orElse: () => const CM.ChatReadState(conversationId: '', userUid: ''),
+    );
+  }
+
+  Future<void> _maybeMarkDeliveredAfterDownloads(String conversationId) async {
+    if (!_isOnline) return;
+    final list = _messagesByConv[conversationId] ?? const <CM.ChatMessage>[];
+    CM.ChatMessage? last;
+    for (final m in list) {
+      if (m.senderUid == currentUid) continue;
+      if (m.id.isEmpty || m.id.startsWith('local-')) continue;
+      if (!_isMessageAttachmentsCached(m)) continue;
+      if (last == null || m.createdAt.isAfter(last.createdAt)) {
+        last = m;
+      }
+    }
+    if (last == null) return;
+    final st = _myReadState(conversationId);
+    final deliveredOk = st?.lastDeliveredAt != null &&
+        !st!.lastDeliveredAt!.isBefore(last.createdAt);
+    if (deliveredOk) return;
+    try {
+      await _chat.markDeliveredUpTo(
+        conversationId: conversationId,
+        messageId: last.id,
+        createdAt: last.createdAt,
+      );
+      final states = _readStatesByConv[conversationId] ?? <CM.ChatReadState>[];
+      final idx = states.indexWhere((s) => s.userUid == currentUid);
+      final updated = CM.ChatReadState(
+        conversationId: conversationId,
+        userUid: currentUid,
+        lastDeliveredAt: last.createdAt,
+        lastDeliveredMessageId: last.id,
+        lastReadAt: st?.lastReadAt,
+        lastReadMessageId: st?.lastReadMessageId,
+      );
+      if (idx == -1) {
+        states.add(updated);
+      } else {
+        states[idx] = updated;
+      }
+      _readStatesByConv[conversationId] = states;
+      await _local.upsertReadStates([updated]);
+      _applyReadsToOutgoing(conversationId);
+    } catch (_) {}
+  }
+
+  Future<void> _enqueueReceipt({
+    required String kind,
+    required String attachmentId,
+    required String conversationId,
+  }) async {
+    final localId = 'att_${kind}_$attachmentId';
+    await _local.upsertOutboxMessage({
+      'local_id': localId,
+      'conversation_id': conversationId,
+      'kind': kind,
+      'body': attachmentId,
+      'created_at': DateTime.now().toUtc().toIso8601String(),
+    });
+  }
+
+  Future<void> _recordAttachmentDownloaded(
+    String attachmentId,
+    String conversationId,
+  ) async {
+    final dev = await _ensureDeviceId();
+    if (dev == null || dev.trim().isEmpty) return;
+    if (!_isOnline) {
+      await _enqueueReceipt(
+        kind: 'att_downloaded',
+        attachmentId: attachmentId,
+        conversationId: conversationId,
+      );
+      return;
+    }
+    try {
+      await _chat.markAttachmentDownloaded(
+        attachmentId: attachmentId,
+        deviceId: dev,
+      );
+    } catch (_) {
+      await _enqueueReceipt(
+        kind: 'att_downloaded',
+        attachmentId: attachmentId,
+        conversationId: conversationId,
+      );
+    }
+  }
+
+  Future<void> _recordAttachmentOpened(
+    String attachmentId,
+    String conversationId,
+  ) async {
+    final dev = await _ensureDeviceId();
+    if (dev == null || dev.trim().isEmpty) return;
+    if (!_isOnline) {
+      await _enqueueReceipt(
+        kind: 'att_opened',
+        attachmentId: attachmentId,
+        conversationId: conversationId,
+      );
+      return;
+    }
+    try {
+      await _chat.markAttachmentOpened(
+        attachmentId: attachmentId,
+        deviceId: dev,
+      );
+    } catch (_) {
+      await _enqueueReceipt(
+        kind: 'att_opened',
+        attachmentId: attachmentId,
+        conversationId: conversationId,
+      );
+    }
+  }
+
+  Future<void> markAttachmentOpenedForMessage(
+    String conversationId,
+    CM.ChatMessage message,
+  ) async {
+    final atts = _attachmentsOf(message);
+    for (final a in atts) {
+      final id = _attId(a);
+      if (id != null && id.isNotEmpty) {
+        await _recordAttachmentOpened(id, conversationId);
+      }
+    }
+  }
+
+  void _startAttachmentCleanupWorker() {
+    // Purge is handled server-side via cron + receipts.
+  }
+
+  Future<void> _scheduleAttachmentCleanupForConversation(
+    String conversationId,
+  ) async {
+    return;
   }
 
   // --------------------------------------------------------------------------
@@ -2433,6 +3769,21 @@ class ChatProvider extends ChangeNotifier {
       _rtMsgSub?.cancel();
       _rtMsgSub = null;
     } catch (_) {}
+    try {
+      _netSub?.cancel();
+      _netSub = null;
+    } catch (_) {}
+    try {
+      _outboxTimer?.cancel();
+    } catch (_) {}
+    try {
+      _attachmentCleanupTimer?.cancel();
+      _attachmentCleanupTimer = null;
+    } catch (_) {}
+    try {
+      _deviceRegTimer?.cancel();
+      _deviceRegTimer = null;
+    } catch (_) {}
 
     _aliasByUser.clear();
     super.dispose();
@@ -2446,6 +3797,8 @@ class ChatParticipantLocal {
   final String? email;
   final DateTime? joinedAt;
   final String? nickname;
+  final String? displayName;
+  final String? chatCode;
   final String? role;
   final bool archived;
   final bool pinned;
@@ -2458,6 +3811,8 @@ class ChatParticipantLocal {
     this.email,
     this.joinedAt,
     this.nickname,
+    this.displayName,
+    this.chatCode,
     this.role,
     this.archived = false,
     this.pinned = false,
@@ -2489,6 +3844,8 @@ class ChatParticipantLocal {
       email: m['email']?.toString(),
       joinedAt: _parse(m['joined_at']),
       nickname: m['nickname']?.toString(),
+      displayName: m['display_name']?.toString() ?? m['displayName']?.toString(),
+      chatCode: m['chat_code']?.toString() ?? m['chatCode']?.toString(),
       role: m['role']?.toString(),
       archived: _toBool(m['archived']),
       pinned: _toBool(m['pinned']),
@@ -2511,6 +3868,8 @@ class ChatParticipantLocal {
       'email': email,
       'joined_at': joinedAt?.toUtc().toIso8601String(),
       'nickname': nickname,
+      'display_name': displayName,
+      'chat_code': chatCode,
       'role': role,
       'archived': archived,
       'pinned': pinned,

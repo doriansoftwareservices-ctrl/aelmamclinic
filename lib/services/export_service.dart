@@ -6,6 +6,9 @@ import 'package:aelmamclinic/models/patient.dart';
 import 'package:aelmamclinic/models/consumption.dart';
 import 'package:aelmamclinic/models/return_entry.dart';
 import 'package:aelmamclinic/models/doctor.dart';
+import 'package:aelmamclinic/models/admin_action_log.dart';
+import 'package:aelmamclinic/models/admin_audit_activity.dart';
+import 'package:aelmamclinic/models/admin_audit_actor.dart';
 
 class ExportService {
   // تصدير المرضى مع إضافة بيانات الطبيب وبيانات البرج الطبي (Tower Share)
@@ -23,6 +26,7 @@ class ExportService {
       'Doctor Specialization',
       'Paid',
       'Remaining',
+      'Collateral',
       'Tower Share',
       'RegisterDate',
       'Notes'
@@ -39,6 +43,7 @@ class ExportService {
         p.doctorSpecialization ?? '',
         p.paidAmount,
         p.remaining,
+        p.collateral ?? '',
         p.towerShare,
         p.registerDate.toIso8601String(),
         p.notes ?? '',
@@ -168,5 +173,70 @@ class ExportService {
 
     final data = excel.encode()!;
     return Uint8List.fromList(data);
+  }
+
+  // تصدير سجلات أوامر السوبر أدمن إلى ملف Excel
+  static Future<Uint8List> exportAdminActionLogsToExcel(
+      List<AdminActionLog> logs) async {
+    final excel = Excel.createExcel();
+    final sheet = excel['AdminActions'];
+
+    sheet.appendRow([
+      'ID',
+      'Actor UID',
+      'Actor Email',
+      'Action',
+      'Entity Type',
+      'Entity ID',
+      'Created At',
+      'Details',
+    ]);
+
+    for (final log in logs) {
+      sheet.appendRow([
+        log.id,
+        log.actorUid,
+        log.actorEmail ?? '',
+        log.action,
+        log.entityType,
+        log.entityId ?? '',
+        log.createdAt.toIso8601String(),
+        log.details == null ? '' : log.details.toString(),
+      ]);
+    }
+
+    return Uint8List.fromList(excel.encode()!);
+  }
+
+  static Future<Uint8List> exportAdminAuditActivityDailyToExcel(
+      List<AdminAuditActivity> rows) async {
+    final excel = Excel.createExcel();
+    final sheet = excel['AuditDaily'];
+    sheet.appendRow(['Day', 'Table', 'Op', 'Events']);
+    for (final r in rows) {
+      sheet.appendRow([
+        r.day.toIso8601String(),
+        r.tableName,
+        r.op,
+        r.events,
+      ]);
+    }
+    return Uint8List.fromList(excel.encode()!);
+  }
+
+  static Future<Uint8List> exportAdminAuditTopActorsToExcel(
+      List<AdminAuditActor> rows) async {
+    final excel = Excel.createExcel();
+    final sheet = excel['AuditTopActors'];
+    sheet.appendRow(['Actor UID', 'Actor Email', 'Events', 'Last At']);
+    for (final r in rows) {
+      sheet.appendRow([
+        r.actorUid ?? '',
+        r.actorEmail ?? '',
+        r.events,
+        r.lastAt?.toIso8601String() ?? '',
+      ]);
+    }
+    return Uint8List.fromList(excel.encode()!);
   }
 }

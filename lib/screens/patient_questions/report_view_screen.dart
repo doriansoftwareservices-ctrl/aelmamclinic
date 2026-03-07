@@ -47,72 +47,75 @@ class ReportViewScreen extends StatelessWidget {
           ],
         ),
         body: SafeArea(
-          child: Padding(
+          child: ListView(
             padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (title.isNotEmpty)
-                  NeuCard(
-                    padding: const EdgeInsets.all(12),
-                    child: Text(
-                      'ما يعاني منه المريض: $title',
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 15),
-                    ),
-                  ),
-                const SizedBox(height: 10),
+            children: [
+              if (title.isNotEmpty)
                 NeuCard(
                   padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'نص التقرير',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 15,
-                        ),
+                  child: Text(
+                    'ما يعاني منه المريض: $title',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 15),
+                  ),
+                ),
+              const SizedBox(height: 10),
+              NeuCard(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'نص التقرير',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
                       ),
-                      const SizedBox(height: 6),
-                      Text(report.reportText.isEmpty ? '—' : report.reportText),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Expanded(
-                  child: NeuCard(
-                    padding: const EdgeInsets.all(12),
-                    child: ListView.builder(
-                      itemCount: questions.length,
-                      itemBuilder: (ctx, i) {
-                        final q = questions[i];
-                        if (q is! Map) return const SizedBox.shrink();
-                        final text = (q['question_text'] ?? '').toString();
-                        final note = (q['note'] ?? '').toString();
-                        final ans = answerLabel(q['answer']);
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(text,
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.w700)),
-                              const SizedBox(height: 4),
-                              Text('الإجابة: $ans'),
-                              if (note.trim().isNotEmpty)
-                                Text('ملاحظة: $note'),
-                              const Divider(height: 16),
-                            ],
-                          ),
-                        );
-                      },
                     ),
-                  ),
+                    const SizedBox(height: 6),
+                    SelectableText(
+                      report.reportText.isEmpty ? '—' : report.reportText,
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(height: 10),
+              NeuCard(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'الأسئلة والإجابات',
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                    ),
+                    const SizedBox(height: 8),
+                    ...questions.map((q) {
+                      if (q is! Map) return const SizedBox.shrink();
+                      final text = (q['question_text'] ?? '').toString();
+                      final note = (q['note'] ?? '').toString();
+                      final ans = answerLabel(q['answer']);
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(text,
+                                style:
+                                    const TextStyle(fontWeight: FontWeight.w700)),
+                            const SizedBox(height: 4),
+                            Text('الإجابة: $ans'),
+                            if (note.trim().isNotEmpty) Text('ملاحظة: $note'),
+                            const Divider(height: 16),
+                          ],
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       ),

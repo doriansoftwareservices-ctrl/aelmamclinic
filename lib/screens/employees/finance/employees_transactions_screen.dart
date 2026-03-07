@@ -476,6 +476,8 @@ class _EmployeesTransactionsScreenState
   Widget _salaryTileCore({
     required String name,
     required DateTime? dt,
+    required DateTime? periodStart,
+    required DateTime? periodEnd,
     required int year,
     required int month,
     required double finalSalary,
@@ -484,6 +486,11 @@ class _EmployeesTransactionsScreenState
     required double netPay,
   }) {
     final scheme = Theme.of(context).colorScheme;
+    final periodText = (periodStart != null || periodEnd != null)
+        ? '${periodStart != null ? _dateFmt.format(periodStart) : '—'}'
+            ' → '
+            '${periodEnd != null ? _dateFmt.format(periodEnd) : '—'}'
+        : null;
     return NeuCard(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       child: ListTile(
@@ -501,6 +508,7 @@ class _EmployeesTransactionsScreenState
         subtitle: Text(
           'الشهر/السنة: $month/$year\n'
           'تاريخ الصرف: ${dt != null ? _dateTimeFmt.format(dt) : '—'}\n'
+          '${periodText != null ? 'الفترة الفعلية: $periodText\n' : ''}'
           'الراتب: ${_moneyFmt.format(finalSalary)}, '
           'النسب: ${_moneyFmt.format(ratioSum)}, '
           'سلف: ${_moneyFmt.format(loans)}, '
@@ -533,6 +541,8 @@ class _EmployeesTransactionsScreenState
   Widget _buildSalaryTile(Map<String, dynamic> sal) {
     final name = _nameOf((sal['employeeId'] ?? 0) as int);
     final dt = DateTime.tryParse('${sal['paymentDate'] ?? ''}');
+    final pStart = DateTime.tryParse('${sal['periodStart'] ?? sal['period_start'] ?? ''}');
+    final pEnd = DateTime.tryParse('${sal['periodEnd'] ?? sal['period_end'] ?? ''}');
     final y = (sal['year'] ?? 0) as int;
     final m = (sal['month'] ?? 0) as int;
     final finalSalary = _asDouble(sal['finalSalary']);
@@ -542,6 +552,8 @@ class _EmployeesTransactionsScreenState
     return _salaryTileCore(
       name: name,
       dt: dt,
+      periodStart: pStart,
+      periodEnd: pEnd,
       year: y,
       month: m,
       finalSalary: finalSalary,

@@ -4,7 +4,7 @@
 // ملاحظة: هذا "سجل" DB. نموذج الواجهة ChatConversation موجود في chat_models.dart.
 
 import 'package:aelmamclinic/utils/time.dart' as t;
-import 'chat_models.dart' show ChatConversationType;
+import 'chat_models.dart' show ChatConversationType, ChatSupportStatus, ChatSupportStatusX;
 
 class ChatConversationRecord {
   final String id;
@@ -21,6 +21,7 @@ class ChatConversationRecord {
   final int? unreadCount;
   final String? otherEmail;
   final bool isAnnouncement;
+  final ChatSupportStatus? supportStatus;
 
   ChatConversationType get type => isAnnouncement
       ? ChatConversationType.announcement
@@ -59,6 +60,7 @@ class ChatConversationRecord {
     this.unreadCount,
     this.otherEmail,
     this.isAnnouncement = false,
+    this.supportStatus,
   });
 
   factory ChatConversationRecord.newDirect({
@@ -150,6 +152,10 @@ class ChatConversationRecord {
         (getKey(const ['other_email', 'otherEmail']))?.toString();
     final isAnnouncement =
         _toBool(getKey(const ['is_announcement', 'isAnnouncement']));
+    final supportStatus = ChatSupportStatusX.fromDb(getKey(const [
+      'support_status',
+      'supportStatus',
+    ])?.toString());
 
     return ChatConversationRecord(
       id: id,
@@ -167,6 +173,7 @@ class ChatConversationRecord {
       otherEmail:
           (otherEmail ?? '').trim().isNotEmpty ? otherEmail!.trim() : null,
       isAnnouncement: isAnnouncement,
+      supportStatus: supportStatus,
     );
   }
 
@@ -182,6 +189,7 @@ class ChatConversationRecord {
       if (lastMsgAt != null) 'last_msg_at': t.toIsoUtc(lastMsgAt),
       if (lastMessageText != null && lastMessageText!.trim().isNotEmpty)
         'last_msg_snippet': lastMessageText!.trim(),
+      if (supportStatus != null) 'support_status': supportStatus!.dbValue,
     };
   }
 
@@ -192,6 +200,7 @@ class ChatConversationRecord {
       'updated_at': t.toIsoUtc(DateTime.now().toUtc()),
       if (lastMsgAt != null) 'last_msg_at': t.toIsoUtc(lastMsgAt),
       if (lastMessageText != null) 'last_msg_snippet': lastMessageText!.trim(),
+      if (supportStatus != null) 'support_status': supportStatus!.dbValue,
     };
   }
 

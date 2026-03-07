@@ -6,6 +6,7 @@ class AdminAccountMember {
   final String role;
   final bool disabled;
   final DateTime? createdAt;
+  final String? chatCode;
 
   const AdminAccountMember({
     required this.accountId,
@@ -15,6 +16,7 @@ class AdminAccountMember {
     required this.role,
     required this.disabled,
     required this.createdAt,
+    this.chatCode,
   });
 
   factory AdminAccountMember.fromMap(Map<String, dynamic> map) {
@@ -26,10 +28,12 @@ class AdminAccountMember {
       role: _toStr0(map['role']),
       disabled: _toBool(map['disabled']),
       createdAt: _toDateN(map['created_at']),
+      chatCode: _toStrN(map['chat_code']),
     );
   }
 
   static String _toStr0(dynamic v) => v?.toString() ?? '';
+  static String? _toStrN(dynamic v) => v?.toString();
 
   static bool _toBool(dynamic v) {
     if (v is bool) return v;

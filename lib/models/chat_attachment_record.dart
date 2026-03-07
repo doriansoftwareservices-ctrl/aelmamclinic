@@ -8,6 +8,7 @@
 //  - t.parseDateFlexibleUtc(dynamic)
 //  - t.toIsoUtc(DateTime?)
 
+import 'package:aelmamclinic/core/constants.dart';
 import 'package:aelmamclinic/utils/time.dart' as t;
 
 class ChatAttachmentRecord {
@@ -25,7 +26,7 @@ class ChatAttachmentRecord {
   const ChatAttachmentRecord({
     this.id,
     required this.messageId,
-    this.bucket = 'chat-attachments',
+    this.bucket = AppConstants.chatBucketName,
     required this.path,
     required this.mimeType,
     required this.sizeBytes,
@@ -71,7 +72,7 @@ class ChatAttachmentRecord {
     return ChatAttachmentRecord(
       id: _trimOrNull(pick(const ['id'])),
       messageId: _trimOr(pick(const ['message_id', 'messageId']), ''),
-      bucket: _trimOr(pick(const ['bucket']), 'chat-attachments'),
+      bucket: _trimOr(pick(const ['bucket']), AppConstants.chatBucketName),
       path: _trimOr(pick(const ['path']), ''),
       mimeType: _trimOr(pick(const ['mime_type', 'mimeType']), ''),
       sizeBytes: _toInt(pick(const ['size_bytes', 'sizeBytes']), fallback: 0),

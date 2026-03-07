@@ -169,13 +169,7 @@ class PatientReportPdfService {
             infoRow('Complaint', pdfText(complaintTitle)),
           ],
           pw.SizedBox(height: 14),
-          pw.Center(
-            child: pw.Container(
-              width: 420,
-              child:
-                  _buildReportText(cairo, cairoBold, pdfText(report.reportText)),
-            ),
-          ),
+          _buildReportText(cairo, cairoBold, pdfText(report.reportText)),
           pw.SizedBox(height: 18),
           _buildFooter(cairo, clinic),
         ],
@@ -218,18 +212,16 @@ class PatientReportPdfService {
     String reportText,
   ) {
     return pw.Container(
+      width: double.infinity,
       padding: const pw.EdgeInsets.all(10),
       decoration: pw.BoxDecoration(
         border: pw.Border.all(color: PdfColors.grey400, width: 0.6),
         borderRadius: pw.BorderRadius.circular(6),
       ),
-      child: pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.center,
-        children: [
-          pw.Text(reportText.isEmpty ? '—' : pdfText(reportText),
-              style: pw.TextStyle(font: base, fontSize: 11, height: 1.4),
-              textAlign: pw.TextAlign.center),
-        ],
+      child: pw.Text(
+        reportText.isEmpty ? '—' : pdfText(reportText),
+        style: pw.TextStyle(font: base, fontSize: 11, height: 1.4),
+        textAlign: pw.TextAlign.right,
       ),
     );
   }

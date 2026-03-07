@@ -35,6 +35,20 @@ insert_permissions:
               _eq: false
             user_uid:
               _eq: X-Hasura-User-Id
+  - role: owner
+    permission:
+      check:
+        _exists:
+          _table:
+            name: account_users
+            schema: public
+          _where:
+            account_id:
+              _ceq: account_id
+            disabled:
+              _eq: false
+            user_uid:
+              _eq: X-Hasura-User-Id
 select_permissions:
   - role: me
     permission:
@@ -56,6 +70,21 @@ select_permissions:
       columns: '*'
       filter: {}
   - role: user
+    permission:
+      columns: '*'
+      filter:
+        _exists:
+          _table:
+            name: account_users
+            schema: public
+          _where:
+            account_id:
+              _ceq: account_id
+            disabled:
+              _eq: false
+            user_uid:
+              _eq: X-Hasura-User-Id
+  - role: owner
     permission:
       columns: '*'
       filter:
@@ -119,6 +148,22 @@ update_permissions:
             user_uid:
               _eq: X-Hasura-User-Id
       check: {}
+  - role: owner
+    permission:
+      columns: '*'
+      filter:
+        _exists:
+          _table:
+            name: account_users
+            schema: public
+          _where:
+            account_id:
+              _ceq: account_id
+            disabled:
+              _eq: false
+            user_uid:
+              _eq: X-Hasura-User-Id
+      check: {}
 delete_permissions:
   - role: me
     permission:
@@ -138,6 +183,20 @@ delete_permissions:
     permission:
       filter: {}
   - role: user
+    permission:
+      filter:
+        _exists:
+          _table:
+            name: account_users
+            schema: public
+          _where:
+            account_id:
+              _ceq: account_id
+            disabled:
+              _eq: false
+            user_uid:
+              _eq: X-Hasura-User-Id
+  - role: owner
     permission:
       filter:
         _exists:

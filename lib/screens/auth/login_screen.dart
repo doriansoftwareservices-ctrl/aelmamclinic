@@ -279,6 +279,7 @@ class _LoginScreenState extends State<LoginScreen> {
         if (!allowContinue) {
           final message = _messageForStatus(result.status);
           if (message != null) {
+            if (!mounted) return;
             setState(() {
               _error = message;
               _loading = false;
@@ -293,6 +294,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final hasAccount = (authProv.accountId ?? '').isNotEmpty;
     if (!isSuper && !hasAccount) {
       await authProv.signOut();
+      if (!mounted) return;
       setState(() {
         _error = 'فشل إنشاء الحساب.';
         _loading = false;
@@ -339,9 +341,11 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => _error = 'من فضلك أدخل البريد الإلكتروني وكلمة المرور.');
       return;
     }
-    if (!_isValidEmail(email) || pass.length < 6) {
-      setState(() =>
-          _error = '⚠️ إدخال كلمة مرور أقل من 6 أحرف أو بريد غير صحيح.');
+    if (!_isValidEmail(email) || pass.length < 9) {
+      setState(
+        () => _error =
+            '⚠️ كلمة السر يجب ان تتكون من 9 خانات وتاكد من انك تملك البريد',
+      );
       return;
     }
 
@@ -372,38 +376,54 @@ class _LoginScreenState extends State<LoginScreen> {
       var result = await _ensurePostLoginState(auth);
       if (!mounted) return;
 
+      final sessionUser = NhostManager.client.auth.currentUser;
+      final sessionRoles = sessionUser?.roles ?? const <String>[];
+      final isSuperFromSession = sessionRoles.any(
+            (r) => r.toLowerCase() == 'superadmin',
+          ) ||
+          (sessionUser?.defaultRole ?? '').toLowerCase() == 'superadmin';
+      if (isSuperFromSession && !auth.isSuperAdmin) {
+        await auth.markSuperAdminFromSession();
+        result = const AuthSessionResult.success();
+      }
+
       if (result.status == AuthSessionStatus.noAccount) {
-        final clinicProfile = await _askClinicProfile();
-        if (clinicProfile == null) {
-          await auth.signOut();
-          setState(() => _error = 'اسم العيادة مطلوب لإكمال إنشاء الحساب.');
-          return;
-        }
-        auth.setPendingClinicProfile(clinicProfile);
-        Object? createError;
-        try {
-          await auth.selfCreateAccount(clinicProfile);
-        } catch (e) {
-          createError = e;
-        }
-        final recheck = await _ensurePostLoginState(auth);
-        if (!mounted) return;
-        if (!recheck.isSuccess) {
-          if (recheck.status == AuthSessionStatus.noAccount ||
-              recheck.status == AuthSessionStatus.planUpgradeRequired) {
+        if (isSuperFromSession || auth.isSuperAdmin) {
+          result = const AuthSessionResult.success();
+        } else {
+          final clinicProfile = await _askClinicProfile();
+          if (clinicProfile == null) {
             await auth.signOut();
+            setState(() => _error = 'اسم العيادة مطلوب لإكمال إنشاء الحساب.');
+            return;
           }
-          final base = _messageForStatus(recheck.status) ??
-              'تعذّر التحقق من الحساب. حاول مرة أخرى.';
-          if (createError != null) {
-            final mapped = _mapLoginError(createError);
-            setState(() => _error = 'تعذّر إنشاء الحساب: $mapped');
-          } else {
-            setState(() => _error = base);
+          auth.setPendingClinicProfile(clinicProfile);
+          Object? createError;
+          try {
+            await auth.selfCreateAccount(clinicProfile);
+            await auth.refreshSession();
+          } catch (e) {
+            createError = e;
           }
-          return;
+          final recheck = await _ensurePostLoginState(auth);
+          if (!mounted) return;
+          if (!recheck.isSuccess) {
+            if (recheck.status == AuthSessionStatus.noAccount ||
+                recheck.status == AuthSessionStatus.planUpgradeRequired) {
+              await auth.signOut();
+            }
+            final base = _messageForStatus(recheck.status) ??
+                'تعذّر التحقق من الحساب. حاول مرة أخرى.';
+            if (createError != null) {
+              final mapped = _mapLoginError(createError);
+              setState(() => _error = 'تعذّر إنشاء الحساب: $mapped');
+            } else {
+              setState(() => _error = base);
+            }
+            return;
+          }
+          result = recheck;
         }
-        result = recheck;
       }
 
       if (!result.isSuccess) {
@@ -450,6 +470,18 @@ class _LoginScreenState extends State<LoginScreen> {
         _bootstrappedOnce = true;
       }
 
+      // إذا كان الحساب مختلفًا عن البيانات المحلية: اطلب تأكيد المسح.
+      await auth.refreshPendingLocalWipeState();
+      if (!mounted) return;
+      if (auth.hasPendingLocalWipe) {
+        final ok = await _confirmLocalWipe(auth);
+        if (!ok) {
+          await auth.signOut();
+          setState(() => _error = 'تم إلغاء تسجيل الدخول للحفاظ على بياناتك المحلية.');
+          return;
+        }
+      }
+
       await _checkAndRouteIfSignedIn(force: true);
     } catch (e) {
       if (!mounted) return;
@@ -469,13 +501,18 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => _error = 'أدخل البريد وكلمة المرور أولًا.');
       return;
     }
-    if (!_isValidEmail(email) || pass.length < 6) {
-      setState(() =>
-          _error = '⚠️ إدخال كلمة مرور أقل من 6 أحرف أو بريد غير صحيح.');
+    if (!_isValidEmail(email) || pass.length < 9) {
+      setState(
+        () => _error =
+            '⚠️ كلمة السر يجب ان تتكون من 9 خانات وتاكد من انك تملك البريد',
+      );
       return;
     }
 
     final clinicProfile = await _askClinicProfile();
+    if (clinicProfile == null) {
+      return;
+    }
 
     setState(() {
       _loading = true;
@@ -507,12 +544,8 @@ class _LoginScreenState extends State<LoginScreen> {
       // Ensure stale superadmin header does not leak into user session.
       AuthRoleState.clear();
       NhostGraphqlService.refreshClient();
-      if (clinicProfile != null) {
-        await auth.selfCreateAccount(clinicProfile);
-      } else {
-        setState(() => _error = 'اسم العيادة مطلوب لإكمال إنشاء الحساب.');
-        return;
-      }
+      await auth.selfCreateAccount(clinicProfile);
+      await auth.refreshSession();
       final result = await _ensurePostLoginState(
         auth,
         expectOwnerOrAdmin: true,
@@ -549,6 +582,47 @@ class _LoginScreenState extends State<LoginScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Future<bool> _confirmLocalWipe(AuthProvider auth) async {
+    final pendingAcc = auth.pendingWipeAccountId ?? '';
+    final currentAcc = auth.accountId ?? '';
+    final different =
+        pendingAcc.isNotEmpty && currentAcc.isNotEmpty && pendingAcc != currentAcc;
+    final title = 'تأكيد تبديل الحساب';
+    final message = different
+        ? 'تم اكتشاف أن بيانات الجهاز تخص حسابًا مختلفًا.\n'
+            'المتابعة ستؤدي إلى حذف جميع البيانات المحلية والدردشات الحالية لتجهيز التطبيق للحساب الجديد.\n\n'
+            'هل تريد المتابعة؟'
+        : 'تم اكتشاف بيانات محلية قديمة.\n'
+            'المتابعة ستؤدي إلى حذف جميع البيانات المحلية والدردشات الحالية لتجهيز التطبيق.\n\n'
+            'هل تريد المتابعة؟';
+
+    final res = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('إلغاء'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('متابعة'),
+          ),
+        ],
+      ),
+    );
+    if (res == true) {
+      return await auth.performPendingLocalWipe(
+        createBackup: true,
+        rebootstrap: true,
+      );
+    }
+    return false;
   }
 
   Future<ClinicProfileInput?> _askClinicProfile() async {
@@ -899,17 +973,21 @@ class _LoginScreenState extends State<LoginScreen> {
     if (lower.contains('socketexception') ||
         lower.contains('failed host lookup') ||
         lower.contains('network') ||
-        lower.contains('connection')) {
-      return 'تعذّر الاتصال بالخادم. تحقّق من الإنترنت وحاول مرة أخرى.';
+        lower.contains('connection') ||
+        lower.contains('semaphore timeout') ||
+        lower.contains('semaphore')) {
+      return 'يبدو ان الشبكة غير مستقرة لديك';
     }
     if (lower.contains('timeout') ||
         lower.contains('timed out') ||
         lower.contains('no stream event') ||
         lower.contains('503') ||
         lower.contains('bad gateway') ||
+        lower.contains('semaphore timeout') ||
+        lower.contains('semaphore') ||
         lower.contains('temporarily unavailable') ||
         lower.contains('service unavailable')) {
-      return 'الخادم غير متاح مؤقتًا. انتظر قليلًا ثم أعد المحاولة.';
+      return 'يبدو ان الشبكة غير مستقرة لديك';
     }
     return 'فشل تسجيل الدخول. حاول مرة أخرى.';
   }
@@ -1050,7 +1128,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                                 const SizedBox(height: 6),
                                 Text(
-                                  '⚠️ إدخال كلمة مرور أقل من 6 أحرف أو بريد غير صحيح.',
+                                  '⚠️ كلمة السر يجب ان تتكون من 9 خانات وتاكد من انك تملك البريد',
                                   style: TextStyle(
                                     fontWeight: FontWeight.w600,
                                     fontSize: 11,

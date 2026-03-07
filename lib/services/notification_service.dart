@@ -3,10 +3,13 @@ import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:aelmamclinic/utils/app_error_reporter.dart';
 import 'package:timezone/data/latest_all.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
@@ -65,14 +68,84 @@ class NotificationService {
   static const String _patientsChannelDesc =
       'إشعارات الحالات المرضية الجديدة للأطباء';
 
+  static const String _adminChannelId = 'admin_channel_id';
+  static const String _adminChannelName = 'تنبيهات الإدارة';
+  static const String _adminChannelDesc =
+      'إشعارات طلبات الترقية ورسائل خدمة العملاء';
+
+  static const String _kBatteryOptPrompted = 'notif.battery_opt_prompted';
+
   bool _initialized = false;
   bool get isReady => _initialized;
 
   bool _tzReady = false;
   Future<void>? _initFuture;
+  final Map<int, Timer> _winScheduled = <int, Timer>{};
 
   bool get _supportedPlatform =>
       !kIsWeb && (Platform.isAndroid || Platform.isIOS || Platform.isMacOS);
+  bool get _isWindows => !kIsWeb && Platform.isWindows;
+
+  void _showInAppFallback({
+    required String title,
+    required String body,
+  }) {
+    final t = title.trim();
+    final b = body.trim();
+    if (t.isEmpty && b.isEmpty) return;
+    final message = b.isEmpty ? t : '$t\n$b';
+    AppErrorReporter.info(message);
+  }
+
+  Future<void> promptBatteryOptimizationIfNeeded() async {
+    if (kIsWeb || !Platform.isAndroid) return;
+    final sp = await SharedPreferences.getInstance();
+    if (sp.getBool(_kBatteryOptPrompted) == true) return;
+
+    final status = await Permission.ignoreBatteryOptimizations.status;
+    if (status.isGranted) {
+      await sp.setBool(_kBatteryOptPrompted, true);
+      return;
+    }
+
+    final ctx = _navigatorKey?.currentContext;
+    if (ctx == null) return;
+
+    final approved = await showDialog<bool>(
+      context: ctx,
+      barrierDismissible: false,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('تشغيل الإشعارات في الخلفية'),
+          content: const Text(
+            'لضمان وصول الإشعارات حتى عند إغلاق التطبيق، يرجى السماح '
+            'بتجاهل قيود تحسين البطارية لهذا التطبيق.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('لاحقًا'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, null),
+              child: const Text('فتح الإعدادات'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('سماح الآن'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (approved == true) {
+      await Permission.ignoreBatteryOptimizations.request();
+    } else if (approved == null) {
+      await openAppSettings();
+    }
+    await sp.setBool(_kBatteryOptPrompted, true);
+  }
 
   // -------- تهيئة --------
   Future<void> initialize({int maxRetries = 3}) async {
@@ -176,6 +249,17 @@ class NotificationService {
               _patientsChannelId,
               _patientsChannelName,
               description: _patientsChannelDesc,
+              importance: Importance.high,
+              playSound: true,
+              enableVibration: true,
+            ),
+          );
+
+          await androidImpl?.createNotificationChannel(
+            const AndroidNotificationChannel(
+              _adminChannelId,
+              _adminChannelName,
+              description: _adminChannelDesc,
               importance: Importance.high,
               playSound: true,
               enableVibration: true,
@@ -298,6 +382,9 @@ class NotificationService {
   }) async {
     if (!_supportedPlatform) {
       _playFallbackSound();
+      if (_isWindows) {
+        _showInAppFallback(title: title, body: body);
+      }
       debugPrint('🔕 showChatNotification skipped (unsupported platform).');
       return;
     }
@@ -363,6 +450,14 @@ class NotificationService {
   }) async {
     if (!_supportedPlatform) {
       _playFallbackSound();
+      if (_isWindows) {
+        final trimmedName =
+            patientName.trim().isEmpty ? 'مريض جديد' : patientName.trim();
+        _showInAppFallback(
+          title: 'حالة مرضية جديدة',
+          body: 'تم إضافة المريض $trimmedName إلى حسابك الطبي.',
+        );
+      }
       debugPrint(
           '🔕 showPatientAssignmentNotification skipped (unsupported platform).');
       return;
@@ -412,6 +507,52 @@ class NotificationService {
     }
   }
 
+  Future<void> showAdminNotification({
+    required int id,
+    required String title,
+    required String body,
+    String? payload,
+  }) async {
+    if (!_supportedPlatform) {
+      _playFallbackSound();
+      if (_isWindows) {
+        _showInAppFallback(title: title, body: body);
+      }
+      debugPrint('🔕 showAdminNotification skipped (unsupported platform).');
+      return;
+    }
+    if (!_initialized) {
+      await initialize();
+      if (!_initialized) {
+        debugPrint(
+            '⚠️ showAdminNotification skipped: NotificationService not initialized.');
+        return;
+      }
+    }
+
+    final android = AndroidNotificationDetails(
+      _adminChannelId,
+      _adminChannelName,
+      channelDescription: _adminChannelDesc,
+      importance: Importance.high,
+      priority: Priority.high,
+      playSound: true,
+    );
+    const darwin = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+    );
+    final details =
+        NotificationDetails(android: android, iOS: darwin, macOS: darwin);
+
+    try {
+      await _flnp.show(id, title, body, details, payload: payload);
+    } catch (e) {
+      debugPrint('❌ showAdminNotification error: $e');
+    }
+  }
+
   Future<void> scheduleNotification({
     required int id,
     required String title,
@@ -420,6 +561,22 @@ class NotificationService {
     String? payload,
   }) async {
     if (!_supportedPlatform) {
+      if (_isWindows) {
+        _winScheduled[id]?.cancel();
+        final delay = scheduledTime.difference(DateTime.now());
+        if (delay.isNegative || delay.inMilliseconds == 0) {
+          _showInAppFallback(title: title, body: body);
+          _playFallbackSound();
+          return;
+        }
+        _winScheduled[id] = Timer(delay, () {
+          _showInAppFallback(title: title, body: body);
+          _playFallbackSound();
+          _winScheduled.remove(id);
+        });
+        debugPrint('🪟 scheduleNotification (in-app) id=$id at=$scheduledTime');
+        return;
+      }
       debugPrint('🔕 scheduleNotification skipped (unsupported platform).');
       return;
     }
@@ -474,6 +631,9 @@ class NotificationService {
 
   Future<void> cancelNotification(int id) async {
     try {
+      if (_isWindows) {
+        _winScheduled.remove(id)?.cancel();
+      }
       await _flnp.cancel(id);
     } catch (e) {
       debugPrint('❌ cancelNotification error: $e');
@@ -482,6 +642,12 @@ class NotificationService {
 
   Future<void> cancelAllNotifications() async {
     try {
+      if (_isWindows) {
+        for (final timer in _winScheduled.values) {
+          timer.cancel();
+        }
+        _winScheduled.clear();
+      }
       await _flnp.cancelAll();
     } catch (e) {
       debugPrint('❌ cancelAllNotifications error: $e');

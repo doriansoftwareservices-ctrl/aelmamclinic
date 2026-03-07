@@ -8,6 +8,8 @@ import 'package:aelmamclinic/models/payment_stat.dart';
 import 'package:aelmamclinic/models/payment_time_stat.dart';
 import 'package:aelmamclinic/models/subscription_request.dart';
 import 'package:aelmamclinic/services/nhost_graphql_service.dart';
+import 'package:aelmamclinic/models/admin_revenue_stat.dart';
+import 'package:aelmamclinic/services/admin_insights_service.dart';
 
 class AdminBillingService {
   AdminBillingService({GraphQLClient? client})
@@ -94,6 +96,49 @@ class AdminBillingService {
         .toList();
   }
 
+  Future<List<SubscriptionRequest>> fetchSubscriptionRequestsPage({
+    required int limit,
+    required int offset,
+  }) async {
+    const query = r'''
+      query RequestsPage($limit: Int!, $offset: Int!) {
+        subscription_requests(
+          order_by: {created_at: desc},
+          limit: $limit,
+          offset: $offset
+        ) {
+          id
+          account_id
+          user_uid
+          plan_code
+          status
+          amount
+          payment_method_id
+          proof_url
+          reference_text
+          sender_name
+          clinic_name
+          created_at
+        }
+      }
+    ''';
+    final res = await _gql.query(
+      QueryOptions(
+        document: gql(query),
+        variables: {'limit': limit, 'offset': offset},
+        fetchPolicy: FetchPolicy.noCache,
+        context: _superAdminContext(),
+      ),
+    );
+    if (res.hasException) throw res.exception!;
+    final rows = (res.data?['subscription_requests'] as List?) ?? const [];
+    return rows
+        .whereType<Map>()
+        .map((row) =>
+            SubscriptionRequest.fromMap(Map<String, dynamic>.from(row)))
+        .toList();
+  }
+
   Future<void> approveRequest(String requestId, {String? note}) async {
     const mutation = r'''
       mutation Approve($id: uuid!, $note: String) {
@@ -125,6 +170,14 @@ class AdminBillingService {
       final err = rows.isEmpty ? null : (rows.first as Map)['error'];
       throw Exception(err ?? 'Approve failed');
     }
+    try {
+      await AdminInsightsService().logAction(
+        action: 'subscription_approve',
+        entityType: 'subscription_request',
+        entityId: requestId,
+        details: {'note': note},
+      );
+    } catch (_) {}
   }
 
   Future<void> rejectRequest(String requestId, {String? note}) async {
@@ -158,6 +211,14 @@ class AdminBillingService {
       final err = rows.isEmpty ? null : (rows.first as Map)['error'];
       throw Exception(err ?? 'Reject failed');
     }
+    try {
+      await AdminInsightsService().logAction(
+        action: 'subscription_reject',
+        entityType: 'subscription_request',
+        entityId: requestId,
+        details: {'note': note},
+      );
+    } catch (_) {}
   }
 
   Future<List<PaymentMethod>> fetchPaymentMethods() async {
@@ -184,6 +245,54 @@ class AdminBillingService {
     return rows
         .whereType<Map>()
         .map((row) => PaymentMethod.fromMap(Map<String, dynamic>.from(row)))
+        .toList();
+  }
+
+  Future<List<AdminRevenueStat>> fetchMrrByMonth() async {
+    const query = r'''
+      query MrrByMonth {
+        v_admin_mrr_by_month(order_by: {month: desc}) {
+          month
+          mrr
+        }
+      }
+    ''';
+    final res = await _gql.query(
+      QueryOptions(
+        document: gql(query),
+        fetchPolicy: FetchPolicy.noCache,
+        context: _superAdminContext(),
+      ),
+    );
+    if (res.hasException) throw res.exception!;
+    final rows = (res.data?['v_admin_mrr_by_month'] as List?) ?? const [];
+    return rows
+        .whereType<Map>()
+        .map((row) => AdminRevenueStat.fromMap(Map<String, dynamic>.from(row)))
+        .toList();
+  }
+
+  Future<List<AdminRevenueStat>> fetchArrByMonth() async {
+    const query = r'''
+      query ArrByMonth {
+        v_admin_arr_by_month(order_by: {month: desc}) {
+          month
+          arr
+        }
+      }
+    ''';
+    final res = await _gql.query(
+      QueryOptions(
+        document: gql(query),
+        fetchPolicy: FetchPolicy.noCache,
+        context: _superAdminContext(),
+      ),
+    );
+    if (res.hasException) throw res.exception!;
+    final rows = (res.data?['v_admin_arr_by_month'] as List?) ?? const [];
+    return rows
+        .whereType<Map>()
+        .map((row) => AdminRevenueStat.fromMap(Map<String, dynamic>.from(row)))
         .toList();
   }
 
@@ -330,6 +439,46 @@ class AdminBillingService {
         .toList();
   }
 
+  Future<List<Complaint>> fetchComplaintsPage({
+    required int limit,
+    required int offset,
+  }) async {
+    const query = r'''
+      query ComplaintsPage($limit: Int!, $offset: Int!) {
+        complaints(
+          order_by: {created_at: desc},
+          limit: $limit,
+          offset: $offset
+        ) {
+          id
+          account_id
+          user_uid
+          status
+          subject
+          message
+          reply_message
+          replied_at
+          replied_by
+          created_at
+        }
+      }
+    ''';
+    final res = await _gql.query(
+      QueryOptions(
+        document: gql(query),
+        variables: {'limit': limit, 'offset': offset},
+        fetchPolicy: FetchPolicy.noCache,
+        context: _superAdminContext(),
+      ),
+    );
+    if (res.hasException) throw res.exception!;
+    final rows = (res.data?['complaints'] as List?) ?? const [];
+    return rows
+        .whereType<Map>()
+        .map((row) => Complaint.fromMap(Map<String, dynamic>.from(row)))
+        .toList();
+  }
+
   Future<void> updateComplaintStatus({
     required String id,
     required String status,
@@ -348,6 +497,14 @@ class AdminBillingService {
       ),
     );
     if (res.hasException) throw res.exception!;
+    try {
+      await AdminInsightsService().logAction(
+        action: 'complaint_status_update',
+        entityType: 'complaint',
+        entityId: id,
+        details: {'status': status},
+      );
+    } catch (_) {}
   }
 
   Future<void> replyToComplaint({
@@ -394,6 +551,14 @@ class AdminBillingService {
       final err = rows.isNotEmpty ? (rows.first as Map)['error'] : null;
       throw Exception(err ?? 'reply_failed');
     }
+    try {
+      await AdminInsightsService().logAction(
+        action: 'complaint_reply',
+        entityType: 'complaint',
+        entityId: id,
+        details: {'status': status},
+      );
+    } catch (_) {}
   }
 
   Future<void> _fallbackReplyComplaint({

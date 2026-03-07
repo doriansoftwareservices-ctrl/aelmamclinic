@@ -324,7 +324,7 @@ class _ClinicProfileScreenState extends State<ClinicProfileScreen> {
                                         Text(
                                           isPaid
                                               ? 'يظهر هذا الشعار في جميع تقارير PDF.'
-                                              : 'يظهر الشعار فقط للخطط الشهرية والسنوية.',
+                                              : 'يظهر الشعار فقط للخطط المدفوعة.',
                                           style: TextStyle(
                                             fontSize: 12,
                                             color: Theme.of(context)

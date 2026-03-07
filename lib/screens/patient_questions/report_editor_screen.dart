@@ -199,11 +199,16 @@ class _ReportEditorScreenState extends State<ReportEditorScreen> {
                                 style: TextStyle(
                                     fontWeight: FontWeight.bold, fontSize: 15)),
                             const SizedBox(height: 8),
-                            NeuField(
-                              controller: _reportCtrl,
-                              labelText: 'اكتب التقرير هنا',
-                              maxLines: 5,
-                              prefix: const Icon(Icons.description_outlined),
+                            SizedBox(
+                              height: 220,
+                              child: NeuField(
+                                controller: _reportCtrl,
+                                labelText: 'اكتب التقرير هنا',
+                                maxLines: null,
+                                keyboardType: TextInputType.multiline,
+                                textInputAction: TextInputAction.newline,
+                                prefix: const Icon(Icons.description_outlined),
+                              ),
                             ),
                           ],
                         ),

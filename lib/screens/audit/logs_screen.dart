@@ -19,6 +19,7 @@ import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:aelmamclinic/services/nhost_graphql_service.dart';
+import 'package:aelmamclinic/utils/chat_code_utils.dart';
 
 class AuditLogsScreen extends StatefulWidget {
   const AuditLogsScreen({super.key});
@@ -39,6 +40,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
 
   // --- البيانات ---
   final _items = <_AuditLogEntry>[];
+  final Map<String, String> _actorLabelByUid = {};
   bool _loading = false;
   bool _initialLoaded = false;
   bool _hasMore = true;
@@ -119,7 +121,17 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
         if (uuidLike) {
           where['actor_uid'] = {'_eq': s};
         } else {
+          final digits = ChatCodeUtils.normalize(s);
+          if (ChatCodeUtils.isChatCode(digits)) {
+            final uid = await _resolveUidForChatCode(digits);
+            if (uid != null && uid.isNotEmpty) {
+              where['actor_uid'] = {'_eq': uid};
+            } else {
+              where['actor_uid'] = {'_eq': '00000000-0000-0000-0000-000000000000'};
+            }
+          } else {
           where['actor_email'] = {'_ilike': '%$s%'};
+          }
         }
       }
 
@@ -166,6 +178,8 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
           .map((e) => _AuditLogEntry.fromJson(Map<String, dynamic>.from(e)))
           .toList();
 
+      await _loadActorLabels(list);
+
       setState(() {
         _items.addAll(list);
         _offset += list.length;
@@ -181,6 +195,84 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Future<void> _loadActorLabels(List<_AuditLogEntry> items) async {
+    final uids = items
+        .map((e) => e.actorUid ?? '')
+        .where((u) => u.isNotEmpty)
+        .toSet();
+    if (uids.isEmpty) return;
+    final missing =
+        uids.where((u) => !_actorLabelByUid.containsKey(u)).toList();
+    if (missing.isEmpty) return;
+
+    const query = r'''
+      query ActorCodes($uids: [uuid!]!) {
+        v_chat_user_lookup(where: {user_uid: {_in: $uids}}) {
+          user_uid
+          email
+          chat_code
+        }
+      }
+    ''';
+    final res = await _gql.query(
+      QueryOptions(
+        document: gql(query),
+        variables: {'uids': missing},
+        fetchPolicy: FetchPolicy.noCache,
+      ),
+    );
+    if (res.hasException) return;
+    final rows = (res.data?['v_chat_user_lookup'] as List?) ?? const [];
+    for (final r in rows) {
+      if (r is! Map) continue;
+      final uid = r['user_uid']?.toString() ?? '';
+      if (uid.isEmpty) continue;
+      final email = (r['email']?.toString() ?? '').trim();
+      final code = (r['chat_code']?.toString() ?? '').trim();
+      if (email.isNotEmpty) {
+        _actorLabelByUid[uid] = email;
+      } else if (code.isNotEmpty) {
+        _actorLabelByUid[uid] =
+            ChatCodeUtils.isChatCode(code) ? ChatCodeUtils.format(code) : code;
+      }
+    }
+  }
+
+  Future<String?> _resolveUidForChatCode(String chatCode) async {
+    const query = r'''
+      query ResolveUid($code: String!) {
+        v_chat_user_lookup(where: {chat_code: {_eq: $code}}, limit: 1) {
+          user_uid
+        }
+      }
+    ''';
+    final res = await _gql.query(
+      QueryOptions(
+        document: gql(query),
+        variables: {'code': chatCode},
+        fetchPolicy: FetchPolicy.noCache,
+      ),
+    );
+    if (res.hasException) return null;
+    final rows = (res.data?['v_chat_user_lookup'] as List?) ?? const [];
+    if (rows.isEmpty) return null;
+    final row = rows.first;
+    if (row is Map) {
+      return row['user_uid']?.toString();
+    }
+    return null;
+  }
+
+  String _actorLabel(_AuditLogEntry e) {
+    final email = (e.actorEmail ?? '').trim();
+    if (email.isNotEmpty) return email;
+    final uid = e.actorUid ?? '';
+    if (uid.isEmpty) return 'بدون رقم';
+    final label = _actorLabelByUid[uid];
+    if (label != null && label.trim().isNotEmpty) return label;
+    return 'بدون رقم';
   }
 
   Future<void> _pickFrom() async {
@@ -294,7 +386,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'المنفّذ: ${e.actorEmail ?? e.actorUid ?? 'غير معروف'}',
+                      'المنفّذ: ${_actorLabel(e)}',
                       style: TextStyle(
                         color: scheme.onSurface.withValues(alpha: .7),
                         fontWeight: FontWeight.w700,
@@ -527,7 +619,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
           decoration: const InputDecoration(
             isDense: true,
             border: InputBorder.none,
-            hintText: 'بريد المنفّذ أو UID…',
+          hintText: 'رقم الحساب أو البريد…',
             prefixIcon: Icon(Icons.person_search_outlined),
           ),
           onSubmitted: (_) => _refresh(reset: true),
@@ -601,6 +693,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
         return _AuditLogTile(
           entry: e,
           dateTimeFmt: _dateTimeFmt,
+          actorLabel: _actorLabel(e),
           onTap: () => _showDetails(e),
         );
       },
@@ -671,11 +764,13 @@ class _AuditLogEntry {
 class _AuditLogTile extends StatelessWidget {
   final _AuditLogEntry entry;
   final DateFormat dateTimeFmt;
+  final String actorLabel;
   final VoidCallback onTap;
 
   const _AuditLogTile({
     required this.entry,
     required this.dateTimeFmt,
+    required this.actorLabel,
     required this.onTap,
   });
 
@@ -734,7 +829,7 @@ class _AuditLogTile extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'المنفّذ: ${entry.actorEmail ?? entry.actorUid ?? 'غير معروف'}',
+                  'المنفّذ: $actorLabel',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.right,

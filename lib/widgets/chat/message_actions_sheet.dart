@@ -252,9 +252,17 @@ class _MessageActionsSheet extends StatelessWidget {
         allowPin ||
         allowInfo;
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: 0,
+              maxHeight: constraints.maxHeight,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
         // رأس مختصر: المرسل + الوقت
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -405,9 +413,13 @@ class _MessageActionsSheet extends StatelessWidget {
           },
         ),
 
-        const SizedBox(height: 8),
-        const SafeArea(top: false, child: SizedBox(height: 4)),
-      ],
+                const SizedBox(height: 8),
+                const SafeArea(top: false, child: SizedBox(height: 4)),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

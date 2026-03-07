@@ -19,6 +19,7 @@ import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:aelmamclinic/providers/chat_provider.dart';
 import 'package:aelmamclinic/services/nhost_graphql_service.dart';
 import 'package:aelmamclinic/widgets/chat/conversation_tile.dart';
+import 'package:aelmamclinic/main.dart' show ChatRoomLoader;
 import 'chat_room_screen.dart';
 
 class ChatAdminInboxScreen extends StatefulWidget {
@@ -78,6 +79,15 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
       return;
     }
 
+    final chat = context.read<ChatProvider>();
+    if (!chat.ready && !chat.busy) {
+      await chat.bootstrap(
+        accountId: null,
+        role: 'superadmin',
+        isSuperAdmin: true,
+      );
+    }
+    await chat.refreshConversations();
     await _fetchInbox();
     await _loadSupportAgents();
     if (!mounted) return;
@@ -153,6 +163,14 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
     if (me == null) return;
 
     final cp = context.read<ChatProvider>();
+    if (!cp.ready && !cp.busy) {
+      await cp.bootstrap(
+        accountId: null,
+        role: 'superadmin',
+        isSuperAdmin: true,
+      );
+      await cp.refreshConversations();
+    }
     final allConvs = cp.conversations;
     final dmConvs = allConvs.where((c) => !c.isGroup).toList();
     if (!mounted) return;
@@ -256,6 +274,9 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
         readAtByConv[cid] =
             ts == null ? null : DateTime.tryParse(ts.toString())?.toUtc();
       }
+      for (final cid in convIds) {
+        readAtByConv.putIfAbsent(cid, () => cp.lastReadAtOf(cid));
+      }
 
       final accountIds = dmConvs
           .map((e) => e.accountId)
@@ -315,6 +336,7 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
           clinicName: (clinicName.trim().isEmpty ? null : clinicName.trim()),
           lastSnippet: c.lastMsgSnippet,
           hasUnread: hasUnread,
+          supportStatus: c.supportStatus,
         ));
       }
 
@@ -712,7 +734,9 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
                       padding: const EdgeInsets.fromLTRB(12, 6, 12, 16),
                       itemBuilder: (_, i) {
                         final it = filtered[i];
-                        final subtitle =
+                        final statusLabel =
+                            _statusLabel(it.supportStatus);
+                        final snippet =
                             _formatSubtitleFromSnippet(it.lastSnippet);
 
                         return ConversationTile(
@@ -720,26 +744,31 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
                           titleOverride: (it.ownerCode?.isNotEmpty ?? false)
                               ? it.ownerCode
                               : it.ownerEmail,
-                          subtitleOverride: subtitle,
+                          subtitleOverride: snippet,
                           lastMessage: null,
                           clinicLabel:
                               (it.clinicName?.trim().isNotEmpty ?? false)
                                   ? it.clinicName!.trim()
                                   : null,
+                          statusBadgeText: statusLabel,
+                          statusBadgeColor:
+                              _statusColor(context, it.supportStatus),
                           unreadCount: it.hasUnread ? 1 : 0,
                           showChevron: true,
                           onTap: () async {
-                            final cp = context.read<ChatProvider>();
-                            await cp.openConversation(it.conversation.id);
-                            await cp.markConversationRead(it.conversation.id);
-                            if (!mounted) return;
-                            await Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => ChatRoomScreen(
-                                    conversation: it.conversation),
-                              ),
-                            );
-                            if (mounted) await _fetchInbox();
+                            try {
+                              if (!mounted) return;
+                              await Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => ChatRoomLoader(
+                                    conversationId: it.conversation.id,
+                                  ),
+                                ),
+                              );
+                              if (mounted) await _fetchInbox();
+                            } catch (e) {
+                              _snack(_friendlyMessage(e));
+                            }
                           },
                         );
                       },
@@ -755,12 +784,51 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
 
   String _formatSubtitleFromSnippet(String? snippet) {
     final s = (snippet ?? '').trim();
-    return s.isEmpty ? '?? ????? ???' : s;
+    return s.isEmpty ? 'لا رسائل بعد' : s;
   }
 
-  void _snack(String msg) {
+  String? _statusLabel(ChatSupportStatus? status) {
+    return status?.labelAr ?? 'قيد انتظار الرد عليه';
+  }
+
+  Color? _statusColor(BuildContext context, ChatSupportStatus? status) {
+    if (status == null) return Colors.orange.shade700;
+    switch (status) {
+      case ChatSupportStatus.pendingReply:
+        return Colors.orange.shade700;
+      case ChatSupportStatus.underReview:
+        return Colors.blue.shade700;
+      case ChatSupportStatus.responded:
+        return Colors.green.shade700;
+      case ChatSupportStatus.closed:
+        return Theme.of(context).colorScheme.outline;
+    }
+  }
+
+  String _friendlyMessage(Object msg) {
+    final raw = msg.toString();
+    final s = raw.toLowerCase();
+    final isNetwork = s.contains('network') ||
+        s.contains('socket') ||
+        s.contains('timed out') ||
+        s.contains('timeout') ||
+        s.contains('connection') ||
+        s.contains('semaphore timeout') ||
+        s.contains('semaphore') ||
+        s.contains('bad gateway') ||
+        s.contains('service temporarily unavailable') ||
+        s.contains('responseformatexception') ||
+        s.contains('unexpected character') ||
+        s.contains('document is empty') ||
+        s.contains('eof');
+    if (isNetwork) return 'يبدو ان الشبكة غير مستقرة لديك';
+    return raw;
+  }
+
+  void _snack(Object msg) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    final text = _friendlyMessage(msg);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   }
 
   Future<String?> _resolveEmailForIdentifier(String input) async {
@@ -803,6 +871,7 @@ class _AdminItem {
   final String? clinicName;
   final String? lastSnippet;
   final bool hasUnread;
+  final ChatSupportStatus? supportStatus;
 
   const _AdminItem({
     required this.conversation,
@@ -811,6 +880,7 @@ class _AdminItem {
     required this.clinicName,
     required this.lastSnippet,
     required this.hasUnread,
+    required this.supportStatus,
   });
 }
 

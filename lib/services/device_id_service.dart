@@ -100,16 +100,28 @@ class DeviceIdService {
         // تجاهل ونكمل بالمرشّحات التالية
       }
 
-      // 1) المجلد المفضّل الثابت على D:\ للحفاظ على الهوية عبر إعادة التثبيت
-      const preferred = r'D:\aelmam_clinic';
-      try {
-        final d = Directory(preferred);
-        if (!await d.exists()) {
-          await d.create(recursive: true);
+      // 1) مجلدات مفضّلة للحفاظ على الهوية عبر إعادة التثبيت
+      final localAppData = Platform.environment['LOCALAPPDATA'];
+      final candidates = <String>[
+        if (localAppData != null && localAppData.trim().isNotEmpty)
+          p.join(localAppData, 'ElmamClinic'),
+        r'D:\ElmamClinic',
+        r'C:\ElmamClinic',
+      ];
+      for (final preferred in candidates) {
+        try {
+          final d = Directory(preferred);
+          if (!await d.exists()) {
+            await d.create(recursive: true);
+          }
+          // اختبار كتابة بسيط للتأكد من الصلاحيات
+          final probe = File(p.join(preferred, '.write_test'));
+          await probe.writeAsString('ok');
+          await probe.delete();
+          return p.join(preferred, _fileName);
+        } catch (_) {
+          // جرّب المسار التالي
         }
-        return p.join(preferred, _fileName);
-      } catch (_) {
-        // فشل الإنشاء/الوصول → ننتقل للـ fallback
       }
 
       // 2) Fallback: Application Support
@@ -133,6 +145,30 @@ class DeviceIdService {
         final txt = await f.readAsString();
         final id = txt.split('\n').first.trim();
         return _isValid(id) ? id : null;
+      }
+      if (Platform.isWindows) {
+        final legacyDirs = <String>[
+          r'C:\aelmam_clinic',
+          r'D:\aelmam_clinic',
+        ];
+        final appData = Platform.environment['APPDATA'];
+        if (appData != null && appData.trim().isNotEmpty) {
+          legacyDirs.add(p.join(appData, 'aelmam_clinic'));
+        }
+        final localAppData = Platform.environment['LOCALAPPDATA'];
+        if (localAppData != null && localAppData.trim().isNotEmpty) {
+          legacyDirs.add(p.join(localAppData, 'aelmam_clinic'));
+        }
+        for (final dir in legacyDirs) {
+          final legacyFile = File(p.join(dir, _fileName));
+          if (await legacyFile.exists()) {
+            final txt = await legacyFile.readAsString();
+            final id = txt.split('\n').first.trim();
+            if (_isValid(id)) {
+              return id;
+            }
+          }
+        }
       }
     } catch (_) {}
     return null;

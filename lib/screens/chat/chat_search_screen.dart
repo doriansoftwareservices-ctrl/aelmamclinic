@@ -68,6 +68,26 @@ class _ChatSearchScreenState extends State<ChatSearchScreen> {
   // مؤشر النتيجة المحددة (للتنقل بالسهمين)
   int _selected = -1;
 
+  String _friendlyMessage(Object msg) {
+    final raw = msg.toString();
+    final s = raw.toLowerCase();
+    final isNetwork = s.contains('network') ||
+        s.contains('socket') ||
+        s.contains('timed out') ||
+        s.contains('timeout') ||
+        s.contains('connection') ||
+        s.contains('semaphore timeout') ||
+        s.contains('semaphore') ||
+        s.contains('bad gateway') ||
+        s.contains('service temporarily unavailable') ||
+        s.contains('responseformatexception') ||
+        s.contains('unexpected character') ||
+        s.contains('document is empty') ||
+        s.contains('eof');
+    if (isNetwork) return 'يبدو ان الشبكة غير مستقرة لديك';
+    return raw;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -144,7 +164,7 @@ class _ChatSearchScreenState extends State<ChatSearchScreen> {
       });
     } catch (e) {
       setState(() {
-        _error = 'تعذّر البحث: $e';
+        _error = _friendlyMessage(e);
         _results = [];
         _resultKeys = [];
         _loading = false;

@@ -55,6 +55,13 @@ class NhostConfig {
   );
   static String? _overrideResetPasswordRedirectUrl;
 
+  static final String _defaultRootSuperAdminEmail =
+      const String.fromEnvironment(
+    'ROOT_SUPER_ADMIN_EMAIL',
+    defaultValue: 'elmam.clinic.c.s@elmam.com',
+  );
+  static String? _overrideRootSuperAdminEmail;
+
   /// Nhost project subdomain (e.g. `mergrgclboxflnucehgb`).
   static String get subdomain =>
       _overrideSubdomain ??
@@ -116,6 +123,10 @@ class NhostConfig {
   static String get resetPasswordRedirectUrl =>
       _overrideResetPasswordRedirectUrl ?? _defaultResetPasswordRedirectUrl;
 
+  /// Root super admin email (controls privileged super-admin-only UI sections).
+  static String get rootSuperAdminEmail =>
+      _overrideRootSuperAdminEmail ?? _defaultRootSuperAdminEmail;
+
   static String _normalizeOrFallback(String value, String fallback) {
     final trimmed = value.trim();
     return trimmed.isEmpty ? fallback : trimmed;
@@ -138,6 +149,7 @@ class NhostConfig {
     String? storageUrl,
     String? functionsUrl,
     String? resetPasswordRedirectUrl,
+    String? rootSuperAdminEmail,
   }) {
     String? normalize(String? value) {
       final trimmed = value?.trim();
@@ -155,5 +167,7 @@ class NhostConfig {
     _overrideFunctionsUrl = normalize(functionsUrl) ?? _overrideFunctionsUrl;
     _overrideResetPasswordRedirectUrl = normalize(resetPasswordRedirectUrl) ??
         _overrideResetPasswordRedirectUrl;
+    _overrideRootSuperAdminEmail = normalize(rootSuperAdminEmail) ??
+        _overrideRootSuperAdminEmail;
   }
 }

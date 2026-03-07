@@ -22,9 +22,11 @@ import 'dart:io';
 import 'dart:ui' as ui show TextDirection;
 
 import 'package:flutter/material.dart';
+import 'package:open_file/open_file.dart';
+import 'package:path/path.dart' as p;
+import 'package:aelmamclinic/services/save_file_service.dart';
 import 'package:aelmamclinic/core/nhost_manager.dart';
 
-import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/core/constants.dart';
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/models/chat_models.dart';
@@ -32,7 +34,7 @@ import 'package:aelmamclinic/models/chat_reaction.dart';
 import 'package:aelmamclinic/services/chat_service.dart';
 import 'package:aelmamclinic/services/attachment_cache.dart'; // ✅ جديد
 import 'package:aelmamclinic/services/nhost_storage_service.dart';
-import 'package:aelmamclinic/utils/time.dart' as t;
+import 'package:intl/intl.dart';
 import 'package:aelmamclinic/utils/text_direction.dart' as bidi;
 
 /// حالة واجهة مبسّطة لعرض أيقونة الحالة
@@ -41,6 +43,8 @@ enum _UiStatus { sending, sent, delivered, read, failed }
 class MessageBubble extends StatelessWidget {
   final ChatMessage message;
   final bool isMine;
+  final bool isOnline;
+  final bool allowRemoteAttachmentDownload;
 
   /// في المحادثات الجماعية: إظهار بريد المرسل أعلى الفقاعة (للرسائل الواردة فقط).
   final bool showSenderHeader;
@@ -73,6 +77,8 @@ class MessageBubble extends StatelessWidget {
     super.key,
     required this.message,
     required this.isMine,
+    this.isOnline = true,
+    this.allowRemoteAttachmentDownload = true,
     this.showSenderHeader = false,
     this.senderEmail,
     this.onOpenImage,
@@ -90,32 +96,31 @@ class MessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
-    final bg = isMine
-        ? kPrimaryColor.withValues(alpha: .10)
-        : scheme.surfaceContainerHigh;
-    final border = Border.all(color: scheme.outlineVariant);
+    final bg = isMine ? const Color(0xFF0185F6) : Colors.white;
+    final border = Border.all(color: Colors.black.withValues(alpha: .06));
 
     final radius = BorderRadius.only(
       topLeft: const Radius.circular(16),
       topRight: const Radius.circular(16),
-      bottomLeft: Radius.circular(!isMine && showTail ? 4 : 16),
-      bottomRight: Radius.circular(isMine && showTail ? 4 : 16),
+      bottomLeft: Radius.circular(isMine && showTail ? 4 : 16),
+      bottomRight: Radius.circular(!isMine && showTail ? 4 : 16),
     );
 
     final uiStatus = _deriveUiStatus(message);
 
-    final maxW = MediaQuery.of(context).size.width * 0.78;
+    final screenW = MediaQuery.of(context).size.width;
+    final maxW = screenW >= 900 ? screenW * 0.55 : screenW * 0.70;
 
     return Directionality(
       textDirection: ui.TextDirection.rtl,
       child: Align(
-        alignment: isMine
-            ? AlignmentDirectional.centerEnd // end=يسار في RTL
-            : AlignmentDirectional.centerStart, // start=يمين في RTL
+        alignment:
+            isMine ? Alignment.centerLeft : Alignment.centerRight,
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+          padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (showSenderHeader &&
                   !isMine &&
@@ -142,16 +147,63 @@ class MessageBubble extends StatelessWidget {
                 onLongPressHint: 'إجراءات الرسالة',
                 child: GestureDetector(
                   onLongPress: onLongPress,
-                  child: NeuCard(
-                    padding: EdgeInsets.zero,
-                    child: Container(
+                  child: IntrinsicWidth(
+                    child: ConstrainedBox(
                       constraints: BoxConstraints(maxWidth: maxW),
-                      decoration: BoxDecoration(
-                        color: bg,
-                        border: border,
-                        borderRadius: radius,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: bg,
+                          border: border,
+                          borderRadius: radius,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: .06),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildBubbleContent(context, uiStatus),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(8, 2, 8, 6),
+                          child: Align(
+                            alignment: AlignmentDirectional.centerEnd,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Directionality(
+                                  textDirection: ui.TextDirection.ltr,
+                                  child: Text(
+                                    DateFormat('HH:mm')
+                                        .format(message.createdAt.toLocal()),
+                                    style: TextStyle(
+                                      color: (isMine
+                                              ? Colors.white
+                                              : scheme.onSurface)
+                                          .withValues(alpha: .65),
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 10.5,
+                                    ),
+                                  ),
+                                ),
+                                if (isMine) ...[
+                                  const SizedBox(width: 6),
+                                  _StatusIcon(
+                                    status: uiStatus,
+                                    isOnline: isOnline,
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+                          ],
+                        ),
                       ),
-                      child: _buildBubbleContent(context, uiStatus),
                     ),
                   ),
                 ),
@@ -170,26 +222,7 @@ class MessageBubble extends StatelessWidget {
               ),
 
               // الوقت + أيقونة الحالة (للمُرسِل فقط)
-              Padding(
-                padding:
-                    const EdgeInsetsDirectional.only(top: 2, start: 6, end: 6),
-                child: Row(
-                  mainAxisAlignment:
-                      isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
-                  children: [
-                    if (isMine) _StatusIcon(status: uiStatus),
-                    if (isMine) const SizedBox(width: 6),
-                    Text(
-                      t.formatMessageTimestamp(message.createdAt),
-                      style: TextStyle(
-                        color: scheme.onSurface.withValues(alpha: .55),
-                        fontWeight: FontWeight.w700,
-                        fontSize: 11.5,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              const SizedBox.shrink(),
             ],
           ),
         ),
@@ -215,6 +248,7 @@ class MessageBubble extends StatelessWidget {
         replySnippet: hasReply ? replySnip : null,
         replyToMessageId: replyToMessageId,
         replyThumbnailUrl: replyThumbnailUrl,
+        allowRemoteDownload: allowRemoteAttachmentDownload,
         onRetry: onRetry == null ? null : () => onRetry!(message),
         failed: uiStatus == _UiStatus.failed,
         onTapReplyTarget: onTapReplyTarget,
@@ -237,6 +271,7 @@ class MessageBubble extends StatelessWidget {
           caption: caption,
           isMine: isMine,
           edited: message.edited,
+          allowRemoteDownload: allowRemoteAttachmentDownload,
           replySnippet: hasReply ? replySnip : null,
           replyToMessageId: replyToMessageId,
           replyThumbnailUrl: replyThumbnailUrl,
@@ -248,19 +283,20 @@ class MessageBubble extends StatelessWidget {
 
       case ChatMessageKind.file:
         final caption = _bodyOf(message);
-        final display = caption.isEmpty
-            ? '📎 ملف غير مدعوم'
-            : '📎 ملف غير مدعوم\n$caption';
-        return _TextBody(
-          text: display,
+        final firstAtt =
+            message.attachments.isNotEmpty ? message.attachments.first : null;
+        return _FileBody(
+          attachment: firstAtt,
+          caption: caption,
           isMine: isMine,
           edited: message.edited,
+          allowRemoteDownload: allowRemoteAttachmentDownload,
           replySnippet: hasReply ? replySnip : null,
           replyToMessageId: replyToMessageId,
           replyThumbnailUrl: replyThumbnailUrl,
-          onRetry: onRetry == null ? null : () => onRetry!(message),
-          failed: uiStatus == _UiStatus.failed,
           onTapReplyTarget: onTapReplyTarget,
+          onRetry: onRetry == null ? null : () => onRetry!(message),
+          status: uiStatus,
         );
 
       case ChatMessageKind.text:
@@ -272,6 +308,7 @@ class MessageBubble extends StatelessWidget {
           replySnippet: hasReply ? replySnip : null,
           replyToMessageId: replyToMessageId,
           replyThumbnailUrl: replyThumbnailUrl,
+          allowRemoteDownload: allowRemoteAttachmentDownload,
           onRetry: onRetry == null ? null : () => onRetry!(message),
           failed: uiStatus == _UiStatus.failed,
           onTapReplyTarget: onTapReplyTarget,
@@ -302,18 +339,29 @@ class MessageBubble extends StatelessWidget {
     if (m.attachments.isNotEmpty) {
       final a = m.attachments.first;
 
-      // 1) لو لدينا bucket/path نفضّل إعادة التوقيع بدل الاعتماد على رابط قديم.
-      final b = (a.bucket ?? '').trim();
-      final p = (a.path ?? '').trim();
-      if (b.isNotEmpty && p.isNotEmpty) {
-        remote = 'storage://$b/$p';
-      } else {
-        // 2) رابط HTTP/موقّع إن لم يتوفر bucket/path
-        try {
-          final primaryUrl = a.url.isNotEmpty ? a.url : (a.signedUrl ?? '');
-          final url = primaryUrl.trim();
-          if (url.isNotEmpty) remote = url;
-        } catch (_) {}
+      // 1) رابط HTTP/موقّع إن وُجد (نفضّله لتجنّب مشاكل صلاحيات الملفات)
+      try {
+        final primaryUrl = a.url.isNotEmpty ? a.url : (a.signedUrl ?? '');
+        final url = primaryUrl.trim();
+        if (url.isNotEmpty && url.startsWith('http')) {
+          remote = url;
+        }
+      } catch (_) {}
+
+      // 2) إن لم نجد رابطًا صالحًا، جرّب bucket/path
+      if (remote.isEmpty) {
+        final b = (a.bucket ?? '').trim();
+        final p = (a.path ?? '').trim();
+        if (b.isNotEmpty && p.isNotEmpty) {
+          remote = 'storage://$b/$p';
+        } else {
+          // 3) fallback: أي رابط غير فارغ حتى لو لم يبدأ بـ http
+          try {
+            final primaryUrl = a.url.isNotEmpty ? a.url : (a.signedUrl ?? '');
+            final url = primaryUrl.trim();
+            if (url.isNotEmpty) remote = url;
+          } catch (_) {}
+        }
       }
 
       // 2) جرّب مسار محلي من extra['local_path']
@@ -395,6 +443,7 @@ class _TextBody extends StatelessWidget {
   final String? replySnippet;
   final String? replyToMessageId;
   final String? replyThumbnailUrl;
+  final bool allowRemoteDownload;
   final VoidCallback? onRetry;
   final bool failed;
   final void Function(String messageId)? onTapReplyTarget;
@@ -406,6 +455,7 @@ class _TextBody extends StatelessWidget {
     this.replySnippet,
     this.replyToMessageId,
     this.replyThumbnailUrl,
+    required this.allowRemoteDownload,
     this.onRetry,
     required this.failed,
     this.onTapReplyTarget,
@@ -416,16 +466,20 @@ class _TextBody extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final dir = bidi.textDirectionFor(text);
 
+    final textColor = isMine ? Colors.white : scheme.onSurface;
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
       child: Column(
-        crossAxisAlignment:
-            isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        crossAxisAlignment: dir == ui.TextDirection.rtl
+            ? CrossAxisAlignment.end
+            : CrossAxisAlignment.start,
         children: [
           if (replySnippet != null) ...[
             _ReplyPreview(
               text: replySnippet!,
               thumbnailUrl: replyThumbnailUrl,
+              allowRemoteDownload: allowRemoteDownload,
               messageId: replyToMessageId,
               onTapReplyTarget: onTapReplyTarget,
             ),
@@ -434,8 +488,11 @@ class _TextBody extends StatelessWidget {
           SelectableText(
             text.isEmpty ? '‎' : bidi.autoBidiWrap(text),
             textDirection: dir,
+            textAlign: dir == ui.TextDirection.rtl
+                ? TextAlign.right
+                : TextAlign.left,
             style: TextStyle(
-              color: scheme.onSurface,
+              color: textColor,
               fontWeight: FontWeight.w700,
               fontSize: 14.5,
               height: 1.35,
@@ -447,7 +504,8 @@ class _TextBody extends StatelessWidget {
               child: Text(
                 '(معدل)',
                 style: TextStyle(
-                  color: scheme.onSurface.withValues(alpha: .55),
+                  color: (isMine ? Colors.white : scheme.onSurface)
+                      .withValues(alpha: .65),
                   fontWeight: FontWeight.w700,
                   fontSize: 11,
                 ),
@@ -481,6 +539,7 @@ class _ImageBody extends StatelessWidget {
   final String? caption;
   final bool isMine;
   final bool edited;
+  final bool allowRemoteDownload;
   final String? replySnippet;
   final String? replyToMessageId;
   final String? replyThumbnailUrl;
@@ -499,6 +558,7 @@ class _ImageBody extends StatelessWidget {
     required this.caption,
     required this.isMine,
     required this.edited,
+    required this.allowRemoteDownload,
     required this.replySnippet,
     this.replyToMessageId,
     this.replyThumbnailUrl,
@@ -515,7 +575,7 @@ class _ImageBody extends StatelessWidget {
     final hasLocal = (localPath != null &&
         localPath!.isNotEmpty &&
         File(localPath!).existsSync());
-    final openArg = hasLocal ? localPath! : imageUrl;
+    final tapArg = hasLocal ? localPath! : imageUrl;
 
     Widget imageWidget;
     if (hasLocal) {
@@ -532,6 +592,7 @@ class _ImageBody extends StatelessWidget {
         bucket: bucket,
         path: path,
         fileId: fileId,
+        allowRemoteDownload: allowRemoteDownload,
       );
     }
 
@@ -547,27 +608,39 @@ class _ImageBody extends StatelessWidget {
               child: _ReplyPreview(
                 text: replySnippet!,
                 thumbnailUrl: replyThumbnailUrl,
+                allowRemoteDownload: allowRemoteDownload,
                 messageId: replyToMessageId,
                 onTapReplyTarget: onTapReplyTarget,
               ),
             ),
           ],
-          GestureDetector(
-            onTap: (onOpen != null && openArg.isNotEmpty)
-                ? () => onOpen!(openArg)
-                : null,
-            child: AspectRatio(
-              aspectRatio: 4 / 3,
-              child: Hero(
-                tag: heroTag,
-                child: Container(
-                  color: Colors.black12,
-                  child: (openArg.isEmpty)
-                      ? const Center(child: Icon(Icons.broken_image_outlined))
-                      : imageWidget,
+          Builder(
+            builder: (context) {
+              final screenW = MediaQuery.of(context).size.width;
+              final maxWidth = screenW * 0.70;
+              const maxHeight = 280.0;
+              return ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: maxWidth,
+                  maxHeight: maxHeight,
                 ),
-              ),
-            ),
+                child: GestureDetector(
+                  onTap: (onOpen != null && tapArg.trim().isNotEmpty)
+                      ? () => onOpen!(tapArg)
+                      : null,
+                  child: AspectRatio(
+                    aspectRatio: 4 / 3,
+                    child: Hero(
+                      tag: heroTag,
+                      child: Container(
+                        color: Colors.black12,
+                        child: imageWidget,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
           ),
           if ((caption?.isNotEmpty ?? false) || edited)
             Padding(
@@ -622,17 +695,333 @@ class _ImageBody extends StatelessWidget {
   }
 }
 
+class _FileBody extends StatefulWidget {
+  final ChatAttachment? attachment;
+  final String caption;
+  final bool isMine;
+  final bool edited;
+  final bool allowRemoteDownload;
+  final String? replySnippet;
+  final String? replyToMessageId;
+  final String? replyThumbnailUrl;
+  final void Function(String messageId)? onTapReplyTarget;
+  final VoidCallback? onRetry;
+  final _UiStatus status;
+
+  const _FileBody({
+    required this.attachment,
+    required this.caption,
+    required this.isMine,
+    required this.edited,
+    required this.allowRemoteDownload,
+    required this.replySnippet,
+    this.replyToMessageId,
+    this.replyThumbnailUrl,
+    this.onTapReplyTarget,
+    this.onRetry,
+    required this.status,
+  });
+
+  @override
+  State<_FileBody> createState() => _FileBodyState();
+}
+
+class _FileBodyState extends State<_FileBody> {
+  bool _opening = false;
+  bool _saving = false;
+
+  String _fileName() {
+    final a = widget.attachment;
+    final path = (a?.path ?? '').trim();
+    if (path.isNotEmpty) return p.basename(path);
+    final url = (a?.url ?? '').trim();
+    if (url.isNotEmpty) {
+      try {
+        return p.basename(Uri.parse(url).path);
+      } catch (_) {}
+    }
+    return 'ملف';
+  }
+
+  String _prettySize(int? bytes) {
+    if (bytes == null || bytes <= 0) return '';
+    const kb = 1024;
+    const mb = kb * 1024;
+    if (bytes >= mb) return '${(bytes / mb).toStringAsFixed(1)} MB';
+    if (bytes >= kb) return '${(bytes / kb).toStringAsFixed(1)} KB';
+    return '$bytes B';
+  }
+
+  IconData _iconForMime(String? mime, String name) {
+    final lower = (mime ?? '').toLowerCase();
+    final ext = p.extension(name).toLowerCase();
+    if (lower.contains('pdf') || ext == '.pdf') return Icons.picture_as_pdf_rounded;
+    if (lower.contains('word') || ext == '.doc' || ext == '.docx') {
+      return Icons.article_rounded;
+    }
+    if (lower.contains('excel') || ext == '.xls' || ext == '.xlsx' || ext == '.csv') {
+      return Icons.grid_on_rounded;
+    }
+    if (lower.contains('powerpoint') || ext == '.ppt' || ext == '.pptx') {
+      return Icons.slideshow_rounded;
+    }
+    if (lower.startsWith('image/') || ['.png','.jpg','.jpeg','.gif','.webp'].contains(ext)) {
+      return Icons.image_rounded;
+    }
+    if (lower.startsWith('video/') || ['.mp4','.mov','.avi','.mkv'].contains(ext)) {
+      return Icons.movie_rounded;
+    }
+    if (lower.startsWith('audio/') || ['.mp3','.wav','.m4a'].contains(ext)) {
+      return Icons.audiotrack_rounded;
+    }
+    if (['.zip','.rar','.7z','.tar','.gz'].contains(ext)) {
+      return Icons.archive_rounded;
+    }
+    return Icons.insert_drive_file_rounded;
+  }
+
+  Future<void> _openFile(BuildContext context) async {
+    if (_opening) return;
+    final a = widget.attachment;
+    if (a == null) return;
+    final bucket = (a.bucket ?? '').trim();
+    final path = (a.path ?? '').trim();
+    var url = (a.signedUrl ?? a.url).trim();
+    if (bucket.isEmpty || path.isEmpty) {
+      final rawUrl = (a.signedUrl ?? a.url).trim();
+      if (rawUrl.isEmpty) return;
+      if (!widget.allowRemoteDownload) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('الملف لم يكتمل تنزيله بعد')),
+          );
+        }
+        return;
+      }
+      final local = await AttachmentCache.instance.ensureFileFor(rawUrl);
+      if (local == null || local.isEmpty) return;
+      await OpenFile.open(local);
+      return;
+    }
+
+    setState(() => _opening = true);
+    try {
+      String? local =
+          AttachmentCache.instance.localPathSyncIfAny(bucket, path);
+      if (local == null || local.isEmpty) {
+        if (!widget.allowRemoteDownload) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('الملف لم يكتمل تنزيله بعد')),
+            );
+          }
+          return;
+        }
+        if (url.isEmpty || url.startsWith('storage://')) {
+          url = await NhostStorageService()
+                  .resolveSignedUrlForPath(bucket: bucket, path: path) ??
+              url;
+        }
+        local = await AttachmentCache.instance.ensureFileForStorage(
+          bucket,
+          path,
+          url: url,
+        );
+      }
+      if (local == null || local.isEmpty) return;
+
+      // Ensure file has extension for OS open
+      final name = _fileName();
+      final ext = p.extension(name);
+      var openPath = local;
+      if (ext.isNotEmpty && !local.toLowerCase().endsWith(ext.toLowerCase())) {
+        final tmp = File(p.join(Directory.systemTemp.path, name));
+        await tmp.writeAsBytes(await File(local).readAsBytes(), flush: true);
+        openPath = tmp.path;
+      }
+      await OpenFile.open(openPath);
+    } finally {
+      if (mounted) setState(() => _opening = false);
+    }
+  }
+
+  Future<void> _saveFile(BuildContext context) async {
+    if (_saving) return;
+    final a = widget.attachment;
+    if (a == null) return;
+    final bucket = (a.bucket ?? '').trim();
+    final path = (a.path ?? '').trim();
+    var url = (a.signedUrl ?? a.url).trim();
+
+    setState(() => _saving = true);
+    try {
+      String? local;
+      if (bucket.isNotEmpty && path.isNotEmpty) {
+        local = AttachmentCache.instance.localPathSyncIfAny(bucket, path);
+        if (local == null || local.isEmpty) {
+          if (!widget.allowRemoteDownload) {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('الملف لم يكتمل تنزيله بعد')),
+              );
+            }
+            return;
+          }
+          if (url.isEmpty || url.startsWith('storage://')) {
+            url = await NhostStorageService()
+                    .resolveSignedUrlForPath(bucket: bucket, path: path) ??
+                url;
+          }
+          local = await AttachmentCache.instance.ensureFileForStorage(
+            bucket,
+            path,
+            url: url,
+          );
+        }
+      } else {
+        if (url.isEmpty || !widget.allowRemoteDownload) return;
+        local = await AttachmentCache.instance.ensureFileFor(url);
+      }
+      if (local == null || local.isEmpty) return;
+      await saveFileToDownloads(File(local), fileName: _fileName());
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final name = _fileName();
+    final size = _prettySize(widget.attachment?.sizeBytes);
+    final icon = _iconForMime(widget.attachment?.mimeType, name);
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: Column(
+        crossAxisAlignment:
+            widget.isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          if (widget.replySnippet != null) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+              child: _ReplyPreview(
+                text: widget.replySnippet!,
+                thumbnailUrl: widget.replyThumbnailUrl,
+                allowRemoteDownload: widget.allowRemoteDownload,
+                messageId: widget.replyToMessageId,
+                onTapReplyTarget: widget.onTapReplyTarget,
+              ),
+            ),
+          ],
+          InkWell(
+            onTap: () => _openFile(context),
+            onLongPress: () => _saveFile(context),
+            child: Container(
+              color: Colors.black12,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              child: Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: scheme.primary.withValues(alpha: .12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(icon),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                        if (size.isNotEmpty)
+                          Text(
+                            size,
+                            style: TextStyle(
+                              color: scheme.onSurface.withValues(alpha: .6),
+                              fontSize: 11.5,
+                            ),
+                          ),
+                        if (widget.caption.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              widget.caption,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: scheme.onSurface,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  if (_opening)
+                    const Padding(
+                      padding: EdgeInsets.only(left: 6),
+                      child: SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                  if (_saving)
+                    const Padding(
+                      padding: EdgeInsets.only(left: 6),
+                      child: SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          if (widget.isMine &&
+              widget.status == _UiStatus.failed &&
+              widget.onRetry != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.refresh_rounded, size: 18),
+                  label: const Text('إعادة المحاولة'),
+                  onPressed: widget.onRetry,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ResolvedNetworkImage extends StatefulWidget {
   final String url;
   final String? bucket;
   final String? path;
   final String? fileId;
+  final bool allowRemoteDownload;
 
   const _ResolvedNetworkImage({
     required this.url,
     required this.bucket,
     required this.path,
     required this.fileId,
+    required this.allowRemoteDownload,
   });
 
   @override
@@ -655,7 +1044,8 @@ class _ResolvedNetworkImageState extends State<_ResolvedNetworkImage> {
     if (oldWidget.url != widget.url ||
         oldWidget.bucket != widget.bucket ||
         oldWidget.path != widget.path ||
-        oldWidget.fileId != widget.fileId) {
+        oldWidget.fileId != widget.fileId ||
+        oldWidget.allowRemoteDownload != widget.allowRemoteDownload) {
       _future = _resolve();
     }
   }
@@ -667,6 +1057,9 @@ class _ResolvedNetworkImageState extends State<_ResolvedNetworkImage> {
     final explicitFileId = (widget.fileId ?? '').trim();
 
     if (explicitFileId.isNotEmpty) {
+      if (!widget.allowRemoteDownload) {
+        return _storage.publicFileUrl(explicitFileId);
+      }
       final signed = await _storage.createSignedUrl(
         explicitFileId,
         expiresInSeconds: AppConstants.storageSignedUrlTTLSeconds,
@@ -677,6 +1070,7 @@ class _ResolvedNetworkImageState extends State<_ResolvedNetworkImage> {
 
     // لو لدينا bucket/path من المرفق، نفضّل إعادة توقيعها دائمًا.
     if (explicitBucket.isNotEmpty && explicitPath.isNotEmpty) {
+      if (!widget.allowRemoteDownload) return null;
       return _storage.resolveSignedUrlForPath(
         bucket: explicitBucket,
         path: explicitPath,
@@ -684,12 +1078,14 @@ class _ResolvedNetworkImageState extends State<_ResolvedNetworkImage> {
     }
 
     if (raw.startsWith('http')) {
+      if (!widget.allowRemoteDownload) return raw;
       return await _storage.resolveSignedUrlFromUrl(raw) ?? raw;
     }
     final storage = _parseStorageUrl(raw);
     final bucket = storage?.bucket ?? '';
     final path = storage?.path ?? '';
     if (bucket.isEmpty || path.isEmpty) return null;
+    if (!widget.allowRemoteDownload) return null;
     return _storage.resolveSignedUrlForPath(bucket: bucket, path: path);
   }
 
@@ -714,13 +1110,14 @@ class _ResolvedNetworkImageState extends State<_ResolvedNetworkImage> {
           if (snap.connectionState == ConnectionState.waiting) {
             return const Center(child: Icon(Icons.image_rounded, size: 42));
           }
-          return const Center(child: Icon(Icons.broken_image_outlined));
+          return const Center(child: Icon(Icons.image_rounded, size: 42));
         }
         return AttachmentCacheImage(
           url: resolved,
           fit: BoxFit.cover,
           placeholder: const Center(child: Icon(Icons.image_rounded, size: 42)),
           errorWidget: const Center(child: Icon(Icons.broken_image_outlined)),
+          allowDownload: widget.allowRemoteDownload,
         );
       },
     );
@@ -766,12 +1163,14 @@ class _DeletedBody extends StatelessWidget {
 class _ReplyPreview extends StatelessWidget {
   final String text;
   final String? thumbnailUrl;
+  final bool allowRemoteDownload;
   final String? messageId; // الأصل
   final void Function(String messageId)? onTapReplyTarget;
 
   const _ReplyPreview({
     required this.text,
     this.thumbnailUrl,
+    required this.allowRemoteDownload,
     this.messageId,
     this.onTapReplyTarget,
   });
@@ -791,16 +1190,14 @@ class _ReplyPreview extends StatelessWidget {
         if (hasThumb)
           ClipRRect(
             borderRadius: BorderRadius.circular(6),
-            child: Image.network(
-              thumbnailUrl!,
+            child: AttachmentCacheImage(
+              url: thumbnailUrl!,
               width: 34,
               height: 34,
               fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => const _MiniThumbPlaceholder(),
-              loadingBuilder: (_, child, progress) {
-                if (progress == null) return child;
-                return const _MiniThumbPlaceholder();
-              },
+              allowDownload: allowRemoteDownload,
+              placeholder: const _MiniThumbPlaceholder(),
+              errorWidget: const _MiniThumbPlaceholder(),
             ),
           )
         else if (isImageHint)
@@ -861,7 +1258,8 @@ class _MiniThumbPlaceholder extends StatelessWidget {
 
 class _StatusIcon extends StatelessWidget {
   final _UiStatus status;
-  const _StatusIcon({required this.status});
+  final bool isOnline;
+  const _StatusIcon({required this.status, required this.isOnline});
 
   @override
   Widget build(BuildContext context) {
@@ -872,8 +1270,10 @@ class _StatusIcon extends StatelessWidget {
 
     switch (status) {
       case _UiStatus.sending:
-        icon = Icons.schedule_rounded;
-        color = scheme.onSurface.withValues(alpha: .45);
+        icon = isOnline ? Icons.schedule_rounded : Icons.cloud_off_rounded;
+        color = isOnline
+            ? scheme.onSurface.withValues(alpha: .45)
+            : Colors.orange.shade400;
         break;
       case _UiStatus.sent:
         icon = Icons.done_rounded; // ✓
@@ -881,11 +1281,11 @@ class _StatusIcon extends StatelessWidget {
         break;
       case _UiStatus.delivered:
         icon = Icons.done_all_rounded; // ✓✓
-        color = scheme.onSurface.withValues(alpha: .75);
+        color = Colors.white.withValues(alpha: .85);
         break;
       case _UiStatus.read:
         icon = Icons.done_all_rounded; // ✓✓ أزرق
-        color = kPrimaryColor;
+        color = const Color(0xFF9FE3FF);
         break;
       case _UiStatus.failed:
         icon = Icons.error_outline_rounded;

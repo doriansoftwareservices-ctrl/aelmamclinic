@@ -176,15 +176,7 @@ class _ChatComposerState extends State<ChatComposer> {
       // أوقف typing فورًا عند الإرسال
       _setTyping(false, immediate: true);
 
-      // 1) نص
-      if (hasText) {
-        await context
-            .read<ChatProvider>()
-            .sendText(conversationId: widget.conversationId, text: text);
-        _ctrl.clear();
-      }
-
-      // 2) صور (معطلة في الخطة المجانية)
+      // 1) صور (معطلة في الخطة المجانية)
       if (hasImages) {
         // علّمها "uploading"
         setState(() {
@@ -197,10 +189,12 @@ class _ChatComposerState extends State<ChatComposer> {
           await context.read<ChatProvider>().sendImages(
                 conversationId: widget.conversationId,
                 files: _images.map((e) => e.file).toList(),
+                optionalText: hasText ? text : null,
               );
 
           // نجاح: أفرغ القائمة
           setState(() => _images.clear());
+          _ctrl.clear();
         } catch (e) {
           // فشل: علّمها failed واتركها معروضة
           setState(() {
@@ -210,6 +204,11 @@ class _ChatComposerState extends State<ChatComposer> {
           });
           rethrow;
         }
+      } else if (hasText) {
+        await context
+            .read<ChatProvider>()
+            .sendText(conversationId: widget.conversationId, text: text);
+        _ctrl.clear();
       }
 
       // نجاح كامل

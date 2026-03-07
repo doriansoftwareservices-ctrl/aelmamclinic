@@ -1,6 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:gql/ast.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import 'package:http/io_client.dart';
 import 'package:nhost_dart/nhost_dart.dart';
 
 import '../core/auth_role_state.dart';
@@ -13,9 +16,16 @@ class NhostGraphqlService {
 
   static ValueNotifier<GraphQLClient>? _notifier;
 
-  static HttpLink _buildHttpLink() => HttpLink(
-        NhostConfig.graphqlUrl,
-      );
+  static HttpLink _buildHttpLink() {
+    final httpClient = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 30)
+      ..idleTimeout = const Duration(seconds: 30)
+      ..maxConnectionsPerHost = 4;
+    return HttpLink(
+      NhostConfig.graphqlUrl,
+      httpClient: IOClient(httpClient),
+    );
+  }
 
   static bool _isSuperAdmin(NhostClient client) {
     final user = client.auth.currentUser;
@@ -108,6 +118,11 @@ class NhostGraphqlService {
     return msg.contains('responseformatexception') ||
         msg.contains('formatexception') ||
         msg.contains('unexpected character') ||
+        msg.contains('document is empty') ||
+        msg.contains('connection closed before full header was received') ||
+        msg.contains('clientexception') ||
+        msg.contains('semaphore timeout') ||
+        msg.contains('semaphore') ||
         msg.contains('502') ||
         msg.contains('503') ||
         msg.contains('bad gateway') ||
@@ -129,7 +144,15 @@ class NhostGraphqlService {
       } catch (e) {
         attempt += 1;
         if (attempt >= maxAttempts || !_shouldRetry(e)) {
-          rethrow;
+          yield Response(
+            response: const <String, dynamic>{},
+            errors: [
+              GraphQLError(
+                message: 'يبدو ان الشبكة غير مستقرة لديك',
+              ),
+            ],
+          );
+          return;
         }
         await Future<void>.delayed(
           Duration(milliseconds: 350 * attempt),

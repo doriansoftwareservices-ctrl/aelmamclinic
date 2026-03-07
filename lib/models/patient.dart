@@ -19,6 +19,7 @@ class Patient {
     phoneNumber TEXT,
     healthStatus TEXT,
     preferences TEXT,
+    collateral TEXT,
     doctorId INTEGER,
     doctorName TEXT,
     doctorSpecialization TEXT,
@@ -47,6 +48,7 @@ class Patient {
   final String phoneNumber;
   final String? healthStatus;
   final String? preferences;
+  final String? collateral;
   final int? doctorId;
   final String? doctorName;
   final String? doctorSpecialization;
@@ -83,6 +85,7 @@ class Patient {
     required this.phoneNumber,
     this.healthStatus,
     this.preferences,
+    this.collateral,
     this.doctorId,
     this.doctorName,
     this.doctorSpecialization,
@@ -162,6 +165,7 @@ class Patient {
         phoneNumber: _toStr0(map['phoneNumber'] ?? map['phone_number']),
         healthStatus: _toStrN(map['healthStatus'] ?? map['health_status']),
         preferences: _toStrN(map['preferences']),
+        collateral: _toStrN(map['collateral']),
         doctorId: _toIntN(map['doctorId'] ?? map['doctor_id']),
         doctorName: _toStrN(map['doctorName'] ?? map['doctor_name']),
         doctorSpecialization: _toStrN(
@@ -204,6 +208,7 @@ class Patient {
         'phoneNumber': phoneNumber,
         'healthStatus': healthStatus,
         'preferences': preferences,
+        'collateral': collateral,
         'doctorId': doctorId,
         'doctorName': doctorName,
         'doctorSpecialization': doctorSpecialization,
@@ -235,6 +240,7 @@ class Patient {
         'phone_number': phoneNumber,
         'health_status': healthStatus,
         'preferences': preferences,
+        'collateral': collateral,
         'doctor_id': doctorId,
         'doctor_name': doctorName,
         'doctor_specialization': doctorSpecialization,
@@ -271,6 +277,7 @@ class Patient {
     String? phoneNumber,
     String? healthStatus,
     String? preferences,
+    String? collateral,
     int? doctorId,
     String? doctorName,
     String? doctorSpecialization,
@@ -301,6 +308,7 @@ class Patient {
         phoneNumber: phoneNumber ?? this.phoneNumber,
         healthStatus: healthStatus ?? this.healthStatus,
         preferences: preferences ?? this.preferences,
+        collateral: collateral ?? this.collateral,
         doctorId: doctorId ?? this.doctorId,
         doctorName: doctorName ?? this.doctorName,
         doctorSpecialization: doctorSpecialization ?? this.doctorSpecialization,
@@ -343,6 +351,7 @@ class Patient {
           phoneNumber == other.phoneNumber &&
           healthStatus == other.healthStatus &&
           preferences == other.preferences &&
+          collateral == other.collateral &&
           doctorId == other.doctorId &&
           doctorName == other.doctorName &&
           doctorSpecialization == other.doctorSpecialization &&
@@ -374,6 +383,7 @@ class Patient {
         phoneNumber,
         healthStatus,
         preferences,
+        collateral,
         doctorId,
         doctorName,
         doctorSpecialization,

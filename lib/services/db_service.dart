@@ -5,7 +5,7 @@ library db_service;
 // - Fix generics: Future<int> (not Future[int])
 // - Add `dart:async` import so `Future` is recognized
 // - Enable WAL & add a lightweight change stream for live sync integrations.
-// - Windows path unified to C:\aelmam_clinic with auto-migration from legacy D:\aelmam_clinic
+// - Windows path unified via AppPaths (LOCALAPPDATA first + D fallback) with auto-migration from legacy locations
 //
 // 🔗 للربط مع SyncService (الدفع المؤجّل لكل جدول):
 // final sync = SyncService(db, accountId, deviceId: deviceId);
@@ -17,6 +17,8 @@ import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart' as sqflite_ffi;
 import 'package:path/path.dart' as p;
 import 'package:meta/meta.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:aelmamclinic/core/active_account_store.dart';
 
 /*─────────────────── موديلات ───────────────────*/
 import 'package:aelmamclinic/models/patient_service.dart';
@@ -36,6 +38,7 @@ import 'package:aelmamclinic/models/purchase.dart';
 import 'package:aelmamclinic/models/inventory_health_report.dart';
 import 'package:aelmamclinic/models/alert_setting.dart';
 import 'package:aelmamclinic/models/attachment.dart';
+import 'package:aelmamclinic/utils/app_paths.dart';
 
 /*─────────────── خدمة الإشعارات ───────────────*/
 import 'notification_service.dart';
@@ -104,6 +107,7 @@ class DBService {
   late final PatientLocalRepository patients = PatientLocalRepository(this);
 
   static String? _testDbPathOverride;
+  static String? _windowsDataDirOverride;
 
   /// Stream يبث اسم الجدول عند أي تعديل محلي (مكمل لـ onLocalChange)
   final _changeController = StreamController<String>.broadcast();
@@ -112,6 +116,9 @@ class DBService {
   // Serialize write operations to avoid SQLite "database is locked" under sync load.
   Future<void> _writeQueue = Future<void>.value();
   static final Object _writeZoneKey = Object();
+  Future<void>? _ensureAlertSettingsColumnsInFlight;
+  Future<void>? _ensureItemTypesNoUniqueNameInFlight;
+  bool _patientPaymentBackfillBusy = false;
 
   Future<T> runQueuedWrite<T>(Future<T> Function() op) {
     if (Zone.current[_writeZoneKey] == true) {
@@ -147,6 +154,7 @@ class DBService {
   void setCachedSyncIdentity({String? accountId, String? deviceId}) {
     _cachedAccountId = accountId?.trim().isEmpty == true ? null : accountId;
     _cachedDeviceId = deviceId?.trim().isEmpty == true ? null : deviceId;
+    unawaited(_runPatientPaymentBackfillIfNeeded());
   }
 
   void clearCachedSyncIdentity() {
@@ -240,9 +248,111 @@ class DBService {
     }
   }
 
+  Future<String?> _fallbackAccountIdFromLocal(DatabaseExecutor db) async {
+    try {
+      final tables = <String>[
+        'employees',
+        'accounts',
+        'clinic_profile',
+        'items',
+        'patients',
+        'appointments',
+        'purchases',
+        'consumptions',
+      ];
+      final found = <String>{};
+      for (final table in tables) {
+        if (!await _tableExists(db, table)) continue;
+        if (!await _hasColumn(db, table, 'account_id')) continue;
+        final rows = await db.rawQuery(
+          "SELECT DISTINCT account_id FROM $table "
+          "WHERE account_id IS NOT NULL AND length(trim(account_id)) > 0 "
+          "LIMIT 2",
+        );
+        for (final row in rows) {
+          final acc = row['account_id']?.toString().trim();
+          if (acc != null && acc.isNotEmpty) {
+            found.add(acc);
+            if (found.length > 1) return null;
+          }
+        }
+      }
+      if (found.length == 1) return found.first;
+    } catch (_) {}
+    return null;
+  }
+
+  Future<void> _ensureSyncIdentityAccountId(
+    DatabaseExecutor db,
+    String accountId,
+  ) async {
+    try {
+      if (!await _tableExists(db, 'sync_identity')) return;
+      final rows = await db.rawQuery('SELECT account_id FROM sync_identity LIMIT 1');
+      if (rows.isEmpty) {
+        await db.rawInsert(
+          'INSERT INTO sync_identity(account_id, device_id) VALUES (?, COALESCE((SELECT device_id FROM sync_identity LIMIT 1), ""))',
+          [accountId],
+        );
+        return;
+      }
+      final existing = rows.first['account_id']?.toString().trim() ?? '';
+      if (existing.isEmpty) {
+        await db.rawUpdate(
+          'UPDATE sync_identity SET account_id = ?',
+          [accountId],
+        );
+      }
+    } catch (_) {}
+  }
+
   Future<String?> _currentAccountId() async {
     final db = await database;
-    return _currentAccountIdFrom(db);
+    final acc = await _currentAccountIdFrom(db);
+    if (acc != null && acc.trim().isNotEmpty) {
+      if (await _hasLocalRowsForAccount(db, acc.trim())) {
+        return acc;
+      }
+      // sync_identity قديم أو غير مطابق لبيانات الجهاز → حاول استنتاج الحساب الصحيح.
+    }
+    try {
+      final fromStore = await ActiveAccountStore.readAccountId();
+      if (fromStore != null && fromStore.trim().isNotEmpty) {
+        final candidate = fromStore.trim();
+        if (await _hasLocalRowsForAccount(db, candidate)) {
+          _cachedAccountId = candidate;
+          await _ensureSyncIdentityAccountId(db, _cachedAccountId!);
+          return _cachedAccountId;
+        }
+      }
+    } catch (_) {}
+    final fallback = await _fallbackAccountIdFromLocal(db);
+    if (fallback != null && fallback.trim().isNotEmpty) {
+      _cachedAccountId = fallback;
+      await _ensureSyncIdentityAccountId(db, fallback);
+      try {
+        await ActiveAccountStore.writeAccountId(fallback);
+      } catch (_) {}
+      return fallback;
+    }
+    return null;
+  }
+
+  Future<bool> _hasLocalRowsForAccount(DatabaseExecutor db, String accountId) async {
+    try {
+      const tables = <String>['patients', 'items', 'purchases', 'consumptions'];
+      for (final table in tables) {
+        if (!await _tableExists(db, table)) continue;
+        if (!await _hasColumn(db, table, 'account_id')) continue;
+        final rows = await db.rawQuery(
+          'SELECT COUNT(*) AS c FROM $table WHERE account_id = ?',
+          [accountId],
+        );
+        final c = (rows.first['c'] as num?)?.toInt() ?? 0;
+        if (c > 0) return true;
+      }
+    } catch (_) {}
+    return false;
   }
 
   Future<String?> currentAccountId() async {
@@ -312,10 +422,50 @@ class DBService {
     List<Object?>? args,
   }) async {
     if (!await _hasColumn(db, table, 'account_id')) return '';
-    final accountId = await _currentAccountId();
+    // IMPORTANT: stay on the provided executor (txn) to avoid nested connections.
+    var accountId = await _currentAccountIdFrom(db);
     if (accountId == null || accountId.trim().isEmpty) {
+      // في قواعد قديمة بلا account_id، لا نغلق الاستعلام بالكامل.
+      // إن لم توجد أي قيم account_id أصلاً، اعتبرها قاعدة حساب واحد.
+      try {
+        final rows = await db.rawQuery(
+          'SELECT COUNT(*) AS c FROM $table '
+          "WHERE account_id IS NOT NULL AND length(trim(account_id)) > 0",
+        );
+        final c = (rows.first['c'] as num?)?.toInt() ?? 0;
+        if (c == 0) return '';
+      } catch (_) {
+        // إن تعذر الفحص، لا تحجب كل النتائج
+        return '';
+      }
       return ' AND 1=0';
     }
+    // إن كان الحساب الحالي لا يملك صفوفًا محليًا، حاول استنتاج حساب وحيد.
+    try {
+      final rows = await db.rawQuery(
+        'SELECT COUNT(*) AS c FROM $table WHERE account_id = ?',
+        [accountId],
+      );
+      final c = (rows.first['c'] as num?)?.toInt() ?? 0;
+      if (c == 0) {
+        final distinct = await db.rawQuery(
+          'SELECT DISTINCT account_id FROM $table '
+          "WHERE account_id IS NOT NULL AND length(trim(account_id)) > 0 "
+          'LIMIT 2',
+        );
+        if (distinct.length == 1) {
+          final only = distinct.first['account_id']?.toString().trim();
+          if (only != null && only.isNotEmpty) {
+            accountId = only;
+            _cachedAccountId = only;
+            await _ensureSyncIdentityAccountId(db, only);
+            try {
+              await ActiveAccountStore.writeAccountId(only);
+            } catch (_) {}
+          }
+        }
+      }
+    } catch (_) {}
     if (args != null) args.add(accountId);
     final col = alias != null ? '$alias.account_id' : 'account_id';
     return ' AND $col = ?';
@@ -328,6 +478,29 @@ class DBService {
       "WHERE account_id IS NULL OR length(trim(account_id)) = 0",
     );
     return (rows.first['c'] as num).toInt();
+  }
+
+  /// يملأ account_id المفقود في جداول محددة (مهم لبيانات المستودع).
+  Future<void> backfillAccountForTables(
+    Iterable<String> tables,
+    String accountId,
+  ) async {
+    final acc = accountId.trim();
+    if (acc.isEmpty) return;
+    await runQueuedWrite(() async {
+      await runWithDbRetry(() async {
+        final db = await database;
+        for (final table in tables) {
+          if (!await _tableExists(db, table)) continue;
+          if (!await _hasColumn(db, table, 'account_id')) continue;
+          await db.update(
+            table,
+            {'account_id': acc},
+            where: "account_id IS NULL OR length(trim(account_id)) = 0",
+          );
+        }
+      });
+    });
   }
 
   Future<InventoryHealthReport> getInventoryHealthReport() async {
@@ -711,26 +884,59 @@ class DBService {
         await File(dbPath).parent.create(recursive: true);
       } catch (_) {}
     } else if (Platform.isWindows) {
-      // ✅ توحيد المسار على C:\aelmam_clinic + هجرة تلقائية من D:\aelmam_clinic إن وُجد
-      const targetFolder = r'C:\aelmam_clinic';
-      final dir = Directory(targetFolder);
-      if (!(await dir.exists())) {
-        await dir.create(recursive: true);
-      }
-      final legacyFile = File(p.join(r'D:\aelmam_clinic', fileName));
-      final targetFile = File(p.join(targetFolder, fileName));
-      if (await legacyFile.exists() && !(await targetFile.exists())) {
+      // ✅ توحيد المسار على LOCALAPPDATA أولاً ثم D:\ ثم C:\ مع فحص الصلاحيات
+      final candidates = await _candidateWindowsDataDirs();
+      _logDbOpen('Candidates: ${candidates.join(' | ')}');
+      Database? opened;
+      for (final targetFolder in candidates) {
         try {
-          await targetFile.writeAsBytes(await legacyFile.readAsBytes());
-        } catch (_) {}
+          final dir = Directory(targetFolder);
+          if (!(await dir.exists())) {
+            await dir.create(recursive: true);
+          }
+          if (!await _ensureWritable(dir)) {
+            _logDbOpen('Not writable: $targetFolder');
+            continue;
+          }
+          final targetFile = File(p.join(targetFolder, fileName));
+          if (!(await targetFile.exists())) {
+            for (final legacy in _legacyWindowsDataDirs()) {
+              final legacyFile = File(p.join(legacy, fileName));
+              if (await legacyFile.exists()) {
+                try {
+                  await targetFile.writeAsBytes(await legacyFile.readAsBytes());
+                } catch (_) {}
+                break;
+              }
+            }
+          }
+          dbPath = targetFile.path;
+          _logDbOpen('Trying open: $dbPath');
+          opened = await _openDatabaseAt(dbPath);
+          break;
+        } catch (e, st) {
+          _logDbOpen('Open failed at $targetFolder -> $e\n$st');
+          // جرّب المسار التالي
+        }
       }
-      dbPath = targetFile.path;
+      if (opened != null) {
+        return opened;
+      }
+      // إذا فشلت كل المحاولات، ارجع لمسار AppPaths الآمن
+      final fallbackRoot =
+          await AppPaths.pickWritableWindowsRoot(override: _windowsDataDirOverride);
+      dbPath = p.join(fallbackRoot, fileName);
+      _logDbOpen('Fallback AppPaths: $dbPath');
     } else {
       dbPath = p.join(await getDatabasesPath(), fileName);
     }
 
     print('📁 تم إنشاء/قراءة قاعدة البيانات من المسار: $dbPath');
 
+    return await _openDatabaseAt(dbPath);
+  }
+
+  Future<Database> _openDatabaseAt(String dbPath) {
     return openDatabase(
       dbPath,
       version: 35, // ↑ إضافة حقول snapshot للمستودع
@@ -763,23 +969,87 @@ class DBService {
       return file.path;
     }
     if (Platform.isWindows) {
-      const targetFolder = r'C:\aelmam_clinic';
-      final dir = Directory(targetFolder);
-      if (!(await dir.exists())) {
-        await dir.create(recursive: true);
-      }
-      // هجرة لمرة واحدة إن وُجد ملف قديم في D:
-      final legacyFile = File(p.join(r'D:\aelmam_clinic', 'clinic.db'));
-      final targetFile = File(p.join(targetFolder, 'clinic.db'));
-      if (await legacyFile.exists() && !(await targetFile.exists())) {
+      final candidates = await _candidateWindowsDataDirs();
+      _logDbOpen('getDatabasePath candidates: ${candidates.join(' | ')}');
+      for (final targetFolder in candidates) {
         try {
-          await targetFile.writeAsBytes(await legacyFile.readAsBytes());
-        } catch (_) {}
+          final dir = Directory(targetFolder);
+          if (!(await dir.exists())) {
+            await dir.create(recursive: true);
+          }
+          if (!await _ensureWritable(dir)) {
+            _logDbOpen('getDatabasePath not writable: $targetFolder');
+            continue;
+          }
+          final targetFile = File(p.join(targetFolder, 'clinic.db'));
+          if (!(await targetFile.exists())) {
+            for (final legacy in _legacyWindowsDataDirs()) {
+              final legacyFile = File(p.join(legacy, 'clinic.db'));
+              if (await legacyFile.exists()) {
+                try {
+                  await targetFile.writeAsBytes(await legacyFile.readAsBytes());
+                } catch (_) {}
+                break;
+              }
+            }
+          }
+          _logDbOpen('getDatabasePath selected: ${targetFile.path}');
+          return targetFile.path;
+        } catch (e, st) {
+          _logDbOpen('getDatabasePath failed at $targetFolder -> $e\n$st');
+          // جرّب المسار التالي
+        }
       }
-      return targetFile.path;
+      final fallbackRoot =
+          await AppPaths.pickWritableWindowsRoot(override: _windowsDataDirOverride);
+      final fallback = p.join(fallbackRoot, 'clinic.db');
+      _logDbOpen('getDatabasePath fallback (AppPaths): $fallback');
+      return fallback;
     } else {
       return p.join(await getDatabasesPath(), 'clinic.db');
     }
+  }
+
+  Future<List<String>> _candidateWindowsDataDirs() async {
+    return AppPaths.windowsCandidates(override: _windowsDataDirOverride);
+  }
+
+  Future<bool> _ensureWritable(Directory dir) async {
+    try {
+      final probe = File(p.join(dir.path, '.write_test'));
+      await probe.writeAsString('ok');
+      await probe.delete();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _logDbOpen(String msg) async {
+    try {
+      if (!Platform.isWindows) return;
+      final dir = await AppPaths.logsDir();
+      final file = File(p.join(dir.path, 'db_open.log'));
+      final ts = DateTime.now().toIso8601String();
+      await file.writeAsString('[$ts] $msg\n', mode: FileMode.append);
+    } catch (_) {}
+  }
+
+  List<String> _legacyWindowsDataDirs() {
+    final env = Platform.environment;
+    final legacy = <String>[
+      r'C:\aelmam_clinic',
+      r'D:\aelmam_clinic',
+    ];
+    final appData = env['APPDATA'];
+    if (appData != null && appData.trim().isNotEmpty) {
+      legacy.add(p.join(appData, 'aelmam_clinic'));
+    }
+    final localAppData = env['LOCALAPPDATA'];
+    if (localAppData != null && localAppData.trim().isNotEmpty) {
+      legacy.add(p.join(localAppData, 'aelmam_clinic'));
+    }
+    return legacy;
   }
 
   Future<String?> backupDatabase({
@@ -1001,7 +1271,17 @@ class DBService {
 
   /*────────────── فحوصات ما بعد الفتح/الترقية ──────────────*/
   /// ⚠️ مهم: لا نستخدم DEFAULT دوال في ALTER TABLE. نضيف الأعمدة ثم نملأها وننشىء تريجر.
-  Future<void> _ensureAlertSettingsColumns(Database db) async {
+  Future<void> _ensureAlertSettingsColumns(Database db) {
+    final inFlight = _ensureAlertSettingsColumnsInFlight;
+    if (inFlight != null) return inFlight;
+    final future = _ensureAlertSettingsColumnsImpl(db);
+    _ensureAlertSettingsColumnsInFlight = future;
+    return future.whenComplete(() {
+      _ensureAlertSettingsColumnsInFlight = null;
+    });
+  }
+
+  Future<void> _ensureAlertSettingsColumnsImpl(Database db) async {
     try {
       var cols = await db.rawQuery("PRAGMA table_info(alert_settings)");
       bool has(String name) => cols.any((c) =>
@@ -1165,6 +1445,12 @@ class DBService {
     }
   }
 
+  Future<void> _ensurePatientCollateralColumn(Database db) async {
+    try {
+      await _addColumnIfMissing(db, 'patients', 'collateral', 'TEXT');
+    } catch (_) {}
+  }
+
   Future<void> _relaxFinancialLogsEmployeeId(Database db) async {
     try {
       final info = await db.rawQuery('PRAGMA table_info(financial_logs)');
@@ -1188,6 +1474,7 @@ class DBService {
           operation            TEXT NOT NULL DEFAULT 'create',
           amount               REAL NOT NULL,
           employee_id          TEXT,
+          patient_id           INTEGER,
           description          TEXT,
           modification_details TEXT,
           timestamp            TEXT NOT NULL,
@@ -1211,6 +1498,7 @@ class DBService {
         'operation',
         'amount',
         'employee_id',
+        'patient_id',
         'description',
         'modification_details',
         'timestamp',
@@ -1239,8 +1527,180 @@ class DBService {
 
       await _ensureSoftDeleteColumns(db);
       await _ensureSyncMetaColumns(db);
+      await _ensureFinancialLogsColumns(db);
     } catch (e) {
       print('relaxFinancialLogsEmployeeId: $e');
+    }
+  }
+
+  Future<void> _ensureFinancialLogsColumns(Database db) async {
+    try {
+      await _addColumnIfMissing(
+          db, 'financial_logs', 'patient_id', 'INTEGER');
+    } catch (_) {}
+  }
+
+  String _patientPaymentBackfillKey(String accountId) {
+    return 'backfill.patient_payment.v1.${accountId.trim()}';
+  }
+
+  Future<void> _runPatientPaymentBackfillIfNeeded({Database? db}) async {
+    if (_patientPaymentBackfillBusy) return;
+    _patientPaymentBackfillBusy = true;
+    try {
+      final database = db ?? await this.database;
+      final accountId = await _currentAccountIdFrom(database);
+      if (accountId == null || accountId.trim().isEmpty) {
+        return;
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+      final key = _patientPaymentBackfillKey(accountId);
+      if (prefs.getBool(key) == true) {
+        return;
+      }
+
+      final hasPatientId =
+          await _hasColumn(database, 'financial_logs', 'patient_id');
+      if (!hasPatientId) {
+        return;
+      }
+      final logsHasAccCol =
+          await _hasColumn(database, 'financial_logs', 'account_id');
+      final patientsHasAccCol =
+          await _hasColumn(database, 'patients', 'account_id');
+      if ((logsHasAccCol || patientsHasAccCol) &&
+          (accountId.trim().isEmpty)) {
+        return;
+      }
+
+      final nowIso = DateTime.now().toIso8601String();
+      final reg = RegExp(r'ID:\\s*(\\d+)');
+      var touched = false;
+
+      await database.transaction((txn) async {
+        // 1) تعبئة patient_id من الوصف إن كان مفقودًا
+        final whereArgs = <Object?>['PatientPayment'];
+        var where =
+            'transaction_type = ? AND ifnull(isDeleted,0)=0 AND patient_id IS NULL';
+        if (logsHasAccCol) {
+          where += ' AND account_id = ?';
+          whereArgs.add(accountId);
+        }
+        final logs = await txn.query(
+          'financial_logs',
+          columns: const ['id', 'description'],
+          where: where,
+          whereArgs: whereArgs,
+        );
+
+        if (logs.isNotEmpty) {
+          final hasUpdatedAt =
+              await _hasColumn(txn, 'financial_logs', 'updated_at');
+          for (final row in logs) {
+            final desc = (row['description'] ?? '').toString();
+            final m = reg.firstMatch(desc);
+            if (m == null) continue;
+            final pid = int.tryParse(m.group(1) ?? '');
+            if (pid == null) continue;
+            final update = <String, Object?>{
+              'patient_id': pid,
+            };
+            if (hasUpdatedAt) {
+              update['updated_at'] = nowIso;
+            }
+            await txn.update(
+              'financial_logs',
+              update,
+              where: 'id = ?',
+              whereArgs: [row['id']],
+            );
+            touched = true;
+          }
+        }
+
+        // 2) بناء سجلات مفقودة لمطابقة paidAmount
+        final pWhereArgs = <Object?>[];
+        var pWhere = 'ifnull(isDeleted,0)=0';
+        if (patientsHasAccCol) {
+          pWhere += ' AND account_id = ?';
+          pWhereArgs.add(accountId);
+        }
+        final patients = await txn.query(
+          'patients',
+          columns: const ['id', 'name', 'paidAmount', 'registerDate'],
+          where: pWhere,
+          whereArgs: pWhereArgs,
+        );
+
+        for (final p in patients) {
+          final pid = (p['id'] as num?)?.toInt();
+          if (pid == null) continue;
+          final paid =
+              (p['paidAmount'] as num?)?.toDouble() ?? 0.0;
+          if (paid <= 0) continue;
+
+          var sumWhere =
+              'transaction_type = ? AND ifnull(isDeleted,0)=0 AND patient_id = ?';
+          final sumParams = <Object?>['PatientPayment', pid];
+          if (logsHasAccCol) {
+            sumWhere += ' AND account_id = ?';
+            sumParams.add(accountId);
+          }
+          final sumRes = await txn.query(
+            'financial_logs',
+            columns: const ['amount'],
+            where: sumWhere,
+            whereArgs: sumParams,
+          );
+          var logged = 0.0;
+          for (final r in sumRes) {
+            logged += (r['amount'] as num?)?.toDouble() ?? 0.0;
+          }
+
+          final diff = paid - logged;
+          if (diff <= 0.01) continue;
+
+          DateTime ts;
+          try {
+            ts = DateTime.parse((p['registerDate'] ?? '').toString());
+          } catch (_) {
+            ts = DateTime.now();
+          }
+
+          final fData = await prepareInsert(
+            'financial_logs',
+            {
+              'transaction_type': 'PatientPayment',
+              'operation': 'backfill',
+              'amount': diff,
+              'employee_id': null,
+              'patient_id': pid,
+              'description':
+                  'Backfill دفعات مريض: ${(p['name'] ?? '').toString()} (ID: $pid)',
+              'modification_details':
+                  'auto backfill to match paidAmount',
+              'timestamp': ts.toIso8601String(),
+            },
+            executor: txn,
+          );
+          await txn.insert('financial_logs', fData);
+          touched = true;
+        }
+      });
+
+      if (touched) {
+        await _markChanged('financial_logs');
+        await notifyTableChanged('financial_logs');
+        await markStatisticsDirty();
+      }
+
+      await prefs.setBool(key, true);
+    } catch (e) {
+      // نتجاهل أخطاء الخلفية حتى لا نكسر الإقلاع
+      print('patientPaymentBackfill: $e');
+    } finally {
+      _patientPaymentBackfillBusy = false;
     }
   }
 
@@ -1294,6 +1754,10 @@ class DBService {
         db, 'employees_salaries', 'isPaid', 'INTEGER DEFAULT 0');
     await _addColumnIfMissing(db, 'employees_salaries', 'paymentDate', 'TEXT');
     await _addColumnIfMissing(
+        db, 'employees_salaries', 'periodStart', 'TEXT');
+    await _addColumnIfMissing(
+        db, 'employees_salaries', 'periodEnd', 'TEXT');
+    await _addColumnIfMissing(
         db, 'employees_salaries', 'employeeId', 'INTEGER');
   }
 
@@ -1333,6 +1797,14 @@ class DBService {
         !mapped.containsKey('paymentDate')) {
       mapped['paymentDate'] = mapped.remove('payment_date');
     }
+    if (mapped.containsKey('period_start') &&
+        !mapped.containsKey('periodStart')) {
+      mapped['periodStart'] = mapped.remove('period_start');
+    }
+    if (mapped.containsKey('period_end') &&
+        !mapped.containsKey('periodEnd')) {
+      mapped['periodEnd'] = mapped.remove('period_end');
+    }
 
     const allowed = <String>{
       'employeeId',
@@ -1345,6 +1817,8 @@ class DBService {
       'netPay',
       'isPaid',
       'paymentDate',
+      'periodStart',
+      'periodEnd',
       'isDeleted',
       'deletedAt',
       'account_id',
@@ -1359,6 +1833,28 @@ class DBService {
       }
     }
     return normalized;
+  }
+
+  /// آخر تاريخ صرف راتب لموظف (إن وجد).
+  Future<DateTime?> getLastSalaryPaymentDate(int employeeId) async {
+    try {
+      final db = await database;
+      final res = await db.query(
+        'employees_salaries',
+        columns: const ['paymentDate'],
+        where:
+            'employeeId = ? AND ifnull(isPaid,0)=1 AND ifnull(isDeleted,0)=0 AND paymentDate IS NOT NULL',
+        whereArgs: [employeeId],
+        orderBy: 'paymentDate DESC',
+        limit: 1,
+      );
+      if (res.isEmpty) return null;
+      final raw = (res.first['paymentDate'] ?? '').toString().trim();
+      if (raw.isEmpty) return null;
+      return DateTime.tryParse(raw);
+    } catch (_) {
+      return null;
+    }
   }
 
   /// يضمن أعمدة المزامنة المحلية (snake_case) + فهرس مركّب (idempotent)
@@ -1655,7 +2151,17 @@ class DBService {
     );
   }
 
-  Future<void> _ensureItemTypesNoUniqueName(Database db) async {
+  Future<void> _ensureItemTypesNoUniqueName(Database db) {
+    final inFlight = _ensureItemTypesNoUniqueNameInFlight;
+    if (inFlight != null) return inFlight;
+    final future = _ensureItemTypesNoUniqueNameImpl(db);
+    _ensureItemTypesNoUniqueNameInFlight = future;
+    return future.whenComplete(() {
+      _ensureItemTypesNoUniqueNameInFlight = null;
+    });
+  }
+
+  Future<void> _ensureItemTypesNoUniqueNameImpl(Database db) async {
     try {
       if (!await _tableExists(db, ItemType.table)) return;
       final idx = await db.rawQuery("PRAGMA index_list('${ItemType.table}')");
@@ -1734,15 +2240,18 @@ class DBService {
     await db.rawQuery('PRAGMA foreign_keys = ON');
     await _ensureClinicProfileTable(db);
     await _ensureAlertSettingsColumns(db);
+    await _ensurePatientCollateralColumn(db);
     await _ensureItemTypesNoUniqueName(db);
     await _ensureSoftDeleteColumns(db);
     await _ensureSyncMetaColumns(db); // ← snake_case (متوافق مع parity v3)
+    await _ensureFinancialLogsColumns(db);
     await _ensureEmployeeSalariesColumns(db);
     await _ensureReturnsAttendanceColumns(db);
     await _ensureLoansSettlementColumns(db);
     await _ensureSyncFkMappingTable(db);
     await _ensureCommonIndexes(db);
     await _ensureSyncDirtyTable(db);
+    await _runPatientPaymentBackfillIfNeeded(db: db);
   }
 
   /*──────────────── إنشاء الجداول ───────────────*/
@@ -1762,6 +2271,7 @@ class DBService {
     phoneNumber TEXT,
     healthStatus TEXT,
     preferences TEXT,
+    collateral TEXT,
     doctorId INTEGER,
     doctorName TEXT,
     doctorSpecialization TEXT,
@@ -1959,6 +2469,8 @@ class DBService {
     netPay REAL,
     isPaid INTEGER DEFAULT 0,
     paymentDate TEXT,
+    periodStart TEXT,
+    periodEnd TEXT,
     FOREIGN KEY(employeeId) REFERENCES employees(id)
   );
 ''');
@@ -1986,6 +2498,7 @@ class DBService {
     operation            TEXT NOT NULL DEFAULT 'create',
     amount               REAL NOT NULL,
     employee_id          TEXT,
+    patient_id           INTEGER,
     description          TEXT,
     modification_details TEXT,
     timestamp            TEXT NOT NULL,
@@ -2012,6 +2525,7 @@ class DBService {
 
     // ← أعمدة المزامنة المحلية (snake_case) + فهرس مركّب
     await _ensureSyncMetaColumns(db);
+    await _ensureFinancialLogsColumns(db);
 
     // فهارس عامة
     await _ensureCommonIndexes(db);
@@ -3075,6 +3589,82 @@ class DBService {
   Future<int> updatePatient(Patient p, List<PatientService> newServices) =>
       patients.updatePatient(p, newServices);
 
+  /// تسديد مبلغ لمريض (يحدّث paidAmount/remaining + يسجّل في financial_logs)
+  Future<void> applyPatientPayment({
+    required int patientId,
+    required double amount,
+    bool settleAll = false,
+    String? note,
+    DateTime? when,
+  }) async {
+    final db = await database;
+    final accountId = await _currentAccountId();
+    final hasAccCol = await _hasColumn(db, 'patients', 'account_id');
+    if (hasAccCol && (accountId == null || accountId.trim().isEmpty)) {
+      throw StateError('لا يوجد حساب نشط لتسجيل الدفعة');
+    }
+
+    final args = <Object?>[patientId];
+    var where = 'id = ? AND ifnull(isDeleted,0)=0';
+    if (hasAccCol && accountId != null) {
+      where += ' AND account_id = ?';
+      args.add(accountId);
+    }
+
+    await db.transaction((txn) async {
+      final rows =
+          await txn.query('patients', where: where, whereArgs: args, limit: 1);
+      if (rows.isEmpty) {
+        throw StateError('المريض غير موجود أو غير تابع للحساب');
+      }
+
+      final p = Patient.fromMap(Map<String, dynamic>.from(rows.first));
+      final total = (p.paidAmount + p.remaining);
+      if (total <= 0) return;
+
+      double pay = amount;
+      if (settleAll) {
+        pay = p.remaining;
+      }
+      if (pay <= 0) return;
+      if (pay > p.remaining) pay = p.remaining;
+
+      final newPaid = p.paidAmount + pay;
+      final newRemaining = (total - newPaid).clamp(0.0, total);
+      final ts = (when ?? DateTime.now()).toIso8601String();
+
+      await txn.update(
+        'patients',
+        {
+          'paidAmount': newPaid,
+          'remaining': newRemaining,
+          'updated_at': ts,
+        },
+        where: where,
+        whereArgs: args,
+      );
+
+      final fData = await prepareInsert(
+        'financial_logs',
+        {
+          'transaction_type': 'PatientPayment',
+          'operation': 'settle',
+          'amount': pay,
+          'employee_id': null,
+          'patient_id': patientId,
+          'description': 'تسديد مريض: ${p.name} (ID: ${p.id})',
+          'modification_details': note ?? '',
+          'timestamp': ts,
+        },
+        executor: txn,
+      );
+      await txn.insert('financial_logs', fData);
+    });
+
+    await _markChanged('patients');
+    await _markChanged('financial_logs');
+  }
+
   /// حذف منطقي للمريض وكل العناصر التابعة + عكس المخزون + قيد مالي سالب
   /// الآن داخل معاملة واحدة لضمان الذرّية.
   Future<int> deletePatient(int id, {bool restoreStock = true}) =>
@@ -3952,14 +4542,62 @@ class DBService {
     return id;
   }
 
+  Future<void> repairEmployeeAccountIds() async {
+    final db = await database;
+    var accountId = await _currentAccountId();
+    if (accountId == null || accountId.trim().isEmpty) {
+      accountId = await _fallbackAccountIdFromLocal(db);
+      if (accountId != null && accountId.trim().isNotEmpty) {
+        _cachedAccountId = accountId;
+      }
+    }
+    if (accountId == null || accountId.trim().isEmpty) return;
+    try {
+      await runQueuedWrite(() async {
+        await runWithDbRetry(() async {
+          await db.transaction((txn) async {
+            Future<void> backfill(String table) async {
+              final cols = await _getTableColumns(txn, table);
+              if (!cols.contains('account_id')) return;
+              await txn.update(
+                table,
+                {'account_id': accountId},
+                where: "account_id IS NULL OR length(trim(account_id)) = 0",
+              );
+            }
+
+            await backfill('employees');
+            await backfill('employees_loans');
+            await backfill('employees_discounts');
+            await backfill('employees_salaries');
+          });
+        });
+      });
+    } on UnsupportedError {
+      // قاعدة البيانات مفتوحة بوضع القراءة فقط (بعض البيئات/النسخ الاحتياطية)
+      // نتجاهل الإصلاح الكتابي ونكمل القراءة بدون فشل الشاشة.
+      return;
+    } catch (_) {
+      return;
+    }
+  }
+
   Future<List<Map<String, dynamic>>> getAllEmployees() async {
     final db = await database;
-    final accountId = await _currentAccountId();
+    var accountId = await _currentAccountId();
     final whereArgs = <Object?>[];
     var where = 'ifnull(isDeleted,0)=0';
     final hasAccCol = await _hasColumn(db, 'employees', 'account_id');
+    if (hasAccCol) {
+      await repairEmployeeAccountIds();
+    }
     if (hasAccCol && (accountId == null || accountId.trim().isEmpty)) {
-      return const [];
+      accountId = await _fallbackAccountIdFromLocal(db);
+      if (accountId != null && accountId.trim().isNotEmpty) {
+        _cachedAccountId = accountId;
+      } else {
+        return <Map<String, dynamic>>[];
+      }
     }
     if (accountId != null && hasAccCol) {
       where += ' AND account_id = ?';
@@ -4245,12 +4883,20 @@ class DBService {
 
   Future<List<Map<String, dynamic>>> getAllEmployeeLoans() async {
     final db = await database;
-    final accountId = await _currentAccountId();
+    var accountId = await _currentAccountId();
     final whereArgs = <Object?>[];
     var where = 'ifnull(isDeleted,0)=0';
     final hasAccCol = await _hasColumn(db, 'employees_loans', 'account_id');
+    if (hasAccCol) {
+      await repairEmployeeAccountIds();
+    }
     if (hasAccCol && (accountId == null || accountId.trim().isEmpty)) {
-      return const [];
+      accountId = await _fallbackAccountIdFromLocal(db);
+      if (accountId != null && accountId.trim().isNotEmpty) {
+        _cachedAccountId = accountId;
+      } else {
+        return <Map<String, dynamic>>[];
+      }
     }
     if (accountId != null && hasAccCol) {
       where += ' AND account_id = ?';
@@ -4341,12 +4987,20 @@ class DBService {
 
   Future<List<Map<String, dynamic>>> getAllEmployeeSalaries() async {
     final db = await database;
-    final accountId = await _currentAccountId();
+    var accountId = await _currentAccountId();
     final whereArgs = <Object?>[];
     var where = 'ifnull(isDeleted,0)=0';
     final hasAccCol = await _hasColumn(db, 'employees_salaries', 'account_id');
+    if (hasAccCol) {
+      await repairEmployeeAccountIds();
+    }
     if (hasAccCol && (accountId == null || accountId.trim().isEmpty)) {
-      return const [];
+      accountId = await _fallbackAccountIdFromLocal(db);
+      if (accountId != null && accountId.trim().isNotEmpty) {
+        _cachedAccountId = accountId;
+      } else {
+        return <Map<String, dynamic>>[];
+      }
     }
     if (accountId != null && hasAccCol) {
       where += ' AND account_id = ?';
@@ -4382,12 +5036,20 @@ class DBService {
 
   Future<List<Map<String, dynamic>>> getAllEmployeeDiscounts() async {
     final db = await database;
-    final accountId = await _currentAccountId();
+    var accountId = await _currentAccountId();
     final whereArgs = <Object?>[];
     var where = 'ifnull(isDeleted,0)=0';
     final hasAccCol = await _hasColumn(db, 'employees_discounts', 'account_id');
+    if (hasAccCol) {
+      await repairEmployeeAccountIds();
+    }
     if (hasAccCol && (accountId == null || accountId.trim().isEmpty)) {
-      return const [];
+      accountId = await _fallbackAccountIdFromLocal(db);
+      if (accountId != null && accountId.trim().isNotEmpty) {
+        _cachedAccountId = accountId;
+      } else {
+        return <Map<String, dynamic>>[];
+      }
     }
     if (accountId != null && hasAccCol) {
       where += ' AND account_id = ?';
@@ -4797,6 +5459,218 @@ class DBService {
     return res.first['total'] == null
         ? 0.0
         : (res.first['total'] as num).toDouble();
+  }
+
+  /// إجمالي مدفوعات المرضى خلال الفترة (تحصيل فعلي).
+  Future<double> getSumPatientPaymentsBetween(
+      DateTime from, DateTime to) async {
+    final db = await database;
+    final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
+    final accountClause =
+        await _accountFilterClause(db, 'financial_logs', args: args);
+    final res = await db.rawQuery('''
+        SELECT COALESCE(SUM(amount), 0) as total
+        FROM financial_logs
+        WHERE date(timestamp) BETWEEN date(?) AND date(?)
+          AND ifnull(isDeleted,0)=0
+          AND transaction_type = 'PatientPayment'
+          $accountClause
+      ''', args);
+    return (res.first['total'] as num?)?.toDouble() ?? 0.0;
+  }
+
+  Future<bool> _hasPatientPaymentsBetween(
+      DateTime from, DateTime to) async {
+    final db = await database;
+    final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
+    final accountClause =
+        await _accountFilterClause(db, 'financial_logs', args: args);
+    final res = await db.rawQuery('''
+        SELECT COUNT(1) as cnt
+        FROM financial_logs
+        WHERE date(timestamp) BETWEEN date(?) AND date(?)
+          AND ifnull(isDeleted,0)=0
+          AND transaction_type = 'PatientPayment'
+          $accountClause
+      ''', args);
+    final cnt = (res.first['cnt'] as num?)?.toInt() ?? 0;
+    return cnt > 0;
+  }
+
+  /// دخل الخدمات حسب اليوم (احتياط للأنظمة القديمة قبل توحيد التحصيل).
+  Future<Map<String, double>> getServiceRevenueByDateBetween(
+      DateTime from, DateTime to) async {
+    final db = await database;
+    final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
+    final psAccount =
+        await _accountFilterClause(db, PatientService.table, alias: 'ps', args: args);
+    final pAccount =
+        await _accountFilterClause(db, 'patients', alias: 'p', args: args);
+    String msAccount = '';
+    if (await _hasColumn(db, 'medical_services', 'account_id')) {
+      final accountId = await _currentAccountIdFrom(db);
+      if (accountId == null || accountId.trim().isEmpty) return {};
+      msAccount = ' AND (ms.account_id = ? OR ms.id IS NULL)';
+      args.add(accountId);
+    }
+    final rows = await db.rawQuery('''
+      SELECT date(p.registerDate) AS dayKey,
+             COALESCE(SUM(
+               COALESCE(ps.serviceCost, ms.cost, 0)
+             ), 0) AS total
+      FROM ${PatientService.table} ps
+      JOIN patients p ON p.id = ps.patientId
+      LEFT JOIN medical_services ms ON ms.id = ps.serviceId
+      WHERE date(p.registerDate) BETWEEN date(?) AND date(?)
+        AND ifnull(ps.isDeleted,0)=0
+        AND ifnull(p.isDeleted,0)=0
+        AND (ps.serviceId IS NULL OR ifnull(ms.isDeleted,0)=0)
+        $psAccount$pAccount$msAccount
+      GROUP BY date(p.registerDate)
+    ''', args);
+    final out = <String, double>{};
+    for (final row in rows) {
+      final key = row['dayKey']?.toString() ?? '';
+      if (key.isEmpty) continue;
+      out[key] = (row['total'] as num?)?.toDouble() ?? 0.0;
+    }
+    return out;
+  }
+
+  /// دخل المرضى حسب اليوم اعتمادًا على التحصيل الفعلي (financial_logs).
+  Future<Map<String, double>> getPatientPaymentsByDateBetween(
+      DateTime from, DateTime to) async {
+    final db = await database;
+    final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
+    final accountClause =
+        await _accountFilterClause(db, 'financial_logs', args: args);
+    final rows = await db.rawQuery('''
+      SELECT date(timestamp) AS dayKey,
+             COALESCE(SUM(amount), 0) AS total
+      FROM financial_logs
+      WHERE date(timestamp) BETWEEN date(?) AND date(?)
+        AND ifnull(isDeleted,0)=0
+        AND transaction_type = 'PatientPayment'
+        $accountClause
+      GROUP BY date(timestamp)
+    ''', args);
+    final out = <String, double>{};
+    for (final row in rows) {
+      final key = row['dayKey']?.toString() ?? '';
+      if (key.isEmpty) continue;
+      out[key] = (row['total'] as num?)?.toDouble() ?? 0.0;
+    }
+    return out;
+  }
+
+  /// دخل المرضى حسب الطبيب خلال الفترة (تحصيل فعلي).
+  Future<Map<String, double>> getPatientPaymentsByDoctorBetween(
+      DateTime from, DateTime to) async {
+    final db = await database;
+    final hasPatientId = await _hasColumn(db, 'financial_logs', 'patient_id');
+    final hasAccCol = await _hasColumn(db, 'financial_logs', 'account_id');
+    final accountId = await _currentAccountIdFrom(db);
+
+    if (hasPatientId) {
+      final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
+      var accClause = '';
+      if (hasAccCol) {
+        if (accountId == null || accountId.trim().isEmpty) return {};
+        accClause = ' AND fl.account_id = ?';
+        args.add(accountId);
+      }
+      final rows = await db.rawQuery('''
+        SELECT COALESCE(NULLIF(TRIM(p.doctorName), ''), 'الأشعة/المختبر') AS docKey,
+               COALESCE(SUM(fl.amount), 0) AS total
+        FROM financial_logs fl
+        JOIN patients p ON p.id = fl.patient_id
+        WHERE date(fl.timestamp) BETWEEN date(?) AND date(?)
+          AND ifnull(fl.isDeleted,0)=0
+          AND ifnull(p.isDeleted,0)=0
+          AND fl.transaction_type = 'PatientPayment'
+          $accClause
+        GROUP BY docKey
+      ''', args);
+      final out = <String, double>{};
+      for (final row in rows) {
+        final key = row['docKey']?.toString() ?? '';
+        if (key.isEmpty) continue;
+        out[key] = (row['total'] as num?)?.toDouble() ?? 0.0;
+      }
+      return out;
+    }
+
+    // مسار احتياطي: حاول استخراج patientId من الوصف (ID: X)
+    final logArgs = <Object?>[from.toIso8601String(), to.toIso8601String()];
+    final logAccClause =
+        await _accountFilterClause(db, 'financial_logs', args: logArgs);
+    final logs = await db.rawQuery('''
+      SELECT amount, description
+      FROM financial_logs
+      WHERE date(timestamp) BETWEEN date(?) AND date(?)
+        AND ifnull(isDeleted,0)=0
+        AND transaction_type = 'PatientPayment'
+        $logAccClause
+    ''', logArgs);
+
+    if (logs.isEmpty) return {};
+    final patients = await getAllPatients();
+    final byId = <int, Patient>{};
+    for (final p in patients) {
+      if (p.id != null) byId[p.id!] = p;
+    }
+    final reg = RegExp(r'ID:\\s*(\\d+)');
+    final out = <String, double>{};
+    for (final row in logs) {
+      final desc = (row['description'] ?? '').toString();
+      final m = reg.firstMatch(desc);
+      if (m == null) continue;
+      final pid = int.tryParse(m.group(1) ?? '');
+      if (pid == null) continue;
+      final p = byId[pid];
+      if (p == null) continue;
+      final doc = (p.doctorName == null || p.doctorName!.trim().isEmpty)
+          ? 'الأشعة/المختبر'
+          : p.doctorName!.trim();
+      final amount = (row['amount'] as num?)?.toDouble() ?? 0.0;
+      out[doc] = (out[doc] ?? 0) + amount;
+    }
+    return out;
+  }
+
+  /// دخل الفترة: تحصيل فعلي إن وجد، وإلا fallback لخدمات المرضى (legacy).
+  Future<double> getIncomeTotalBetween(DateTime from, DateTime to) async {
+    final hasPayments = await _hasPatientPaymentsBetween(from, to);
+    if (hasPayments) {
+      return getSumPatientPaymentsBetween(from, to);
+    }
+    // fallback للأنظمة القديمة قبل توحيد التحصيل
+    return getSumPatientServicesBetween(from, to);
+  }
+
+  /// دخل حسب اليوم: تحصيل فعلي إن وجد، وإلا fallback لخدمات المرضى (legacy).
+  Future<Map<String, double>> getIncomeByDateBetween(
+      DateTime from, DateTime to) async {
+    final hasPayments = await _hasPatientPaymentsBetween(from, to);
+    if (hasPayments) {
+      return getPatientPaymentsByDateBetween(from, to);
+    }
+    return getServiceRevenueByDateBetween(from, to);
+  }
+
+  /// إجمالي المبالغ المتبقية على المرضى خلال الفترة.
+  Future<double> getSumPatientsRemainingBetween(DateTime from, DateTime to) async {
+    final db = await database;
+    final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
+    final accountClause = await _accountFilterClause(db, 'patients', args: args);
+    final res = await db.rawQuery('''
+        SELECT COALESCE(SUM(remaining), 0) as total
+        FROM patients
+        WHERE date(registerDate) BETWEEN date(?) AND date(?)
+          AND ifnull(isDeleted,0)=0
+          $accountClause
+      ''', args);
+    return (res.first['total'] as num?)?.toDouble() ?? 0.0;
   }
 
   /// إجمالي قيمة الخدمات المقدمة خلال الفترة (يُستخدم كدخل عند عدم تسجيل الدفعات).
@@ -5242,6 +6116,105 @@ class DBService {
     return out;
   }
 
+  /// تقرير مستحقات الأطباء (من آخر صرف وحتى تاريخ محدد).
+  Future<List<Map<String, dynamic>>> getDoctorOutstandingBalances(
+      {DateTime? asOf}) async {
+    final now = asOf ?? DateTime.now();
+    final monthStart = DateTime(now.year, now.month, 1);
+    final doctors = await getAllDoctors();
+    final db = await database;
+    final hasEmpAccCol = await _hasColumn(db, 'employees', 'account_id');
+    final accountId = await _currentAccountId();
+
+    Future<int?> resolveEmployeeId(Doctor d) async {
+      if (d.employeeId != null) return d.employeeId;
+      final uid = (d.userUid ?? '').trim();
+      if (uid.isEmpty) return null;
+      if (hasEmpAccCol && (accountId == null || accountId.trim().isEmpty)) {
+        return null;
+      }
+      final whereArgs = <Object?>[uid];
+      var where = 'userUid = ? AND ifnull(isDeleted,0)=0';
+      if (hasEmpAccCol && accountId != null) {
+        where += ' AND account_id = ?';
+        whereArgs.add(accountId);
+      }
+      final res = await db.query(
+        'employees',
+        columns: const ['id'],
+        where: where,
+        whereArgs: whereArgs,
+        limit: 1,
+      );
+      if (res.isEmpty) return null;
+      return (res.first['id'] as num).toInt();
+    }
+
+    final out = <Map<String, dynamic>>[];
+    for (final d in doctors) {
+      final doctorId = d.id;
+      if (doctorId == null) continue;
+      final employeeId = await resolveEmployeeId(d);
+      final lastPaidAt =
+          employeeId == null ? null : await getLastSalaryPaymentDate(employeeId);
+      var from = monthStart;
+      if (lastPaidAt != null) {
+        final after = lastPaidAt.add(const Duration(seconds: 1));
+        if (after.isAfter(from)) from = after;
+      }
+      final to = now;
+      if (from.isAfter(to)) {
+        out.add({
+          'doctorId': doctorId,
+          'employeeId': employeeId,
+          'doctorName': d.name,
+          'periodStart': from.toIso8601String(),
+          'periodEnd': to.toIso8601String(),
+          'ratioSum': 0.0,
+          'directInput': 0.0,
+          'totalLoans': 0.0,
+          'totalDiscounts': 0.0,
+          'netPay': 0.0,
+          'lastPaidAt': lastPaidAt?.toIso8601String(),
+        });
+        continue;
+      }
+
+      final ratioSum = await getDoctorRatioSum(doctorId, from, to);
+      final directInput =
+          await getEffectiveDoctorDirectInputSum(doctorId, from, to);
+      double loans = 0.0;
+      double discounts = 0.0;
+      if (employeeId != null) {
+        loans = await getEmployeeLoansSumBetween(
+          employeeId: employeeId,
+          from: from,
+          to: to,
+        );
+        discounts = await getEmployeeDiscountsSumBetween(
+          employeeId: employeeId,
+          from: from,
+          to: to,
+        );
+      }
+      final net = (ratioSum + directInput) - (loans + discounts);
+      out.add({
+        'doctorId': doctorId,
+        'employeeId': employeeId,
+        'doctorName': d.name,
+        'periodStart': from.toIso8601String(),
+        'periodEnd': to.toIso8601String(),
+        'ratioSum': ratioSum,
+        'directInput': directInput,
+        'totalLoans': loans,
+        'totalDiscounts': discounts,
+        'netPay': net,
+        'lastPaidAt': lastPaidAt?.toIso8601String(),
+      });
+    }
+    return out;
+  }
+
   Future<Map<String, double>> getDoctorInputByDateBetween(
       DateTime from, DateTime to) async {
     final db = await database;
@@ -5307,33 +6280,7 @@ class DBService {
   Future<Map<String, double>> getNetProfitByDateBetween(
       DateTime from, DateTime to) async {
     final db = await database;
-    final incomeArgs = <Object?>[from.toIso8601String(), to.toIso8601String()];
-    final psAccount =
-        await _accountFilterClause(db, PatientService.table, alias: 'ps', args: incomeArgs);
-    final pAccount =
-        await _accountFilterClause(db, 'patients', alias: 'p', args: incomeArgs);
-    String msAccount = '';
-    if (await _hasColumn(db, 'medical_services', 'account_id')) {
-      final accountId = await _currentAccountIdFrom(db);
-      if (accountId == null || accountId.trim().isEmpty) return {};
-      msAccount = ' AND (ms.account_id = ? OR ms.id IS NULL)';
-      incomeArgs.add(accountId);
-    }
-    final incomeRows = await db.rawQuery('''
-      SELECT date(p.registerDate) AS dayKey,
-             COALESCE(SUM(
-               COALESCE(ps.serviceCost, ms.cost, 0)
-             ), 0) AS total
-      FROM ${PatientService.table} ps
-      JOIN patients p ON p.id = ps.patientId
-      LEFT JOIN medical_services ms ON ms.id = ps.serviceId
-      WHERE date(p.registerDate) BETWEEN date(?) AND date(?)
-        AND ifnull(ps.isDeleted,0)=0
-        AND ifnull(p.isDeleted,0)=0
-        AND (ps.serviceId IS NULL OR ifnull(ms.isDeleted,0)=0)
-        $psAccount$pAccount$msAccount
-      GROUP BY date(p.registerDate)
-    ''', incomeArgs);
+    final income = await getIncomeByDateBetween(from, to);
 
     final consArgs = <Object?>[from.toIso8601String(), to.toIso8601String()];
     final purchasesAccount =
@@ -5400,7 +6347,6 @@ class DBService {
       return out;
     }
 
-    final income = mapFromRows(incomeRows);
     final cons = mapFromRows(consRows);
     final facility = mapFromRows(facilityRows);
     final salaries = mapFromRows(salRows);

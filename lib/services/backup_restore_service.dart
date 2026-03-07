@@ -9,7 +9,9 @@
 // لإضافة مجلدات جديدة يكفى إدراجها فى قائمة extraDirs أدناه.
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -19,6 +21,8 @@ import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:http/http.dart' as http;
 
 import 'db_service.dart';
+import 'package:aelmamclinic/services/save_file_service.dart';
+import 'package:aelmamclinic/core/active_account_store.dart';
 import 'package:aelmamclinic/models/storage_type.dart';
 import 'package:aelmamclinic/models/attachment.dart';
 
@@ -165,8 +169,6 @@ class BackupRestoreService {
     final exportsDir = Directory(p.join(dbDir.path, 'exports'));
     final logsDir = Directory(p.join(dbDir.path, 'logs'));
     final debugDir = Directory(p.join(dbDir.path, 'debug-info'));
-    final configFile = File(p.join(dbDir.path, 'config.json'));
-
     final List<Directory> extraDirs = [
       attachmentsDir,
       exportsDir,
@@ -174,9 +176,6 @@ class BackupRestoreService {
       debugDir,
     ];
     final List<File> extraFiles = [];
-    if (await configFile.exists()) {
-      extraFiles.add(configFile);
-    }
 
     if (includeSharedPrefs && !Platform.isWindows) {
       final appDocs = await getApplicationDocumentsDirectory();
@@ -199,7 +198,7 @@ class BackupRestoreService {
     for (final dir in extraDirs) {
       if (await dir.exists()) encoder.addDirectory(dir, includeDirName: true);
     }
-    // – ملفات إضافية (مثل config.json)
+    // – ملفات إضافية
     for (final file in extraFiles) {
       encoder.addFile(file, p.basename(file.path));
     }
@@ -279,11 +278,6 @@ class BackupRestoreService {
             relative = name; // احتفظ بالمسار داخل الـ ZIP تحت نفس المجلد
           }
         });
-        if (name == 'config.json') {
-          baseDir = dbDir;
-          relative = name;
-        }
-
         final outPath = _safeExtractPath(baseDir.path, relative);
         if (outPath == null) {
           continue;
@@ -349,6 +343,229 @@ class BackupRestoreService {
     }
   }
 
+  /*──────────── Export (HTML) ────────────*/
+  static Future<File> exportClinicHtml() async {
+    final Database db = await DBService.instance.database;
+    final fileName = _timestamped('clinic_export', 'html');
+    final accountId = await ActiveAccountStore.readAccountId();
+    final clinicProfile = (accountId == null || accountId.isEmpty)
+        ? null
+        : await DBService.instance.getClinicProfile(accountId);
+
+    final tables = await db.rawQuery(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name;",
+    );
+
+    String esc(Object? v) {
+      final s = v?.toString() ?? '';
+      return s
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;')
+          .replaceAll('"', '&quot;')
+          .replaceAll("'", '&#39;');
+    }
+
+    String quote(String name) => '"${name.replaceAll('"', '""')}"';
+
+    final buffer = StringBuffer();
+    buffer.writeln('<!doctype html>');
+    buffer.writeln('<html lang="ar" dir="rtl">');
+    buffer.writeln('<head>');
+    buffer.writeln('<meta charset="utf-8" />');
+    buffer.writeln('<meta name="viewport" content="width=device-width, initial-scale=1" />');
+    buffer.writeln('<title>تصدير بيانات العيادة</title>');
+    buffer.writeln('<style>');
+    buffer.writeln('body{font-family:Arial,Helvetica,sans-serif;background:#f5f7fb;color:#1b2430;margin:0;padding:24px;}');
+    buffer.writeln('.wrap{max-width:1200px;margin:0 auto;}');
+    buffer.writeln('h1{margin:0 0 8px 0;font-size:26px;}');
+    buffer.writeln('.meta{color:#516173;font-size:13px;margin-bottom:20px;}');
+    buffer.writeln('.card{background:#fff;border-radius:14px;box-shadow:0 8px 20px rgba(8,20,40,.08);padding:16px;margin:16px 0;}');
+    buffer.writeln('.card h2{margin:0 0 8px 0;font-size:18px;}');
+    buffer.writeln('.card .count{color:#6b7a8c;font-size:13px;margin-bottom:10px;}');
+    buffer.writeln('table{width:100%;border-collapse:collapse;font-size:12.5px;}');
+    buffer.writeln('th,td{border:1px solid #e2e8f0;padding:6px 8px;vertical-align:top;}');
+    buffer.writeln('th{background:#f0f4f8;font-weight:700;}');
+    buffer.writeln('.actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;}');
+    buffer.writeln('.btn{background:#0b6efd;color:#fff;border:none;border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;}');
+    buffer.writeln('.btn.secondary{background:#5a6b7d;}');
+    buffer.writeln('</style>');
+    buffer.writeln('</head>');
+    buffer.writeln('<body>');
+    buffer.writeln('<div class="wrap">');
+    buffer.writeln('<h1>تصدير شامل لبيانات العيادة</h1>');
+    buffer.writeln(
+      '<div class="meta">تم إنشاء الملف محليًا في ${esc(DateTime.now().toString())}.</div>',
+    );
+    if (clinicProfile != null) {
+      buffer.writeln('<div class="card">');
+      buffer.writeln('<h2>معلومات العيادة</h2>');
+      buffer.writeln('<div class="count">بيانات تعريفية</div>');
+      buffer.writeln('<div style="overflow:auto;">');
+      buffer.writeln('<table>');
+      buffer.writeln('<tbody>');
+      buffer.writeln(
+          '<tr><th>الاسم (عربي)</th><td>${esc(clinicProfile.nameAr)}</td></tr>');
+      buffer.writeln(
+          '<tr><th>الاسم (إنجليزي)</th><td>${esc(clinicProfile.nameEn)}</td></tr>');
+      buffer.writeln(
+          '<tr><th>المدينة (عربي)</th><td>${esc(clinicProfile.cityAr)}</td></tr>');
+      buffer.writeln(
+          '<tr><th>المدينة (إنجليزي)</th><td>${esc(clinicProfile.cityEn)}</td></tr>');
+      buffer.writeln(
+          '<tr><th>الشارع/العنوان (عربي)</th><td>${esc(clinicProfile.streetAr)}</td></tr>');
+      buffer.writeln(
+          '<tr><th>الشارع/العنوان (إنجليزي)</th><td>${esc(clinicProfile.streetEn)}</td></tr>');
+      buffer.writeln(
+          '<tr><th>أقرب معلم (عربي)</th><td>${esc(clinicProfile.nearAr)}</td></tr>');
+      buffer.writeln(
+          '<tr><th>أقرب معلم (إنجليزي)</th><td>${esc(clinicProfile.nearEn)}</td></tr>');
+      buffer.writeln(
+          '<tr><th>هاتف</th><td>${esc(clinicProfile.phone)}</td></tr>');
+      buffer.writeln(
+          '<tr><th>هاتف إضافي</th><td>${esc(clinicProfile.phone2)}</td></tr>');
+      buffer.writeln('</tbody></table></div></div>');
+    }
+    buffer.writeln('<div class="card">');
+    buffer.writeln('<h2>تصدير كامل</h2>');
+    buffer.writeln('<div class="count">تصدير كل الجداول دفعة واحدة</div>');
+    buffer.writeln('<div class="actions">');
+    buffer.writeln(
+        '<button class="btn" onclick="exportAllXls()">تصدير كل البيانات Excel</button>');
+    buffer.writeln(
+        '<button class="btn secondary" onclick="exportAllCsv()">تصدير كل البيانات CSV</button>');
+    buffer.writeln('</div>');
+    buffer.writeln('</div>');
+
+    int totalRows = 0;
+    for (final t in tables) {
+      final table = t['name']?.toString() ?? '';
+      if (table.isEmpty) continue;
+      final cols = await db.rawQuery('PRAGMA table_info(${quote(table)});');
+      final hiddenCols = <String>{
+        'account_id',
+        'device_id',
+        'useruid',
+        'user_uid',
+        'uuid',
+      };
+      bool shouldHideColumn(String name) {
+        final raw = name.trim();
+        if (raw.isEmpty) return true;
+        final key = raw.toLowerCase();
+        if (hiddenCols.contains(key)) return true;
+
+        // إخفاء أي عمود يدل على معرّف (id/ld) سواء كان CamelCase أو snake_case.
+        if (key == 'id') return true;
+        if (key.contains('_id') || key.contains('id_')) return true;
+        if (raw.contains('Id') ||
+            raw.contains('ID') ||
+            raw.contains('Ld') ||
+            raw.contains('LD')) {
+          return true;
+        }
+        if (key.endsWith('id') || key.endsWith('ld')) return true;
+        return false;
+      }
+      final colNames = cols
+          .map((c) => c['name']?.toString() ?? '')
+          .where((c) {
+            return !shouldHideColumn(c);
+          })
+          .toList();
+      final rows = await db.rawQuery('SELECT * FROM ${quote(table)};');
+      totalRows += rows.length;
+
+      final tableId = 'tbl_${table.replaceAll(RegExp(r"[^a-zA-Z0-9_]"), "_")}';
+      buffer.writeln('<div class="card">');
+      buffer.writeln('<h2>${esc(table)}</h2>');
+      buffer.writeln('<div class="count">عدد السجلات: ${rows.length}</div>');
+      buffer.writeln('<div class="actions">');
+      buffer.writeln('<button class="btn" onclick="exportTableXls(\'$tableId\', \'$table\')">تصدير Excel</button>');
+      buffer.writeln('<button class="btn secondary" onclick="exportTableCsv(\'$tableId\', \'$table\')">تصدير CSV</button>');
+      buffer.writeln('</div>');
+      buffer.writeln('<div style="overflow:auto;">');
+      buffer.writeln('<table id="$tableId">');
+      buffer.writeln('<thead><tr>');
+      for (final c in colNames) {
+        buffer.writeln('<th>${esc(c)}</th>');
+      }
+      buffer.writeln('</tr></thead><tbody>');
+      for (final r in rows) {
+        buffer.writeln('<tr>');
+        for (final c in colNames) {
+          final v = r[c];
+          buffer.writeln('<td>${esc(v)}</td>');
+        }
+        buffer.writeln('</tr>');
+      }
+      if (rows.isEmpty) {
+        buffer.writeln('<tr><td colspan="${colNames.length}">لا توجد بيانات</td></tr>');
+      }
+      buffer.writeln('</tbody></table></div></div>');
+    }
+
+    buffer.writeln('<div class="meta">إجمالي الجداول: ${tables.length} • إجمالي السجلات: $totalRows</div>');
+    buffer.writeln('</div>');
+
+    buffer.writeln('<script>');
+    buffer.writeln('function exportTableXls(tableId, name){');
+    buffer.writeln('const table=document.getElementById(tableId);');
+    buffer.writeln('if(!table) return;');
+    buffer.writeln('const html="\\ufeff"+table.outerHTML;');
+    buffer.writeln('const blob=new Blob([html],{type:"application/vnd.ms-excel"});');
+    buffer.writeln('const url=URL.createObjectURL(blob);');
+    buffer.writeln('const a=document.createElement("a");');
+    buffer.writeln('a.href=url; a.download=name+".xls"; a.click();');
+    buffer.writeln('URL.revokeObjectURL(url);');
+    buffer.writeln('}');
+    buffer.writeln('function exportTableCsv(tableId, name){');
+    buffer.writeln('const table=document.getElementById(tableId); if(!table) return;');
+    buffer.writeln('let csv="";');
+    buffer.writeln('for(const row of table.rows){');
+    buffer.writeln("const cells=[...row.cells].map(c=>'\"'+c.innerText.replace(/\"/g,'\"\"')+'\"');");
+    buffer.writeln('csv+=cells.join(",")+"\\n";');
+    buffer.writeln('}');
+    buffer.writeln('const blob=new Blob(["\\ufeff"+csv],{type:"text/csv;charset=utf-8;"});');
+    buffer.writeln('const url=URL.createObjectURL(blob);');
+    buffer.writeln('const a=document.createElement("a"); a.href=url; a.download=name+".csv"; a.click();');
+    buffer.writeln('URL.revokeObjectURL(url);');
+    buffer.writeln('}');
+    buffer.writeln('function exportAllXls(){');
+    buffer.writeln('const html="\\ufeff"+document.querySelector(".wrap").innerHTML;');
+    buffer.writeln('const blob=new Blob([html],{type:"application/vnd.ms-excel"});');
+    buffer.writeln('const url=URL.createObjectURL(blob);');
+    buffer.writeln('const a=document.createElement("a"); a.href=url; a.download="clinic_export_all.xls"; a.click();');
+    buffer.writeln('URL.revokeObjectURL(url);');
+    buffer.writeln('}');
+    buffer.writeln('function exportAllCsv(){');
+    buffer.writeln('let csv="";');
+    buffer.writeln('const tables=[...document.querySelectorAll(".card table")];');
+    buffer.writeln('for(const table of tables){');
+    buffer.writeln('const title=table.closest(".card")?.querySelector("h2")?.innerText || "table";');
+    buffer.writeln("csv+='\\n# '+title+'\\n';");
+    buffer.writeln('for(const row of table.rows){');
+    buffer.writeln("const cells=[...row.cells].map(c=>'\"'+c.innerText.replace(/\"/g,'\"\"')+'\"');");
+    buffer.writeln('csv+=cells.join(",")+"\\n";');
+    buffer.writeln('}');
+    buffer.writeln('}');
+    buffer.writeln('const blob=new Blob([\"\\ufeff\"+csv],{type:\"text/csv;charset=utf-8;\"});');
+    buffer.writeln('const url=URL.createObjectURL(blob);');
+    buffer.writeln('const a=document.createElement(\"a\"); a.href=url; a.download=\"clinic_export_all.csv\"; a.click();');
+    buffer.writeln('URL.revokeObjectURL(url);');
+    buffer.writeln('}');
+    buffer.writeln('</script>');
+
+    buffer.writeln('</body></html>');
+
+    final bytes = Uint8List.fromList(utf8.encode(buffer.toString()));
+    final savedPath = await saveFileBytesWithPath(bytes, fileName);
+    if (savedPath.isEmpty) {
+      throw StateError('تعذّر حفظ الملف في مجلد Downloads');
+    }
+    return File(savedPath);
+  }
+
   /*──────── helpers ─────────────────*/
   static Future<void> _mergeTable(
     Database currentDb,
@@ -394,8 +611,19 @@ class BackupRestoreService {
   /// المجلد الافتراضى للنسخ الاحتياطية
   static Future<Directory> targetDirectory() async {
     if (Platform.isWindows) {
-      final user = Platform.environment['USERNAME'] ?? 'User';
-      return Directory('C:\\Users\\$user\\Downloads\\ClinicBackups');
+      final downloads = await getDownloadsDirectory();
+      if (downloads != null) {
+        return Directory(p.join(downloads.path, 'ClinicBackups'));
+      }
+      final userProfile = Platform.environment['USERPROFILE'];
+      if (userProfile != null && userProfile.trim().isNotEmpty) {
+        final fallback = Directory(p.join(userProfile, 'Downloads'));
+        if (await fallback.exists()) {
+          return Directory(p.join(fallback.path, 'ClinicBackups'));
+        }
+      }
+      final docs = await getApplicationDocumentsDirectory();
+      return Directory(p.join(docs.path, 'ClinicBackups'));
     }
     final downloads = await getDownloadsDirectory() ??
         await getApplicationDocumentsDirectory();

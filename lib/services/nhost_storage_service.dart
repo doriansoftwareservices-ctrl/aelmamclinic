@@ -97,14 +97,28 @@ class NhostStorageService {
           fetchPolicy: FetchPolicy.noCache,
         ),
       );
-      if (result.hasException) return null;
+      if (result.hasException) {
+        // ignore: avoid_print
+        print(
+          '[STORAGE] resolveFileId GraphQL error: ${result.exception.toString()}',
+        );
+        return null;
+      }
       final rows = (result.data?['files'] as List?) ?? const [];
-      if (rows.isEmpty) return null;
+      if (rows.isEmpty) {
+        // ignore: avoid_print
+        print(
+          '[STORAGE] resolveFileId not found for bucket=$trimmedBucket name=$trimmedPath',
+        );
+        return null;
+      }
       final id = (rows.first as Map?)?['id']?.toString();
       if (id == null || id.isEmpty) return null;
       _fileIdCache[cacheKey] = id;
       return id;
-    } catch (_) {
+    } catch (e) {
+      // ignore: avoid_print
+      print('[STORAGE] resolveFileId exception: $e');
       return null;
     }
   }
@@ -116,7 +130,13 @@ class NhostStorageService {
     int? expiresInSeconds,
   }) async {
     final fileId = await resolveFileId(bucket: bucket, path: path);
-    if (fileId == null || fileId.isEmpty) return null;
+    if (fileId == null || fileId.isEmpty) {
+      // ignore: avoid_print
+      print(
+        '[STORAGE] resolveSignedUrlForPath missing fileId for bucket=$bucket path=$path',
+      );
+      return null;
+    }
     final signed = await createSignedUrl(
       fileId,
       expiresInSeconds: expiresInSeconds ?? AppConstants.storageSignedUrlTTLSeconds,
@@ -150,19 +170,7 @@ class NhostStorageService {
         ? file.uri.pathSegments.last
         : name.trim();
     try {
-      // Prefer REST for storage uploads; fall back to function only on auth errors.
-      // Prefer REST for chat attachments to avoid SDK auth edge cases.
-      if ((bucket ?? '').isNotEmpty &&
-          (bucket ?? '') == AppConstants.chatBucketName) {
-        return await _uploadFileViaRest(
-          file: file,
-          filename: filename,
-          bucketId: bucket,
-          mimeType: mimeType,
-          metadata: metadata,
-        );
-      }
-
+      // Prefer SDK first; fallback to REST only on auth/transport errors.
       final bytes = await file.readAsBytes();
       final fileData = FileData(
         Uint8List.fromList(bytes),
@@ -176,10 +184,10 @@ class NhostStorageService {
         metadataList: [meta],
       );
       if (results.isEmpty) {
-        return <String, dynamic>{};
+        throw StateError('Upload returned empty result');
       }
       final uploaded = results.first;
-      return <String, dynamic>{
+      final res = <String, dynamic>{
         'id': uploaded.id,
         'name': uploaded.name,
         'bucketId': uploaded.bucketId,
@@ -188,40 +196,48 @@ class NhostStorageService {
         'etag': uploaded.etag,
         'createdAt': uploaded.createdAt.toIso8601String(),
       };
+      _logBucketMismatch(res, bucket);
+      return res;
     } catch (e) {
-      if (_shouldRetryWithRest(e)) {
-        try {
-          return await _uploadFileViaRest(
+      try {
+        final res = await _uploadFileViaRest(
+          file: file,
+          filename: filename,
+          bucketId: bucket,
+          mimeType: mimeType,
+          metadata: metadata,
+        );
+        _logBucketMismatch(res, bucket);
+        return res;
+      } catch (restError) {
+        if (_shouldRetryWithFunction(restError) &&
+            _isFunctionUploadBucket(bucket) &&
+            !_isChatAttachmentUpload(metadata)) {
+          final res = await _uploadFileViaFunction(
             file: file,
             filename: filename,
             bucketId: bucket,
             mimeType: mimeType,
             metadata: metadata,
           );
-        } catch (restError) {
-          if (_shouldRetryWithFunction(restError) &&
-              _isFunctionUploadBucket(bucket)) {
-            return _uploadFileViaFunction(
-              file: file,
-              filename: filename,
-              bucketId: bucket,
-              mimeType: mimeType,
-              metadata: metadata,
-            );
-          }
-          throw HttpException('Upload failed: $restError');
+          _logBucketMismatch(res, bucket);
+          return res;
         }
+        throw HttpException('Upload failed: $restError');
       }
-      throw HttpException('Upload failed: $e');
     }
   }
 
-  bool _shouldRetryWithRest(Object error) {
-    final text = error.toString().toLowerCase();
-    return text.contains('statuscode=401') ||
-        text.contains('statuscode=403') ||
-        text.contains('unauthorized') ||
-        text.contains('not authorized');
+  void _logBucketMismatch(Map<String, dynamic> res, String? expected) {
+    final exp = (expected ?? '').trim();
+    if (exp.isEmpty) return;
+    final got =
+        (res['bucketId'] ?? res['bucket_id'] ?? '').toString().trim();
+    if (got.isEmpty) return;
+    if (got != exp) {
+      // ignore: avoid_print
+      print('[STORAGE] bucket mismatch: expected=$exp got=$got');
+    }
   }
 
   bool _shouldRetryWithFunction(Object error) {
@@ -238,6 +254,12 @@ class NhostStorageService {
   bool _isFunctionUploadBucket(String? bucketId) {
     final bucket = (bucketId ?? '').trim().toLowerCase();
     return bucket == 'subscription-proofs' || bucket == AppConstants.chatBucketName;
+  }
+
+  bool _isChatAttachmentUpload(Map<String, dynamic>? metadata) {
+    if (metadata == null || metadata.isEmpty) return false;
+    return metadata.containsKey('conversation_id') ||
+        metadata.containsKey('message_id');
   }
 
   Future<Map<String, dynamic>> _uploadFileViaRest({
@@ -263,6 +285,8 @@ class NhostStorageService {
 
     final bucket = bucketId?.trim();
     if (bucket != null && bucket.isNotEmpty) {
+      // Nhost accepts bucketId in multipart form. Keep bucket-id for backward compatibility.
+      request.fields['bucketId'] = bucket;
       request.fields['bucket-id'] = bucket;
     }
 
@@ -270,6 +294,15 @@ class NhostStorageService {
     final contentType = (mimeType == null || mimeType.trim().isEmpty)
         ? null
         : MediaType.parse(mimeType);
+    // Send both single and array-style parts to maximize compatibility.
+    request.files.add(
+      http.MultipartFile.fromBytes(
+        'file',
+        bytes,
+        filename: filename,
+        contentType: contentType,
+      ),
+    );
     request.files.add(
       http.MultipartFile.fromBytes(
         'file[]',
@@ -283,6 +316,18 @@ class NhostStorageService {
     if (metadata != null && metadata.isNotEmpty) {
       meta['metadata'] = metadata;
     }
+    if (bucket != null && bucket.isNotEmpty) {
+      meta['bucketId'] = bucket;
+      meta['bucket_id'] = bucket;
+    }
+    request.files.add(
+      http.MultipartFile.fromBytes(
+        'metadata',
+        utf8.encode(jsonEncode(meta)),
+        filename: '',
+        contentType: MediaType('application', 'json'),
+      ),
+    );
     request.files.add(
       http.MultipartFile.fromBytes(
         'metadata[]',
@@ -327,8 +372,12 @@ class NhostStorageService {
     final bucket = (bucketId == null || bucketId.trim().isEmpty)
         ? 'subscription-proofs'
         : bucketId.trim();
+    final normalized = bucket.toLowerCase();
+    final normalizedChat = AppConstants.chatBucketName.toLowerCase();
     final base = NhostConfig.functionsUrl.replaceAll(RegExp(r'/+$'), '');
-    final url = bucket == AppConstants.chatBucketName
+    final useChatEndpoint =
+        normalized == normalizedChat && normalized != 'subscription-proofs';
+    final url = useChatEndpoint
         ? Uri.parse('$base/admin-upload-chat-attachment')
         : Uri.parse('$base/admin-upload-subscription-proof');
     final bytes = await file.readAsBytes();
@@ -369,6 +418,12 @@ class NhostStorageService {
     try {
       return await _createSignedUrlViaStorage(fileId, ttl);
     } catch (e) {
+      // ignore: avoid_print
+      final text = e.toString().toLowerCase();
+      // 404 can happen for purged or missing files; avoid noisy logs.
+      if (!text.contains('404')) {
+        print('[STORAGE] createSignedUrl(storage) failed: $e');
+      }
       if (_shouldRetryWithFunction(e)) {
         try {
           return await _createSignedUrlViaFunction(fileId, ttl);
@@ -400,16 +455,29 @@ class NhostStorageService {
     String fileId,
     int ttl,
   ) async {
-    final url = _api.storageUri('files/$fileId/presigned');
-    final res = await _api.postJson(url, {'expiresIn': ttl});
-    final signed = res['url'] ??
-        res['signedUrl'] ??
-        res['presignedUrl'] ??
-        res['presigned_url'] ??
-        res['dataUrl'] ??
-        res['data_url'];
-    final value = signed?.toString() ?? '';
-    return value.isEmpty ? null : value;
+    final endpoints = <String>[
+      'files/$fileId/presigned-url',
+      'files/$fileId/presigned',
+    ];
+    Object? lastError;
+    for (final path in endpoints) {
+      try {
+        final url = _api.storageUri(path);
+        final res = await _api.postJson(url, {'expiresIn': ttl});
+        final signed = res['url'] ??
+            res['signedUrl'] ??
+            res['presignedUrl'] ??
+            res['presigned_url'] ??
+            res['dataUrl'] ??
+            res['data_url'];
+        final value = signed?.toString() ?? '';
+        if (value.isNotEmpty) return value;
+      } catch (e) {
+        lastError = e;
+      }
+    }
+    if (lastError != null) throw lastError;
+    return null;
   }
 
   Future<String?> _createSignedUrlViaFunction(

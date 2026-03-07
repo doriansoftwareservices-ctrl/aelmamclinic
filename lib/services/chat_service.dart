@@ -17,11 +17,13 @@
 // - ✅ تسمية علاقة embed للمرفقات لتفادي التباس العلاقات في PostgREST
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import 'package:aelmamclinic/models/backend_errors.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -34,6 +36,8 @@ import 'package:aelmamclinic/models/chat_models.dart'
         ChatAttachment,
         ChatAttachmentType,
         ChatConversation,
+        ChatSupportStatus,
+        ChatSupportStatusX,
         ChatMessage,
         ChatMessageKind,
         ChatMessageKindX,
@@ -121,38 +125,72 @@ class ChatService {
     return error.toString();
   }
 
+  bool _isTimeout(OperationException error) {
+    final link = error.linkException;
+    if (link == null) return false;
+    final msg = link.toString();
+    return msg.contains('TimeoutException') ||
+        msg.toLowerCase().contains('timeout');
+  }
+
+  bool _hasUnknownField(OperationException error, String field) {
+    final msg = error.graphqlErrors.map((e) => e.message).join(' | ');
+    if (msg.isEmpty) return false;
+    return msg.contains("field '$field'") ||
+        msg.contains('Cannot query field "$field"') ||
+        msg.contains('Cannot query field \'$field\'');
+  }
+
   Future<Map<String, dynamic>> _runQuery(
     String doc,
     Map<String, dynamic> variables,
   ) async {
-    final result = await _gql.query(
-      QueryOptions(
-        document: gql(doc),
-        variables: variables,
-        fetchPolicy: FetchPolicy.noCache,
-      ),
-    );
-    if (result.hasException) {
-      throw result.exception!;
+    var attempt = 0;
+    while (true) {
+      final result = await _gql.query(
+        QueryOptions(
+          document: gql(doc),
+          variables: variables,
+          fetchPolicy: FetchPolicy.noCache,
+        ),
+      );
+      if (!result.hasException) {
+        return result.data ?? <String, dynamic>{};
+      }
+      final ex = result.exception!;
+      if (_isTimeout(ex) && attempt < 2) {
+        attempt += 1;
+        await Future.delayed(Duration(milliseconds: 300 * attempt));
+        continue;
+      }
+      throw ex;
     }
-    return result.data ?? <String, dynamic>{};
   }
 
   Future<Map<String, dynamic>> _runMutation(
     String doc,
     Map<String, dynamic> variables,
   ) async {
-    final result = await _gql.mutate(
-      MutationOptions(
-        document: gql(doc),
-        variables: variables,
-        fetchPolicy: FetchPolicy.noCache,
-      ),
-    );
-    if (result.hasException) {
-      throw result.exception!;
+    var attempt = 0;
+    while (true) {
+      final result = await _gql.mutate(
+        MutationOptions(
+          document: gql(doc),
+          variables: variables,
+          fetchPolicy: FetchPolicy.noCache,
+        ),
+      );
+      if (!result.hasException) {
+        return result.data ?? <String, dynamic>{};
+      }
+      final ex = result.exception!;
+      if (_isTimeout(ex) && attempt < 2) {
+        attempt += 1;
+        await Future.delayed(Duration(milliseconds: 300 * attempt));
+        continue;
+      }
+      throw ex;
     }
-    return result.data ?? <String, dynamic>{};
   }
 
   Future<ChatConversation?> _tryStartDmRpc(String otherUid) async {
@@ -170,30 +208,59 @@ class ChatService {
           ? (rows.first as Map)['id']?.toString()
           : null;
       if (id == null || id.isEmpty) return null;
-      const query = r'''
-        query ConvById($id: uuid!) {
-          chat_conversations_by_pk(id: $id) {
-            id
-            is_group
-            title
-            account_id
-            is_frozen
-            admins_only
-            created_by
-            created_at
-            updated_at
-            last_msg_at
-            last_msg_snippet
-          }
+      final conv = await fetchConversationById(id);
+      if (conv != null) return conv;
+    } catch (_) {
+      return null;
+    }
+    return null;
+  }
+
+  Future<ChatConversation?> fetchConversationById(String id) async {
+    if (id.trim().isEmpty) return null;
+    const baseFields = '''
+      id
+      is_group
+      title
+      account_id
+      is_frozen
+      admins_only
+      created_by
+      created_at
+      updated_at
+      last_msg_at
+      last_msg_snippet
+    ''';
+    final queryWithStatus = '''
+      query ConvById(\$id: uuid!) {
+        chat_conversations_by_pk(id: \$id) {
+          $baseFields
+          support_status
         }
-      ''';
-      final convData = await _runQuery(query, {'id': id});
-      final row = convData['chat_conversations_by_pk'];
+      }
+    ''';
+    final queryNoStatus = '''
+      query ConvById(\$id: uuid!) {
+        chat_conversations_by_pk(id: \$id) {
+          $baseFields
+        }
+      }
+    ''';
+    try {
+      final data = await _runQuery(queryWithStatus, {'id': id});
+      final row = data['chat_conversations_by_pk'];
       if (row is Map) {
         return ChatConversation.fromMap(Map<String, dynamic>.from(row));
       }
-    } catch (_) {
-      return null;
+    } on OperationException catch (e) {
+      if (_hasUnknownField(e, 'support_status')) {
+        final data = await _runQuery(queryNoStatus, {'id': id});
+        final row = data['chat_conversations_by_pk'];
+        if (row is Map) {
+          return ChatConversation.fromMap(Map<String, dynamic>.from(row));
+        }
+      }
+      rethrow;
     }
     return null;
   }
@@ -357,21 +424,32 @@ class ChatService {
       _includeChatAttachments = fields.contains('chat_attachments');
       _includeDeliveryReceipts = fields.contains('chat_delivery_receipts');
     } catch (_) {
-      // keep defaults
+      // If schema introspection fails, disable optional relationships to avoid
+      // runtime GraphQL errors (permissions or metadata mismatch).
+      _includeChatAttachments = false;
     }
   }
 
   bool _updateMessageFieldSupport(OperationException error) {
     var changed = false;
+    final full = error.toString();
     for (final err in error.graphqlErrors) {
       final msg = err.message;
-      if (_includeChatAttachments &&
-          msg.contains("field 'chat_attachments' not found in type: 'chat_messages'")) {
+      final hasChatAtt =
+          msg.contains("field 'chat_attachments' not found in type: 'chat_messages'") ||
+          full.contains("field 'chat_attachments' not found in type: 'chat_messages'") ||
+          msg.contains('chat_attachments') ||
+          full.contains('chat_attachments');
+      if (_includeChatAttachments && hasChatAtt) {
         _includeChatAttachments = false;
         changed = true;
       }
-      if (_includeDeliveryReceipts &&
-          msg.contains("field 'chat_delivery_receipts' not found in type: 'chat_messages'")) {
+      final hasReceipts =
+          msg.contains("field 'chat_delivery_receipts' not found in type: 'chat_messages'") ||
+          full.contains("field 'chat_delivery_receipts' not found in type: 'chat_messages'") ||
+          msg.contains('chat_delivery_receipts') ||
+          full.contains('chat_delivery_receipts');
+      if (_includeDeliveryReceipts && hasReceipts) {
         _includeDeliveryReceipts = false;
         changed = true;
       }
@@ -512,7 +590,7 @@ class ChatService {
     required String mimeType,
     Map<String, dynamic>? metadata,
   }) async {
-    try {
+    Future<String> doUpload() async {
       final res = await _storage.uploadFile(
         file: file,
         name: name,
@@ -526,7 +604,34 @@ class ChatService {
             'لم يتم استلام معرّف الملف من التخزين.');
       }
       return id;
+    }
+
+    bool isAuthError(Object e) {
+      final msg = e.toString().toLowerCase();
+      return msg.contains('401') ||
+          msg.contains('403') ||
+          msg.contains('unauthorized') ||
+          msg.contains('not authorized');
+    }
+
+    // تأكد من وجود جلسة صالحة قبل الرفع
+    try {
+      if ((NhostManager.client.auth.accessToken ?? '').isEmpty) {
+        await NhostManager.client.auth.signInWithStoredCredentials();
+      }
+    } catch (_) {}
+
+    try {
+      return await doUpload();
     } catch (e) {
+      if (isAuthError(e)) {
+        try {
+          await NhostManager.client.auth.signInWithStoredCredentials();
+          return await doUpload();
+        } catch (e2) {
+          throw ChatAttachmentUploadException('فشل رفع المرفقات: $e2', cause: e2);
+        }
+      }
       throw ChatAttachmentUploadException('فشل رفع المرفقات: $e', cause: e);
     }
   }
@@ -779,6 +884,18 @@ class ChatService {
 
   Future<File> _ensureSupportedImageFile(File file) async {
     final ext = p.extension(file.path).toLowerCase();
+    const allowed = <String>{
+      '.jpg',
+      '.jpeg',
+      '.png',
+      '.webp',
+      '.gif',
+      '.heic',
+      '.heif',
+    };
+    if (!allowed.contains(ext)) {
+      throw 'المرفقات المدعومة فقط صور (JPG/PNG/WEBP/GIF).';
+    }
     if (ext != '.heic' && ext != '.heif') return file;
     try {
       final dir = await getTemporaryDirectory();
@@ -823,6 +940,13 @@ class ChatService {
         if (v != null && v.isNotEmpty) {
           fileId = v;
         }
+      }
+      if ((fileId == null || fileId.isEmpty) &&
+          bucket != null &&
+          path != null &&
+          bucket.isNotEmpty &&
+          path.isNotEmpty) {
+        fileId = await _resolveFileId(bucket, path);
       }
       String url = '';
       if (fileId != null && fileId.isNotEmpty && _looksLikeUuid(fileId)) {
@@ -879,6 +1003,23 @@ class ChatService {
     }
     if (kind == ChatMessageKind.image) return '📷 صورة';
     if (kind == ChatMessageKind.file) return '📎 ملف';
+    if (kind == ChatMessageKind.system) {
+      final s = (body ?? '').trim();
+      if (s.isEmpty) return 'رسالة نظام';
+      try {
+        final decoded = jsonDecode(s);
+        if (decoded is Map) {
+          final type = decoded['type']?.toString();
+          if (type == 'support_rating_request') {
+            return 'استمارة تقييم خدمة العملاء';
+          }
+          if (type == 'support_rating_response') {
+            return 'تم تقييم خدمة العملاء';
+          }
+        }
+      } catch (_) {}
+      return 'رسالة نظام';
+    }
     return 'رسالة';
   }
 
@@ -1030,7 +1171,7 @@ class ChatService {
         Map<String, dynamic>.from(rows.first as Map));
   }
 
-  Future<ChatConversation> startDMWithEmail(String email) async {
+  Future<ChatConversation> startDMWithEmail(String emailOrCode) async {
     final uid = currentUserId;
     if (uid == null) {
       throw 'لا يوجد مستخدم مسجّل الدخول.';
@@ -1038,26 +1179,32 @@ class ChatService {
     final me = await _myAccountRow();
     final myRole = (me.role?.toLowerCase() ?? '');
 
+    final lookup = emailOrCode.trim().toLowerCase();
+    if (lookup.isEmpty) {
+      throw 'الرجاء إدخال البريد أو الرقم.';
+    }
+    final isCode = RegExp(r'^555[0-9]{4}$').hasMatch(lookup);
+
     final query = '''
-      query FindAccountUser(\$email: String!) {
-        $_tblAccUsers(
-          where: {email: {_eq: \$email}},
-          order_by: {created_at: desc},
-          limit: 1
-        ) {
+      query ResolveChatUser(\$ident: String!) {
+        chat_resolve_user_for_dm(args: {p_identifier: \$ident}) {
           user_uid
           email
           account_id
           role
+          chat_code
         }
       }
     ''';
-    final data = await _runQuery(query, {'email': email.toLowerCase()});
-    final rows = (data[_tblAccUsers] as List?) ?? const [];
+    final data = await _runQuery(query, {'ident': lookup});
+    final rows = (data['chat_resolve_user_for_dm'] as List?) ?? const [];
     if (rows.isEmpty) {
-      throw 'لا يوجد مستخدم بالبريد: $email';
+      throw isCode
+          ? 'لا يوجد مستخدم بالرقم: $lookup'
+          : 'لا يوجد مستخدم بالبريد: $lookup';
     }
     final targetRow = Map<String, dynamic>.from(rows.first as Map);
+    final resolvedChatCode = (targetRow['chat_code']?.toString() ?? '').trim();
 
     final otherUid = targetRow['user_uid']?.toString() ?? '';
     if (otherUid.isEmpty) {
@@ -1066,6 +1213,26 @@ class ChatService {
 
 
     final targetRole = (targetRow['role']?.toString() ?? '').toLowerCase();
+    final targetAcc = (targetRow['account_id']?.toString() ?? '').trim();
+    final myAcc = (me.accountId ?? '').trim();
+
+    if (myRole == 'employee') {
+      if (myAcc.isEmpty) {
+        throw 'تعذّر تحديد حسابك. يرجى إعادة تسجيل الدخول.';
+      }
+      if (targetAcc.isEmpty || targetAcc != myAcc) {
+        throw 'غير مسموح للموظف بمراسلة حساب خارج عيادته.';
+      }
+    }
+
+    if (targetRole == 'employee' &&
+        myRole != 'employee' &&
+        targetAcc.isNotEmpty &&
+        myAcc.isNotEmpty &&
+        targetAcc != myAcc) {
+      throw 'غير مسموح بمراسلة موظف في عيادة أخرى.';
+    }
+
     if (targetRole == 'superadmin' &&
         myRole != 'superadmin' &&
         myRole != 'owner') {
@@ -1074,10 +1241,24 @@ class ChatService {
     if (otherUid == uid) throw 'لا يمكنك مراسلة نفسك.';
 
     final existing = await findExistingDMByUids(uidA: uid, uidB: otherUid);
-    if (existing != null) return existing;
+    if (existing != null) {
+      if (!existing.isGroup &&
+          (existing.title == null || existing.title!.trim().isEmpty) &&
+          resolvedChatCode.isNotEmpty) {
+        return existing.copyWith(title: resolvedChatCode);
+      }
+      return existing;
+    }
 
     final rpcConv = await _tryStartDmRpc(otherUid);
-    if (rpcConv != null) return rpcConv;
+    if (rpcConv != null) {
+      if (!rpcConv.isGroup &&
+          (rpcConv.title == null || rpcConv.title!.trim().isEmpty) &&
+          resolvedChatCode.isNotEmpty) {
+        return rpcConv.copyWith(title: resolvedChatCode);
+      }
+      return rpcConv;
+    }
 
     throw 'تعذّر إنشاء المحادثة. تحقّق من الصلاحيات ثم أعد المحاولة.';
   }
@@ -1385,36 +1566,75 @@ class ChatService {
     }
   }
 
-  Future<List<ConversationListItem>> fetchMyConversationsOverview() async {
+  Future<List<ConversationListItem>> fetchMyConversationsOverview({
+    bool includeLastMessageText = true,
+  }) async {
     if (currentUserId == null) return const <ConversationListItem>[];
-    final query = '''
+    final textFields = includeLastMessageText
+        ? '''
+          last_msg_snippet
+          last_message_body
+          last_message_text
+        '''
+        : '';
+    final baseFields = '''
+      id
+      account_id
+      is_group
+      title
+      is_frozen
+      admins_only
+      created_by
+      created_at
+      updated_at
+      last_msg_at
+      last_message_id
+      last_message_kind
+      last_message_created_at
+      last_read_at
+      unread_count
+      $textFields
+    ''';
+    final queryWithStatus = '''
       query ConversationsOverview {
         v_chat_conversations_for_me(order_by: {last_msg_at: desc}) {
-          id
-          account_id
-          is_group
-          title
-          is_frozen
-          admins_only
-          created_by
-          created_at
-          updated_at
-          last_msg_at
-          last_msg_snippet
-          last_message_id
-          last_message_kind
-          last_message_body
-          last_message_created_at
-          last_read_at
-          unread_count
-          last_message_text
+          $baseFields
+          support_status
         }
       }
     ''';
-    final data = await _runQuery(query, const {});
-    final rows = (data['v_chat_conversations_for_me'] as List?) ?? const [];
+    final queryNoStatus = '''
+      query ConversationsOverview {
+        v_chat_conversations_for_me(order_by: {last_msg_at: desc}) {
+          $baseFields
+        }
+      }
+    ''';
+    List rows = const [];
+    try {
+      final data = await _runQuery(queryWithStatus, const {});
+      rows = (data['v_chat_conversations_for_me'] as List?) ?? const [];
+    } on BackendSchemaException {
+      return _fallbackConversationsByParticipant(
+        includeLastMessageText: includeLastMessageText,
+      );
+    } on OperationException catch (e) {
+      final msg = e.toString().toLowerCase();
+      if (_hasUnknownField(e, 'support_status')) {
+        final data = await _runQuery(queryNoStatus, const {});
+        rows = (data['v_chat_conversations_for_me'] as List?) ?? const [];
+      } else if (msg.contains('v_chat_conversations_for_me')) {
+        return _fallbackConversationsByParticipant(
+          includeLastMessageText: includeLastMessageText,
+        );
+      } else {
+        rethrow;
+      }
+    }
     if (rows.isEmpty) {
-      return _fallbackConversationsByParticipant();
+      return _fallbackConversationsByParticipant(
+        includeLastMessageText: includeLastMessageText,
+      );
     }
 
     final items = <ConversationListItem>[];
@@ -1452,7 +1672,42 @@ class ChatService {
     return items;
   }
 
-  Future<List<ConversationListItem>> _fallbackConversationsByParticipant() async {
+  Future<bool> updateConversationSupportStatus({
+    required String conversationId,
+    required ChatSupportStatus status,
+  }) async {
+    if (conversationId.trim().isEmpty) return false;
+    const mutation = r'''
+      mutation UpdateConvStatus($id: uuid!, $status: String!) {
+        update_chat_conversations_by_pk(
+          pk_columns: {id: $id},
+          _set: {support_status: $status}
+        ) {
+          id
+          support_status
+        }
+      }
+    ''';
+    try {
+      final data = await _runMutation(
+        mutation,
+        {'id': conversationId, 'status': status.dbValue},
+      );
+      final row = data['update_chat_conversations_by_pk'];
+      return row is Map && (row['id']?.toString().isNotEmpty ?? false);
+    } on OperationException catch (e) {
+      if (_hasUnknownField(e, 'support_status')) {
+        return false;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<List<ConversationListItem>> _fallbackConversationsByParticipant({
+    bool includeLastMessageText = true,
+  }) async {
     final uid = currentUserId;
     if (uid == null || uid.isEmpty) return const <ConversationListItem>[];
 
@@ -1477,6 +1732,11 @@ class ChatService {
         .toList();
     if (ids.isEmpty) return const <ConversationListItem>[];
 
+    final snippetFields = includeLastMessageText
+        ? '''
+          last_msg_snippet
+        '''
+        : '';
     final convQuery = '''
       query MyConversationsByIds(\$ids: [uuid!]!) {
         $_tblConvs(
@@ -1493,7 +1753,7 @@ class ChatService {
           created_at
           updated_at
           last_msg_at
-          last_msg_snippet
+          $snippetFields
         }
       }
     ''';
@@ -1828,7 +2088,11 @@ class ChatService {
   final Map<String, StreamController<List<ChatMessage>>> _roomCtrls = {};
   final Map<String, StreamSubscription<QueryResult>> _roomSubs = {};
 
-  Stream<List<ChatMessage>> watchMessages(String conversationId) {
+  Stream<List<ChatMessage>> watchMessages(
+    String conversationId, {
+    DateTime? since,
+    bool seedFromServer = true,
+  }) {
     final existing = _roomCtrls[conversationId];
     if (existing != null) return existing.stream;
 
@@ -1836,37 +2100,83 @@ class ChatService {
     _roomCtrls[conversationId] = c;
 
     unawaited(() async {
-      await _ensureMessageSchemaSupport();
-      final seed = await fetchMessages(
-        conversationId: conversationId,
-        limit: 80,
-      );
-      if (!c.isClosed) c.add(_sortedAsc(seed));
-      final query = '''
-        subscription RoomMessages(\$cid: uuid!) {
-          $_tblMsgs(
-            where: {conversation_id: {_eq: \$cid}},
-            order_by: {created_at: asc}
-          ) {
-            ${_messageSelectFields()}
-          }
+      try {
+        try {
+          await _ensureMessageSchemaSupport();
+        } catch (_) {
+          // Ignore schema probe errors to avoid breaking message flow.
         }
-      ''';
+        if (seedFromServer) {
+          try {
+            final seed = await fetchMessages(
+              conversationId: conversationId,
+              limit: 80,
+            );
+            if (!c.isClosed) c.add(_sortedAsc(seed));
+          } on OperationException catch (e) {
+            if (_updateMessageFieldSupport(e)) {
+              try {
+                final seed = await fetchMessages(
+                  conversationId: conversationId,
+                  limit: 80,
+                );
+                if (!c.isClosed) c.add(_sortedAsc(seed));
+              } catch (_) {}
+            }
+          } catch (_) {}
+        }
+        final where = StringBuffer('conversation_id: {_eq: \$cid}');
+        if (since != null) {
+          where.write(', created_at: {_gt: \$since}');
+        }
+        final query = '''
+          subscription RoomMessages(\$cid: uuid!) {
+            $_tblMsgs(
+              where: {${where.toString()}},
+              order_by: {created_at: asc}
+            ) {
+              ${_messageSelectFields()}
+            }
+          }
+        ''';
 
-      final sub = _runSubscription(query, {'cid': conversationId}).listen(
-        (result) async {
-          if (result.hasException) return;
-          final data = result.data ?? const <String, dynamic>{};
-          final rows = await _hydrateMessageAttachments(
-            _rowsFromData(data, _tblMsgs),
-          );
-          final list = await _messagesFromRows(rows);
-          if (!c.isClosed) c.add(_sortedAsc(list));
-          unawaited(_markDeliveredFor(list));
-        },
-      );
+        final vars = <String, dynamic>{'cid': conversationId};
+        if (since != null) {
+          vars['since'] = since.toUtc().toIso8601String();
+        }
+        final sub = _runSubscription(query, vars).listen(
+          (result) async {
+            if (result.hasException) {
+              final ex = result.exception;
+              if (ex != null && _updateMessageFieldSupport(ex)) {
+                try {
+                  await _roomSubs[conversationId]?.cancel();
+                } catch (_) {}
+                _roomSubs.remove(conversationId);
+                // restart subscription with updated fields
+                if (!_roomCtrls[conversationId]!.isClosed) {
+                  unawaited(() async {
+                    await Future<void>.delayed(const Duration(milliseconds: 200));
+                    watchMessages(conversationId, since: since, seedFromServer: false);
+                  }());
+                }
+              }
+              return;
+            }
+            final data = result.data ?? const <String, dynamic>{};
+            final rows = await _hydrateMessageAttachments(
+              _rowsFromData(data, _tblMsgs),
+            );
+            final list = await _messagesFromRows(rows);
+            if (!c.isClosed) c.add(_sortedAsc(list));
+            unawaited(_markDeliveredFor(list));
+          },
+        );
 
-      _roomSubs[conversationId] = sub;
+        _roomSubs[conversationId] = sub;
+      } catch (_) {
+        // Prevent zone errors from bubbling out of the subscription task.
+      }
     }());
 
     c.onCancel = () async {
@@ -1895,6 +2205,7 @@ class ChatService {
     for (final m in messages) {
       if (m.senderUid == uid) continue;
       if (m.id.isEmpty || m.id.startsWith('local-')) continue;
+      if (m.attachments.isNotEmpty) continue;
       if (lastIncoming == null || m.createdAt.isAfter(lastIncoming.createdAt)) {
         lastIncoming = m;
       }
@@ -1998,6 +2309,80 @@ class ChatService {
       conversationId: conversationId,
       lastAt: now,
       snippet: _buildSnippet(kind: ChatMessageKind.text, body: body),
+    );
+
+    var out = await _messageFromRow(row);
+    if (out.senderUid == uid) {
+      out = out.copyWith(status: ChatMessageStatus.sent);
+    }
+    return out;
+  }
+
+  /// إرسال رسالة نظام (system) — تُستخدم لنماذج تقييم خدمة العملاء
+  Future<ChatMessage> sendSystemMessage({
+    required String conversationId,
+    required String body,
+    int? localSeq,
+    String? clientMsgId,
+  }) async {
+    final uid = currentUserId;
+    if (uid == null) throw 'لا يوجد مستخدم مسجّل الدخول.';
+    final me = await _myAccountRow();
+    final senderEmail = _bestSenderEmail(me.email) ?? '';
+    final deviceId = await _determineDeviceId(me.deviceId);
+    final now = DateTime.now().toUtc();
+
+    final seq = localSeq ??
+        (await _nextSeqForMe()) ??
+        DateTime.now().microsecondsSinceEpoch;
+
+    final convAcc =
+        (await _conversationAccountId(conversationId)) ?? (me.accountId ?? '');
+
+    final payload = <String, dynamic>{
+      'conversation_id': conversationId,
+      'sender_uid': uid,
+      if (senderEmail.isNotEmpty) 'sender_email': senderEmail,
+      'kind': ChatMessageKind.system.dbValue,
+      'body': body,
+      'text': body,
+      'created_at': now.toIso8601String(),
+      'device_id': deviceId,
+      'local_id': seq,
+      if (clientMsgId != null && clientMsgId.isNotEmpty)
+        'client_msg_id': clientMsgId,
+      if (convAcc.isNotEmpty) 'account_id': convAcc,
+    };
+
+    Map<String, dynamic>? row;
+    final data = await _runMessageMutation((fields) => '''
+      mutation InsertSystemMessage(\$object: ${_tblMsgs}_insert_input!) {
+        insert_${_tblMsgs}(
+          objects: [\$object],
+          on_conflict: {
+            constraint: chat_messages_conversation_client_msg_id_key,
+            update_columns: [body, text, edited, edited_at]
+          }
+        ) {
+          returning {
+            $fields
+          }
+        }
+      }
+    ''', {'object': payload});
+    final ret =
+        (data['insert_${_tblMsgs}'] as Map?)?['returning'] as List?;
+    if (ret != null && ret.isNotEmpty) {
+      row = Map<String, dynamic>.from(ret.first as Map);
+    }
+    if (row == null) {
+      throw 'تعذّر إرسال رسالة النظام.';
+    }
+
+    await _updateConversationLastSummary(
+      conversationId: conversationId,
+      lastAt: now,
+      snippet: _buildSnippet(kind: ChatMessageKind.system, body: body),
     );
 
     var out = await _messageFromRow(row);
@@ -2124,6 +2509,7 @@ class ChatService {
     String? replyToMessageId,
     String? replyToSnippet,
     List<String>? mentionsEmails,
+    bool combineTextWithImages = true,
   }) async {
     if (!AppConstants.chatAllowAttachments) {
       throw ChatAttachmentUploadException('المرفقات معطّلة في هذا الإصدار.');
@@ -2144,7 +2530,9 @@ class ChatService {
 
     final sent = <ChatMessage>[];
 
-    if (optionalText != null && optionalText.trim().isNotEmpty) {
+    if (!combineTextWithImages &&
+        optionalText != null &&
+        optionalText.trim().isNotEmpty) {
       final textMsg = await sendText(
         conversationId: conversationId,
         body: optionalText.trim(),
@@ -2203,13 +2591,14 @@ class ChatService {
       final convAcc = (await _conversationAccountId(conversationId)) ??
           (me.accountId ?? '');
 
+      final caption = (optionalText ?? '').trim();
       final payload = <String, dynamic>{
         'conversation_id': conversationId,
         'sender_uid': uid,
         'sender_email': senderEmail,
         'kind': ChatMessageKind.image.dbValue,
-        'body': null,
-        'text': null,
+        'body': (combineTextWithImages && caption.isNotEmpty) ? caption : null,
+        'text': (combineTextWithImages && caption.isNotEmpty) ? caption : null,
         'created_at': now.toIso8601String(),
         'device_id': deviceId,
         'local_id': seq,
@@ -2668,15 +3057,24 @@ class ChatService {
       final list = _rowsFromData(data, _tblAtts);
       if (list.isEmpty) return;
 
-      final files = list
-          .map((e) => (e['path']?.toString() ?? ''))
-          .where((p) => p.isNotEmpty)
-          .toList();
-      if (files.isNotEmpty) {
+      final files = <String>[];
+      for (final e in list) {
+        final bucket = (e['bucket']?.toString() ?? attachmentsBucket).trim();
+        final path = (e['path']?.toString() ?? '').trim();
+        if (path.isEmpty) continue;
+        String? fileId;
+        if (_looksLikeUuid(path)) {
+          fileId = path;
+        } else {
+          fileId = await _resolveFileId(bucket, path);
+        }
+        if (fileId != null && fileId.isNotEmpty) {
+          files.add(fileId);
+        }
+      }
+      for (final id in files) {
         try {
-          for (final id in files) {
-            await _storage.deleteFile(id);
-          }
+          await _storage.deleteFile(id);
         } catch (_) {}
       }
 
@@ -2699,6 +3097,71 @@ class ChatService {
     } catch (_) {
       // تجاهل
     }
+  }
+
+  // --------------------------------------------------------------------------
+  // Multi-device attachments receipts (server-side purge scheduling)
+  // --------------------------------------------------------------------------
+  Future<void> registerDevice({
+    required String deviceId,
+    String? platform,
+    String? appVersion,
+  }) async {
+    final dev = deviceId.trim();
+    if (dev.isEmpty) return;
+    const mutation = r'''
+      mutation RegisterDevice($deviceId: String!, $platform: String, $appVersion: String) {
+        chat_register_device(args: {p_device_id: $deviceId, p_platform: $platform, p_app_version: $appVersion})
+      }
+    ''';
+    await _runMutation(mutation, {
+      'deviceId': dev,
+      'platform': platform,
+      'appVersion': appVersion,
+    });
+  }
+
+  Future<void> markAttachmentDownloaded({
+    required String attachmentId,
+    required String deviceId,
+  }) async {
+    final att = attachmentId.trim();
+    final dev = deviceId.trim();
+    if (att.isEmpty || dev.isEmpty) return;
+    const mutation = r'''
+      mutation MarkAttDownloaded($id: uuid!, $deviceId: String!) {
+        chat_mark_attachment_downloaded(args: {p_attachment_id: $id, p_device_id: $deviceId})
+      }
+    ''';
+    await _runMutation(mutation, {'id': att, 'deviceId': dev});
+  }
+
+  Future<void> markAttachmentOpened({
+    required String attachmentId,
+    required String deviceId,
+  }) async {
+    final att = attachmentId.trim();
+    final dev = deviceId.trim();
+    if (att.isEmpty || dev.isEmpty) return;
+    const mutation = r'''
+      mutation MarkAttOpened($id: uuid!, $deviceId: String!) {
+        chat_mark_attachment_opened(args: {p_attachment_id: $id, p_device_id: $deviceId})
+      }
+    ''';
+    await _runMutation(mutation, {'id': att, 'deviceId': dev});
+  }
+
+  Future<int> purgeDueAttachments({int limit = 200}) async {
+    const mutation = r'''
+      mutation PurgeDue($limit: Int!) {
+        chat_purge_due_attachments(args: {p_limit: $limit})
+      }
+    ''';
+    final data = await _runMutation(mutation, {'limit': limit});
+    final v = data['chat_purge_due_attachments'];
+    if (v is num) return v.toInt();
+    if (v is String) return int.tryParse(v) ?? 0;
+    return 0;
   }
 
   // --- تهريب نص البحث قبل ilike ---
@@ -2825,6 +3288,32 @@ class ChatService {
     );
 
     return lastCreated;
+  }
+
+  Future<void> markDeliveredUpTo({
+    required String conversationId,
+    required String messageId,
+    required DateTime createdAt,
+  }) async {
+    await _upsertReadState(
+      conversationId: conversationId,
+      lastDeliveredMessageId: messageId,
+      lastDeliveredAt: createdAt,
+    );
+  }
+
+  Future<void> markReadUpTo({
+    required String conversationId,
+    required String messageId,
+    required DateTime createdAt,
+  }) async {
+    await _upsertReadState(
+      conversationId: conversationId,
+      lastDeliveredMessageId: messageId,
+      lastDeliveredAt: createdAt,
+      lastReadMessageId: messageId,
+      lastReadAt: createdAt,
+    );
   }
 
   // --------------------------------------------------------------

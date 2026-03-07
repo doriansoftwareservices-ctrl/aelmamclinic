@@ -9,11 +9,7 @@ import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:aelmamclinic/providers/repository_provider.dart';
 import 'package:aelmamclinic/services/repository_service.dart';
 import 'package:aelmamclinic/services/db_service.dart';
-
-/*──────── لوحة ألوان TBIAN الموحدة ────────*/
-const Color accentColor = Color(0xFF004A61);
-const Color lightAccentColor = Color(0xFF9ED9E6);
-const Color veryLightBg = Color(0xFFF7F9F9);
+import 'package:aelmamclinic/core/theme.dart';
 
 class ViewItemsScreen extends StatefulWidget {
   const ViewItemsScreen({super.key});
@@ -148,40 +144,46 @@ class _ViewItemsScreenState extends State<ViewItemsScreen> {
           actions: [
             IconButton(
               tooltip: 'إضافة صنف',
-              icon: const Icon(Icons.add, color: Colors.white),
+              icon: const Icon(Icons.add),
               onPressed: () =>
                   Navigator.pushNamed(context, '/repository/items/add'),
             ),
           ],
-          flexibleSpace: const DecoratedBox(
+          flexibleSpace: DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [lightAccentColor, accentColor],
+                colors: [
+                  Theme.of(context).colorScheme.primaryContainer,
+                  Theme.of(context).colorScheme.primary
+                ],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
             ),
           ),
-          elevation: 4,
         ),
         body: Container(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [veryLightBg, Colors.white, veryLightBg],
+              colors: [
+                Theme.of(context).colorScheme.surfaceContainerHigh,
+                Theme.of(context).colorScheme.surface,
+                Theme.of(context).colorScheme.surfaceContainerHigh,
+              ],
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
             ),
           ),
           child: RefreshIndicator(
             onRefresh: () => _refresh(repo),
-            color: accentColor,
+            color: Theme.of(context).colorScheme.primary,
             child: FutureBuilder<Map<int, _PurchaseStats>>(
               future: statsFuture,
               builder: (ctx, snap) {
                 final stats = snap.data ?? const <int, _PurchaseStats>{};
                 return ListView(
                   physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                  padding: kScreenPadding.copyWith(top: 12, bottom: 24),
                   children: [
                     // شريط إحصائي صغير
                     _SummaryStrip(
@@ -195,6 +197,7 @@ class _ViewItemsScreenState extends State<ViewItemsScreen> {
 
                     // البحث + المرشّحات + الفرز
                     _FiltersBar(
+                      scheme: Theme.of(context).colorScheme,
                       types: types,
                       typeFilter: _typeFilter,
                       onTypeChanged: (t) => setState(() => _typeFilter = t),
@@ -223,7 +226,11 @@ class _ViewItemsScreenState extends State<ViewItemsScreen> {
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(16),
                             side: BorderSide(
-                                color: lightAccentColor.withValues(alpha: .25)),
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .outlineVariant
+                                  .withValues(alpha: .5),
+                            ),
                           ),
                           child: _TypeSectionTBIAN(
                             type: type,
@@ -278,16 +285,17 @@ class _TypeSectionTBIAN extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return ExpansionTile(
       tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      backgroundColor: Colors.white,
-      collapsedBackgroundColor: Colors.white,
+      backgroundColor: scheme.surface,
+      collapsedBackgroundColor: scheme.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       collapsedShape:
           RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      leading: const CircleAvatar(
-        backgroundColor: Color(0x1A9ED9E6),
-        child: Icon(Icons.category_outlined, color: accentColor),
+      leading: CircleAvatar(
+        backgroundColor: scheme.primaryContainer.withValues(alpha: .5),
+        child: Icon(Icons.category_outlined, color: scheme.primary),
       ),
       title: Row(
         children: [
@@ -297,7 +305,11 @@ class _TypeSectionTBIAN extends StatelessWidget {
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
             ),
           ),
-          _Pill(text: '${items.length} صنف', color: lightAccentColor),
+          _Pill(
+            text: '${items.length} صنف',
+            color: scheme.primaryContainer,
+            textColor: scheme.primary,
+          ),
         ],
       ),
       childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
@@ -365,7 +377,9 @@ class _ItemTileTBIAN extends StatelessWidget {
                 onPressed: () => Navigator.pop(ctx, false),
                 child: const Text('إلغاء')),
             ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: accentColor),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.primary,
+              ),
               onPressed: () {
                 if (formKey.currentState!.validate()) Navigator.pop(ctx, true);
               },
@@ -463,6 +477,7 @@ class _ItemTileTBIAN extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final repo = context.watch<RepositoryProvider>();
     final list = repo.itemsOf(typeId);
     final current = list.where((e) => e.id == itemId).isNotEmpty
@@ -483,11 +498,11 @@ class _ItemTileTBIAN extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: scheme.surface,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: (critical ? Colors.red : lightAccentColor)
-              .withValues(alpha: .25),
+          color: (critical ? Colors.red : scheme.primaryContainer)
+              .withValues(alpha: .4),
         ),
         boxShadow: [
           BoxShadow(
@@ -503,12 +518,12 @@ class _ItemTileTBIAN extends StatelessWidget {
           width: 42,
           height: 42,
           decoration: BoxDecoration(
-            color: lightAccentColor.withValues(alpha: .18),
+            color: scheme.primaryContainer.withValues(alpha: .6),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Icon(
             critical ? Icons.warning_amber_outlined : Icons.inventory_2_outlined,
-            color: critical ? Colors.red : accentColor,
+            color: critical ? Colors.red : scheme.primary,
           ),
         ),
         title:
@@ -528,7 +543,9 @@ class _ItemTileTBIAN extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 'مشتراة: $boughtQty  •  تكلفة المشتريات: ${totalCost.toStringAsFixed(2)}',
-                style: TextStyle(color: Colors.grey.shade700),
+                style: TextStyle(
+                  color: scheme.onSurface.withValues(alpha: .7),
+                ),
               ),
             ],
           ),
@@ -549,11 +566,11 @@ class _ItemTileTBIAN extends StatelessWidget {
             }
           },
           itemBuilder: (_) => [
-            const PopupMenuItem(
+            PopupMenuItem(
               value: 'edit',
               child: Row(
                 children: [
-                  Icon(Icons.edit, color: accentColor),
+                  Icon(Icons.edit, color: scheme.primary),
                   SizedBox(width: 8),
                   Text('تعديل'),
                 ],
@@ -609,12 +626,13 @@ class _SummaryStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: scheme.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: lightAccentColor.withValues(alpha: .35)),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: .5)),
         boxShadow: [
           BoxShadow(
               color: Colors.black.withValues(alpha: .06),
@@ -670,7 +688,8 @@ class _StatChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = color ?? accentColor;
+    final scheme = Theme.of(context).colorScheme;
+    final c = color ?? scheme.primary;
     return Expanded(
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -696,6 +715,7 @@ class _StatChip extends StatelessWidget {
 }
 
 class _FiltersBar extends StatelessWidget {
+  final ColorScheme scheme;
   final List<ItemType> types;
   final ItemType? typeFilter;
   final ValueChanged<ItemType?> onTypeChanged;
@@ -710,6 +730,7 @@ class _FiltersBar extends StatelessWidget {
   final VoidCallback onClearSearch;
 
   const _FiltersBar({
+    required this.scheme,
     required this.types,
     required this.typeFilter,
     required this.onTypeChanged,
@@ -736,12 +757,21 @@ class _FiltersBar extends StatelessWidget {
                 : IconButton(
                     icon: const Icon(Icons.clear), onPressed: onClearSearch),
             filled: true,
-            fillColor: Colors.white,
+            fillColor: scheme.surface,
             contentPadding:
                 const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(25),
+                borderRadius: BorderRadius.circular(16),
                 borderSide: BorderSide.none),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide:
+                  BorderSide(color: scheme.outlineVariant.withValues(alpha: .5)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide(color: scheme.primary, width: 2),
+            ),
           ),
           onChanged: (_) => (context as Element).markNeedsBuild(),
         ),
@@ -784,8 +814,8 @@ class _FiltersBar extends StatelessWidget {
               label: const Text('المنتهية فقط'),
               selected: showOutOfStockOnly,
               onSelected: onToggleOutOfStock,
-              selectedColor: Colors.red.withValues(alpha: .12),
-              checkmarkColor: Colors.red,
+              selectedColor: scheme.primary.withValues(alpha: .12),
+              checkmarkColor: scheme.primary,
             ),
           ],
         ),
@@ -822,11 +852,12 @@ class _DropdownPill<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: lightAccentColor.withValues(alpha: .35)),
+        color: scheme.surface,
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: .5)),
         borderRadius: BorderRadius.circular(999),
       ),
       child: DropdownButton<T>(
@@ -838,7 +869,8 @@ class _DropdownPill<T> extends StatelessWidget {
         },
         items: items,
         selectedItemBuilder: (_) => [
-          for (final _ in items) _Pill(text: label, color: lightAccentColor)
+          for (final _ in items)
+            _Pill(text: label, color: scheme.primaryContainer, textColor: scheme.primary)
         ],
       ),
     );
@@ -848,19 +880,24 @@ class _DropdownPill<T> extends StatelessWidget {
 class _Pill extends StatelessWidget {
   final String text;
   final Color color;
-  const _Pill({required this.text, required this.color});
+  final Color textColor;
+  const _Pill({
+    required this.text,
+    required this.color,
+    required this.textColor,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: .16),
+        color: color.withValues(alpha: .55),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: .35)),
+        border: Border.all(color: color.withValues(alpha: .55)),
       ),
       child: Text(text,
-          style: TextStyle(color: accentColor, fontWeight: FontWeight.w800)),
+          style: TextStyle(color: textColor, fontWeight: FontWeight.w800)),
     );
   }
 }
@@ -871,13 +908,14 @@ class _EmptyCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       height: 280,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: scheme.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: lightAccentColor.withValues(alpha: .35)),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: .5)),
       ),
       child: Text(message, style: const TextStyle(fontWeight: FontWeight.w700)),
     );

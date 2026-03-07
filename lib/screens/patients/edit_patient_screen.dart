@@ -47,6 +47,7 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
   final _paidCtrl = TextEditingController();
   final _remainingCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
+  final _collateralCtrl = TextEditingController();
   final _totalCtrl = TextEditingController(text: '0.00'); // إجمالي الخدمات
 
   // Date / Time
@@ -156,6 +157,7 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
     _paidCtrl.text = p.paidAmount.toStringAsFixed(2);
     _remainingCtrl.text = p.remaining.toStringAsFixed(2);
     _notesCtrl.text = p.notes ?? '';
+    _collateralCtrl.text = p.collateral ?? '';
 
     _registerDate = p.registerDate;
     _registerTime = TimeOfDay.fromDateTime(p.registerDate);
@@ -216,6 +218,7 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
     _paidCtrl.dispose();
     _remainingCtrl.dispose();
     _notesCtrl.dispose();
+    _collateralCtrl.dispose();
     _totalCtrl.dispose();
     super.dispose();
   }
@@ -1066,6 +1069,9 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
       doctorId: _selectedDoctorId,
       doctorName: _selectedDoctorName,
       notes: _notesCtrl.text.trim(),
+      collateral: _collateralCtrl.text.trim().isEmpty
+          ? null
+          : _collateralCtrl.text.trim(),
       serviceType: _labelToCode(_selectedServiceTypeAr),
       // الحقول المجمّعة تُحسب من الخدمات
       serviceId: null,
@@ -1123,17 +1129,23 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
 
         final deltaPaid = paid - prevPaid;
         if (deltaPaid != 0) {
-          await txn.insert('financial_logs', {
-            'transaction_type': 'PatientPayment',
-            'operation': 'update',
-            'amount': deltaPaid,
-            'employee_id': null,
-            'description':
-                'تعديل دفعة مريض: ${updated.name} (ID: ${updated.id})',
-            'modification_details':
-                'paidAmount ${prevPaid.toStringAsFixed(2)} -> ${paid.toStringAsFixed(2)}',
-            'timestamp': DateTime.now().toIso8601String(),
-          });
+          final fData = await DBService.instance.prepareInsert(
+            'financial_logs',
+            {
+              'transaction_type': 'PatientPayment',
+              'operation': 'update',
+              'amount': deltaPaid,
+              'employee_id': null,
+              'patient_id': updated.id,
+              'description':
+                  'تعديل دفعة مريض: ${updated.name} (ID: ${updated.id})',
+              'modification_details':
+                  'paidAmount ${prevPaid.toStringAsFixed(2)} -> ${paid.toStringAsFixed(2)}',
+              'timestamp': DateTime.now().toIso8601String(),
+            },
+            executor: txn,
+          );
+          await txn.insert('financial_logs', fData);
           touchedFinancial = true;
         }
 
@@ -1145,16 +1157,19 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
           whereArgs: [updated.id],
         );
         if (_selectedServices.isNotEmpty) {
-          final batch = txn.batch();
           for (final s in _selectedServices) {
-            batch.insert(PatientService.table, {
-              'patientId': updated.id,
-              'serviceId': s.serviceId,
-              'serviceName': s.serviceName,
-              'serviceCost': s.serviceCost,
-            });
+            final data = await DBService.instance.prepareInsert(
+              PatientService.table,
+              {
+                'patientId': updated.id,
+                'serviceId': s.serviceId,
+                'serviceName': s.serviceName,
+                'serviceCost': s.serviceCost,
+              },
+              executor: txn,
+            );
+            await txn.insert(PatientService.table, data);
           }
-          await batch.commit(noResult: true);
         }
         touchedServices = true;
 
@@ -1167,10 +1182,21 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
             where: 'id = ?',
             whereArgs: [id],
           );
-          await txn.rawUpdate(
-            'UPDATE items SET stock = stock + ? WHERE id = ?',
-            [u['quantity'], u['itemId']],
+          final hasUpdatedAt =
+              await DBService.instance.hasColumn(txn, 'items', 'updated_at');
+          final args = <Object?>[u['quantity'], u['itemId']];
+          final accClause = await DBService.instance.accountFilterClause(
+            txn,
+            'items',
+            args: args,
           );
+          final sql = hasUpdatedAt
+              ? 'UPDATE items SET stock = stock + ?, updated_at = ? WHERE id = ? $accClause'
+              : 'UPDATE items SET stock = stock + ? WHERE id = ? $accClause';
+          if (hasUpdatedAt) {
+            args.insert(1, DateTime.now().toIso8601String());
+          }
+          await txn.rawUpdate(sql, args);
           touchedConsumptions = true;
           touchedItems = true;
         }
@@ -1189,17 +1215,33 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
                 ((itemRows.first['price'] as num?)?.toDouble() ?? 0.0) *
                     (u['quantity'] as int);
           }
-          await txn.insert(Consumption.table, {
-            'patientId': updated.id.toString(),
-            'itemId': u['itemId'].toString(),
-            'quantity': u['quantity'],
-            'date': regDT.toIso8601String(),
-            'amount': amount,
-          });
-          final rows = await txn.rawUpdate(
-            'UPDATE items SET stock = stock - ? WHERE id = ? AND stock >= ?',
-            [u['quantity'], u['itemId'], u['quantity']],
+          final cData = await DBService.instance.prepareInsert(
+            Consumption.table,
+            {
+              'patientId': updated.id.toString(),
+              'itemId': u['itemId'].toString(),
+              'quantity': u['quantity'],
+              'date': regDT.toIso8601String(),
+              'amount': amount,
+            },
+            executor: txn,
           );
+          await txn.insert(Consumption.table, cData);
+          final hasUpdatedAt =
+              await DBService.instance.hasColumn(txn, 'items', 'updated_at');
+          final args = <Object?>[u['quantity'], u['itemId'], u['quantity']];
+          final accClause = await DBService.instance.accountFilterClause(
+            txn,
+            'items',
+            args: args,
+          );
+          final sql = hasUpdatedAt
+              ? 'UPDATE items SET stock = stock - ?, updated_at = ? WHERE id = ? AND stock >= ? $accClause'
+              : 'UPDATE items SET stock = stock - ? WHERE id = ? AND stock >= ? $accClause';
+          if (hasUpdatedAt) {
+            args.insert(1, DateTime.now().toIso8601String());
+          }
+          final rows = await txn.rawUpdate(sql, args);
           if (rows == 0) {
             throw Exception('المخزون غير كافٍ لبعض المواد المستخدمة.');
           }
@@ -1610,6 +1652,13 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
                             ),
                           ],
                         ),
+                      ),
+                      const SizedBox(height: 14),
+                      TSectionHeader('الرهن (اختياري)'),
+                      NeuField(
+                        controller: _collateralCtrl,
+                        labelText: 'مثال: سيارة، ذهب، سند...',
+                        maxLines: 2,
                       ),
                       const SizedBox(height: 14),
                       TSectionHeader('ملاحظات'),

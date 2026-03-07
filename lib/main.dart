@@ -4,7 +4,7 @@ import 'dart:io';
 import 'dart:async';
 import 'dart:developer' as dev;
 
-import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -13,6 +13,8 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 // SQLite (Windows/Linux/macOS via FFI)
 import 'package:sqlite3/open.dart';
@@ -22,6 +24,7 @@ import 'package:sqflite/sqflite.dart' as sq;
 // مسارات آمنة للتخزين
 import 'package:path_provider/path_provider.dart' as path_provider;
 import 'package:path/path.dart' as p;
+import 'package:aelmamclinic/utils/app_paths.dart';
 
 /*──────── مزوّدات الحالة ────────*/
 import 'providers/activation_provider.dart';
@@ -35,6 +38,8 @@ import 'providers/chat_provider.dart';
 import 'services/notification_service.dart';
 import 'services/chat_realtime_notifier.dart';
 import 'services/db_service.dart';
+import 'services/push_notifications_service.dart';
+import 'services/network_status_service.dart';
 import 'widgets/activation_listener.dart';
 import 'widgets/auth_guard_listener.dart';
 import 'widgets/responsive_frame.dart';
@@ -72,11 +77,12 @@ import 'screens/offline/offline_mode_screen.dart';
 import 'services/nhost_graphql_service.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import 'utils/app_error_reporter.dart';
+import 'firebase_options.dart';
 
 /// هل المنصّة تدعم flutter_local_notifications؟ (Android/iOS/macOS)
 bool get _pushSupported {
   try {
-    return Platform.isAndroid || Platform.isIOS || Platform.isMacOS;
+    return Platform.isAndroid || Platform.isIOS || Platform.isMacOS || Platform.isWindows;
   } catch (_) {
     return false;
   }
@@ -92,11 +98,30 @@ Future<void> _toggleFullscreen() async {
   await windowManager.setFullScreen(!isFull);
 }
 
+bool _isNetworkErrorMessage(String message) {
+  final s = message.toLowerCase();
+  return s.contains('network') ||
+      s.contains('socket') ||
+      s.contains('timeout') ||
+      s.contains('timed out') ||
+      s.contains('failed host lookup') ||
+      s.contains('bad gateway') ||
+      s.contains('semaphore timeout') ||
+      s.contains('semaphore') ||
+      s.contains('service temporarily unavailable') ||
+      s.contains('responseformatexception') ||
+      s.contains('formatexception') ||
+      s.contains('unexpected character') ||
+      s.contains('document is empty') ||
+      s.contains('eof') ||
+      s.contains('503') ||
+      s.contains('502');
+}
+
 DynamicLibrary _loadWindowsSqliteLibrary() {
   final exeDir = File(Platform.resolvedExecutable).parent;
   final candidates = <String>[
     p.join(exeDir.path, 'sqlite3.dll'),
-    p.join(Directory.current.path, 'sqlite3.dll'),
     r'C:\sqlite\sqlite3.dll',
   ];
 
@@ -118,6 +143,14 @@ void main() {
   runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
 
+    if (Platform.isWindows) {
+      // توحيد مجلد العمل إلى مسار قابل للكتابة (تجنب Program Files)
+      try {
+        final dataRoot = await AppPaths.dataRoot();
+        Directory.current = dataRoot;
+      } catch (_) {}
+    }
+
     if (BackendLock.isOffline) {
       BackendLock.enforceOfflineNetwork();
       dev.log(
@@ -132,6 +165,18 @@ void main() {
     await AppConstants.loadRuntimeOverrides();
     // تفعيل عميل Nhost بشكل مبكر لضمان جاهزية GraphQL/Auth/Storage.
     NhostManager.client;
+    // مراقبة الشبكة (Online/Offline)
+    unawaited(NetworkStatusService.instance.start());
+
+    // تهيئة Firebase + معالج الخلفية (Android/iOS فقط)
+    if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+      FirebaseMessaging.onBackgroundMessage(
+        PushNotificationsService.firebaseMessagingBackgroundHandler,
+      );
+    }
     AppConstants.debugLog(
       'Nhost config: subdomain=${NhostConfig.subdomain}, '
       'region=${NhostConfig.region}, '
@@ -149,7 +194,8 @@ void main() {
     // إنشاء مجلد ثابت على ويندوز ليتوافق مع DBService
     if (Platform.isWindows) {
       try {
-        Directory(AppConstants.windowsDataDir).createSync(recursive: true);
+        final root = await AppPaths.dataRoot();
+        await root.create(recursive: true);
       } catch (_) {}
     }
 
@@ -194,7 +240,16 @@ void main() {
         return;
       }
       debugPrint("FlutterError: ${details.exception}");
-      AppErrorReporter.report('حدث خطأ غير متوقع. تم تسجيله.');
+      final raw = details.exceptionAsString();
+      final isNet = _isNetworkErrorMessage(raw);
+      final msg = isNet
+          ? 'يبدو ان الشبكة غير مستقرة لديك'
+          : 'حدث خطأ غير متوقع. تم تسجيله.';
+      if (isNet) {
+        AppErrorReporter.info(msg, error: details.exception, stack: details.stack);
+      } else {
+        AppErrorReporter.report(msg, error: details.exception, stack: details.stack);
+      }
       await _logCrash(details.exceptionAsString(), details.stack.toString());
       try {
         FlutterError.presentError(details);
@@ -303,8 +358,17 @@ void main() {
             create: (_) => AppointmentProvider()..loadAppointments(),
           ),
           ChangeNotifierProvider(create: (_) => ThemeProvider()),
-          ChangeNotifierProvider(
-            create: (_) => RepositoryProvider()..bootstrap(),
+          ChangeNotifierProxyProvider<AuthProvider, RepositoryProvider>(
+            create: (_) => RepositoryProvider(),
+            update: (_, auth, repo) {
+              final rp = repo ?? RepositoryProvider();
+              if (auth.isLoggedIn) {
+                Future.microtask(() => rp.onAuthChanged(auth.accountId));
+              } else {
+                Future.microtask(() => rp.onAuthChanged(null));
+              }
+              return rp;
+            },
           ),
           // ChatProvider يعتمد على AuthProvider
           ChangeNotifierProxyProvider<AuthProvider, ChatProvider>(
@@ -313,6 +377,12 @@ void main() {
               final cp = previous ?? ChatProvider();
 
               if (auth.isLoggedIn) {
+                Future.microtask(() async {
+                  await PushNotificationsService.instance.initForAuth(
+                    accountId: auth.accountId,
+                    role: auth.role,
+                  );
+                });
                 Future.microtask(() async {
                   final uid = NhostManager.client.auth.currentUser?.id;
                   if (uid == null || uid.isEmpty) return;
@@ -329,6 +399,8 @@ void main() {
                 });
               } else {
                 ChatRealtimeNotifier.instance.stop();
+                PushNotificationsService.instance.dispose();
+                cp.onSignedOut();
               }
 
               if (auth.isLoggedIn && !cp.ready) {
@@ -358,7 +430,16 @@ void main() {
     );
   }, (error, stack) async {
     debugPrint("Zoned error: $error\n$stack");
-    AppErrorReporter.report('حدث خطأ غير متوقع. تم تسجيله.');
+    final raw = error.toString();
+    final isNet = _isNetworkErrorMessage(raw);
+    final msg = isNet
+        ? 'يبدو ان الشبكة غير مستقرة لديك'
+        : 'حدث خطأ غير متوقع. تم تسجيله.';
+    if (isNet) {
+      AppErrorReporter.info(msg, error: error, stack: stack);
+    } else {
+      AppErrorReporter.report(msg, error: error, stack: stack);
+    }
     await _logCrash(error.toString(), stack.toString());
   });
 }
@@ -402,24 +483,20 @@ Future<void> _logCrash(String error, String stack) async {
 
 // اختيار مسار صالح حسب المنصّة
 Future<String> _crashLogFilePath() async {
-  if (Platform.isWindows) {
-    final winFolder = AppConstants.windowsDataDir;
-    final cDir = Directory(winFolder);
-    if (await cDir.exists()) {
-      return '$winFolder\\crash_log.txt';
-    }
-    final support = await path_provider.getApplicationSupportDirectory();
-    return '${support.path}${Platform.pathSeparator}crash_log.txt';
-  } else if (Platform.isAndroid ||
-      Platform.isIOS ||
-      Platform.isMacOS ||
-      Platform.isLinux) {
-    final dir = await path_provider.getApplicationSupportDirectory();
-    return '${dir.path}${Platform.pathSeparator}crash_log.txt';
-  } else {
-    final dir = await path_provider.getApplicationDocumentsDirectory();
-    return '${dir.path}${Platform.pathSeparator}crash_log.txt';
+  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+    final dir = await AppPaths.logsDir();
+    return p.join(dir.path, 'crash_log.txt');
   }
+  if (Platform.isAndroid || Platform.isIOS) {
+    final dir = await path_provider.getApplicationSupportDirectory();
+    final logs = Directory(p.join(dir.path, 'logs'));
+    await logs.create(recursive: true);
+    return p.join(logs.path, 'crash_log.txt');
+  }
+  final dir = await path_provider.getApplicationDocumentsDirectory();
+  final logs = Directory(p.join(dir.path, 'logs'));
+  await logs.create(recursive: true);
+  return p.join(logs.path, 'crash_log.txt');
 }
 
 class MyApp extends StatelessWidget {
@@ -535,6 +612,9 @@ class _AppInitializerState extends State<AppInitializer> {
     super.initState();
     final initialActivated = context.read<ActivationProvider>().isActivated;
     _wasActivated = initialActivated;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      NotificationService().promptBatteryOptimizationIfNeeded();
+    });
   }
 
   void _maybeNavigateOnActivation({
@@ -575,10 +655,237 @@ class _AppInitializerState extends State<AppInitializer> {
     if (!auth.isLoggedIn) {
       return const LoginScreen();
     }
+    if (!auth.hasNhostSession && NetworkStatusService.instance.isOnline) {
+      return const _SessionRestoreScreen();
+    }
     if (auth.isSuperAdmin) {
       return const AdminDashboardScreen();
     }
+    if ((auth.accountId ?? '').trim().isEmpty) {
+      return const _PostLoginBootstrapScreen();
+    }
     return const StatisticsOverviewScreen();
+  }
+}
+
+class _PostLoginBootstrapScreen extends StatefulWidget {
+  const _PostLoginBootstrapScreen();
+
+  @override
+  State<_PostLoginBootstrapScreen> createState() =>
+      _PostLoginBootstrapScreenState();
+}
+
+class _PostLoginBootstrapScreenState extends State<_PostLoginBootstrapScreen> {
+  bool _working = false;
+  String? _message;
+  StreamSubscription<bool>? _netSub;
+  Timer? _retryTimer;
+  bool _autoReloginAttempted = false;
+  bool _autoReloginInFlight = false;
+
+  static const _rememberMeKey = 'auth.remember_me';
+  static const _rememberEmailKey = 'auth.remember_email';
+  static const _rememberPassKey = 'auth.remember_pass';
+
+  @override
+  void initState() {
+    super.initState();
+    _netSub = NetworkStatusService.instance.changes.listen((online) {
+      if (!online || !mounted) return;
+      final auth = context.read<AuthProvider>();
+      if (_working) return;
+      if (auth.isSuperAdmin) return;
+      if ((auth.accountId ?? '').trim().isNotEmpty) return;
+      _probe();
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _probe());
+  }
+
+  Future<void> _probe() async {
+    if (_working) return;
+    _retryTimer?.cancel();
+    _working = true;
+    final auth = context.read<AuthProvider>();
+    if (!NetworkStatusService.instance.isOnline) {
+      if (mounted) {
+        setState(() => _message =
+            'لا يوجد إنترنت لتجهيز الحساب الآن. سيتم الانتظار حتى يعود الاتصال…');
+      }
+      _working = false;
+      return;
+    }
+    for (int i = 0; i < 8; i++) {
+      if (!NetworkStatusService.instance.isOnline) {
+        if (mounted) {
+          setState(() => _message =
+              'OFFLINE: تجهيز الحساب يحتاج إنترنت. سيتم المتابعة تلقائيًا عند رجوع الاتصال…');
+        }
+        _working = false;
+        return;
+      }
+      final result = await auth.refreshAndValidateCurrentUser();
+      if (!mounted) return;
+      if (auth.isSuperAdmin) {
+        _working = false;
+        return;
+      }
+      if (result.status == AuthSessionStatus.networkError ||
+          result.status == AuthSessionStatus.unknown) {
+        if (mounted) {
+          setState(() => _message = 'يبدو ان الشبكة غير مستقرة لديك');
+        }
+        _working = false;
+        _retryTimer = Timer(const Duration(seconds: 5), () {
+          if (!mounted) return;
+          _probe();
+        });
+        return;
+      }
+      if ((auth.accountId ?? '').trim().isNotEmpty) {
+        _working = false;
+        return;
+      }
+      await Future.delayed(const Duration(milliseconds: 400));
+    }
+    if (!mounted) return;
+    setState(() => _message =
+        'تعذّر تجهيز الحساب حاليًا. سيتم إعادة المحاولة تلقائيًا.');
+    unawaited(_tryAutoRelogin(auth));
+    _retryTimer = Timer(const Duration(seconds: 5), () {
+      if (!mounted) return;
+      _probe();
+    });
+    _working = false;
+  }
+
+  Future<void> _tryAutoRelogin(AuthProvider auth) async {
+    if (_autoReloginInFlight || _autoReloginAttempted) return;
+    _autoReloginInFlight = true;
+    _autoReloginAttempted = true;
+    try {
+      final sp = await SharedPreferences.getInstance();
+      final remember = sp.getBool(_rememberMeKey) ?? false;
+      if (!remember) return;
+      final email = sp.getString(_rememberEmailKey) ?? '';
+      final pass = sp.getString(_rememberPassKey) ?? '';
+      if (email.isEmpty || pass.isEmpty) return;
+      if (!NetworkStatusService.instance.isOnline) return;
+
+      await auth.signOut();
+      await auth.signIn(email, pass);
+      await auth.refreshAndValidateCurrentUser();
+    } catch (_) {
+      // سيتم عرض رسالة الشبكة العامة من طبقة الخطأ
+    } finally {
+      _autoReloginInFlight = false;
+    }
+  }
+
+  @override
+  void dispose() {
+    _netSub?.cancel();
+    _retryTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(height: 12),
+            Text(_message ?? 'جارٍ تجهيز الحساب...'),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SessionRestoreScreen extends StatefulWidget {
+  const _SessionRestoreScreen();
+
+  @override
+  State<_SessionRestoreScreen> createState() => _SessionRestoreScreenState();
+}
+
+class _SessionRestoreScreenState extends State<_SessionRestoreScreen> {
+  bool _working = false;
+  String? _message;
+  StreamSubscription<bool>? _netSub;
+  Timer? _retryTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _netSub = NetworkStatusService.instance.changes.listen((online) {
+      if (!online || !mounted) return;
+      if (_working) return;
+      _restore();
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _restore());
+  }
+
+  Future<void> _restore() async {
+    if (_working) return;
+    _retryTimer?.cancel();
+    _working = true;
+    final auth = context.read<AuthProvider>();
+    if (!NetworkStatusService.instance.isOnline) {
+      if (mounted) {
+        setState(() => _message =
+            'لا يوجد إنترنت لاستعادة الجلسة. سيتم الانتظار حتى يعود الاتصال…');
+      }
+      _working = false;
+      return;
+    }
+    setState(() => _message = 'جارٍ استعادة الجلسة...');
+    final ok = await auth.ensureNhostSessionReady(reason: 'appStart');
+    if (ok) {
+      await auth.refreshAndValidateCurrentUser();
+    }
+    _working = false;
+    if (!mounted) return;
+    if (!auth.hasNhostSession) {
+      setState(() => _message =
+          'تعذّر استعادة الجلسة. سيتم إعادة المحاولة تلقائيًا.');
+      _retryTimer = Timer(const Duration(seconds: 5), () {
+        if (!mounted) return;
+        _restore();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _netSub?.cancel();
+    _retryTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(height: 12),
+            Text(_message ?? 'جارٍ استعادة الجلسة...'),
+            const SizedBox(height: 12),
+            TextButton(
+              onPressed: _restore,
+              child: const Text('إعادة المحاولة الآن'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

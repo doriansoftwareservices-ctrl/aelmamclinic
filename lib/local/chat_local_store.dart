@@ -11,33 +11,39 @@
 // ملاحظة: التخزين محلي فقط للرسائل. يمكن التوسيع لاحقًا (conversations/reads/participants).
 
 import 'dart:convert';
+import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
 import 'package:aelmamclinic/models/chat_models.dart';
+import 'package:aelmamclinic/utils/app_paths.dart';
 
 class ChatLocalStore {
   ChatLocalStore._();
   static final ChatLocalStore instance = ChatLocalStore._();
 
   static const _dbName = 'chat_cache.db';
-  static const _dbVersion = 4; // v4: conversations/participants/reads/outbox
+  static const _dbVersion = 7; // v7: support_status for conversations
   static const _table = 'messages';
   static const _tableMeta = 'conv_meta';
   static const _tableConvs = 'conversations';
   static const _tableParts = 'participants';
   static const _tableReads = 'read_states';
   static const _tableOutbox = 'outbox';
+  static const _tableAttCleanup = 'attachment_cleanup';
 
   /// الحد الأعلى للرسائل المحتفظ بها لكل محادثة.
-  static const int _maxPerConversation = 500;
+  /// 0 = بدون حد (تخزين كامل).
+  static const int _maxPerConversation = 0;
 
   Database? _db;
 
   Future<Database> _open() async {
     if (_db != null) return _db!;
-    final dir = await getDatabasesPath();
-    final path = p.join(dir, _dbName);
+    final baseDir = (Platform.isWindows || Platform.isLinux || Platform.isMacOS)
+        ? (await AppPaths.dbRootDir()).path
+        : await getDatabasesPath();
+    final path = p.join(baseDir, _dbName);
     _db = await openDatabase(
       path,
       version: _dbVersion,
@@ -68,6 +74,16 @@ class ChatLocalStore {
         }
         if (oldV < 4) {
           await _createV4Tables(db);
+        }
+        if (oldV < 5) {
+          await _tryAddColumn(db, _tableParts, 'display_name', 'TEXT');
+          await _tryAddColumn(db, _tableParts, 'chat_code', 'TEXT');
+        }
+        if (oldV < 6) {
+          await _createV6Tables(db);
+        }
+        if (oldV < 7) {
+          await _tryAddColumn(db, _tableConvs, 'support_status', 'TEXT');
         }
       },
     );
@@ -132,7 +148,8 @@ CREATE TABLE IF NOT EXISTS $_tableConvs(
   unread_count INTEGER,
   is_frozen INTEGER,
   admins_only INTEGER,
-  is_deleted INTEGER
+  is_deleted INTEGER,
+  support_status TEXT
 );
 ''');
     await db.execute(
@@ -145,6 +162,8 @@ CREATE TABLE IF NOT EXISTS $_tableParts(
   user_uid TEXT NOT NULL,
   email TEXT,
   nickname TEXT,
+  display_name TEXT,
+  chat_code TEXT,
   joined_at TEXT,
   role TEXT,
   archived INTEGER,
@@ -194,6 +213,20 @@ CREATE TABLE IF NOT EXISTS $_tableOutbox(
     );
   }
 
+  Future<void> _createV6Tables(Database db) async {
+    await db.execute('''
+CREATE TABLE IF NOT EXISTS $_tableAttCleanup(
+  message_id TEXT PRIMARY KEY,
+  conversation_id TEXT,
+  scheduled_at TEXT,
+  done INTEGER DEFAULT 0
+);
+''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_att_cleanup_due ON $_tableAttCleanup(done, scheduled_at)',
+    );
+  }
+
   static Future<void> _tryAddColumn(
     Database db,
     String table,
@@ -217,8 +250,23 @@ CREATE TABLE IF NOT EXISTS $_tableOutbox(
     await db.transaction((txn) async {
       final batch = txn.batch();
       for (final m in msgs) {
-        final attachmentsJson =
+        String attachmentsJson =
             jsonEncode(m.attachments.map((e) => e.toMap()).toList());
+        if (m.attachments.isEmpty) {
+          final existing = await txn.query(
+            _table,
+            columns: ['attachments_json'],
+            where: 'id = ?',
+            whereArgs: [m.id],
+            limit: 1,
+          );
+          if (existing.isNotEmpty) {
+            final prev = existing.first['attachments_json']?.toString() ?? '';
+            if (prev.isNotEmpty && prev != '[]') {
+              attachmentsJson = prev;
+            }
+          }
+        }
         final mentionsJson =
             (m.mentions == null) ? null : jsonEncode(m.mentions);
 
@@ -413,6 +461,15 @@ CREATE TABLE IF NOT EXISTS $_tableOutbox(
     await db.delete(_table, where: 'id = ?', whereArgs: [messageId]);
   }
 
+  Future<bool> hasMessage(String messageId) async {
+    final db = await _open();
+    final rows = await db.rawQuery(
+      'SELECT 1 FROM $_table WHERE id = ? LIMIT 1',
+      [messageId],
+    );
+    return rows.isNotEmpty;
+  }
+
   // ---------------------------------------------------------------------------
   // مسح/قراءة meta (last_read_at)
   // ---------------------------------------------------------------------------
@@ -428,6 +485,85 @@ CREATE TABLE IF NOT EXISTS $_tableOutbox(
     final db = await _open();
     await db.delete(_table);
     await db.delete(_tableMeta);
+  }
+
+  Future<void> clearAllData() async {
+    final db = await _open();
+    await db.transaction((txn) async {
+      final batch = txn.batch();
+      batch.delete(_table);
+      batch.delete(_tableMeta);
+      batch.delete(_tableConvs);
+      batch.delete(_tableParts);
+      batch.delete(_tableReads);
+      batch.delete(_tableOutbox);
+      await batch.commit(noResult: true);
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Attachment cleanup scheduling (local only)
+  // ---------------------------------------------------------------------------
+  Future<void> upsertAttachmentCleanup({
+    required String messageId,
+    required String conversationId,
+    required DateTime scheduledAt,
+  }) async {
+    if (messageId.trim().isEmpty) return;
+    final db = await _open();
+    await db.insert(
+      _tableAttCleanup,
+      {
+        'message_id': messageId,
+        'conversation_id': conversationId,
+        'scheduled_at': scheduledAt.toUtc().toIso8601String(),
+        'done': 0,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<void> markAttachmentCleanupDone(String messageId) async {
+    if (messageId.trim().isEmpty) return;
+    final db = await _open();
+    await db.update(
+      _tableAttCleanup,
+      {'done': 1},
+      where: 'message_id = ?',
+      whereArgs: [messageId],
+    );
+  }
+
+  Future<bool> isAttachmentCleanupDone(String messageId) async {
+    if (messageId.trim().isEmpty) return false;
+    final db = await _open();
+    final rows = await db.query(
+      _tableAttCleanup,
+      columns: const ['done'],
+      where: 'message_id = ?',
+      whereArgs: [messageId],
+      limit: 1,
+    );
+    if (rows.isEmpty) return false;
+    final done = rows.first['done'];
+    if (done is int) return done == 1;
+    if (done is bool) return done;
+    return done?.toString() == '1';
+  }
+
+  Future<List<Map<String, dynamic>>> getDueAttachmentCleanup(
+    DateTime now, {
+    int limit = 50,
+  }) async {
+    final db = await _open();
+    final rows = await db.query(
+      _tableAttCleanup,
+      where: 'done = 0 AND scheduled_at <= ?',
+      whereArgs: [now.toUtc().toIso8601String()],
+      orderBy: 'scheduled_at ASC',
+      limit: limit,
+    );
+    return rows.map((e) => Map<String, dynamic>.from(e)).toList();
   }
 
   Future<void> upsertRead(String conversationId, DateTime lastReadAt) async {
@@ -484,6 +620,7 @@ CREATE TABLE IF NOT EXISTS $_tableOutbox(
             'is_frozen': _b(c.isFrozen),
             'admins_only': _b(c.adminsOnly),
             'is_deleted': _b(c.isDeleted),
+            'support_status': c.supportStatus?.dbValue,
           },
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
@@ -516,6 +653,10 @@ CREATE TABLE IF NOT EXISTS $_tableOutbox(
             'user_uid': p['user_uid']?.toString(),
             'email': p['email']?.toString(),
             'nickname': p['nickname']?.toString(),
+            'display_name': p['display_name']?.toString() ??
+                p['displayName']?.toString(),
+            'chat_code': p['chat_code']?.toString() ??
+                p['chatCode']?.toString(),
             'joined_at': p['joined_at']?.toString(),
             'role': p['role']?.toString(),
             'archived': _b((p['archived'] == true) || p['archived'] == 1),
@@ -540,6 +681,23 @@ CREATE TABLE IF NOT EXISTS $_tableOutbox(
       orderBy: 'joined_at ASC',
     );
     return rows.map((r) => Map<String, dynamic>.from(r)).toList();
+  }
+
+  Future<bool> isArchivedForUser(String conversationId, String userUid) async {
+    if (conversationId.trim().isEmpty || userUid.trim().isEmpty) return false;
+    final db = await _open();
+    final rows = await db.query(
+      _tableParts,
+      columns: const ['archived'],
+      where: 'conversation_id = ? AND user_uid = ?',
+      whereArgs: [conversationId, userUid],
+      limit: 1,
+    );
+    if (rows.isEmpty) return false;
+    final v = rows.first['archived'];
+    if (v is num) return v != 0;
+    if (v is bool) return v;
+    return v?.toString() == '1' || v?.toString().toLowerCase() == 'true';
   }
 
   Future<void> upsertReadStates(List<ChatReadState> states) async {

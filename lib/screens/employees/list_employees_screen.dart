@@ -28,6 +28,8 @@ class _ListEmployeesScreenState extends State<ListEmployeesScreen> {
   List<Map<String, dynamic>> _filteredEmployees = [];
   final _searchController = TextEditingController();
   bool _loading = true;
+  static const int _pageSize = 50;
+  int _visibleCount = 0;
 
   @override
   void initState() {
@@ -51,6 +53,8 @@ class _ListEmployeesScreenState extends State<ListEmployeesScreen> {
       setState(() {
         _allEmployees = data;
         _filteredEmployees = data;
+        _visibleCount =
+            _filteredEmployees.length < _pageSize ? _filteredEmployees.length : _pageSize;
         _loading = false;
       });
     } catch (e) {
@@ -75,6 +79,8 @@ class _ListEmployeesScreenState extends State<ListEmployeesScreen> {
             phone.contains(q) ||
             jobTitle.contains(q);
       }).toList();
+      _visibleCount =
+          _filteredEmployees.length < _pageSize ? _filteredEmployees.length : _pageSize;
     });
   }
 
@@ -181,6 +187,8 @@ class _ListEmployeesScreenState extends State<ListEmployeesScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final visibleEmployees = _filteredEmployees.take(_visibleCount).toList();
+    final hasMore = _visibleCount < _filteredEmployees.length;
 
     return Directionality(
       textDirection: ui.TextDirection.rtl,
@@ -291,9 +299,37 @@ class _ListEmployeesScreenState extends State<ListEmployeesScreen> {
                               : ListView.builder(
                                   physics:
                                       const AlwaysScrollableScrollPhysics(),
-                                  itemCount: _filteredEmployees.length,
+                                  itemCount: visibleEmployees.length +
+                                      (hasMore ? 1 : 0),
                                   itemBuilder: (ctx, index) {
-                                    final emp = _filteredEmployees[index];
+                                    if (index >= visibleEmployees.length) {
+                                      return Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 8,
+                                        ),
+                                        child: Center(
+                                          child: OutlinedButton.icon(
+                                            icon: const Icon(
+                                              Icons.expand_more_rounded,
+                                            ),
+                                            label: Text(
+                                              'تحميل المزيد (${_visibleCount}/${_filteredEmployees.length})',
+                                            ),
+                                            onPressed: () {
+                                              setState(() {
+                                                _visibleCount =
+                                                    (_visibleCount + _pageSize)
+                                                        .clamp(
+                                                  0,
+                                                  _filteredEmployees.length,
+                                                );
+                                              });
+                                            },
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                    final emp = visibleEmployees[index];
                                     final id = emp['id'] as int;
                                     final name = (emp['name'] ?? '').toString();
                                     final jobTitle =

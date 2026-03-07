@@ -19,7 +19,7 @@ import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/services/billing_service.dart';
 
 /*── شاشات مختلفة ───────────────────────────────────────────*/
-import 'package:aelmamclinic/screens/backup_restore_screen.dart';
+import 'package:aelmamclinic/services/backup_restore_service.dart';
 import 'package:aelmamclinic/screens/drugs/drug_list_screen.dart';
 import 'package:aelmamclinic/screens/employees/employees_home_screen.dart';
 import 'package:aelmamclinic/screens/patients/list_patients_screen.dart';
@@ -52,6 +52,7 @@ import 'package:aelmamclinic/screens/chat/chat_home_screen.dart';
 import 'package:aelmamclinic/screens/complaints/complaints_screen.dart';
 import 'package:aelmamclinic/screens/clinic/clinic_profile_screen.dart';
 import 'package:aelmamclinic/screens/subscription/my_plan_screen.dart';
+import 'package:aelmamclinic/utils/chat_code_utils.dart';
 
 /*── لتسجيل الخروج ─*/
 import 'package:aelmamclinic/screens/auth/login_screen.dart';
@@ -78,12 +79,37 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
   // عدّاد المحادثات غير المقروءة (يأتي من ChatProvider)
   StreamSubscription<String>? _dbChangesSub;
   bool _hasComplaintReply = false;
+  AuthProvider? _authListener;
+  String _lastPlanStamp = '';
 
   int? _planDaysLeft;
   bool _planExpirySoon = false;
 
   // حالة الترحيب لأول مرة/مرحبًا بعودتك — تُحتسب مرة واحدة ثم نحدّث التخزين
   late final Future<bool> _firstOpenFuture = _getAndMarkFirstOpenForUser();
+
+  Future<void> _exportClinicHtml() async {
+    if (!mounted) return;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+    try {
+      final file = await BackupRestoreService.exportClinicHtml();
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تم إنشاء ملف HTML في Downloads:\n${file.path}')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذّر استخراج البيانات: $e')),
+      );
+    }
+  }
 
   @override
   void initState() {
@@ -109,6 +135,32 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
       }
     });
     _checkPlanExpiryNotice();
+    _checkPlanUpgradeNotice();
+    _attachAuthListener();
+  }
+
+  void _attachAuthListener() {
+    final auth = context.read<AuthProvider>();
+    _authListener = auth;
+    _lastPlanStamp = _planStamp(auth);
+    auth.addListener(_handleAuthChanged);
+  }
+
+  String _planStamp(AuthProvider auth) {
+    final code = auth.planCode.toLowerCase();
+    final end = auth.planEndAt?.toUtc().toIso8601String() ?? '';
+    return '$code|$end';
+  }
+
+  void _handleAuthChanged() {
+    if (!mounted) return;
+    final auth = _authListener;
+    if (auth == null) return;
+    final stamp = _planStamp(auth);
+    if (stamp == _lastPlanStamp) return;
+    _lastPlanStamp = stamp;
+    _checkPlanUpgradeNotice();
+    _checkPlanExpiryNotice();
   }
 
   @override
@@ -119,6 +171,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
   @override
   void dispose() {
     _dbChangesSub?.cancel();
+    _authListener?.removeListener(_handleAuthChanged);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -126,8 +179,14 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
   Future<void> _refreshComplaintsBadge() async {
     try {
       final db = await DBService.instance.database;
+      final cols = await db.rawQuery('PRAGMA table_info(complaints)');
+      final hasReplyMessage =
+          cols.any((c) => (c['name']?.toString() ?? '') == 'reply_message');
+      final where = hasReplyMessage
+          ? "(IFNULL(replyMessage, '') != '' OR IFNULL(reply_message, '') != '')"
+          : "IFNULL(replyMessage, '') != ''";
       final rows = await db.rawQuery(
-        "SELECT COUNT(*) AS c FROM complaints WHERE (IFNULL(replyMessage, '') != '' OR IFNULL(reply_message, '') != '') AND IFNULL(replySeen, 0) = 0",
+        "SELECT COUNT(*) AS c FROM complaints WHERE $where AND IFNULL(replySeen, 0) = 0",
       );
       final count = (rows.first['c'] as int?) ?? 0;
       if (!mounted) return;
@@ -169,6 +228,62 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
     }
   }
 
+  Future<void> _checkPlanUpgradeNotice() async {
+    final auth = context.read<AuthProvider>();
+    if (auth.isSuperAdmin) return;
+    final role = auth.role?.toLowerCase();
+    if (role != 'owner' && role != 'admin') return;
+    final uid = auth.uid;
+    if (uid == null || uid.isEmpty) return;
+
+    try {
+      await auth.refreshAndValidateCurrentUser();
+      final planCode = auth.planCode.toLowerCase();
+      final endAt = auth.planEndAt;
+      if (planCode == 'free' || endAt == null) return;
+
+      final sp = await SharedPreferences.getInstance();
+      final key = 'plan.upgrade.notice.$uid';
+      final stamp = '$planCode|${endAt.toIso8601String()}';
+      final last = sp.getString(key);
+      if (last == stamp) return;
+      await sp.setString(key, stamp);
+      if (!mounted) return;
+
+      final planLabel = _planNameFromCode(planCode);
+      final endStr = DateFormat('yyyy-MM-dd').format(endAt.toLocal());
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('تمت الموافقة على الترقية'),
+          content: Text(
+            'تمت مراجعة طلبك والموافقة عليه.\n'
+            'تم تفعيل الخطة $planLabel وتنتهي بتاريخ $endStr.\n'
+            'يرجى تسجيل الخروج والدخول مرة أخرى لتفعيل المميزات الجديدة.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('تم'),
+            ),
+          ],
+        ),
+      );
+    } catch (_) {}
+  }
+
+  String _planNameFromCode(String code) {
+    final c = code.toLowerCase();
+    if (c == 'year_pro') return 'السنوية برو';
+    if (c == 'year_plus') return 'السنوية بلس';
+    if (c == 'year' || c.contains('annual')) return 'السنوية';
+    if (c == 'month_pro') return 'الشهرية برو';
+    if (c == 'month_plus') return 'الشهرية بلس';
+    if (c == 'month') return 'الشهرية';
+    if (c == 'free') return 'المجانية';
+    return c.toUpperCase();
+  }
+
   Widget _buildPlanExpiryBanner() {
     final scheme = Theme.of(context).colorScheme;
     final daysLeft = _planDaysLeft ?? 0;
@@ -205,7 +320,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(isFree
-            ? 'هذه الميزة متاحة في باقات PRO فقط'
+            ? 'هذه الميزة متاحة في الخطط المدفوعة فقط'
             : 'ليس لديك صلاحية للوصول إلى هذه الميزة'),
         behavior: SnackBarBehavior.floating,
         duration: Duration(seconds: 2),
@@ -467,7 +582,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text(
-                    'PRO',
+                    'مدفوع',
                     style: TextStyle(
                       color: scheme.tertiary,
                       fontSize: 11,
@@ -734,7 +849,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                         return const SizedBox.shrink();
                       }
                       return _drawerItem(
-                        icon: Icons.badge_rounded,
+                        icon: Icons.phone_rounded,
                         title: 'حسابات الموظفين',
                         enabled: allowed,
                         showProBadge: !auth.isSuperAdmin && !auth.isPro,
@@ -837,19 +952,15 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                         );
                       },
                     ),
-                    // النسخ الاحتياطي
+                    // استخراج البيانات محليًا
                     _featureDrawerItem(
                       auth: auth,
                       featureKey: FeatureKeys.backup,
                       icon: Icons.backup_rounded,
-                      title: 'النسخ الاحتياطي',
+                      title: 'استخراج البيانات محليا',
                       onTap: () {
                         Navigator.pop(context);
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => const BackupRestoreScreen()),
-                        );
+                        _exportClinicHtml();
                       },
                     ),
 
@@ -931,7 +1042,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
               const Padding(
                 padding: EdgeInsets.only(bottom: 12),
                 child: Text(
-                  '© 2025 ElmamClinic',
+                  '© 2026 ElmamClinic',
                   style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
@@ -1219,6 +1330,11 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                       icon: Icons.account_balance_outlined,
                     ),
                     _StatCard(
+                      title: 'المبالغ المتبقية على المرضى',
+                      value: stats.fmtPatientsRemaining,
+                      icon: Icons.receipt_long_outlined,
+                    ),
+                    _StatCard(
                       title: 'مبالغ السلف المصروفة',
                       value: stats.fmtLoansPaid,
                       icon: Icons.request_quote_outlined,
@@ -1452,7 +1568,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                               ),
                             if (canEmployeeAccounts)
                               OutlinedButton.icon(
-                                icon: const Icon(Icons.badge_rounded),
+                                icon: const Icon(Icons.phone_rounded),
                                 label: const Text('حسابات الموظفين'),
                                 onPressed: () {
                                   Navigator.push(
@@ -1587,30 +1703,31 @@ class _DrawerHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final auth = Provider.of<AuthProvider>(context);
-    final code = (auth.chatCodeSafe ?? '').trim();
+    final codeRaw = (auth.chatCodeSafe ?? '').trim();
+    final code = codeRaw.isEmpty ? '' : ChatCodeUtils.format(codeRaw);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: NeuCard(
         padding: const EdgeInsets.all(16),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: SizedBox(
-                width: 46,
-                height: 46,
-                child: Image.asset(
-                  'assets/images/logo.png',
-                  fit: BoxFit.contain,
+            Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: SizedBox(
+                    width: 46,
+                    height: 46,
+                    child: Image.asset(
+                      'assets/images/logo.png',
+                      fit: BoxFit.contain,
+                    ),
+                  ),
                 ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
                     'ELMAM CLINIC',
                     textAlign: TextAlign.right,
                     style: TextStyle(
@@ -1619,44 +1736,82 @@ class _DrawerHeader extends StatelessWidget {
                       fontWeight: FontWeight.w800,
                     ),
                   ),
-                  if (code.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: Row(
-                        children: [
-                          Icon(Icons.badge_rounded,
-                              size: 16, color: scheme.primary),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              code,
-                              style: TextStyle(
-                                color: scheme.primary,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                          IconButton(
-                            tooltip: 'نسخ الرقم',
-                            onPressed: () async {
-                              await Clipboard.setData(
-                                  ClipboardData(text: code));
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('تم نسخ الرقم.')),
-                              );
-                            },
-                            icon: Icon(
-                              Icons.copy_rounded,
-                              size: 18,
-                              color: scheme.primary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                ],
-              ),
+                ),
+              ],
             ),
+            if (code.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        scheme.primary.withValues(alpha: .12),
+                        scheme.secondary.withValues(alpha: .12),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: scheme.primary.withValues(alpha: .22),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                      BoxShadow(
+                        color: Colors.white.withValues(alpha: .8),
+                        blurRadius: 4,
+                        offset: const Offset(-2, -2),
+                      ),
+                    ],
+                    border: Border.all(
+                      color: scheme.primary.withValues(alpha: .35),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 30,
+                        height: 30,
+                        decoration: BoxDecoration(
+                          color: scheme.primary.withValues(alpha: 0.18),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(Icons.phone_rounded,
+                            size: 18, color: scheme.primary),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          code,
+                          style: TextStyle(
+                            color: scheme.primary,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.1,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'نسخ الرقم',
+                        onPressed: () async {
+                          await Clipboard.setData(ClipboardData(text: code));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('تم نسخ الرقم.')),
+                          );
+                        },
+                        icon: Icon(
+                          Icons.copy_rounded,
+                          size: 18,
+                          color: scheme.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
           ],
         ),
       ),

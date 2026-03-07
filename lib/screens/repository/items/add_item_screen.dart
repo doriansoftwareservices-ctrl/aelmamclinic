@@ -15,11 +15,7 @@ import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:aelmamclinic/providers/repository_provider.dart';
 import 'package:aelmamclinic/services/repository_service.dart';
 import 'package:aelmamclinic/services/db_service.dart';
-
-/*──────── لوحة ألوان TBIAN الموحدة ────────*/
-const Color accentColor = Color(0xFF004A61);
-const Color lightAccentColor = Color(0xFF9ED9E6);
-const Color veryLightBg = Color(0xFFF7F9F9);
+import 'package:aelmamclinic/core/theme.dart';
 
 // صفّ خام من ملف Excel.
 // نحتفظ بالقيم كنصوص ثم نحولها عند الإدخال لتقليل الأعطال.
@@ -83,25 +79,31 @@ class _AddItemScreenState extends State<AddItemScreen> {
     super.dispose();
   }
 
-  InputDecoration _dec(String label, {Widget? prefixIcon, Widget? suffix}) {
+  InputDecoration _dec(
+    BuildContext context,
+    String label, {
+    Widget? prefixIcon,
+    Widget? suffix,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
     return InputDecoration(
       labelText: label,
       filled: true,
-      fillColor: Colors.white,
+      fillColor: scheme.surface,
       prefixIcon: prefixIcon,
       suffixIcon: suffix,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(25),
+        borderRadius: BorderRadius.circular(16),
         borderSide: BorderSide.none,
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(25),
-        borderSide: BorderSide(color: accentColor.withValues(alpha: .35)),
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: scheme.outlineVariant.withValues(alpha: .5)),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(25),
-        borderSide: const BorderSide(color: accentColor, width: 2),
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: scheme.primary, width: 2),
       ),
     );
   }
@@ -410,7 +412,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
       }
 
       progressText.value = 'جاري تجهيز الأنواع...';
-      final typesMap = {
+      final typesMap = <String, ItemType>{
         for (final t in repo.types) t.name.trim().toLowerCase(): t
       };
       final neededTypes = <String>{};
@@ -429,33 +431,93 @@ class _AddItemScreenState extends State<AddItemScreen> {
           await repo.bootstrap();
         }
       }
-      for (final t in repo.types) {
-        typesMap[t.name.trim().toLowerCase()] = t;
-      }
-      final typeNameById = {
+      // إعادة تحميل الأنواع بعد الإضافة لضمان تزامن الـ Provider مع قاعدة البيانات.
+      await repo.bootstrap();
+      typesMap
+        ..clear()
+        ..addAll({
+          for (final t in repo.types) t.name.trim().toLowerCase(): t,
+        });
+      final typeNameById = <int, String>{
         for (final t in repo.types)
           if (t.id != null) t.id!: t.name,
       };
+      // أعِد بناء خريطة الاسم -> المعرف من قاعدة البيانات لتفادي أي حالة
+      // عدم تزامن بين Provider والحفظ الفعلي.
+      final typeIdByName = <String, int>{};
+      final db = RepositoryService.instance.db;
+      final database = await db.database;
+      for (final typeKey in neededTypes) {
+        final args = <Object?>[typeKey];
+        final acc = await db.accountFilterClause(
+          database,
+          ItemType.table,
+          args: args,
+        );
+        final rows = await database.rawQuery(
+          '''
+          SELECT id, name FROM ${ItemType.table}
+           WHERE lower(name) = lower(?)
+           $acc
+           ORDER BY id DESC
+           LIMIT 1
+          ''',
+          args,
+        );
+        if (rows.isNotEmpty) {
+          typeIdByName[typeKey] = (rows.first['id'] as num).toInt();
+        }
+      }
 
       progressText.value = 'جاري إدخال الأصناف...';
       final itemsToInsert = <Item>[];
+      final itemsToReassign = <Map<String, dynamic>>[];
       final qtyByKey = <String, int>{};
       for (final row in rawRows) {
         final typeKey = row.typeName.trim().toLowerCase();
-        final type = typesMap[typeKey];
-        if (type?.id == null) {
+        final typeId = typeIdByName[typeKey] ?? typesMap[typeKey]?.id;
+        if (typeId == null) {
           skipped++;
           continue;
         }
         final name = row.itemName.trim();
-        final key = '${type!.id}__${name.toLowerCase()}';
+        final key = '${typeId}__${name.toLowerCase()}';
         if (existingKeys.contains(key)) {
           skipped++;
           continue;
         }
+        // إن وُجد نفس الاسم بنوع مختلف سابقًا، صحّح type_id بدل إنشاء صنف جديد.
+        final lookupArgs = <Object?>[name];
+        final lookupAcc = await db.accountFilterClause(
+          database,
+          Item.table,
+          args: lookupArgs,
+        );
+        final existingRows = await database.rawQuery(
+          '''
+          SELECT id, type_id FROM ${Item.table}
+           WHERE lower(name) = lower(?)
+           $lookupAcc
+           ORDER BY id DESC
+           LIMIT 1
+          ''',
+          lookupArgs,
+        );
+        if (existingRows.isNotEmpty) {
+          final existingId = (existingRows.first['id'] as num).toInt();
+          final existingTypeId = (existingRows.first['type_id'] as num?)?.toInt();
+          if (existingTypeId == null || existingTypeId != typeId) {
+            itemsToReassign.add({
+              'id': existingId,
+              'type_id': typeId,
+            });
+          }
+          existingKeys.add(key);
+          continue;
+        }
         final qty = int.tryParse((row.qtyRaw ?? '').replaceAll(',', '')) ?? 0;
         itemsToInsert.add(Item(
-          typeId: type.id!,
+          typeId: typeId,
           name: name,
           price: 0,
           stock: 0,
@@ -471,11 +533,28 @@ class _AddItemScreenState extends State<AddItemScreen> {
             final database = await db.database;
             const chunkSize = 300;
             final total = itemsToInsert.length;
+            var reassignApplied = false;
             for (var i = 0; i < total; i += chunkSize) {
               final end = (i + chunkSize > total) ? total : i + chunkSize;
               progressText.value = 'جاري إدخال الأصناف... ($end / $total)';
               await database.transaction((txn) async {
                 final batch = txn.batch();
+                // صحّح النوع للأصناف القديمة (مثلاً كانت تحت "غير مصنف")
+                if (!reassignApplied && itemsToReassign.isNotEmpty) {
+                  final now = DateTime.now().toIso8601String();
+                  for (final fix in itemsToReassign) {
+                    batch.update(
+                      Item.table,
+                      {
+                        'type_id': fix['type_id'],
+                        'updated_at': now,
+                      },
+                      where: 'id = ?',
+                      whereArgs: [fix['id']],
+                    );
+                  }
+                  reassignApplied = true;
+                }
                 for (var j = i; j < end; j++) {
                   final item = itemsToInsert[j];
                   final data = await db.prepareInsert(
@@ -493,11 +572,11 @@ class _AddItemScreenState extends State<AddItemScreen> {
                   final qty = qtyByKey[key] ?? 0;
                   if (qty <= 0) continue;
 
-                  final args = <Object?>[item.typeId, item.name.trim()];
+                  final lookupArgs = <Object?>[item.typeId, item.name.trim()];
                   final acc = await db.accountFilterClause(
                     txn,
                     Item.table,
-                    args: args,
+                    args: lookupArgs,
                   );
                   final rows = await txn.rawQuery(
                     '''
@@ -508,7 +587,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
                      ORDER BY id DESC
                      LIMIT 1
                     ''',
-                    args,
+                    lookupArgs,
                   );
                   if (rows.isEmpty) continue;
                   final itemId = (rows.first['id'] as num).toInt();
@@ -529,10 +608,21 @@ class _AddItemScreenState extends State<AddItemScreen> {
                     executor: txn,
                   );
                   await txn.insert(Purchase.table, pData);
-                  await txn.rawUpdate(
-                    'UPDATE ${Item.table} SET stock = stock + ? WHERE id = ?',
-                    [qty, itemId],
+                  final hasUpdatedAt =
+                      await db.hasColumn(txn, Item.table, 'updated_at');
+                  final stockArgs = <Object?>[qty, itemId];
+                  final accClause = await db.accountFilterClause(
+                    txn,
+                    Item.table,
+                    args: stockArgs,
                   );
+                  final sql = hasUpdatedAt
+                      ? 'UPDATE ${Item.table} SET stock = stock + ?, updated_at = ? WHERE id = ? $accClause'
+                      : 'UPDATE ${Item.table} SET stock = stock + ? WHERE id = ? $accClause';
+                  if (hasUpdatedAt) {
+                    stockArgs.insert(1, DateTime.now().toIso8601String());
+                  }
+                  await txn.rawUpdate(sql, stockArgs);
                 }
               });
               // إتاحة تحديث واجهة المستخدم بين الدُفعات
@@ -649,6 +739,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
   @override
   Widget build(BuildContext context) {
     final repo = context.watch<RepositoryProvider>();
+    final scheme = Theme.of(context).colorScheme;
     final rawTypes = repo.types;
     final dedup = <String, ItemType>{};
     for (final t in rawTypes) {
@@ -682,46 +773,56 @@ class _AddItemScreenState extends State<AddItemScreen> {
           centerTitle: true,
           actions: [
             IconButton(
-              icon: const Icon(Icons.upload_file, color: Colors.white),
+              icon: const Icon(Icons.upload_file),
               tooltip: 'استيراد من Excel',
               onPressed: _isImporting ? null : _importItemsFromExcel,
             ),
             IconButton(
-              icon: const Icon(Icons.download_outlined, color: Colors.white),
+              icon: const Icon(Icons.download_outlined),
               tooltip: 'تحميل نموذج Excel',
               onPressed: _downloadExcelTemplate,
             ),
           ],
-          flexibleSpace: const DecoratedBox(
+          flexibleSpace: DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [lightAccentColor, accentColor],
+                colors: [
+                  Theme.of(context).colorScheme.primaryContainer,
+                  Theme.of(context).colorScheme.primary
+                ],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
             ),
           ),
-          elevation: 4,
         ),
         body: Container(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [veryLightBg, Colors.white, veryLightBg],
+              colors: [
+                Theme.of(context).colorScheme.surfaceContainerHigh,
+                Theme.of(context).colorScheme.surface,
+                Theme.of(context).colorScheme.surfaceContainerHigh,
+              ],
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
             ),
           ),
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+            padding: kScreenPadding.copyWith(top: 14, bottom: 24),
             children: [
               // بطاقة معلومات عامة (سطر توضيحي)
               Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: Theme.of(context).colorScheme.surface,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                      color: lightAccentColor.withValues(alpha: .35)),
+                    color: Theme.of(context)
+                        .colorScheme
+                        .outlineVariant
+                        .withValues(alpha: .5),
+                  ),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withValues(alpha: .06),
@@ -732,7 +833,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
                 ),
                 child: const Row(
                   children: [
-                    Icon(Icons.info_outline, color: accentColor),
+                    Icon(Icons.info_outline, color: kPrimaryColor),
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -753,7 +854,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
                     // نوع الصنف
                     DropdownButtonFormField<int?>(
                       initialValue: _selectedTypeId,
-                      decoration: _dec('نوع الصنف',
+                      decoration: _dec(context, 'نوع الصنف',
                           prefixIcon: const Icon(Icons.category_outlined)),
                       items: [
                         ...types.map(
@@ -787,7 +888,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
                       focusNode: _nameNode,
                       textInputAction: TextInputAction.next,
                       onFieldSubmitted: (_) => _stockNode.requestFocus(),
-                      decoration: _dec('اسم الصنف',
+                      decoration: _dec(context, 'اسم الصنف',
                           prefixIcon: const Icon(Icons.inventory_2_outlined)),
                       validator: (v) =>
                           (v == null || v.trim().isEmpty) ? 'أدخل الاسم' : null,
@@ -799,7 +900,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
                       controller: _stockCtrl,
                       focusNode: _stockNode,
                       textInputAction: TextInputAction.done,
-                      decoration: _dec('الكمية الابتدائية',
+                      decoration: _dec(context, 'الكمية الابتدائية',
                           prefixIcon: const Icon(Icons.numbers_outlined)),
                       keyboardType:
                           const TextInputType.numberWithOptions(decimal: false),
@@ -820,8 +921,9 @@ class _AddItemScreenState extends State<AddItemScreen> {
                             icon: const Icon(Icons.upload_file),
                             label: const Text('استيراد Excel'),
                             style: OutlinedButton.styleFrom(
-                              foregroundColor: accentColor,
-                              side: const BorderSide(color: lightAccentColor),
+                              foregroundColor: scheme.primary,
+                              side: BorderSide(
+                                  color: scheme.primary.withValues(alpha: .35)),
                               shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(14)),
                               padding: const EdgeInsets.symmetric(vertical: 12),
@@ -835,8 +937,9 @@ class _AddItemScreenState extends State<AddItemScreen> {
                             icon: const Icon(Icons.download_outlined),
                             label: const Text('نموذج Excel'),
                             style: OutlinedButton.styleFrom(
-                              foregroundColor: accentColor,
-                              side: const BorderSide(color: lightAccentColor),
+                              foregroundColor: scheme.primary,
+                              side: BorderSide(
+                                  color: scheme.primary.withValues(alpha: .35)),
                               shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(14)),
                               padding: const EdgeInsets.symmetric(vertical: 12),
@@ -864,7 +967,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
                         label: const Text('حفظ',
                             style: TextStyle(color: Colors.white)),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: accentColor,
+                          backgroundColor: scheme.primary,
                           shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(25)),
                           padding: const EdgeInsets.symmetric(vertical: 12),

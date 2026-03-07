@@ -23,8 +23,11 @@ import 'package:flutter/foundation.dart'
     show consolidateHttpClientResponseBytes;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'package:aelmamclinic/services/save_file_service.dart';
+import 'package:aelmamclinic/core/nhost_manager.dart';
 
 class ImageViewerItem {
   /// يمكن أن يكون رابط HTTP(S) أو مسار ملف محلي أو file://URI
@@ -513,15 +516,18 @@ class _ImageViewerScreenState extends State<ImageViewerScreen>
                       }
                     },
                   ),
-                if (widget.onShare != null)
-                  _SheetAction(
-                    icon: Icons.share_rounded,
-                    label: 'مشاركة',
-                    onTap: () {
-                      Navigator.pop(context);
+                _SheetAction(
+                  icon: Icons.share_rounded,
+                  label: 'مشاركة',
+                  onTap: () async {
+                    Navigator.pop(context);
+                    if (widget.onShare != null) {
                       widget.onShare!.call(_index, item);
-                    },
-                  ),
+                      return;
+                    }
+                    await _shareItem(item);
+                  },
+                ),
 
                 // حفظ: إن وُجد onSave نستخدمه، وإلا:
                 // - ملف محلي: نسخ إلى Downloads
@@ -639,7 +645,21 @@ class _ImageViewerScreenState extends State<ImageViewerScreen>
   Future<Uint8List> _httpGetBytes(String url) async {
     final client = HttpClient();
     try {
-      final req = await client.getUrl(Uri.parse(url));
+      final uri = Uri.parse(url);
+      final req = await client.getUrl(uri);
+      if (_isNhostStorageFile(uri)) {
+        var token = NhostManager.client.auth.accessToken;
+        if (token == null || token.isEmpty) {
+          try {
+            await NhostManager.client.auth.signInWithStoredCredentials();
+          } catch (_) {}
+          token = NhostManager.client.auth.accessToken;
+        }
+        if (token != null && token.isNotEmpty) {
+          req.headers
+              .set(HttpHeaders.authorizationHeader, 'Bearer $token');
+        }
+      }
       final res = await req.close();
       if (res.statusCode != 200) {
         throw 'HTTP ${res.statusCode}';
@@ -648,6 +668,44 @@ class _ImageViewerScreenState extends State<ImageViewerScreen>
       return Uint8List.fromList(bytes);
     } finally {
       client.close(force: true);
+    }
+  }
+
+  bool _isNhostStorageFile(Uri u) {
+    final host = u.host.toLowerCase();
+    if (!host.contains('.storage.') || !host.contains('nhost.run')) {
+      return false;
+    }
+    return u.path.contains('/files/');
+  }
+
+  Future<void> _shareItem(ImageViewerItem item) async {
+    try {
+      File? file;
+      if (_isLocal(item.url)) {
+        final p = _normalizeLocalPath(item.url);
+        if (p != null && File(p).existsSync()) {
+          file = File(p);
+        }
+      }
+
+      if (file == null) {
+        final bytes = await _httpGetBytes(item.url);
+        final dir = await getTemporaryDirectory();
+        final name = _fileNameFromAny(item.url) ??
+            'image_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        final out = File('${dir.path}${Platform.pathSeparator}$name');
+        await out.writeAsBytes(bytes, flush: true);
+        file = out;
+      }
+
+      await SharePlus.instance.share(
+        ShareParams(files: [XFile(file.path)]),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('تعذّرت المشاركة: $e')));
     }
   }
 

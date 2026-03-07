@@ -15,6 +15,7 @@ import 'package:printing/printing.dart';
 /*── نمط TBIAN ─*/
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
+import 'package:aelmamclinic/core/tbian_ui.dart';
 
 import 'package:aelmamclinic/models/patient.dart';
 import 'package:aelmamclinic/models/patient_service.dart';
@@ -34,6 +35,7 @@ class ViewPatientScreen extends StatefulWidget {
 }
 
 class _ViewPatientScreenState extends State<ViewPatientScreen> {
+  late Patient _patient;
   late final DateTime _registerDate;
   late final TimeOfDay _registerTime;
   late final String _serviceType; // للعرض بالعربي
@@ -51,6 +53,7 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
   void initState() {
     super.initState();
     final p = widget.patient;
+    _patient = p;
 
     // إن لم يكن للمريض id نغلق الصفحة بأمان ونمنع أي استعلامات DB
     if (p.id == null) {
@@ -102,6 +105,101 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
       );
       setState(() => _markingReview = false);
     }
+  }
+
+  Future<void> _showPaymentDialog() async {
+    final p = _patient;
+    if (p.id == null) return;
+    if (p.remaining <= 0) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('لا يوجد مبلغ متبقٍ على المريض.')),
+      );
+      return;
+    }
+    final amountCtrl =
+        TextEditingController(text: p.remaining.toStringAsFixed(2));
+    final noteCtrl = TextEditingController();
+    bool settleAll = false;
+    await showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('تسديد مبلغ'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('المتبقي: ${p.remaining.toStringAsFixed(2)}'),
+              const SizedBox(height: 8),
+              TextField(
+                controller: amountCtrl,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'المبلغ المدفوع',
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: noteCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'ملاحظة (اختياري)',
+                ),
+              ),
+              const SizedBox(height: 8),
+              StatefulBuilder(
+                builder: (ctx2, setState) => CheckboxListTile(
+                  value: settleAll,
+                  onChanged: (v) {
+                    setState(() => settleAll = v ?? false);
+                    if (settleAll) {
+                      amountCtrl.text =
+                          p.remaining.toStringAsFixed(2);
+                    }
+                  },
+                  title: const Text('اعتبار المدفوع = الإجمالي'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('إلغاء'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final raw = amountCtrl.text.trim().replaceAll(',', '.');
+                final amount = double.tryParse(raw) ?? 0.0;
+                if (amount <= 0 && !settleAll) return;
+                try {
+                  await DBService.instance.applyPatientPayment(
+                    patientId: p.id!,
+                    amount: amount,
+                    settleAll: settleAll,
+                    note: noteCtrl.text.trim().isEmpty
+                        ? null
+                        : noteCtrl.text.trim(),
+                  );
+                  final fresh =
+                      await DBService.instance.getPatientById(p.id!);
+                  if (fresh != null && mounted) {
+                    setState(() => _patient = fresh);
+                  }
+                  if (context.mounted) Navigator.pop(ctx);
+                } catch (e) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('تعذر التسديد: $e')),
+                  );
+                }
+              },
+              child: const Text('حفظ'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   // تحويل كود نوع الخدمة إلى نص عربي
@@ -568,9 +666,6 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
           thinDivider(),
           infoRow(
               'Phone', patient.phoneNumber.isEmpty ? '—' : patient.phoneNumber),
-          thinDivider(),
-          infoRow(
-              'Service Type', _serviceType), // ← أضفنا نوع الخدمة في الـ PDF
           if (displayDoctorName != '---') ...[
             thinDivider(),
             infoRow('Doctor Name', displayDoctorName),
@@ -789,8 +884,8 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
                           final svcs = snap.data ?? const <PatientService>[];
                           if (svcs.isEmpty) {
                             // حالة مزامنة بدون تفاصيل خدمات: نعرض توضيح + إجمالي من (مدفوع+متبقي)
-                            final fallbackTotal = (widget.patient.paidAmount +
-                                    widget.patient.remaining)
+                            final fallbackTotal = (_patient.paidAmount +
+                                    _patient.remaining)
                                 .toStringAsFixed(2);
                             return Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -849,13 +944,31 @@ class _ViewPatientScreenState extends State<ViewPatientScreen> {
                       _InfoTile(
                         icon: Icons.attach_money,
                         label: 'المبلغ المقدم',
-                        value: widget.patient.paidAmount.toStringAsFixed(2),
+                        value: _patient.paidAmount.toStringAsFixed(2),
                       ),
                       const Divider(height: 12),
                       _InfoTile(
                         icon: Icons.money_off,
                         label: 'المبلغ المتبقي',
-                        value: widget.patient.remaining.toStringAsFixed(2),
+                        value: _patient.remaining.toStringAsFixed(2),
+                      ),
+                      if ((_patient.collateral ?? '').trim().isNotEmpty) ...[
+                        const Divider(height: 12),
+                        _InfoTile(
+                          icon: Icons.verified_outlined,
+                          label: 'الرهن',
+                          value: _patient.collateral!.trim(),
+                          maxLines: 3,
+                        ),
+                      ],
+                      const Divider(height: 12),
+                      Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: TOutlinedButton(
+                          icon: Icons.payments_outlined,
+                          label: 'تسديد مبلغ',
+                          onPressed: _showPaymentDialog,
+                        ),
                       ),
                       if (_doctorShare > 0) ...[
                         const Divider(height: 12),

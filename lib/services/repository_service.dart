@@ -204,10 +204,21 @@ class RepositoryService {
             executor: txn,
           );
           await txn.insert(Purchase.table, data);
-          await txn.rawUpdate(
-            'UPDATE ${Item.table} SET stock = stock + ? WHERE id = ?',
-            [quantity, itemId],
+          final hasUpdatedAt = await _db.hasColumn(txn, Item.table, 'updated_at');
+          final nowIso = DateTime.now().toIso8601String();
+          final accArgs = <Object?>[quantity, itemId];
+          final accClause = await _db.accountFilterClause(
+            txn,
+            Item.table,
+            args: accArgs,
           );
+          final sql = hasUpdatedAt
+              ? 'UPDATE ${Item.table} SET stock = stock + ?, updated_at = ? WHERE id = ? $accClause'
+              : 'UPDATE ${Item.table} SET stock = stock + ? WHERE id = ? $accClause';
+          if (hasUpdatedAt) {
+            accArgs.insert(1, nowIso);
+          }
+          await txn.rawUpdate(sql, accArgs);
         });
       });
     });
@@ -257,10 +268,21 @@ class RepositoryService {
             executor: txn,
           );
           await txn.insert(Consumption.table, data);
-          await txn.rawUpdate(
-            'UPDATE ${Item.table} SET stock = stock - ? WHERE id = ?',
-            [quantity, itemId],
+          final hasUpdatedAt = await _db.hasColumn(txn, Item.table, 'updated_at');
+          final nowIso = DateTime.now().toIso8601String();
+          final accArgs = <Object?>[quantity, itemId];
+          final accClause = await _db.accountFilterClause(
+            txn,
+            Item.table,
+            args: accArgs,
           );
+          final sql = hasUpdatedAt
+              ? 'UPDATE ${Item.table} SET stock = stock - ?, updated_at = ? WHERE id = ? $accClause'
+              : 'UPDATE ${Item.table} SET stock = stock - ? WHERE id = ? $accClause';
+          if (hasUpdatedAt) {
+            accArgs.insert(1, nowIso);
+          }
+          await txn.rawUpdate(sql, accArgs);
         });
       });
     });

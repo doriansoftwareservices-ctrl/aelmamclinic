@@ -136,7 +136,7 @@ class _NewDrugScreenState extends State<NewDrugScreen> {
 
       // لو الـ Sync متصل، هذا سيطلق دفعًا فوريًا (إن كان onLocalChange معيّنًا).
       try {
-        await DBService.instance.onLocalChange?.call('drugs');
+        await DBService.instance.notifyTableChanged('drugs');
       } catch (_) {}
 
       if (!mounted) return;

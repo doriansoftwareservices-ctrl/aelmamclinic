@@ -28,6 +28,8 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import 'package:aelmamclinic/core/nhost_manager.dart';
+
 class AttachmentCache {
   AttachmentCache._();
   static final AttachmentCache instance = AttachmentCache._();
@@ -344,6 +346,19 @@ class AttachmentCache {
       final uri = Uri.parse(url);
       final req = await client.getUrl(uri);
       req.headers.set(HttpHeaders.acceptHeader, '*/*');
+      if (_isNhostStorageFile(uri)) {
+        var token = NhostManager.client.auth.accessToken;
+        if (token == null || token.isEmpty) {
+          try {
+            await NhostManager.client.auth.signInWithStoredCredentials();
+          } catch (_) {}
+          token = NhostManager.client.auth.accessToken;
+        }
+        if (token != null && token.isNotEmpty) {
+          req.headers
+              .set(HttpHeaders.authorizationHeader, 'Bearer $token');
+        }
+      }
       final res = await req.close();
 
       if (res.statusCode != 200) {
@@ -355,6 +370,41 @@ class AttachmentCache {
     } finally {
       client.close(force: true);
     }
+  }
+
+  /// Seed cache from a local file (no network). Returns cached path if stored.
+  Future<String?> seedFromLocalFile(String url, File localFile) async {
+    if (url.trim().isEmpty) return null;
+    if (!await localFile.exists()) return null;
+    try {
+      final root = await _ensureRoot();
+      final key = _keyForUrl(url);
+      final dest = File('${root.path}/$key');
+      if (!await dest.exists()) {
+        await localFile.copy(dest.path);
+      }
+      final bytes = await dest.readAsBytes();
+      final mime = _guessMimeFromUrlOrBytes(url, bytes);
+      final meta = _CacheMeta(
+        url: url,
+        createdAt: DateTime.now().toUtc(),
+        lastAccess: DateTime.now().toUtc(),
+        contentType: mime,
+        size: bytes.length,
+      );
+      await _writeMeta(key, meta);
+      return dest.path;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  bool _isNhostStorageFile(Uri u) {
+    final host = u.host.toLowerCase();
+    if (!host.contains('.storage.') || !host.contains('nhost.run')) {
+      return false;
+    }
+    return u.path.contains('/files/');
   }
 
   /* ======================== مفاتيح + ميتاداتا ======================== */
@@ -546,6 +596,7 @@ class AttachmentCacheImage extends StatefulWidget {
   final Widget? errorWidget;
   final bool gaplessPlayback;
   final Color? backgroundColor;
+  final bool allowDownload;
 
   const AttachmentCacheImage({
     super.key,
@@ -559,6 +610,7 @@ class AttachmentCacheImage extends StatefulWidget {
     this.errorWidget,
     this.gaplessPlayback = true,
     this.backgroundColor,
+    this.allowDownload = true,
   });
 
   @override
@@ -579,7 +631,8 @@ class _AttachmentCacheImageState extends State<AttachmentCacheImage> {
   @override
   void didUpdateWidget(covariant AttachmentCacheImage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.url != widget.url) {
+    if (oldWidget.url != widget.url ||
+        oldWidget.allowDownload != widget.allowDownload) {
       _file = null;
       _error = null;
       _load();
@@ -597,6 +650,17 @@ class _AttachmentCacheImageState extends State<AttachmentCacheImage> {
       if (sync != null) {
         _file = File(sync);
         if (mounted) setState(() {});
+      } else if (!widget.allowDownload) {
+        // Local-only: لا تحاول تنزيله
+        if (mounted) setState(() {});
+        // أعد التحقق بعد لحظات تحسّبًا لتنزيل تم عبر Prefetch
+        Future<void>.delayed(const Duration(milliseconds: 800), () {
+          if (!mounted || _file != null) return;
+          final again = AttachmentCache.instance.localPathSyncIfAny(_url);
+          if (again != null && mounted) {
+            setState(() => _file = File(again));
+          }
+        });
       } else {
         final f = await AttachmentCache.instance.fileFor(_url);
         if (!mounted) return;

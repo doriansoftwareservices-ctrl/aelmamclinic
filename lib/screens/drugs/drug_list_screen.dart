@@ -21,6 +21,8 @@ class _DrugListScreenState extends State<DrugListScreen> {
   List<Drug> _allDrugs = [];
   List<Drug> _filteredDrugs = [];
   bool _loading = true;
+  static const int _pageSize = 50;
+  int _visibleCount = 0;
 
   @override
   void initState() {
@@ -46,6 +48,8 @@ class _DrugListScreenState extends State<DrugListScreen> {
       setState(() {
         _allDrugs = list;
         _filteredDrugs = list;
+        _visibleCount =
+            _filteredDrugs.length < _pageSize ? _filteredDrugs.length : _pageSize;
       });
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -61,6 +65,8 @@ class _DrugListScreenState extends State<DrugListScreen> {
         _filteredDrugs =
             _allDrugs.where((d) => d.name.toLowerCase().contains(q)).toList();
       }
+      _visibleCount =
+          _filteredDrugs.length < _pageSize ? _filteredDrugs.length : _pageSize;
     });
   }
 
@@ -72,7 +78,7 @@ class _DrugListScreenState extends State<DrugListScreen> {
     // إعادة التحميل + دفع احتياطي لو صار تعديل
     if (changed == true) {
       try {
-        await DBService.instance.onLocalChange?.call('drugs');
+        await DBService.instance.notifyTableChanged('drugs');
       } catch (_) {}
       await _loadDrugs();
     }
@@ -105,7 +111,7 @@ class _DrugListScreenState extends State<DrugListScreen> {
       // ✅ حذف منطقي + إشعار مزامنة
       await DBService.instance.deleteDrug(id);
       try {
-        await DBService.instance.onLocalChange?.call('drugs');
+        await DBService.instance.notifyTableChanged('drugs');
       } catch (_) {}
       await _loadDrugs();
       if (!mounted) return;
@@ -122,6 +128,8 @@ class _DrugListScreenState extends State<DrugListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final visibleDrugs = _filteredDrugs.take(_visibleCount).toList();
+    final hasMore = _visibleCount < _filteredDrugs.length;
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
@@ -212,9 +220,37 @@ class _DrugListScreenState extends State<DrugListScreen> {
                               onRefresh: _loadDrugs,
                               child: ListView.builder(
                                 physics: const AlwaysScrollableScrollPhysics(),
-                                itemCount: _filteredDrugs.length,
+                                itemCount:
+                                    visibleDrugs.length + (hasMore ? 1 : 0),
                                 itemBuilder: (_, i) {
-                                  final d = _filteredDrugs[i];
+                                  if (i >= visibleDrugs.length) {
+                                    return Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 8,
+                                      ),
+                                      child: Center(
+                                        child: OutlinedButton.icon(
+                                          icon: const Icon(
+                                            Icons.expand_more_rounded,
+                                          ),
+                                          label: Text(
+                                            'تحميل المزيد (${_visibleCount}/${_filteredDrugs.length})',
+                                          ),
+                                          onPressed: () {
+                                            setState(() {
+                                              _visibleCount =
+                                                  (_visibleCount + _pageSize)
+                                                      .clamp(
+                                                0,
+                                                _filteredDrugs.length,
+                                              );
+                                            });
+                                          },
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                  final d = visibleDrugs[i];
                                   return NeuCard(
                                     margin:
                                         const EdgeInsets.symmetric(vertical: 6),

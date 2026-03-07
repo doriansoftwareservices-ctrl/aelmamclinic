@@ -1,7 +1,7 @@
 // lib/screens/admin/admin_dashboard_screen.dart
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
+import 'dart:ui' as ui show TextDirection;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
@@ -25,16 +25,27 @@ import 'package:aelmamclinic/services/employee_seat_service.dart';
 import 'package:aelmamclinic/services/nhost_storage_service.dart';
 import 'package:aelmamclinic/services/nhost_admin_service.dart';
 import 'package:aelmamclinic/services/super_admin_accounts_service.dart';
+import 'package:aelmamclinic/services/admin_insights_service.dart';
+import 'package:aelmamclinic/services/export_service.dart';
+import 'package:aelmamclinic/services/save_file_service.dart';
 import 'package:aelmamclinic/core/nhost_config.dart';
 import 'package:aelmamclinic/utils/chat_code_utils.dart';
 import 'package:provider/provider.dart';
 import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:aelmamclinic/models/admin_system_health.dart';
+import 'package:aelmamclinic/models/admin_action_log.dart';
+import 'package:aelmamclinic/models/admin_usage_metrics.dart';
+import 'package:aelmamclinic/models/admin_risk_alert.dart';
+import 'package:aelmamclinic/models/admin_audit_activity.dart';
+import 'package:aelmamclinic/models/admin_audit_actor.dart';
+import 'package:aelmamclinic/models/admin_usage_daily.dart';
 
 /*──────── شاشات للتنقّل ────────*/
 import 'package:aelmamclinic/screens/statistics/statistics_overview_screen.dart';
 import 'package:aelmamclinic/screens/auth/login_screen.dart';
 import 'package:aelmamclinic/screens/chat/chat_admin_inbox_screen.dart'; // ⬅️ شاشة دردشة السوبر أدمن
+import 'package:aelmamclinic/screens/admin/support_ratings_screen.dart';
 import 'package:intl/intl.dart';
 
 /// شاشة لوحة التحكّم للمشرف العام (super-admin) بتصميم TBIAN.
@@ -53,18 +64,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   static String get _rootSuperAdminEmail =>
       NhostConfig.rootSuperAdminEmail.toLowerCase().trim();
-  static const List<String> _baseAdminTabs = [
-    'clinics',
-    'chats',
-    'subscriptions',
-    'payments',
-    'complaints',
-    'stats',
-    'members',
-  ];
   static const Map<String, String> _tabLabels = {
     'clinics': 'العيادات',
     'chats': 'الدردشات',
+    'support_ratings': 'تقييمات الخدمة',
     'subscriptions': 'الاشتراكات',
     'payments': 'طرق الدفع',
     'complaints': 'الشكاوى',
@@ -72,9 +75,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     'members': 'الأعضاء',
     'superadmins': 'حسابات السوبر أدمن',
   };
+  static final List<String> _baseAdminTabs = _tabLabels.keys
+      .where((k) => k != 'superadmins')
+      .toList(growable: false);
   static const Map<String, IconData> _tabIcons = {
     'clinics': Icons.local_hospital_outlined,
     'chats': Icons.chat_bubble_outline,
+    'support_ratings': Icons.support_agent_rounded,
     'subscriptions': Icons.workspace_premium_rounded,
     'payments': Icons.account_balance_rounded,
     'complaints': Icons.report_problem_rounded,
@@ -93,6 +100,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       SuperAdminAccountsService();
   final AdminAccountMembersService _membersService =
       AdminAccountMembersService();
+  final AdminInsightsService _insightsService = AdminInsightsService();
 
   // عيادات
   List<Clinic> _clinics = [];
@@ -112,6 +120,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   List<SubscriptionRequest> _subscriptionRequests = [];
   bool _loadingRequests = false;
   int _lastSubscriptionPending = 0;
+  final ScrollController _subsScroll = ScrollController();
+  bool _subsHasMore = true;
+  bool _subsLoadingMore = false;
+  int _subsOffset = 0;
+  static const int _subsPageSize = 80;
 
   List<EmployeeSeatRequest> _seatRequests = [];
   bool _loadingSeatRequests = false;
@@ -126,6 +139,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   List<Complaint> _complaints = [];
   bool _loadingComplaints = false;
   int _lastComplaintPending = 0;
+  final ScrollController _complaintsScroll = ScrollController();
+  bool _complaintsHasMore = true;
+  bool _complaintsLoadingMore = false;
+  int _complaintsOffset = 0;
+  static const int _complaintsPageSize = 80;
 
   List<PaymentStat> _paymentStats = [];
   bool _loadingStats = false;
@@ -136,11 +154,40 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   late final PageController _revenueController =
       PageController(viewportFraction: 0.78, initialPage: 1);
   double _revenuePage = 1.0;
+  Timer? _revenueAutoTimer;
+  static const int _revenueCardCount = 3;
+  late final PageController _membersSummaryController =
+      PageController(viewportFraction: 0.88, initialPage: 0);
+  double _membersSummaryPage = 0.0;
+  Timer? _membersSummaryTimer;
+  static const int _membersSummaryCardCount = 5;
   List<PaymentPlanStat> _paymentPlanStats = [];
   List<PaymentTimeStat> _paymentMonthlyStats = [];
   List<PaymentTimeStat> _paymentDailyStats = [];
 
   int _statsMode = 0; // 0=methods, 1=plans, 2=monthly, 3=daily
+
+  // صحة النظام + سجل الأوامر
+  AdminSystemHealth? _systemHealth;
+  bool _loadingSystemHealth = false;
+  List<AdminActionLog> _adminActionLogs = [];
+  bool _loadingActionLogs = false;
+  bool _loadingMoreActionLogs = false;
+  bool _actionLogsHasMore = true;
+  int _actionLogsOffset = 0;
+  static const int _actionLogsPageSize = 50;
+
+  // تقارير المرحلة 3 (مخاطر/استخدام/تدقيق)
+  AdminUsageMetrics? _usageMetrics;
+  bool _loadingUsageMetrics = false;
+  List<AdminRiskAlert> _riskAlerts = [];
+  bool _loadingRiskAlerts = false;
+  List<AdminAuditActivity> _auditDaily = [];
+  bool _loadingAuditDaily = false;
+  List<AdminAuditActor> _auditTopActors = [];
+  bool _loadingAuditTopActors = false;
+  List<AdminUsageDaily> _usageDaily = [];
+  bool _loadingUsageDaily = false;
 
   // أعضاء الحسابات
   List<AdminAccountMemberCount> _memberCounts = [];
@@ -149,6 +196,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   bool _loadingAccountMembers = false;
   String? _membersAccountId;
   bool _membersOnlyActive = true;
+  final ScrollController _membersScroll = ScrollController();
+  bool _membersHasMore = true;
+  bool _membersLoadingMore = false;
+  int _membersOffset = 0;
+  static const int _membersPageSize = 100;
 
   // -------- إنشاء حساب عيادة رئيسية --------
   final TextEditingController _clinicNameCtrl = TextEditingController();
@@ -182,6 +234,41 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       if (page == null) return;
       if (!mounted) return;
       setState(() => _revenuePage = page);
+    });
+    _membersSummaryController.addListener(() {
+      final page = _membersSummaryController.page;
+      if (page == null) return;
+      if (!mounted) return;
+      setState(() => _membersSummaryPage = page);
+    });
+    _startRevenueAutoPlay();
+    _startMembersSummaryAutoPlay();
+    _membersScroll.addListener(() {
+      if (_activeSectionKey != 'members') return;
+      if (_membersLoadingMore || !_membersHasMore) return;
+      if (!_membersScroll.hasClients) return;
+      final pos = _membersScroll.position;
+      if (pos.pixels >= pos.maxScrollExtent - 300) {
+        _loadMoreMembers();
+      }
+    });
+    _subsScroll.addListener(() {
+      if (_activeSectionKey != 'subscriptions') return;
+      if (_subsLoadingMore || !_subsHasMore) return;
+      if (!_subsScroll.hasClients) return;
+      final pos = _subsScroll.position;
+      if (pos.pixels >= pos.maxScrollExtent - 300) {
+        _loadMoreSubscriptionRequests();
+      }
+    });
+    _complaintsScroll.addListener(() {
+      if (_activeSectionKey != 'complaints') return;
+      if (_complaintsLoadingMore || !_complaintsHasMore) return;
+      if (!_complaintsScroll.hasClients) return;
+      final pos = _complaintsScroll.position;
+      if (pos.pixels >= pos.maxScrollExtent - 300) {
+        _loadMoreComplaints();
+      }
     });
 
     // حارس وصول: إن لم يكن المستخدم سوبر أدمن، لا يسمح بالبقاء هنا
@@ -244,8 +331,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   @override
   void dispose() {
     _pendingPollTimer?.cancel();
+    _revenueAutoTimer?.cancel();
+    _revenueAutoTimer = null;
+    _membersSummaryTimer?.cancel();
+    _membersSummaryTimer = null;
     WidgetsBinding.instance.removeObserver(this);
     _revenueController.dispose();
+    _membersSummaryController.dispose();
+    _membersScroll.dispose();
+    _subsScroll.dispose();
+    _complaintsScroll.dispose();
     _tabController.dispose();
     _clinicNameCtrl.dispose();
     _ownerEmailCtrl.dispose();
@@ -276,6 +371,38 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   bool _computeIsRoot(String? email) {
     if (email == null) return false;
     return email.toLowerCase().trim() == _rootSuperAdminEmail;
+  }
+
+  void _startRevenueAutoPlay() {
+    _revenueAutoTimer?.cancel();
+    _revenueAutoTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!mounted) return;
+      if (!_revenueController.hasClients) return;
+      final current =
+          _revenueController.page?.round() ?? _revenueController.initialPage;
+      final next = (current + 1) % _revenueCardCount;
+      _revenueController.animateToPage(
+        next,
+        duration: const Duration(milliseconds: 650),
+        curve: Curves.easeOutCubic,
+      );
+    });
+  }
+
+  void _startMembersSummaryAutoPlay() {
+    _membersSummaryTimer?.cancel();
+    _membersSummaryTimer = Timer.periodic(const Duration(seconds: 6), (_) {
+      if (!mounted) return;
+      if (!_membersSummaryController.hasClients) return;
+      final current =
+          _membersSummaryController.page?.round() ?? _membersSummaryController.initialPage;
+      final next = (current + 1) % _membersSummaryCardCount;
+      _membersSummaryController.animateToPage(
+        next,
+        duration: const Duration(milliseconds: 600),
+        curve: Curves.easeOutCubic,
+      );
+    });
   }
 
   String get _activeSectionKey {
@@ -316,7 +443,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
           await auth.refreshAndValidateCurrentUser();
           tabs = await _superAdminService.fetchMyAllowedTabs();
         }
-        _allowedAdminTabs = tabs.toList();
+        _allowedAdminTabs = tabs.where(_baseAdminTabs.contains).toList();
         if (_allowedAdminTabs.isEmpty) {
           _tabsError = 'تعذّر تحميل التبويبات أو لم يتم تحديد تبويبات للحساب.';
         }
@@ -776,17 +903,17 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   void _showProvisioningOutcome({
     required String successMessage,
     required ProvisioningResult result,
+    String? displayEmail,
+    String? displayName,
   }) {
     final lines = <String>[successMessage];
     final details = <String>[];
-    final accountId = result.accountId;
-    final userUid = result.userUid;
     final role = result.role;
-    if (accountId != null && accountId.isNotEmpty) {
-      details.add('الحساب: $accountId');
+    if (displayName != null && displayName.trim().isNotEmpty) {
+      details.add('الاسم: ${displayName.trim()}');
     }
-    if (userUid != null && userUid.isNotEmpty) {
-      details.add('المستخدم: $userUid');
+    if (displayEmail != null && displayEmail.trim().isNotEmpty) {
+      details.add('البريد: ${displayEmail.trim()}');
     }
     if (role.isNotEmpty) {
       details.add('الدور: $role');
@@ -828,13 +955,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   Future<void> _fetchSubscriptionRequests() async {
     try {
       setState(() => _loadingRequests = true);
-      final rows = await _billingService.fetchSubscriptionRequests();
+      _subsOffset = 0;
+      _subsHasMore = true;
+      _subscriptionRequests = [];
+      await _loadMoreSubscriptionRequests(resetLoading: true);
       if (!mounted) return;
-      final pending = rows.where((r) => r.status == 'pending').length;
-      setState(() {
-        _subscriptionRequests = rows;
-        _loadingRequests = false;
-      });
+      final pending = _subscriptionRequests
+          .where((r) => r.status == 'pending')
+          .length;
       if (pending > _lastSubscriptionPending && _lastSubscriptionPending > 0) {
         _snack('طلبات اشتراك جديدة بانتظار الاعتماد.');
       }
@@ -843,6 +971,33 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       if (!mounted) return;
       setState(() => _loadingRequests = false);
       _snack('تعذّر تحميل طلبات الاشتراك: $e');
+    }
+  }
+
+  Future<void> _loadMoreSubscriptionRequests({bool resetLoading = false}) async {
+    if (_subsLoadingMore || !_subsHasMore) return;
+    _subsLoadingMore = true;
+    if (resetLoading) {
+      setState(() => _loadingRequests = true);
+    }
+    try {
+      final rows = await _billingService.fetchSubscriptionRequestsPage(
+        limit: _subsPageSize,
+        offset: _subsOffset,
+      );
+      if (!mounted) return;
+      setState(() {
+        _subscriptionRequests.addAll(rows);
+        _subsOffset += rows.length;
+        _subsHasMore = rows.length >= _subsPageSize;
+        _loadingRequests = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loadingRequests = false);
+      _snack('تعذّر تحميل طلبات الاشتراك: $e');
+    } finally {
+      _subsLoadingMore = false;
     }
   }
 
@@ -939,12 +1094,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   Future<void> _fetchComplaints() async {
     try {
       setState(() => _loadingComplaints = true);
-      final rows = await _billingService.fetchComplaints();
+      _complaintsOffset = 0;
+      _complaintsHasMore = true;
+      _complaints = [];
+      await _loadMoreComplaints(resetLoading: true);
       if (!mounted) return;
-      setState(() {
-        _complaints = rows;
-        _loadingComplaints = false;
-      });
       final pending = _pendingComplaintCount;
       if (pending > _lastComplaintPending && _lastComplaintPending > 0) {
         _snack('شكاوى جديدة بانتظار المراجعة.');
@@ -954,6 +1108,33 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       if (!mounted) return;
       setState(() => _loadingComplaints = false);
       _snack('تعذّر تحميل الشكاوى: $e');
+    }
+  }
+
+  Future<void> _loadMoreComplaints({bool resetLoading = false}) async {
+    if (_complaintsLoadingMore || !_complaintsHasMore) return;
+    _complaintsLoadingMore = true;
+    if (resetLoading) {
+      setState(() => _loadingComplaints = true);
+    }
+    try {
+      final rows = await _billingService.fetchComplaintsPage(
+        limit: _complaintsPageSize,
+        offset: _complaintsOffset,
+      );
+      if (!mounted) return;
+      setState(() {
+        _complaints.addAll(rows);
+        _complaintsOffset += rows.length;
+        _complaintsHasMore = rows.length >= _complaintsPageSize;
+        _loadingComplaints = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loadingComplaints = false);
+      _snack('تعذّر تحميل الشكاوى: $e');
+    } finally {
+      _complaintsLoadingMore = false;
     }
   }
 
@@ -974,6 +1155,149 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       if (!mounted) return;
       setState(() => _loadingStats = false);
       _snack('تعذّر تحميل الإحصاءات: $e');
+    }
+  }
+
+  Future<void> _fetchSystemHealth() async {
+    if (!mounted) return;
+    setState(() => _loadingSystemHealth = true);
+    try {
+      final health = await _insightsService.fetchSystemHealth();
+      if (!mounted) return;
+      setState(() {
+        _systemHealth = health;
+        _loadingSystemHealth = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loadingSystemHealth = false);
+      _snack('تعذّر تحميل صحة النظام: $e');
+    }
+  }
+
+  Future<void> _fetchActionLogs({bool reset = true}) async {
+    if (!mounted) return;
+    if (reset) {
+      setState(() {
+        _loadingActionLogs = true;
+        _actionLogsOffset = 0;
+        _actionLogsHasMore = true;
+      });
+    } else {
+      if (_loadingMoreActionLogs || !_actionLogsHasMore) return;
+      setState(() => _loadingMoreActionLogs = true);
+    }
+    try {
+      final logs = await _insightsService.fetchActionLogs(
+        limit: _actionLogsPageSize,
+        offset: _actionLogsOffset,
+      );
+      if (!mounted) return;
+      setState(() {
+        if (reset) {
+          _adminActionLogs = logs;
+          _loadingActionLogs = false;
+        } else {
+          _adminActionLogs = [..._adminActionLogs, ...logs];
+          _loadingMoreActionLogs = false;
+        }
+        _actionLogsOffset += logs.length;
+        if (logs.length < _actionLogsPageSize) {
+          _actionLogsHasMore = false;
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadingActionLogs = false;
+        _loadingMoreActionLogs = false;
+      });
+      _snack('تعذّر تحميل سجل الأوامر: $e');
+    }
+  }
+
+  Future<void> _fetchUsageMetrics() async {
+    if (!mounted) return;
+    setState(() => _loadingUsageMetrics = true);
+    try {
+      final metrics = await _insightsService.fetchUsageMetrics();
+      if (!mounted) return;
+      setState(() {
+        _usageMetrics = metrics;
+        _loadingUsageMetrics = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loadingUsageMetrics = false);
+      _snack('تعذّر تحميل مؤشرات الاستخدام: $e');
+    }
+  }
+
+  Future<void> _fetchRiskAlerts() async {
+    if (!mounted) return;
+    setState(() => _loadingRiskAlerts = true);
+    try {
+      final alerts = await _insightsService.fetchRiskAlerts();
+      if (!mounted) return;
+      setState(() {
+        _riskAlerts = alerts;
+        _loadingRiskAlerts = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loadingRiskAlerts = false);
+      _snack('تعذّر تحميل التنبيهات: $e');
+    }
+  }
+
+  Future<void> _fetchAuditDaily() async {
+    if (!mounted) return;
+    setState(() => _loadingAuditDaily = true);
+    try {
+      final rows = await _insightsService.fetchAuditActivityDaily(limit: 60);
+      if (!mounted) return;
+      setState(() {
+        _auditDaily = rows;
+        _loadingAuditDaily = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loadingAuditDaily = false);
+      _snack('تعذّر تحميل ملخص التدقيق: $e');
+    }
+  }
+
+  Future<void> _fetchAuditTopActors() async {
+    if (!mounted) return;
+    setState(() => _loadingAuditTopActors = true);
+    try {
+      final rows = await _insightsService.fetchAuditTopActors(limit: 15);
+      if (!mounted) return;
+      setState(() {
+        _auditTopActors = rows;
+        _loadingAuditTopActors = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loadingAuditTopActors = false);
+      _snack('تعذّر تحميل أكثر الحسابات نشاطًا: $e');
+    }
+  }
+
+  Future<void> _fetchUsageDaily() async {
+    if (!mounted) return;
+    setState(() => _loadingUsageDaily = true);
+    try {
+      final rows = await _insightsService.fetchUsageDaily(limit: 30);
+      if (!mounted) return;
+      setState(() {
+        _usageDaily = rows;
+        _loadingUsageDaily = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loadingUsageDaily = false);
+      _snack('تعذّر تحميل حركة الاستخدام اليومية: $e');
     }
   }
 
@@ -1001,19 +1325,43 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   Future<void> _fetchAccountMembers({String? accountId}) async {
     try {
       setState(() => _loadingAccountMembers = true);
-      final rows = await _membersService.fetchMembers(
-        accountId: accountId,
+      _membersOffset = 0;
+      _membersHasMore = true;
+      _accountMembers = [];
+      await _loadMoreMembers(resetLoading: true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loadingAccountMembers = false);
+      _snack('تعذّر تحميل قائمة الأعضاء: $e');
+    }
+  }
+
+  Future<void> _loadMoreMembers({bool resetLoading = false}) async {
+    if (_membersLoadingMore || !_membersHasMore) return;
+    _membersLoadingMore = true;
+    if (resetLoading) {
+      setState(() => _loadingAccountMembers = true);
+    }
+    try {
+      final rows = await _membersService.fetchMembersPage(
+        accountId: _membersAccountId,
         onlyActive: _membersOnlyActive,
+        limit: _membersPageSize,
+        offset: _membersOffset,
       );
       if (!mounted) return;
       setState(() {
-        _accountMembers = rows;
+        _accountMembers.addAll(rows);
+        _membersOffset += rows.length;
+        _membersHasMore = rows.length >= _membersPageSize;
         _loadingAccountMembers = false;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() => _loadingAccountMembers = false);
       _snack('تعذّر تحميل قائمة الأعضاء: $e');
+    } finally {
+      _membersLoadingMore = false;
     }
   }
 
@@ -1048,6 +1396,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       _showProvisioningOutcome(
         successMessage: '✅ تم إنشاء العيادة وحساب المالك',
         result: result,
+        displayName: name,
+        displayEmail: email,
       );
       _clinicNameCtrl.clear();
       _ownerEmailCtrl.clear();
@@ -1096,6 +1446,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       _showProvisioningOutcome(
         successMessage: '✅ تم إنشاء حساب الموظف',
         result: result,
+        displayName: _selectedClinic?.name,
+        displayEmail: email,
       );
       _staffEmailCtrl.clear();
       _staffPassCtrl.clear();
@@ -1335,6 +1687,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         break;
       case 'chats':
         break;
+      case 'support_ratings':
+        break;
       case 'subscriptions':
         await _fetchSubscriptionRequests();
         await _fetchSeatRequests();
@@ -1348,6 +1702,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       case 'stats':
         await _fetchPaymentStats();
         await _fetchExtraSeatRevenue();
+        await _fetchSystemHealth();
+        await _fetchActionLogs();
+        await _fetchUsageMetrics();
+        await _fetchRiskAlerts();
+        await _fetchAuditDaily();
+        await _fetchAuditTopActors();
+        await _fetchUsageDaily();
         break;
       case 'members':
         await _fetchMemberCounts();
@@ -1374,6 +1735,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         return _buildClinicsSection(scheme);
       case 'chats':
         return const ChatAdminInboxScreen();
+      case 'support_ratings':
+        return const SupportRatingsScreen();
       case 'subscriptions':
         return SizedBox.expand(child: _buildSubscriptionRequestsSection());
       case 'payments':
@@ -1422,16 +1785,54 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   }
 
   Widget _buildSubscriptionRequestsSection() {
+    final pending =
+        _subscriptionRequests.where((r) => r.status == 'pending').length;
+    final approved =
+        _subscriptionRequests.where((r) => r.status == 'approved').length;
+    final rejected =
+        _subscriptionRequests.where((r) => r.status == 'rejected').length;
+    final totalAmount = _subscriptionRequests.fold<double>(
+      0,
+      (sum, r) => sum + (r.amount.isFinite ? r.amount : 0),
+    );
     return DefaultTabController(
       length: 2,
       child: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          NeuCard(
+            margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            padding: const EdgeInsets.all(12),
             child: Row(
               children: [
-                _statChip('طلبات الاشتراك', _pendingSubscriptionCount),
+                const Icon(Icons.workspace_premium_rounded),
                 const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'إدارة الاشتراكات',
+                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: () async {
+                    await _fetchSubscriptionRequests();
+                    await _fetchSeatRequests();
+                  },
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('تحديث'),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _statChip('قيد المراجعة', pending),
+                _statChip('تم الاعتماد', approved),
+                _statChip('مرفوضة', rejected),
+                _statChip('إجمالي المبالغ', totalAmount.toInt()),
                 _statChip('طلبات الموظفين', _pendingSeatCount),
               ],
             ),
@@ -1449,7 +1850,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
               Tab(icon: Icon(Icons.badge_rounded), text: 'طلبات الموظفين'),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Expanded(
             child: TabBarView(
               children: [
@@ -1701,7 +2102,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       ),
     );
     if (!expand) return chip;
-    return Expanded(child: chip);
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: 140),
+      child: chip,
+    );
   }
 
   int _sumMemberCounts(int Function(AdminAccountMemberCount row) getter) {
@@ -1856,9 +2260,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       _snack('الحساب غير مرتبط بمستخدم بعد.');
       return;
     }
+    final initial = account.allowedTabs
+        .where(_baseAdminTabs.contains)
+        .toList(growable: false);
     final selected = await _pickTabsDialog(
       title: 'تبويبات لوحة التحكم',
-      initial: account.allowedTabs,
+      initial: initial.isEmpty ? List.of(_baseAdminTabs) : initial,
     );
     if (selected == null) return;
     try {
@@ -1975,100 +2382,205 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   }
 
   Widget _buildSubscriptionRequestsList() {
+    final scheme = Theme.of(context).colorScheme;
     if (_loadingRequests) {
       return const Center(child: CircularProgressIndicator());
     }
     if (_subscriptionRequests.isEmpty) {
       return const Center(child: Text('لا توجد طلبات اشتراك حاليًا'));
     }
-    return ListView(
-      children: _subscriptionRequests.map((req) {
+    return ListView.builder(
+      controller: _subsScroll,
+      itemCount: _subscriptionRequests.length + (_subsHasMore ? 1 : 0),
+      itemBuilder: (context, index) {
+        if (index >= _subscriptionRequests.length) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Center(
+              child: _subsLoadingMore
+                  ? const CircularProgressIndicator()
+                  : TextButton(
+                      onPressed: _loadMoreSubscriptionRequests,
+                      child: const Text('تحميل المزيد'),
+                    ),
+            ),
+          );
+        }
+        final req = _subscriptionRequests[index];
         final ref = (req.referenceText ?? '').trim();
         final sender = (req.senderName ?? '').trim();
         final clinic = (req.clinicName ?? '').trim();
         final amount = req.amount.isFinite ? req.amount : 0.0;
         final planLabel =
-            (req.planCode.isNotEmpty ? req.planCode : '—').toUpperCase();
+            _planLabelFromCode(req.planCode.isNotEmpty ? req.planCode : null);
+        final created = req.createdAt == null
+            ? ''
+            : DateFormat('yyyy-MM-dd HH:mm')
+                .format(req.createdAt!.toLocal());
         return NeuCard(
           margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
           padding: const EdgeInsets.all(12),
-          child: ListTile(
-            title: Text(
-              'خطة: $planLabel • ${amount.toStringAsFixed(0)}\$',
-            ),
-            subtitle: Text(
-              [
-                'الحساب: ${req.accountId}',
-                if (clinic.isNotEmpty) 'العيادة: $clinic',
-                'الحالة: ${req.status}',
-                if (ref.isNotEmpty) 'المرجع: $ref',
-                if (sender.isNotEmpty) 'الاسم المحوّل: $sender',
-              ].join('\n'),
-            ),
-            trailing: req.status == 'pending'
-                ? ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 240),
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            tooltip: 'عرض الإثبات',
-                            icon: const Icon(Icons.receipt_long_rounded),
-                            onPressed: () => _openProof(req),
-                          ),
-                          const SizedBox(width: 6),
-                          NeuButton.primary(
-                            label: 'اعتماد',
-                            onPressed: () async {
-                              final note =
-                                  await _askDecisionNote('ملاحظة الاعتماد');
-                              try {
-                                await _billingService.approveRequest(
-                                  req.id,
-                                  note: note,
-                                );
-                                await _fetchSubscriptionRequests();
-                                await _fetchPaymentStats();
-                              } catch (e) {
-                                final msg =
-                                    e.toString().replaceFirst('Exception: ', '');
-                                _snack('تعذر اعتماد الطلب: $msg');
-                              }
-                            },
-                          ),
-                          const SizedBox(width: 6),
-                          IconButton(
-                            tooltip: 'رفض',
-                            icon: const Icon(Icons.cancel_outlined),
-                            onPressed: () async {
-                              final note = await _askDecisionNote('سبب الرفض');
-                              try {
-                                await _billingService.rejectRequest(
-                                  req.id,
-                                  note: note,
-                                );
-                                await _fetchSubscriptionRequests();
-                              } catch (e) {
-                                final msg =
-                                    e.toString().replaceFirst('Exception: ', '');
-                                _snack('تعذر رفض الطلب: $msg');
-                              }
-                            },
-                          ),
-                        ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: scheme.primary.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: scheme.primary.withValues(alpha: 0.2),
                       ),
                     ),
-                  )
-                : IconButton(
-                    tooltip: 'عرض الإثبات',
-                    icon: const Icon(Icons.receipt_long_rounded),
-                    onPressed: () => _openProof(req),
+                    child: Text(
+                      'الخطة: $planLabel',
+                      style: TextStyle(
+                        color: scheme.onSurface,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                      ),
+                    ),
                   ),
+                  const SizedBox(width: 8),
+                  _statusChipSmall(req.status, scheme),
+                  const Spacer(),
+                  Text(
+                    '\$${amount.toStringAsFixed(0)}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: scheme.primary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 10,
+                runSpacing: 6,
+                children: [
+                  if (clinic.isNotEmpty) _metaPill('العيادة', clinic, scheme),
+                  if (sender.isNotEmpty) _metaPill('المحوّل', sender, scheme),
+                  if (ref.isNotEmpty) _metaPill('المرجع', ref, scheme),
+                  if (created.isNotEmpty) _metaPill('التاريخ', created, scheme),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: () => _openProof(req),
+                      icon: const Icon(Icons.receipt_long_rounded),
+                      label: const Text('الإثبات'),
+                    ),
+                    if (req.status == 'pending')
+                      FilledButton.icon(
+                        onPressed: () async {
+                          final note =
+                              await _askDecisionNote('ملاحظة الاعتماد');
+                          try {
+                            await _billingService.approveRequest(
+                              req.id,
+                              note: note,
+                            );
+                            await _fetchSubscriptionRequests();
+                            await _fetchPaymentStats();
+                          } catch (e) {
+                            final msg =
+                                e.toString().replaceFirst('Exception: ', '');
+                            _snack('تعذر اعتماد الطلب: $msg');
+                          }
+                        },
+                        icon: const Icon(Icons.check_circle_rounded),
+                        label: const Text('اعتماد'),
+                      ),
+                    if (req.status == 'pending')
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          final note = await _askDecisionNote('سبب الرفض');
+                          try {
+                            await _billingService.rejectRequest(
+                              req.id,
+                              note: note,
+                            );
+                            await _fetchSubscriptionRequests();
+                          } catch (e) {
+                            final msg =
+                                e.toString().replaceFirst('Exception: ', '');
+                            _snack('تعذر رفض الطلب: $msg');
+                          }
+                        },
+                        icon: const Icon(Icons.cancel_outlined),
+                        label: const Text('رفض'),
+                      ),
+                  ],
+                ),
+              ),
+            ],
           ),
         );
-      }).toList(),
+      },
+    );
+  }
+
+  Widget _statusChipSmall(String status, ColorScheme scheme) {
+    final s = status.trim().toLowerCase();
+    Color color;
+    String label;
+    switch (s) {
+      case 'approved':
+        color = Colors.green;
+        label = 'معتمد';
+        break;
+      case 'rejected':
+        color = Colors.redAccent;
+        label = 'مرفوض';
+        break;
+      case 'pending':
+      default:
+        color = Colors.orange;
+        label = 'قيد المراجعة';
+        break;
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.w700,
+          fontSize: 11.5,
+        ),
+      ),
+    );
+  }
+
+  Widget _metaPill(String label, String value, ColorScheme scheme) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        '$label: $value',
+        style: TextStyle(
+          color: scheme.onSurface.withValues(alpha: 0.8),
+          fontWeight: FontWeight.w600,
+          fontSize: 11.5,
+        ),
+      ),
     );
   }
 
@@ -2168,7 +2680,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             title: Text('موظف: ${req.employeeEmail}'),
             subtitle: Text(
               [
-                'الحساب: ${req.accountId}',
                 'المبلغ: $priceLabel',
                 'الحالة: $status',
                 if (note.isNotEmpty) 'ملاحظة: $note',
@@ -2411,8 +2922,24 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     if (_complaints.isEmpty) {
       return const Center(child: Text('لا توجد شكاوى حالياً'));
     }
-    return ListView(
-      children: _complaints.map((c) {
+    return ListView.builder(
+      controller: _complaintsScroll,
+      itemCount: _complaints.length + (_complaintsHasMore ? 1 : 0),
+      itemBuilder: (context, index) {
+        if (index >= _complaints.length) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Center(
+              child: _complaintsLoadingMore
+                  ? const CircularProgressIndicator()
+                  : TextButton(
+                      onPressed: _loadMoreComplaints,
+                      child: const Text('تحميل المزيد'),
+                    ),
+            ),
+          );
+        }
+        final c = _complaints[index];
         final reply = c.replyMessage?.trim() ?? '';
         return NeuCard(
           margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
@@ -2459,7 +2986,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             ),
           ),
         );
-      }).toList(),
+      },
     );
   }
 
@@ -2468,13 +2995,43 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     final adminsTotal = _sumMemberCounts((r) => r.adminsCount);
     final employeesTotal = _sumMemberCounts((r) => r.employeesCount);
     final membersTotal = _sumMemberCounts((r) => r.totalMembers);
+    final accountsTotal = _memberCounts.length;
 
-    return Column(
+    return ListView(
+      controller: _membersScroll,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: DropdownButtonFormField<String?>(
+        NeuCard(
+          margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              const Icon(Icons.groups_rounded),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'إدارة أعضاء الحسابات',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: () async {
+                  await _fetchMemberCounts();
+                  await _fetchAccountMembers(accountId: _membersAccountId);
+                },
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('تحديث'),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        NeuCard(
+          margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            children: [
+              DropdownButtonFormField<String?>(
                 initialValue: _membersAccountId,
                 decoration: const InputDecoration(
                   labelText: 'الحساب',
@@ -2503,44 +3060,206 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                   await _fetchAccountMembers(accountId: value);
                 },
               ),
-            ),
-            const SizedBox(width: 12),
-            Row(
-              children: [
-                const Text('النشط فقط'),
-                Switch(
-                  value: _membersOnlyActive,
-                  onChanged: (value) async {
-                    setState(() => _membersOnlyActive = value);
-                    await _fetchMemberCounts();
-                    await _fetchAccountMembers(accountId: _membersAccountId);
-                  },
-                ),
-              ],
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            _statChip('المالكون', ownersTotal),
-            const SizedBox(width: 8),
-            _statChip('المدراء', adminsTotal),
-            const SizedBox(width: 8),
-            _statChip('الموظفون', employeesTotal),
-            const SizedBox(width: 8),
-            _statChip('الإجمالي', membersTotal),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Expanded(
-          child: ListView(
-            children: [
-              _buildMemberCountsCard(scheme),
-              const SizedBox(height: 12),
-              _buildMembersListCard(scheme),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Text('النشط فقط'),
+                  const SizedBox(width: 8),
+                  Switch(
+                    value: _membersOnlyActive,
+                    onChanged: (value) async {
+                      setState(() => _membersOnlyActive = value);
+                      await _fetchMemberCounts();
+                      await _fetchAccountMembers(accountId: _membersAccountId);
+                    },
+                  ),
+                  const Spacer(),
+                  Text(
+                    'الحسابات: $accountsTotal',
+                    style: TextStyle(
+                      color: scheme.onSurface.withValues(alpha: .7),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
+        ),
+        const SizedBox(height: 8),
+        _buildMembersSummaryCarousel(
+          scheme,
+          ownersTotal: ownersTotal,
+          adminsTotal: adminsTotal,
+          employeesTotal: employeesTotal,
+          membersTotal: membersTotal,
+          accountsTotal: accountsTotal,
+        ),
+        const SizedBox(height: 10),
+        _buildMemberCountsCard(scheme),
+        const SizedBox(height: 12),
+        _buildMembersListCard(scheme),
+      ],
+    );
+  }
+
+  Widget _buildMembersSummaryCarousel(
+    ColorScheme scheme, {
+    required int ownersTotal,
+    required int adminsTotal,
+    required int employeesTotal,
+    required int membersTotal,
+    required int accountsTotal,
+  }) {
+    final items = <_RevenueCardData>[
+      _RevenueCardData(
+        title: 'إجمالي الحسابات',
+        subtitle: 'عدد العيادات المرتبطة',
+        amount: accountsTotal.toDouble(),
+        icon: Icons.business_rounded,
+        gradient: [const Color(0xFF0E6A83), const Color(0xFF3CB1AA)],
+      ),
+      _RevenueCardData(
+        title: 'إجمالي الملاك',
+        subtitle: 'عدد الملاك',
+        amount: ownersTotal.toDouble(),
+        icon: Icons.verified_user_rounded,
+        gradient: [const Color(0xFF1B4F72), const Color(0xFF2E86C1)],
+      ),
+      _RevenueCardData(
+        title: 'إجمالي المدراء',
+        subtitle: 'عدد المدراء',
+        amount: adminsTotal.toDouble(),
+        icon: Icons.manage_accounts_rounded,
+        gradient: [const Color(0xFF6C3483), const Color(0xFF9B59B6)],
+      ),
+      _RevenueCardData(
+        title: 'إجمالي الموظفين',
+        subtitle: 'عدد الموظفين',
+        amount: employeesTotal.toDouble(),
+        icon: Icons.badge_rounded,
+        gradient: [const Color(0xFF0B5345), const Color(0xFF1ABC9C)],
+      ),
+      _RevenueCardData(
+        title: 'إجمالي الأعضاء',
+        subtitle: 'جميع الحسابات',
+        amount: membersTotal.toDouble(),
+        icon: Icons.groups_rounded,
+        gradient: [const Color(0xFF7D3C98), const Color(0xFFBB8FCE)],
+      ),
+    ];
+
+    return Column(
+      children: [
+        SizedBox(
+          height: 140,
+          child: PageView.builder(
+            controller: _membersSummaryController,
+            itemCount: items.length,
+            itemBuilder: (context, index) {
+              final item = items[index];
+              final delta = (index - _membersSummaryPage).clamp(-1.0, 1.0);
+              final scale = 0.92 + (1 - delta.abs()) * 0.08;
+              return AnimatedBuilder(
+                animation: _membersSummaryController,
+                builder: (context, child) {
+                  return Transform.scale(scale: scale, child: child);
+                },
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(18),
+                      gradient: LinearGradient(
+                        colors: item.gradient,
+                        begin: Alignment.topRight,
+                        end: Alignment.bottomLeft,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: item.gradient.first.withValues(alpha: 0.35),
+                          blurRadius: 18,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
+                    ),
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.14),
+                          width: 1,
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.18),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Icon(item.icon, color: Colors.white),
+                              ),
+                              const Spacer(),
+                              Text(
+                                item.amount.toStringAsFixed(0),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 18,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            item.title,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 13,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            item.subtitle,
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.8),
+                              fontWeight: FontWeight.w600,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 6),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(items.length, (i) {
+            final active = i == _membersSummaryPage.round();
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 250),
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              width: active ? 18 : 8,
+              height: 6,
+              decoration: BoxDecoration(
+                color: active ? scheme.primary : Colors.black12,
+                borderRadius: BorderRadius.circular(99),
+              ),
+            );
+          }),
         ),
       ],
     );
@@ -2598,9 +3317,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   }
 
   Widget _buildMembersListCard(ColorScheme scheme) {
-    if (_loadingAccountMembers) {
-      return const Center(child: CircularProgressIndicator());
-    }
     return NeuCard(
       padding: const EdgeInsets.all(12),
       child: Column(
@@ -2614,17 +3330,33 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             ),
           ),
           const SizedBox(height: 8),
-          if (_accountMembers.isEmpty)
+          if (_loadingAccountMembers && _accountMembers.isEmpty)
+            const Center(child: CircularProgressIndicator())
+          else if (_accountMembers.isEmpty)
             const Text('لا توجد حسابات مطابقة للفلترة الحالية.')
           else
             ListView.separated(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              itemCount: _accountMembers.length,
+              itemCount:
+                  _accountMembers.length + (_membersHasMore ? 1 : 0),
               separatorBuilder: (_, __) => const Divider(height: 18),
               itemBuilder: (_, index) {
+                if (index >= _accountMembers.length) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Center(
+                      child: _membersLoadingMore
+                          ? const CircularProgressIndicator()
+                          : TextButton(
+                              onPressed: _loadMoreMembers,
+                              child: const Text('تحميل المزيد'),
+                            ),
+                    ),
+                  );
+                }
                 final row = _accountMembers[index];
-                final title = row.email.isEmpty ? row.userUid : row.email;
+                final title = row.email.isEmpty ? 'بدون بريد' : row.email;
                 final roleLabel = _roleLabel(row.role);
                 final statusLabel = row.disabled ? 'معطل' : 'نشط';
                 final created = row.createdAt == null
@@ -2675,11 +3407,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     Widget listBody;
 
     if (_statsMode == 1) {
-      listBody = ListView(
+      listBody = Column(
         children: _paymentPlanStats.map((s) {
-          final planLabel = (s.planCode ?? '').toLowerCase() == 'extra_seat'
-              ? 'مقاعد إضافية'
-              : s.planCode?.toUpperCase() ?? 'غير محدد';
+          final planLabel = _planLabelFromCode(s.planCode);
           return NeuCard(
             margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
             padding: const EdgeInsets.all(12),
@@ -2699,7 +3429,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       );
     } else if (_statsMode == 2) {
       final fmt = DateFormat('yyyy-MM');
-      listBody = ListView(
+      listBody = Column(
         children: _paymentMonthlyStats.map((s) {
           final label = s.period == null ? 'غير محدد' : fmt.format(s.period!);
           return NeuCard(
@@ -2721,7 +3451,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       );
     } else if (_statsMode == 3) {
       final fmt = DateFormat('yyyy-MM-dd');
-      listBody = ListView(
+      listBody = Column(
         children: _paymentDailyStats.map((s) {
           final label = s.period == null ? 'غير محدد' : fmt.format(s.period!);
           return NeuCard(
@@ -2742,7 +3472,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         }).toList(),
       );
     } else {
-      listBody = ListView(
+      listBody = Column(
         children: _paymentStats.map((s) {
           return NeuCard(
             margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
@@ -2763,9 +3493,20 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       );
     }
 
-    return Column(
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       children: [
+        _buildStatsHeader(scheme),
+        const SizedBox(height: 8),
         _buildRevenueCarousel(scheme),
+        const SizedBox(height: 10),
+        _buildSystemHealthCard(scheme),
+        _buildRiskAlertsCard(scheme),
+        _buildUsageMetricsCard(scheme),
+        _buildAdminActionLogsPreview(scheme),
+        _buildAuditDailyCard(scheme),
+        _buildAuditTopActorsCard(scheme),
+        _buildUsageDailyCard(scheme),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           child: SingleChildScrollView(
@@ -2790,9 +3531,650 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
           ),
         ),
         const SizedBox(height: 6),
-        Expanded(child: listBody),
+        listBody,
+        const SizedBox(height: 12),
       ],
     );
+  }
+
+  Widget _buildStatsHeader(ColorScheme scheme) {
+    return NeuCard(
+      margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+      padding: const EdgeInsets.all(12),
+      child: Row(
+        children: [
+          const Icon(Icons.analytics_rounded),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text(
+              'لوحة الإحصاءات',
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+            ),
+          ),
+          TextButton.icon(
+            onPressed: () async {
+              await _fetchPaymentStats();
+              await _fetchExtraSeatRevenue();
+              await _fetchSystemHealth();
+              await _fetchUsageMetrics();
+              await _fetchRiskAlerts();
+              await _fetchAuditDaily();
+              await _fetchAuditTopActors();
+              await _fetchUsageDaily();
+              await _fetchActionLogs(reset: true);
+            },
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text('تحديث الكل'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSystemHealthCard(ColorScheme scheme) {
+    if (_loadingSystemHealth) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 6),
+        child: LinearProgressIndicator(minHeight: 3),
+      );
+    }
+    final h = _systemHealth;
+    if (h == null) return const SizedBox.shrink();
+    return NeuCard(
+      margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'صحة النظام',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ),
+              IconButton(
+                tooltip: 'تحديث',
+                onPressed: _fetchSystemHealth,
+                icon: const Icon(Icons.refresh_rounded),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 12,
+            runSpacing: 8,
+            children: [
+              _statPill('ملفات التخزين', h.storageFiles.toString(), scheme),
+              _statPill('مرفقات الدردشة', h.chatAttachments.toString(), scheme),
+              _statPill('طلبات الاشتراك المعلّقة',
+                  h.pendingSubscriptions.toString(), scheme),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'آخر تحديث: ${DateFormat('yyyy-MM-dd HH:mm').format(h.serverTime.toLocal())}',
+            style: TextStyle(
+              color: scheme.onSurface.withValues(alpha: .6),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAdminActionLogsPreview(ColorScheme scheme) {
+    if (_loadingActionLogs) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 6),
+        child: LinearProgressIndicator(minHeight: 3),
+      );
+    }
+    if (_adminActionLogs.isEmpty) return const SizedBox.shrink();
+    return NeuCard(
+      margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'آخر أوامر السوبر أدمن',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ),
+              TextButton(
+                onPressed: _openActionLogsSheet,
+                child: const Text('عرض الكل'),
+              ),
+              IconButton(
+                tooltip: 'تحديث',
+                onPressed: () => _fetchActionLogs(reset: true),
+                icon: const Icon(Icons.refresh_rounded),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          ..._adminActionLogs.take(5).map((log) {
+            final when = DateFormat('yyyy-MM-dd HH:mm')
+                .format(log.createdAt.toLocal());
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Text(
+                '• ${log.action} • ${log.entityType} • $when',
+                style: TextStyle(
+                  color: scheme.onSurface.withValues(alpha: .75),
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12.5,
+                ),
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRiskAlertsCard(ColorScheme scheme) {
+    if (_loadingRiskAlerts) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 6),
+        child: LinearProgressIndicator(minHeight: 3),
+      );
+    }
+    if (_riskAlerts.isEmpty) return const SizedBox.shrink();
+    return NeuCard(
+      margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'تنبيهات المخاطر',
+            style: TextStyle(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 6),
+          ..._riskAlerts.map((alert) {
+            final color = _riskColor(alert.severity, scheme);
+            return Container(
+              margin: const EdgeInsets.symmetric(vertical: 4),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: .08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: color.withValues(alpha: .35)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.warning_rounded, color: color),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${alert.title} (${alert.count})',
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        if ((alert.hint ?? '').isNotEmpty)
+                          Text(
+                            alert.hint!,
+                            style: TextStyle(
+                              color:
+                                  scheme.onSurface.withValues(alpha: .7),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUsageMetricsCard(ColorScheme scheme) {
+    if (_loadingUsageMetrics) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 6),
+        child: LinearProgressIndicator(minHeight: 3),
+      );
+    }
+    final m = _usageMetrics;
+    if (m == null) return const SizedBox.shrink();
+    return NeuCard(
+      margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'مؤشرات الاستخدام',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ),
+              IconButton(
+                tooltip: 'تحديث',
+                onPressed: _fetchUsageMetrics,
+                icon: const Icon(Icons.refresh_rounded),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 12,
+            runSpacing: 8,
+            children: [
+              _statPill('الحسابات', m.accounts.toString(), scheme),
+              _statPill('مستخدمي الحسابات', m.accountUsers.toString(), scheme),
+              _statPill('رسائل 30 يوم', m.chatMessages30d.toString(), scheme),
+              _statPill('مرفقات الدردشة', m.chatAttachments.toString(), scheme),
+              _statPill('أحداث تدقيق 7 أيام', m.auditEvents7d.toString(), scheme),
+              if (m.activeUsers30d != null)
+                _statPill('نشطون 30 يوم', m.activeUsers30d.toString(), scheme),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'آخر تحديث: ${DateFormat('yyyy-MM-dd HH:mm').format(m.serverTime.toLocal())}',
+            style: TextStyle(
+              color: scheme.onSurface.withValues(alpha: .6),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAuditDailyCard(ColorScheme scheme) {
+    if (_loadingAuditDaily) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 6),
+        child: LinearProgressIndicator(minHeight: 3),
+      );
+    }
+    if (_auditDaily.isEmpty) return const SizedBox.shrink();
+    return NeuCard(
+      margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'ملخص التدقيق اليومي',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: _exportAuditDaily,
+                icon: const Icon(Icons.download_rounded),
+                label: const Text('تصدير'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          ..._auditDaily.take(6).map((row) {
+            final day = DateFormat('yyyy-MM-dd').format(row.day.toLocal());
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: Text(
+                '• $day • ${row.tableName} • ${row.op} • ${row.events}',
+                style: TextStyle(
+                  color: scheme.onSurface.withValues(alpha: .75),
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12.5,
+                ),
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAuditTopActorsCard(ColorScheme scheme) {
+    if (_loadingAuditTopActors) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 6),
+        child: LinearProgressIndicator(minHeight: 3),
+      );
+    }
+    if (_auditTopActors.isEmpty) return const SizedBox.shrink();
+    return NeuCard(
+      margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'أكثر الحسابات نشاطًا (تدقيق)',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: _exportAuditTopActors,
+                icon: const Icon(Icons.download_rounded),
+                label: const Text('تصدير'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          ..._auditTopActors.take(6).map((row) {
+            final label = (row.actorEmail ?? '').trim();
+            final when = row.lastAt == null
+                ? ''
+                : DateFormat('yyyy-MM-dd').format(row.lastAt!.toLocal());
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: Text(
+                '• ${label.isEmpty ? 'غير معروف' : label} • ${row.events} • $when',
+                style: TextStyle(
+                  color: scheme.onSurface.withValues(alpha: .75),
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12.5,
+                ),
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUsageDailyCard(ColorScheme scheme) {
+    if (_loadingUsageDaily) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 6),
+        child: LinearProgressIndicator(minHeight: 3),
+      );
+    }
+    if (_usageDaily.isEmpty) return const SizedBox.shrink();
+    return NeuCard(
+      margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'حركة الاستخدام اليومية (آخر 30 يوم)',
+            style: TextStyle(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 6),
+          ..._usageDaily.take(6).map((row) {
+            final day = DateFormat('yyyy-MM-dd').format(row.day.toLocal());
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: Text(
+                '• $day • رسائل ${row.messages} • مرفقات ${row.attachments}',
+                style: TextStyle(
+                  color: scheme.onSurface.withValues(alpha: .75),
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12.5,
+                ),
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Color _riskColor(String severity, ColorScheme scheme) {
+    switch (severity) {
+      case 'high':
+        return Colors.redAccent;
+      case 'medium':
+        return Colors.orange;
+      case 'low':
+      default:
+        return scheme.primary;
+    }
+  }
+
+  void _openActionLogsSheet() {
+    if (!mounted) return;
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.85,
+          maxChildSize: 0.95,
+          minChildSize: 0.55,
+          builder: (sheetCtx, controller) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+              ),
+              child: Column(
+                children: [
+                  const SizedBox(height: 8),
+                  Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.black12,
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      const SizedBox(width: 16),
+                      const Expanded(
+                        child: Text(
+                          'سجل أوامر السوبر أدمن',
+                          style: TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                      TextButton.icon(
+                        onPressed: _exportActionLogs,
+                        icon: const Icon(Icons.download_rounded),
+                        label: const Text('تصدير'),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: ListView.builder(
+                      controller: controller,
+                      itemCount: _adminActionLogs.length + 1,
+                      itemBuilder: (context, index) {
+                        if (index == _adminActionLogs.length) {
+                          if (_loadingMoreActionLogs) {
+                            return const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 12),
+                              child:
+                                  Center(child: CircularProgressIndicator()),
+                            );
+                          }
+                          if (!_actionLogsHasMore) {
+                            return const SizedBox(height: 24);
+                          }
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 8, horizontal: 16),
+                            child: ElevatedButton(
+                              onPressed: () => _fetchActionLogs(reset: false),
+                              child: const Text('تحميل المزيد'),
+                            ),
+                          );
+                        }
+                        final log = _adminActionLogs[index];
+                        return _buildActionLogTile(log, Theme.of(context));
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildActionLogTile(AdminActionLog log, ThemeData theme) {
+    final when =
+        DateFormat('yyyy-MM-dd HH:mm').format(log.createdAt.toLocal());
+    final actor = (log.actorEmail ?? '').trim();
+    return ListTile(
+      leading: const Icon(Icons.receipt_long_rounded),
+      title: Text(
+        log.action,
+        style: const TextStyle(fontWeight: FontWeight.w700),
+      ),
+      subtitle: Text(
+        [
+          if (log.entityType.isNotEmpty) log.entityType,
+          if (actor.isNotEmpty) actor,
+          when,
+        ].join(' • '),
+        style: TextStyle(
+          color: theme.colorScheme.onSurface.withValues(alpha: .7),
+          fontWeight: FontWeight.w600,
+          fontSize: 12.5,
+        ),
+      ),
+      trailing: log.entityId == null
+          ? null
+          : Text(
+              log.entityId!,
+              style: TextStyle(
+                color: theme.colorScheme.onSurface.withValues(alpha: .6),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+      onTap: log.details == null ? null : () => _showActionLogDetails(log),
+    );
+  }
+
+  void _showActionLogDetails(AdminActionLog log) {
+    final details = log.details;
+    if (details == null) return;
+    final pretty = const JsonEncoder.withIndent('  ').convert(details);
+    showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('تفاصيل الأمر'),
+          content: SingleChildScrollView(
+            child: Text(pretty, textDirection: ui.TextDirection.ltr),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('إغلاق'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _exportActionLogs() async {
+    try {
+      final bytes =
+          await ExportService.exportAdminActionLogsToExcel(_adminActionLogs);
+      final ts = DateFormat('yyyyMMdd_HHmm').format(DateTime.now());
+      await saveFileBytes(bytes, 'admin_action_logs_$ts.xlsx');
+      _snack('تم تصدير السجلات بنجاح');
+    } catch (e) {
+      _snack('تعذّر تصدير السجلات: $e');
+    }
+  }
+
+  Future<void> _exportAuditDaily() async {
+    try {
+      final bytes =
+          await ExportService.exportAdminAuditActivityDailyToExcel(_auditDaily);
+      final ts = DateFormat('yyyyMMdd_HHmm').format(DateTime.now());
+      await saveFileBytes(bytes, 'admin_audit_daily_$ts.xlsx');
+      _snack('تم تصدير ملخص التدقيق');
+    } catch (e) {
+      _snack('تعذّر تصدير ملخص التدقيق: $e');
+    }
+  }
+
+  Future<void> _exportAuditTopActors() async {
+    try {
+      final bytes = await ExportService.exportAdminAuditTopActorsToExcel(
+          _auditTopActors);
+      final ts = DateFormat('yyyyMMdd_HHmm').format(DateTime.now());
+      await saveFileBytes(bytes, 'admin_audit_top_actors_$ts.xlsx');
+      _snack('تم تصدير أكثر الحسابات نشاطًا');
+    } catch (e) {
+      _snack('تعذّر تصدير أكثر الحسابات نشاطًا: $e');
+    }
+  }
+
+  Widget _statPill(String label, String value, ColorScheme scheme) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: scheme.primary.withValues(alpha: .08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: scheme.primary.withValues(alpha: .2)),
+      ),
+      child: Text(
+        '$label: $value',
+        style: TextStyle(
+          color: scheme.onSurface,
+          fontWeight: FontWeight.w700,
+          fontSize: 12,
+        ),
+      ),
+    );
+  }
+
+  String _planLabelFromCode(String? rawCode) {
+    final code = (rawCode ?? '').toLowerCase().trim();
+    switch (code) {
+      case 'free':
+        return 'مجانية';
+      case 'month':
+        return 'شهرية';
+      case 'month_plus':
+        return 'شهرية بلس';
+      case 'month_pro':
+        return 'شهرية برو';
+      case 'year':
+        return 'سنوية';
+      case 'year_plus':
+        return 'سنوية بلس';
+      case 'year_pro':
+        return 'سنوية برو';
+      case 'extra_seat':
+        return 'مقاعد إضافية';
+      default:
+        return rawCode?.toUpperCase() ?? 'غير محدد';
+    }
   }
 
   Widget _buildRevenueCarousel(ColorScheme scheme) {
@@ -2829,105 +4211,123 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       ),
     ];
 
-    return SizedBox(
-      height: 150,
-      child: PageView.builder(
-        controller: _revenueController,
-        itemCount: items.length,
-        itemBuilder: (context, index) {
-          final item = items[index];
-          final delta = (index - _revenuePage).clamp(-1.0, 1.0);
-          final scale = 0.92 + (1 - delta.abs()) * 0.08;
-          final tilt = delta * 0.10;
-          return AnimatedBuilder(
-            animation: _revenueController,
-            builder: (context, child) {
-              return Transform(
-                alignment: Alignment.center,
-                transform: Matrix4.identity()
-                  ..setEntry(3, 2, 0.001)
-                  ..rotateY(tilt)
-                  ..scale(scale),
-                child: child,
-              );
-            },
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-              child: Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(18),
-                  gradient: LinearGradient(
-                    colors: item.gradient,
-                    begin: Alignment.topRight,
-                    end: Alignment.bottomLeft,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: item.gradient.first.withValues(alpha: 0.35),
-                      blurRadius: 20,
-                      offset: const Offset(0, 10),
+    return Column(
+      children: [
+        SizedBox(
+          height: 160,
+          child: PageView.builder(
+            controller: _revenueController,
+            itemCount: items.length,
+            itemBuilder: (context, index) {
+              final item = items[index];
+              final delta = (index - _revenuePage).clamp(-1.0, 1.0);
+              final scale = 0.9 + (1 - delta.abs()) * 0.1;
+              return AnimatedBuilder(
+                animation: _revenueController,
+                builder: (context, child) {
+                  return Transform.scale(scale: scale, child: child);
+                },
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(18),
+                      gradient: LinearGradient(
+                        colors: item.gradient,
+                        begin: Alignment.topRight,
+                        end: Alignment.bottomLeft,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: item.gradient.first.withValues(alpha: 0.35),
+                          blurRadius: 18,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                child: Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.12),
-                      width: 1,
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
+                    child: Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.14),
+                          width: 1,
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.18),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Icon(item.icon, color: Colors.white),
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.18),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Icon(item.icon, color: Colors.white),
+                              ),
+                              const Spacer(),
+                              Text(
+                                _loadingExtraSeatRevenue
+                                    ? '—'
+                                    : '\$${item.amount.toStringAsFixed(0)}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 18,
+                                ),
+                              ),
+                            ],
                           ),
-                          const Spacer(),
+                          const SizedBox(height: 10),
                           Text(
-                            _loadingExtraSeatRevenue ? '—' : '\$${item.amount.toStringAsFixed(0)}',
+                            item.title,
                             style: const TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.w800,
-                              fontSize: 18,
+                              fontSize: 14,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _loadingExtraSeatRevenue
+                                ? 'جاري التحميل...'
+                                : item.subtitle,
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.8),
+                              fontWeight: FontWeight.w600,
+                              fontSize: 12.5,
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 10),
-                      Text(
-                        item.title,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 14,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _loadingExtraSeatRevenue ? 'جاري التحميل...' : item.subtitle,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.85),
-                          fontWeight: FontWeight.w600,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 6),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(items.length, (i) {
+            final active = i == _revenuePage.round();
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 250),
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              width: active ? 18 : 8,
+              height: 6,
+              decoration: BoxDecoration(
+                color: active ? scheme.primary : Colors.black12,
+                borderRadius: BorderRadius.circular(99),
               ),
-            ),
-          );
-        },
-      ),
+            );
+          }),
+        ),
+      ],
     );
   }
 
@@ -3151,7 +4551,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         itemCount: _clinics.length,
         itemBuilder: (_, i) {
           final clinic = _clinics[i];
-          final planCode = (clinic.planCode ?? 'free').toUpperCase();
+          final planCode = _planLabelFromCode(clinic.planCode);
           final planStatus = (clinic.planStatus ?? 'active').toLowerCase();
           final planEnd = clinic.planEndAt;
           return Padding(

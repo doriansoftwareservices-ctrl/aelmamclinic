@@ -48,6 +48,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
   final _paidCtrl = TextEditingController(); // مبلغ مدفوع
   final _remainingCtrl = TextEditingController(); // يُحسب تلقائياً
   final _notesCtrl = TextEditingController();
+  final _collateralCtrl = TextEditingController(); // رهن/ضمان اختياري
   final _manualCostCtrl = TextEditingController(); // تكلفة الخدمة اليدوية
   final _totalCtrl = TextEditingController(text: '0.00');
 
@@ -100,6 +101,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
     _paidCtrl.dispose();
     _remainingCtrl.dispose();
     _notesCtrl.dispose();
+    _collateralCtrl.dispose();
     _manualCostCtrl.dispose();
     _totalCtrl.dispose();
     super.dispose();
@@ -868,6 +870,9 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
         doctorId: _selectedDoctorId,
         doctorName: _selectedDoctorName,
         notes: _notesCtrl.text.trim(),
+        collateral: _collateralCtrl.text.trim().isEmpty
+            ? null
+            : _collateralCtrl.text.trim(),
         serviceType:
             _mapServiceTypeToCode(_selectedServiceType), // تخزين بصيغة قياسية
         serviceId: null,
@@ -888,7 +893,11 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
 
       await db.transaction((txn) async {
         // 1) Insert patient
-        final data = patient.toMap()..remove('id');
+        final data = await DBService.instance.prepareInsert(
+          Patient.table,
+          patient.toMap()..remove('id'),
+          executor: txn,
+        );
         if ((patient.doctorId ?? 0) != 0) {
           data['doctorReviewPending'] = 1;
           data['doctorReviewedAt'] = null;
@@ -896,31 +905,40 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
         patientId = await txn.insert(Patient.table, data);
 
         if (paid > 0) {
-          await txn.insert('financial_logs', {
-            'transaction_type': 'PatientPayment',
-            'operation': 'create',
-            'amount': paid,
-            'employee_id': null,
-            'description':
-                'دفعة مريض: ${patient.name} (ID: $patientId)',
-            'modification_details': '',
-            'timestamp': regDT.toIso8601String(),
-          });
+          final fData = await DBService.instance.prepareInsert(
+            'financial_logs',
+            {
+              'transaction_type': 'PatientPayment',
+              'operation': 'create',
+              'amount': paid,
+              'employee_id': null,
+              'patient_id': patientId,
+              'description':
+                  'دفعة مريض: ${patient.name} (ID: $patientId)',
+              'modification_details': '',
+              'timestamp': regDT.toIso8601String(),
+            },
+            executor: txn,
+          );
+          await txn.insert('financial_logs', fData);
           touchedFinancial = true;
         }
 
         // 2) Insert services
         if (_selectedServices.isNotEmpty) {
-          final batch = txn.batch();
           for (final ps in _selectedServices) {
-            batch.insert(PatientService.table, {
-              'patientId': patientId,
-              'serviceId': ps.serviceId,
-              'serviceName': ps.serviceName,
-              'serviceCost': ps.serviceCost,
-            });
+            final data = await DBService.instance.prepareInsert(
+              PatientService.table,
+              {
+                'patientId': patientId,
+                'serviceId': ps.serviceId,
+                'serviceName': ps.serviceName,
+                'serviceCost': ps.serviceCost,
+              },
+              executor: txn,
+            );
+            await txn.insert(PatientService.table, data);
           }
-          await batch.commit(noResult: true);
           touchedServices = true;
         }
 
@@ -940,19 +958,35 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
             amount =
                 ((itemRows.first['price'] as num?)?.toDouble() ?? 0.0) * qty;
           }
-          await txn.insert(Consumption.table, {
-            'patientId': patientId.toString(),
-            'itemId': itemId.toString(),
-            'quantity': qty,
-            'date': regDT.toIso8601String(),
-            'amount': amount,
-          });
+          final cData = await DBService.instance.prepareInsert(
+            Consumption.table,
+            {
+              'patientId': patientId.toString(),
+              'itemId': itemId.toString(),
+              'quantity': qty,
+              'date': regDT.toIso8601String(),
+              'amount': amount,
+            },
+            executor: txn,
+          );
+          await txn.insert(Consumption.table, cData);
           touchedConsumptions = true;
 
-          final rows = await txn.rawUpdate(
-            'UPDATE items SET stock = stock - ? WHERE id = ? AND stock >= ?',
-            [qty, itemId, qty],
+          final hasUpdatedAt =
+              await DBService.instance.hasColumn(txn, 'items', 'updated_at');
+          final args = <Object?>[qty, itemId, qty];
+          final accClause = await DBService.instance.accountFilterClause(
+            txn,
+            'items',
+            args: args,
           );
+          final sql = hasUpdatedAt
+              ? 'UPDATE items SET stock = stock - ?, updated_at = ? WHERE id = ? AND stock >= ? $accClause'
+              : 'UPDATE items SET stock = stock - ? WHERE id = ? AND stock >= ? $accClause';
+          if (hasUpdatedAt) {
+            args.insert(1, DateTime.now().toIso8601String());
+          }
+          final rows = await txn.rawUpdate(sql, args);
           if (rows == 0) {
             throw Exception('المخزون غير كافٍ لبعض المواد المستخدمة.');
           }
@@ -1376,6 +1410,16 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
                             ),
                           ],
                         ),
+                      ),
+
+                      const SizedBox(height: 14),
+
+                      // رهن/ضمان اختياري
+                      TSectionHeader('الرهن (اختياري)'),
+                      NeuField(
+                        controller: _collateralCtrl,
+                        labelText: 'مثال: سيارة، ذهب، سند...',
+                        maxLines: 2,
                       ),
 
                       const SizedBox(height: 14),

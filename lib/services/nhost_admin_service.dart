@@ -8,8 +8,10 @@ import 'package:aelmamclinic/core/auth_role_state.dart';
 import 'package:aelmamclinic/models/account_user_summary.dart';
 import 'package:aelmamclinic/models/clinic.dart';
 import 'package:aelmamclinic/models/provisioning_result.dart';
+import 'package:aelmamclinic/models/backend_errors.dart';
 import 'package:aelmamclinic/services/nhost_api_client.dart';
 import 'package:aelmamclinic/services/nhost_graphql_service.dart';
+import 'package:aelmamclinic/services/admin_insights_service.dart';
 
 class NhostAdminService {
   NhostAdminService({GraphQLClient? client, NhostApiClient? api})
@@ -32,13 +34,26 @@ class NhostAdminService {
   }
 
   Future<void> _ensureSuperAdminOrThrow() async {
+    if (isSuperAdmin) return;
     const query = 'query { fn_is_super_admin_gql { is_super_admin } }';
-    final data = await _runQuery(query, const {});
-    final rows = data['fn_is_super_admin_gql'];
-    final isSuper =
-        rows is List && rows.isNotEmpty && rows.first['is_super_admin'] == true;
-    if (!isSuper) {
-      throw StateError('هذه العملية مخصّصة للسوبر أدمن فقط.');
+    try {
+      final data = await _runQuery(query, const {});
+      final rows = data['fn_is_super_admin_gql'];
+      final isSuper = rows is List &&
+          rows.isNotEmpty &&
+          rows.first['is_super_admin'] == true;
+      if (!isSuper) {
+        throw StateError('هذه العملية مخصّصة للسوبر أدمن فقط.');
+      }
+    } on BackendSchemaException {
+      // إذا لم يكن الاستعلام متاحًا، نعتمد على التوكن فقط
+      if (!isSuperAdmin) {
+        throw StateError('هذه العملية مخصّصة للسوبر أدمن فقط.');
+      }
+    } on OperationException {
+      if (!isSuperAdmin) {
+        throw StateError('هذه العملية مخصّصة للسوبر أدمن فقط.');
+      }
     }
   }
 
@@ -79,6 +94,14 @@ class NhostAdminService {
       'owner_password': ownerPassword,
     };
     final res = await _callFunctionJson('admin-create-owner', payload);
+    try {
+      await AdminInsightsService().logAction(
+        action: 'clinic_create',
+        entityType: 'clinic',
+        entityId: res['account_id']?.toString(),
+        details: {'clinic_name': clinicName.trim(), 'owner_email': ownerEmail.trim()},
+      );
+    } catch (_) {}
     return _parseProvisioningResult(res, role: 'owner');
   }
 
@@ -94,6 +117,14 @@ class NhostAdminService {
       'password': password,
     };
     final res = await _callFunctionJson('admin-create-employee', payload);
+    try {
+      await AdminInsightsService().logAction(
+        action: 'employee_create',
+        entityType: 'employee',
+        entityId: res['user_id']?.toString(),
+        details: {'account_id': clinicId, 'email': email.trim()},
+      );
+    } catch (_) {}
     return _parseProvisioningResult(res, role: 'employee');
   }
 
@@ -114,6 +145,13 @@ class NhostAdminService {
       'frozen': frozen,
     });
     _ensureOkJson(data['admin_set_clinic_frozen'], 'تعذّر تغيير حالة العيادة.');
+    try {
+      await AdminInsightsService().logAction(
+        action: frozen ? 'clinic_freeze' : 'clinic_unfreeze',
+        entityType: 'clinic',
+        entityId: accountId,
+      );
+    } catch (_) {}
   }
 
   Future<void> deleteClinic(String accountId) async {
@@ -129,6 +167,13 @@ class NhostAdminService {
     ''';
     final data = await _runMutation(mutation, {'id': accountId});
     _ensureOkJson(data['admin_delete_clinic'], 'تعذّر حذف العيادة.');
+    try {
+      await AdminInsightsService().logAction(
+        action: 'clinic_delete',
+        entityType: 'clinic',
+        entityId: accountId,
+      );
+    } catch (_) {}
   }
 
   Future<List<AccountUserSummary>> listAccountUsersWithEmail({

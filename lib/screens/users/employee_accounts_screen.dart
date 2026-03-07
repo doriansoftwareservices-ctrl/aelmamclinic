@@ -12,6 +12,7 @@ import 'package:aelmamclinic/screens/subscription/my_plan_screen.dart';
 import 'package:aelmamclinic/screens/users/employee_seat_payment_screen.dart';
 import 'package:aelmamclinic/services/employee_seat_service.dart';
 import 'package:aelmamclinic/services/nhost_employee_accounts_service.dart';
+import 'package:aelmamclinic/utils/chat_code_utils.dart';
 import 'package:aelmamclinic/utils/time.dart';
 
 class EmployeeAccountsScreen extends StatefulWidget {
@@ -30,7 +31,25 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
   List<EmployeeSeatRequest> _seatRequests = const [];
   final Set<String> _notifiedRequestIds = <String>{};
 
-  static const int _baseLimit = 5;
+  int _planLimit(String planCode) {
+    switch (planCode.toLowerCase()) {
+      case 'month_plus':
+      case 'year_plus':
+        return 10;
+      case 'month_pro':
+      case 'year_pro':
+        return 20;
+      case 'month':
+      case 'year':
+      default:
+        return 5;
+    }
+  }
+
+  bool _isProPlan(String planCode) {
+    final code = planCode.toLowerCase();
+    return code == 'month_pro' || code == 'year_pro';
+  }
 
   @override
   void initState() {
@@ -161,13 +180,13 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
   String _mapServerError(Object error) {
     final msg = error.toString().toLowerCase();
     if (msg.contains('seat_limit_reached')) {
-      return 'وصلت إلى الحد الأقصى للمقاعد المجانية.';
+      return 'وصلت إلى الحد الأقصى لموظفي خطتك.';
     }
     if (msg.contains('seat_limit_not_reached')) {
-      return 'لا تزال لديك مقاعد مجانية متاحة.';
+      return 'لا تزال لديك مقاعد متاحة ضمن خطتك.';
     }
     if (msg.contains('plan is free') || msg.contains('plan is')) {
-      return 'هذه الميزة متاحة لخطط PRO فقط.';
+      return 'هذه الميزة متاحة للخطط المدفوعة فقط.';
     }
     if (msg.contains('cannot_add_self')) {
       return 'لا يمكنك إضافة نفسك كموظف.';
@@ -410,7 +429,7 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
                   );
                 },
                 icon: const Icon(Icons.workspace_premium_rounded),
-                label: const Text('الترقية إلى PRO'),
+                label: const Text('عرض الخطط المدفوعة'),
               ),
             ],
           ),
@@ -452,8 +471,9 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
     ColorScheme scheme, {
     required int activeEmployees,
     required int totalEmployees,
+    required int limit,
   }) {
-    final remaining = (_baseLimit - activeEmployees).clamp(0, _baseLimit);
+    final remaining = (limit - activeEmployees).clamp(0, limit);
     return NeuCard(
       padding: const EdgeInsets.symmetric(
         horizontal: 14,
@@ -469,7 +489,7 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
           const SizedBox(height: 8),
           Row(
             children: [
-              _infoChip(scheme, 'الحد الأساسي', '$_baseLimit'),
+              _infoChip(scheme, 'الحد الأساسي', '$limit'),
               const SizedBox(width: 8),
               _infoChip(scheme, 'المستخدمون الحاليون', '$activeEmployees'),
               const SizedBox(width: 8),
@@ -593,6 +613,11 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
                       .where((e) =>
                           e.role.toLowerCase() == 'employee' && !e.disabled)
                       .length;
+                  final planCode = auth.planCode;
+                  final limit = _planLimit(planCode);
+                  final isProPlan = _isProPlan(planCode);
+                  final reachedLimit = activeEmployees >= limit;
+                  final allowExtraRequest = isProPlan && reachedLimit;
 
                   return ListView(
                     physics: physics,
@@ -603,6 +628,7 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
                         scheme,
                         activeEmployees: activeEmployees,
                         totalEmployees: employees.length,
+                        limit: limit,
                       ),
                       const SizedBox(height: 12),
                       NeuCard(
@@ -622,14 +648,16 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              activeEmployees < _baseLimit
-                                  ? 'يمكنك إضافة موظف جديد ضمن الحد المجاني.'
-                                  : 'وصلت للحد الأقصى للمقاعد المجانية.',
+                              !reachedLimit
+                                  ? 'يمكنك إضافة موظف جديد ضمن سقف خطتك.'
+                                  : (isProPlan
+                                      ? 'وصلت للسقف ويمكنك طلب مقعد إضافي.'
+                                      : 'وصلت للسقف الخاص بخطتك.'),
                               style: TextStyle(
                                 color: scheme.onSurface.withValues(alpha: .7),
                               ),
                             ),
-                            if (activeEmployees >= _baseLimit) ...[
+                            if (reachedLimit) ...[
                               const SizedBox(height: 10),
                               Container(
                                 padding: const EdgeInsets.all(10),
@@ -644,7 +672,7 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
                                     const SizedBox(width: 8),
                                     Expanded(
                                       child: Text(
-                                        'لديك $activeEmployees موظفين. الحد الأقصى $_baseLimit.',
+                                        'لديك $activeEmployees موظفين. الحد الأقصى $limit.',
                                         style: TextStyle(
                                           color: scheme.error,
                                           fontWeight: FontWeight.w600,
@@ -659,14 +687,33 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
                             FilledButton.icon(
                               onPressed: _busy
                                   ? null
-                                  : (activeEmployees < _baseLimit
+                                  : (!reachedLimit
                                       ? _addEmployeeWithinLimit
-                                      : _requestExtraEmployee),
+                                      : (allowExtraRequest
+                                          ? _requestExtraEmployee
+                                          : null)),
                               icon: const Icon(Icons.person_add_alt_1_rounded),
-                              label: Text(activeEmployees < _baseLimit
+                              label: Text(!reachedLimit
                                   ? 'إضافة موظف'
-                                  : 'طلب إضافة حساب موظف'),
+                                  : (allowExtraRequest
+                                      ? 'طلب إضافة حساب موظف'
+                                      : 'السقف ممتلئ')),
                             ),
+                            if (reachedLimit && !isProPlan) ...[
+                              const SizedBox(height: 6),
+                              TextButton.icon(
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => const MyPlanScreen(),
+                                    ),
+                                  );
+                                },
+                                icon: const Icon(Icons.workspace_premium_rounded),
+                                label: const Text('ترقية الخطة'),
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -710,7 +757,7 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
                                 subtitle: Text(
                                   [
                                     if ((emp.chatCodeSafe ?? '').trim().isNotEmpty)
-                                      'الرقم: ${emp.chatCodeSafe}',
+                                      'الرقم: ${ChatCodeUtils.format(emp.chatCodeSafe!)}',
                                     'الدور: ${_roleLabel(emp.role)}',
                                     _fmtDate(emp.createdAt),
                                   ].where((e) => e.isNotEmpty).join(' • '),

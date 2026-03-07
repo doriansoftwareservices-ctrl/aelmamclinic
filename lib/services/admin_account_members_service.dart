@@ -72,6 +72,7 @@ class AdminAccountMembersService {
           role
           disabled
           created_at
+          chat_code
         }
       }
     ''';
@@ -102,6 +103,70 @@ class AdminAccountMembersService {
     );
   }
 
+  Future<List<AdminAccountMember>> fetchMembersPage({
+    String? accountId,
+    required bool onlyActive,
+    required int limit,
+    required int offset,
+  }) async {
+    return _fallbackMembersPage(
+      accountId: accountId,
+      onlyActive: onlyActive,
+      limit: limit,
+      offset: offset,
+    );
+  }
+
+  Future<Map<String, AdminAccountMember>> fetchOwnerMembersByAccountIds(
+    List<String> accountIds,
+  ) async {
+    final ids =
+        accountIds.map((e) => e.trim()).where((e) => e.isNotEmpty).toSet().toList();
+    if (ids.isEmpty) return {};
+    const query = r'''
+      query OwnerMembersForAccounts($ids: [uuid!]!) {
+        v_admin_dashboard_account_members(
+          where: {account_id: {_in: $ids}, role: {_eq: "owner"}}
+        ) {
+          account_id
+          account_name
+          user_uid
+          email
+          role
+          disabled
+          created_at
+          chat_code
+        }
+      }
+    ''';
+    final res = await _gql.query(
+      QueryOptions(
+        document: gql(query),
+        variables: {'ids': ids},
+        fetchPolicy: FetchPolicy.noCache,
+        context: _superAdminContext(),
+      ),
+    );
+    if (res.hasException) {
+      throw res.exception!;
+    }
+    final rows =
+        (res.data?[_membersView] as List?) ?? const [];
+    final out = <String, AdminAccountMember>{};
+    for (final row in rows.whereType<Map>()) {
+      final m = AdminAccountMember.fromMap(Map<String, dynamic>.from(row));
+      if (m.accountId.isEmpty) continue;
+      final existing = out[m.accountId];
+      if (existing == null) {
+        out[m.accountId] = m;
+      } else if ((existing.chatCode ?? '').trim().isEmpty &&
+          (m.chatCode ?? '').trim().isNotEmpty) {
+        out[m.accountId] = m;
+      }
+    }
+    return out;
+  }
+
   Future<List<AdminAccountMember>> _fallbackMembers({
     String? accountId,
     required bool onlyActive,
@@ -116,6 +181,7 @@ class AdminAccountMembersService {
           role
           disabled
           created_at
+          chat_code
         }
       }
     ''';
@@ -130,6 +196,66 @@ class AdminAccountMembersService {
       QueryOptions(
         document: gql(query),
         variables: {'where': where.isEmpty ? null : where},
+        fetchPolicy: FetchPolicy.noCache,
+        context: _superAdminContext(),
+      ),
+    );
+    if (res.hasException) {
+      throw res.exception!;
+    }
+    final rows =
+        (res.data?[_membersView] as List?) ?? const [];
+    return rows
+        .whereType<Map>()
+        .map((row) =>
+            AdminAccountMember.fromMap(Map<String, dynamic>.from(row)))
+        .toList();
+  }
+
+  Future<List<AdminAccountMember>> _fallbackMembersPage({
+    String? accountId,
+    required bool onlyActive,
+    required int limit,
+    required int offset,
+  }) async {
+    const query = r'''
+      query MembersViewPage(
+        $where: v_admin_dashboard_account_members_bool_exp
+        $limit: Int!
+        $offset: Int!
+      ) {
+        v_admin_dashboard_account_members(
+          where: $where,
+          limit: $limit,
+          offset: $offset,
+          order_by: {created_at: desc}
+        ) {
+          account_id
+          account_name
+          user_uid
+          email
+          role
+          disabled
+          created_at
+          chat_code
+        }
+      }
+    ''';
+    final Map<String, dynamic> where = {};
+    if (accountId != null && accountId.isNotEmpty) {
+      where['account_id'] = {'_eq': accountId};
+    }
+    if (onlyActive) {
+      where['disabled'] = {'_eq': false};
+    }
+    final res = await _gql.query(
+      QueryOptions(
+        document: gql(query),
+        variables: {
+          'where': where.isEmpty ? null : where,
+          'limit': limit,
+          'offset': offset,
+        },
         fetchPolicy: FetchPolicy.noCache,
         context: _superAdminContext(),
       ),

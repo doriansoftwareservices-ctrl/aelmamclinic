@@ -5,6 +5,9 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:aelmamclinic/utils/toast_utils.dart';
 import 'package:intl/intl.dart';
 
+import 'package:aelmamclinic/core/theme.dart';
+import 'package:aelmamclinic/core/neumorphism.dart';
+
 import 'package:aelmamclinic/models/return_entry.dart';
 import 'package:aelmamclinic/services/db_service.dart';
 
@@ -124,15 +127,18 @@ class _ReminderScreenState extends State<ReminderScreen> {
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
-          title: const Text('تذكيرات اليوم'),
-          flexibleSpace: Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [scheme.primaryContainer, scheme.primary],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
+          title: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Image.asset(
+                'assets/images/logo.png',
+                height: 24,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
               ),
-            ),
+              const SizedBox(width: 8),
+              const Text('تذكيرات اليوم'),
+            ],
           ),
           actions: [
             IconButton(
@@ -142,12 +148,8 @@ class _ReminderScreenState extends State<ReminderScreen> {
             ),
             PopupMenuButton<String>(
               onSelected: (v) {
-                if (v == 'mark_all_seen') {
-                  _markAll(true);
-                }
-                if (v == 'mark_all_unseen') {
-                  _markAll(false);
-                }
+                if (v == 'mark_all_seen') _markAll(true);
+                if (v == 'mark_all_unseen') _markAll(false);
               },
               itemBuilder: (_) => const [
                 PopupMenuItem(
@@ -170,188 +172,224 @@ class _ReminderScreenState extends State<ReminderScreen> {
             ),
           ],
         ),
-        body: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                scheme.surfaceContainerHigh,
-                scheme.surface,
-                scheme.surfaceContainerHigh
-              ],
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-            ),
-          ),
-          child: Column(
-            children: [
-              // شريط علوي: بحث + فلاتر
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _searchCtrl,
-                        decoration: InputDecoration(
-                          hintText: 'ابحث باسم المريض / الهاتف / الحالة',
-                          prefixIcon: const Icon(Icons.search),
-                          filled: true,
-                          fillColor: scheme.surface,
-                          contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 12),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(25),
-                            borderSide: BorderSide.none,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Tooltip(
-                      message: 'غير الحاضرين فقط',
-                      child: FilterChip(
-                        selected: _onlyUnseen,
-                        onSelected: (v) {
-                          setState(() => _onlyUnseen = v);
-                          _applyFilter();
-                        },
-                        label: const Text('لم يحضر'),
-                        showCheckmark: false,
-                        selectedColor: scheme.primary.withValues(alpha: .15),
-                        labelStyle: TextStyle(
-                          color:
-                              _onlyUnseen ? scheme.primary : scheme.onSurface,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        side: BorderSide(
-                            color: scheme.primary.withValues(alpha: .4)),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsetsDirectional.fromSTEB(16, 0, 16, 6),
-                child: Align(
-                  alignment: AlignmentDirectional.centerStart,
+        body: SafeArea(
+          child: Padding(
+            padding: kScreenPadding,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                NeuCard(
+                  padding: const EdgeInsets.all(14),
                   child: Row(
                     children: [
-                      Icon(Icons.event_available,
-                          size: 16, color: scheme.primary),
-                      const SizedBox(width: 6),
-                      Text('تاريخ اليوم: $todayStr',
-                          style: TextStyle(
-                            color: scheme.onSurface.withValues(alpha: .7),
-                            fontWeight: FontWeight.w600,
-                          )),
+                      Container(
+                        decoration: BoxDecoration(
+                          color: kPrimaryColor.withValues(alpha: .12),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        padding: const EdgeInsets.all(10),
+                        child: const Icon(Icons.event_available_rounded,
+                            color: kPrimaryColor),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              'تاريخ اليوم: $todayStr',
+                              style: TextStyle(
+                                color: scheme.onSurface,
+                                fontWeight: FontWeight.w900,
+                                fontSize: 15.5,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'الإجمالي: ${_filtered.length} • غير مُشاهَد: ${_filtered.where((e) => !e.isAttended).length}',
+                              style: TextStyle(
+                                color: scheme.onSurface.withValues(alpha: .7),
+                                fontWeight: FontWeight.w700,
+                                fontSize: 12.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                 ),
-              ),
-              Expanded(
-                child: _loading
-                    ? const Center(child: CircularProgressIndicator())
-                    : RefreshIndicator(
-                        color: scheme.primary,
-                        onRefresh: _refresh,
-                        child: _filtered.isEmpty
-                            ? ListView(
-                                physics: const AlwaysScrollableScrollPhysics(),
-                                children: const [
-                                  SizedBox(height: 140),
-                                  Center(
-                                      child:
-                                          Text('لا توجد عودات مستحقة اليوم')),
-                                ],
-                              )
-                            : ListView.builder(
-                                padding:
-                                    const EdgeInsets.fromLTRB(12, 8, 12, 16),
-                                itemCount: _filtered.length,
-                                itemBuilder: (ctx, i) {
-                                  final r = _filtered[i];
-                                  final attended = r.isAttended;
-                                  final dateStr =
-                                      _dateTime.format(r.date.toLocal());
-
-                                  return Card(
-                                    elevation: 2,
-                                    margin:
-                                        const EdgeInsets.symmetric(vertical: 8),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(14),
-                                    ),
-                                    child: ListTile(
-                                      contentPadding:
-                                          const EdgeInsets.symmetric(
-                                              horizontal: 16, vertical: 12),
-                                      leading: Stack(
-                                        clipBehavior: Clip.none,
-                                        children: [
-                                          CircleAvatar(
-                                            radius: 24,
-                                            backgroundColor:
-                                                scheme.primaryContainer,
-                                            child: Icon(Icons.person,
-                                                color: scheme.primary),
-                                          ),
-                                          if (!attended)
-                                            Positioned(
-                                              right: -2,
-                                              top: -2,
-                                              child: CircleAvatar(
-                                                radius: 6,
-                                                backgroundColor:
-                                                    Colors.redAccent,
-                                              ),
-                                            ),
-                                        ],
-                                      ),
-                                      title: Text(
-                                        r.patientName,
-                                        style: const TextStyle(
-                                            fontWeight: FontWeight.w800),
-                                      ),
-                                      subtitle: Text(
-                                        'الحالة: ${r.diagnosis.isEmpty ? '—' : r.diagnosis}\nموعد العَود: $dateStr',
-                                        style: TextStyle(
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .onSurface
-                                              .withValues(alpha: .75),
-                                        ),
-                                      ),
-                                      trailing: Wrap(
-                                        spacing: 4,
-                                        children: [
-                                          IconButton(
-                                            tooltip: 'اتصال',
-                                            icon: const Icon(Icons.phone),
-                                            color: scheme.primary,
-                                            onPressed: () =>
-                                                _call(r.phoneNumber),
-                                          ),
-                                          IconButton(
-                                            tooltip: attended
-                                                ? 'إلغاء الحضور'
-                                                : 'تحديد كـ حضر',
-                                            icon: Icon(attended
-                                                ? Icons.check_circle
-                                                : Icons.radio_button_unchecked),
-                                            color: scheme.primary,
-                                            onPressed: () => _toggleSeen(r),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
+                const SizedBox(height: 12),
+                NeuCard(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: NeuField(
+                          controller: _searchCtrl,
+                          labelText: 'بحث بالاسم / الهاتف / الحالة',
+                          prefix: const Icon(Icons.search_rounded),
+                        ),
                       ),
+                      const SizedBox(width: 10),
+                      Column(
+                        children: [
+                          Text(
+                            'غير مُشاهَد',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w800,
+                              color:
+                                  scheme.onSurface.withValues(alpha: .7),
+                            ),
+                          ),
+                          Switch(
+                            value: _onlyUnseen,
+                            onChanged: (v) {
+                              setState(() => _onlyUnseen = v);
+                              _applyFilter();
+                            },
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: _loading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _filtered.isEmpty
+                          ? Center(
+                              child: Text(
+                                'لا توجد تذكيرات لليوم',
+                                style: TextStyle(
+                                  color:
+                                      scheme.onSurface.withValues(alpha: .6),
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            )
+                          : ListView.separated(
+                              itemCount: _filtered.length,
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(height: 10),
+                              itemBuilder: (_, i) {
+                                final r = _filtered[i];
+                                return _ReminderCard(
+                                  entry: r,
+                                  dateTimeFmt: _dateTime,
+                                  onToggleSeen: () => _toggleSeen(r),
+                                  onCall: () => _call(r.phoneNumber),
+                                );
+                              },
+                            ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ReminderCard extends StatelessWidget {
+  final ReturnEntry entry;
+  final DateFormat dateTimeFmt;
+  final VoidCallback onToggleSeen;
+  final VoidCallback onCall;
+
+  const _ReminderCard({
+    required this.entry,
+    required this.dateTimeFmt,
+    required this.onToggleSeen,
+    required this.onCall,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final attended = entry.isAttended;
+    final dateStr = dateTimeFmt.format(entry.date.toLocal());
+
+    return NeuCard(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+      child: Row(
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              color: attended
+                  ? Colors.green.withValues(alpha: .12)
+                  : Colors.orange.withValues(alpha: .12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            padding: const EdgeInsets.all(10),
+            child: Icon(
+              attended ? Icons.check_circle_outline : Icons.schedule_rounded,
+              color: attended ? Colors.green : Colors.orange,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  entry.patientName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: scheme.onSurface,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 15.5,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'موعد العَود: $dateStr',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: scheme.onSurface.withValues(alpha: .7),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12.5,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'الحالة: ${entry.diagnosis.isEmpty ? '—' : entry.diagnosis}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: scheme.onSurface.withValues(alpha: .7),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          Column(
+            children: [
+              IconButton(
+                tooltip: 'اتصال',
+                icon: const Icon(Icons.phone),
+                color: kPrimaryColor,
+                onPressed: onCall,
+              ),
+              IconButton(
+                tooltip: attended ? 'إلغاء الحضور' : 'تحديد كـ حضر',
+                icon: Icon(attended
+                    ? Icons.check_circle
+                    : Icons.radio_button_unchecked),
+                color: kPrimaryColor,
+                onPressed: onToggleSeen,
               ),
             ],
           ),
-        ),
+        ],
       ),
     );
   }

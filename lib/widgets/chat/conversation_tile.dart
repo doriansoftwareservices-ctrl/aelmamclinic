@@ -53,6 +53,12 @@ class ConversationTile extends StatelessWidget {
   /// وسم اختياري (اسم العيادة)
   final String? clinicLabel;
 
+  /// شارة حالة الدعم (مثلاً: قيد المراجعة)
+  final String? statusBadgeText;
+
+  /// لون شارة الحالة
+  final Color? statusBadgeColor;
+
   /// عدد الرسائل غير المقروءة (0 = سيُستخدم conversation.unreadCount إن وُجد)
   final int unreadCount;
 
@@ -64,6 +70,9 @@ class ConversationTile extends StatelessWidget {
 
   /// أيقونة مخصّصة بدل الافتراضية (مثلاً خدمة العملاء).
   final IconData? leadingIcon;
+
+  /// صورة مخصّصة بدل الأيقونة (مثلاً خدمة العملاء).
+  final String? leadingImageAsset;
 
   /// إظهار سهم تنقل
   final bool showChevron;
@@ -82,10 +91,13 @@ class ConversationTile extends StatelessWidget {
     this.subtitleIsTyping = false,
     this.lastMessage,
     this.clinicLabel,
+    this.statusBadgeText,
+    this.statusBadgeColor,
     this.unreadCount = 0,
     this.isMuted = false,
     this.isOnline,
     this.leadingIcon,
+    this.leadingImageAsset,
     this.showChevron = false,
     this.maxSubtitleChars = 64,
     this.onTap,
@@ -140,6 +152,7 @@ class ConversationTile extends StatelessWidget {
               type: conversation.type,
               isOnline: isOnline,
               leadingIcon: leadingIcon,
+              leadingImageAsset: leadingImageAsset,
             ),
             title: Row(
               children: [
@@ -150,6 +163,19 @@ class ConversationTile extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 6),
+                if (statusBadgeText != null &&
+                    statusBadgeText!.trim().isNotEmpty)
+                  Flexible(
+                    child: _StatusChip(
+                      text: statusBadgeText!.trim(),
+                      color: statusBadgeColor ?? scheme.primary,
+                    ),
+                  ),
+                if (statusBadgeText != null &&
+                    statusBadgeText!.trim().isNotEmpty &&
+                    clinicLabel != null &&
+                    clinicLabel!.trim().isNotEmpty)
+                  const SizedBox(width: 6),
                 if (clinicLabel != null && clinicLabel!.trim().isNotEmpty)
                   Flexible(child: _ClinicChip(text: clinicLabel!.trim())),
               ],
@@ -212,6 +238,7 @@ class ConversationTile extends StatelessWidget {
     required ChatConversationType type,
     bool? isOnline,
     IconData? leadingIcon,
+    String? leadingImageAsset,
   }) {
     final isGroup = type == ChatConversationType.group;
     final isAnnouncement = type == ChatConversationType.announcement;
@@ -227,14 +254,22 @@ class ConversationTile extends StatelessWidget {
       icon = Icons.person_rounded;
     }
 
+    final asset = leadingImageAsset;
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        CircleAvatar(
-          radius: 22,
-          backgroundColor: kPrimaryColor.withValues(alpha: .08),
-          child: Icon(icon, color: kPrimaryColor),
-        ),
+        if (asset != null && asset.isNotEmpty)
+          CircleAvatar(
+            radius: 22,
+            backgroundColor: Colors.transparent,
+            backgroundImage: AssetImage(asset),
+          )
+        else
+          CircleAvatar(
+            radius: 22,
+            backgroundColor: kPrimaryColor.withValues(alpha: .08),
+            child: Icon(icon, color: kPrimaryColor),
+          ),
         if (isOnline == true && !isGroup && !isAnnouncement)
           const Positioned(
             right: -2,
@@ -292,6 +327,9 @@ class ConversationTile extends StatelessWidget {
     // وإلا استعمل الـ snippet من المحادثة (lastMessageText/last_msg_snippet)
     final sn = (c.lastMessageText ?? c.lastMsgSnippet ?? '').trim();
     if (sn.isNotEmpty) {
+      final snLower = sn.toLowerCase();
+      if (snLower == 'image') return '📷 صورة';
+      if (snLower == 'file') return '📎 ملف';
       final oneLine = sn.replaceAll('\n', ' ').replaceAll(RegExp(r'\s+'), ' ');
       return oneLine.length > maxLen
           ? '${oneLine.substring(0, maxLen)}…'
@@ -376,6 +414,39 @@ class _ClinicChip extends StatelessWidget {
           color: scheme.onSurface.withValues(alpha: .85),
           fontWeight: FontWeight.w800,
           fontSize: 11.5,
+        ),
+      ),
+    );
+  }
+}
+
+class _StatusChip extends StatelessWidget {
+  final String text;
+  final Color color;
+
+  const _StatusChip({required this.text, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: color.withValues(alpha: 0.35),
+          width: 1,
+        ),
+      ),
+      child: Text(
+        text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        softWrap: false,
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.w800,
+          fontSize: 11,
         ),
       ),
     );

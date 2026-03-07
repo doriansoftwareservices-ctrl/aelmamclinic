@@ -142,6 +142,18 @@ class DBParityV3 {
     }
   }
 
+  Future<Set<String>> _tableColumns(Database db, String table) async {
+    try {
+      final rows = await db.rawQuery('PRAGMA table_info($table)');
+      return rows
+          .map((r) => (r['name'] ?? '').toString())
+          .where((n) => n.isNotEmpty)
+          .toSet();
+    } catch (_) {
+      return const <String>{};
+    }
+  }
+
   Future<void> _ensureSyncIdentity(
     Database db, {
     String? accountId,
@@ -169,11 +181,19 @@ class DBParityV3 {
 
   Future<void> _ensureSyncColumns(Database db, {bool verbose = false}) async {
     for (final t in _tables) {
-      // SQLite 3.10 لا يدعم IF NOT EXISTS للعمود؛ نحاول ونُهمل خطأ "duplicate column"
-      await _exec(db, 'ALTER TABLE $t ADD COLUMN account_id TEXT');
-      await _exec(db, 'ALTER TABLE $t ADD COLUMN device_id  TEXT');
-      await _exec(db, 'ALTER TABLE $t ADD COLUMN local_id   INTEGER');
-      await _exec(db, 'ALTER TABLE $t ADD COLUMN updated_at TEXT');
+      final cols = await _tableColumns(db, t);
+      if (!cols.contains('account_id')) {
+        await _exec(db, 'ALTER TABLE $t ADD COLUMN account_id TEXT');
+      }
+      if (!cols.contains('device_id')) {
+        await _exec(db, 'ALTER TABLE $t ADD COLUMN device_id  TEXT');
+      }
+      if (!cols.contains('local_id')) {
+        await _exec(db, 'ALTER TABLE $t ADD COLUMN local_id   INTEGER');
+      }
+      if (!cols.contains('updated_at')) {
+        await _exec(db, 'ALTER TABLE $t ADD COLUMN updated_at TEXT');
+      }
       if (verbose) print('[parity_v3] ensured sync columns on $t');
     }
   }

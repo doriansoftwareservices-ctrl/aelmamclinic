@@ -25,6 +25,8 @@ class _ListDoctorsScreenState extends State<ListDoctorsScreen> {
   List<Doctor> _doctors = [];
   List<Doctor> _filteredDoctors = [];
   final TextEditingController _searchController = TextEditingController();
+  static const int _pageSize = 50;
+  int _visibleCount = 0;
 
   @override
   void initState() {
@@ -46,6 +48,8 @@ class _ListDoctorsScreenState extends State<ListDoctorsScreen> {
     setState(() {
       _doctors = doctorsList;
       _filteredDoctors = doctorsList;
+      _visibleCount =
+          _filteredDoctors.length < _pageSize ? _filteredDoctors.length : _pageSize;
     });
   }
 
@@ -57,6 +61,8 @@ class _ListDoctorsScreenState extends State<ListDoctorsScreen> {
             d.specialization.toLowerCase().contains(q) ||
             d.phoneNumber.toLowerCase().contains(q);
       }).toList();
+      _visibleCount =
+          _filteredDoctors.length < _pageSize ? _filteredDoctors.length : _pageSize;
     });
   }
 
@@ -132,6 +138,8 @@ class _ListDoctorsScreenState extends State<ListDoctorsScreen> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final visibleDoctors = _filteredDoctors.take(_visibleCount).toList();
+    final hasMore = _visibleCount < _filteredDoctors.length;
 
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -188,10 +196,29 @@ class _ListDoctorsScreenState extends State<ListDoctorsScreen> {
                         ),
                       )
                     : ListView.separated(
-                        itemCount: _filteredDoctors.length,
+                        itemCount: visibleDoctors.length + (hasMore ? 1 : 0),
                         separatorBuilder: (_, __) => const SizedBox(height: 10),
                         itemBuilder: (context, index) {
-                          final d = _filteredDoctors[index];
+                          if (index >= visibleDoctors.length) {
+                            return Center(
+                              child: OutlinedButton.icon(
+                                icon: const Icon(Icons.expand_more_rounded),
+                                label: Text(
+                                  'تحميل المزيد (${_visibleCount}/${_filteredDoctors.length})',
+                                ),
+                                onPressed: () {
+                                  setState(() {
+                                    _visibleCount =
+                                        (_visibleCount + _pageSize).clamp(
+                                      0,
+                                      _filteredDoctors.length,
+                                    );
+                                  });
+                                },
+                              ),
+                            );
+                          }
+                          final d = visibleDoctors[index];
 
                           return NeuCard(
                             padding: const EdgeInsets.symmetric(

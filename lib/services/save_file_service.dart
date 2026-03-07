@@ -21,6 +21,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart'
     show kIsWeb; // احتياط (لو تم الاستيراد للويب)
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:aelmamclinic/utils/toast_utils.dart';
@@ -38,6 +39,13 @@ Future<String> saveFileBytesWithPath(Uint8List bytes, String fileName) async {
   }
 
   try {
+    if (Platform.isAndroid) {
+      final uri = await _saveViaMediaStore(bytes, fileName);
+      if (uri.isNotEmpty) {
+        await ToastUtils.show("تم حفظ الملف في Downloads: $uri");
+        return uri;
+      }
+    }
     final dir = await _resolveTargetDirectory();
     await dir.create(recursive: true);
 
@@ -101,8 +109,7 @@ Future<Directory> _resolveTargetDirectory() async {
         if (manual.existsSync()) return manual;
       }
     } catch (_) {}
-    // 3) سقوط إلى Documents
-    return await getApplicationDocumentsDirectory();
+    throw StateError('تعذّر العثور على مجلد Downloads العام.');
   }
 
   // iOS
@@ -112,25 +119,43 @@ Future<Directory> _resolveTargetDirectory() async {
 
   // Android
   if (Platform.isAndroid) {
-    // 1) جرّب مجلد التنزيلات العام (قد يفشل بسبب الصلاحيات/Scoped Storage)
-    try {
-      final list =
-          await getExternalStorageDirectories(type: StorageDirectory.downloads);
-      if (list != null && list.isNotEmpty) {
-        return list.first;
-      }
-    } catch (_) {}
-    // 2) جرّب مجلد خارجي خاص بالتطبيق
-    try {
-      final ext = await getExternalStorageDirectory();
-      if (ext != null) return ext;
-    } catch (_) {}
-    // 3) سقوط إلى Documents
-    return await getApplicationDocumentsDirectory();
+    throw StateError('الحفظ على Android يجب أن يتم عبر MediaStore.');
   }
 
   // منصات أخرى: Documents
   return await getApplicationDocumentsDirectory();
+}
+
+Future<String> _saveViaMediaStore(Uint8List bytes, String fileName) async {
+  try {
+    const channel = MethodChannel('aelmamclinic/media_store');
+    final mimeType = _guessMimeType(fileName);
+    final uri = await channel.invokeMethod<String>('saveToDownloads', {
+      'bytes': bytes,
+      'fileName': fileName,
+      'mimeType': mimeType,
+    });
+    return uri ?? '';
+  } catch (e) {
+    return '';
+  }
+}
+
+String _guessMimeType(String fileName) {
+  final lower = fileName.toLowerCase();
+  if (lower.endsWith('.html') || lower.endsWith('.htm')) {
+    return 'text/html';
+  }
+  if (lower.endsWith('.csv')) {
+    return 'text/csv';
+  }
+  if (lower.endsWith('.xls')) {
+    return 'application/vnd.ms-excel';
+  }
+  if (lower.endsWith('.xlsx')) {
+    return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  }
+  return 'application/octet-stream';
 }
 
 /// يعقّم اسم الملف لإزالة المحارف غير المقبولة على الأنظمة المختلفة.

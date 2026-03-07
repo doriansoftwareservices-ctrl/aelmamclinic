@@ -6,7 +6,7 @@
 //   بشكل قراءة فقط.
 //
 // ملاحظات:
-// - نعرض البريد الإلكتروني بدل UID في القائمة، ونسمح بالبحث بالبريد أو UID.
+// - نعرض البريد الإلكتروني بدل UID في القائمة، ونسمح بالبحث بالبريد أو الرقم.
 // - لجلب البريد نستخدم RPC: list_employees_with_email (SECURITY DEFINER).
 // - نعتمد filter(...) بدل eq/gte/... لتوافق نسخ postgrest.
 
@@ -21,6 +21,7 @@ import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:aelmamclinic/services/nhost_graphql_service.dart';
+import 'package:aelmamclinic/utils/chat_code_utils.dart';
 
 class PermissionsScreen extends StatefulWidget {
   const PermissionsScreen({super.key});
@@ -100,6 +101,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
             list_employees_with_email(args: {p_account: \$account}) {
               user_uid
               email
+              chat_code
               role
               disabled
             }
@@ -332,8 +334,13 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
     final query = _searchCtrl.text.trim().toLowerCase();
     final filtered = _employees.where((e) {
       if (query.isEmpty) return true;
+      final code = (e.chatCode ?? '').toLowerCase();
+      final digits = ChatCodeUtils.normalize(code);
+      final qDigits = ChatCodeUtils.normalize(query);
       final email = (e.email ?? '').toLowerCase();
-      return email.contains(query) || e.userUid.toLowerCase().contains(query);
+      return code.contains(query) ||
+          (qDigits.isNotEmpty && digits.contains(qDigits)) ||
+          email.contains(query);
     }).toList();
 
     return Column(
@@ -347,7 +354,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
             decoration: const InputDecoration(
               isDense: true,
               border: InputBorder.none,
-              hintText: 'ابحث بالبريد أو UID…',
+              hintText: 'ابحث بالبريد أو الرقم…',
               prefixIcon: Icon(Icons.search_rounded),
             ),
             onChanged: (_) => setState(() {}),
@@ -509,12 +516,14 @@ class _Employee {
   final String role;
   final bool disabled;
   final String? email;
+  final String? chatCode;
 
   _Employee({
     required this.userUid,
     required this.role,
     required this.disabled,
     this.email,
+    this.chatCode,
   });
 
   factory _Employee.fromListEmployeesRow(Map<String, dynamic> j) => _Employee(
@@ -522,6 +531,7 @@ class _Employee {
         role: j['role']?.toString() ?? 'employee',
         disabled: j['disabled'] == true,
         email: j['email']?.toString(),
+        chatCode: j['chat_code']?.toString(),
       );
 }
 
@@ -654,7 +664,7 @@ const List<_FeatureDef> _kFeatureDefs = [
   _FeatureDef(FeatureKeys.clinicProfile, 'بيانات المرفق الصحي',
       Icons.local_hospital_outlined),
   _FeatureDef(FeatureKeys.chat, 'الدردشة', Icons.chat_bubble_outline_rounded),
-  _FeatureDef(FeatureKeys.backup, 'النسخ الاحتياطي', Icons.backup_rounded),
+  _FeatureDef(FeatureKeys.backup, 'استخراج البيانات محليا', Icons.backup_rounded),
   _FeatureDef(
       FeatureKeys.accounts, 'الحسابات', Icons.supervisor_account_rounded),
   _FeatureDef(
@@ -694,9 +704,14 @@ class _EmployeeTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final titleText = (employee.email?.isNotEmpty ?? false)
-        ? employee.email!
-        : employee.userUid;
+    final code = (employee.chatCode ?? '').trim();
+    final titleText =
+        (employee.email ?? '').trim().isNotEmpty
+            ? employee.email!.trim()
+            : 'بدون بريد';
+    final codeText = code.isNotEmpty
+        ? (ChatCodeUtils.isChatCode(code) ? ChatCodeUtils.format(code) : code)
+        : '';
 
     String summary() {
       final feats = perm.allowedFeatures;
@@ -757,7 +772,7 @@ class _EmployeeTile extends StatelessWidget {
                       ),
                     const Spacer(),
                     Text(
-                      titleText, // البريد أو UID
+                      titleText, // البريد
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       textAlign: TextAlign.right,
@@ -783,6 +798,20 @@ class _EmployeeTile extends StatelessWidget {
                     fontSize: 12.5,
                   ),
                 ),
+                if (codeText.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'الرقم: $codeText',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.right,
+                    style: TextStyle(
+                      color: scheme.onSurface.withValues(alpha: .75),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12.5,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 6),
                 Text(
                   summary(),
@@ -881,9 +910,13 @@ class _PermissionEditorState extends State<_PermissionEditor> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final titleText = (widget.employee.email?.isNotEmpty ?? false)
-        ? widget.employee.email!
-        : widget.employee.userUid;
+    final code = (widget.employee.chatCode ?? '').trim();
+    final titleText = (widget.employee.email ?? '').trim().isNotEmpty
+        ? widget.employee.email!.trim()
+        : 'بدون بريد';
+    final codeText = code.isNotEmpty
+        ? (ChatCodeUtils.isChatCode(code) ? ChatCodeUtils.format(code) : code)
+        : '';
 
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -898,7 +931,7 @@ class _PermissionEditorState extends State<_PermissionEditor> {
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 16),
               child: Column(
                 children: [
-                  // عنوان وبريد/UID
+                  // عنوان وبريد/رقم
                   Row(
                     children: [
                       Container(
@@ -926,6 +959,17 @@ class _PermissionEditorState extends State<_PermissionEditor> {
                     ],
                   ),
                   const SizedBox(height: 12),
+                  if (codeText.isNotEmpty)
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        'الرقم: $codeText',
+                        style: TextStyle(
+                          color: scheme.onSurface.withValues(alpha: .7),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
 
                   Expanded(
                     child: ListView(

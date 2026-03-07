@@ -19,6 +19,7 @@ import 'package:flutter/services.dart';
 
 import 'package:aelmamclinic/core/theme.dart' show kPrimaryColor;
 import 'package:aelmamclinic/services/nhost_storage_service.dart';
+import 'package:aelmamclinic/services/save_file_service.dart';
 import 'package:aelmamclinic/models/chat_models.dart' show ChatAttachment;
 import 'package:aelmamclinic/utils/time.dart' as time;
 
@@ -517,27 +518,23 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
   // ---------------- تنزيل إلى Downloads (Windows / Android) ----------------
 
   Future<void> _downloadToDownloads(String url, {String? suggestedName}) async {
-    // حوار تحميل بسيط
     _showProgress();
     try {
       final bytes = await _httpGetBytes(url);
-      final dirPath = await _resolveDownloadsDir();
-      if (dirPath == null) {
-        throw 'تعذر تحديد مجلد التنزيلات على هذا النظام.';
-      }
-      final filePath = _uniquePath(
-        dirPath,
-        suggestedName ??
-            _fileNameFromUrl(url) ??
-            'image_${DateTime.now().millisecondsSinceEpoch}.jpg',
-      );
-      final f = File(filePath);
-      await f.create(recursive: true);
-      await f.writeAsBytes(bytes);
+      final name = suggestedName ??
+          _fileNameFromUrl(url) ??
+          'image_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final savedPath = await saveFileBytesWithPath(bytes, name);
       if (!mounted) return;
       Navigator.of(context).pop(); // أغلق حوار التقدم
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تم الحفظ في: ${f.path}')),
+        SnackBar(
+          content: Text(
+            savedPath.isEmpty
+                ? 'تم حفظ الملف بنجاح.'
+                : 'تم الحفظ في: $savedPath',
+          ),
+        ),
       );
     } catch (e) {
       if (!mounted) return;
@@ -560,70 +557,6 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
     } finally {
       client.close(force: true);
     }
-  }
-
-  Future<String?> _resolveDownloadsDir() async {
-    try {
-      if (Platform.isWindows) {
-        final user = Platform.environment['USERPROFILE'] ?? '';
-        if (user.isNotEmpty) {
-          final p = '$user\\Downloads';
-          if (Directory(p).existsSync()) return p;
-        }
-        // محاولة بديلة
-        final homeDrive = Platform.environment['HOMEDRIVE'] ?? '';
-        final homePath = Platform.environment['HOMEPATH'] ?? '';
-        if (homeDrive.isNotEmpty && homePath.isNotEmpty) {
-          final p = '$homeDrive$homePath\\Downloads';
-          if (Directory(p).existsSync()) return p;
-        }
-        return null;
-      } else if (Platform.isAndroid) {
-        // الأكثر شيوعًا في أندرويد
-        const candidates = [
-          '/storage/emulated/0/Download',
-          '/sdcard/Download',
-        ];
-        for (final p in candidates) {
-          final d = Directory(p);
-          if (d.existsSync()) return p;
-        }
-        // إن لم يوجد، نحاول إنشاء المسار الأول
-        final d = Directory(candidates.first);
-        if (!d.existsSync()) {
-          try {
-            d.createSync(recursive: true);
-          } catch (_) {}
-        }
-        return d.existsSync() ? d.path : null;
-      } else {
-        // أنظمة أخرى غير مطلوبة في الطلب
-        return null;
-      }
-    } catch (_) {
-      return null;
-    }
-  }
-
-  String _uniquePath(String dir, String baseName) {
-    final sanitized = baseName.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
-    String path = _join(dir, sanitized);
-    if (!File(path).existsSync()) return path;
-    final dot = sanitized.lastIndexOf('.');
-    final name = dot > 0 ? sanitized.substring(0, dot) : sanitized;
-    final ext = dot > 0 ? sanitized.substring(dot) : '';
-    int i = 1;
-    while (File(path).existsSync()) {
-      path = _join(dir, '$name ($i)$ext');
-      i++;
-    }
-    return path;
-  }
-
-  String _join(String a, String b) {
-    final sep = Platform.isWindows ? '\\' : '/';
-    if (a.endsWith(sep)) return '$a$b';
-    return '$a$sep$b';
   }
 
   String? _fileNameFromUrl(String url) {

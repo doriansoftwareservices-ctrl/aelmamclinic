@@ -64,7 +64,8 @@ class _EmployeeDiscountSelectEmployeeScreenState
       _loadError = null;
     });
     try {
-      final data = await DBService.instance.getAllEmployees();
+      final data =
+          List<Map<String, dynamic>>.from(await DBService.instance.getAllEmployees());
       // فرز افتراضي: بالاسم (تطبيع عربي)
       data.sort((a, b) {
         final an = Formatters.normalizeForSearch('${a['name'] ?? ''}');

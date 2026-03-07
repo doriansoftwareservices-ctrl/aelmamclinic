@@ -6,6 +6,7 @@ import 'package:aelmamclinic/core/nhost_config.dart';
 import 'package:aelmamclinic/models/employee_seat_request.dart';
 import 'package:aelmamclinic/services/nhost_api_client.dart';
 import 'package:aelmamclinic/services/nhost_graphql_service.dart';
+import 'package:aelmamclinic/services/admin_insights_service.dart';
 
 class EmployeeSeatService {
   EmployeeSeatService({GraphQLClient? client, NhostApiClient? api})
@@ -218,6 +219,14 @@ class EmployeeSeatService {
       final msg = row?['error']?.toString() ?? 'review_failed';
       throw HttpException(msg);
     }
+    try {
+      await AdminInsightsService().logAction(
+        action: approve ? 'seat_request_approve' : 'seat_request_reject',
+        entityType: 'employee_seat_request',
+        entityId: requestId,
+        details: {'note': note},
+      );
+    } catch (_) {}
   }
 
   Future<void> updateSeatPrice({
@@ -243,6 +252,14 @@ class EmployeeSeatService {
     if (res.hasException) {
       throw res.exception!;
     }
+    try {
+      await AdminInsightsService().logAction(
+        action: 'seat_price_update',
+        entityType: 'employee_seat_request',
+        entityId: requestId,
+        details: {'price_usd': priceUsd},
+      );
+    } catch (_) {}
   }
 
   Future<double?> fetchDefaultSeatPrice() async {

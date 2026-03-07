@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'package:aelmamclinic/providers/auth_provider.dart';
+import 'package:aelmamclinic/services/network_status_service.dart';
 
 class AuthGuardListener extends StatefulWidget {
   final Widget child;
@@ -32,7 +33,10 @@ class _AuthGuardListenerState extends State<AuthGuardListener>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _startTimer();
-    _runCheck();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _runCheck();
+    });
   }
 
   @override
@@ -61,8 +65,16 @@ class _AuthGuardListenerState extends State<AuthGuardListener>
     if (!mounted || _checking || !_active) return;
     final auth = context.read<AuthProvider>();
     if (!auth.isLoggedIn || auth.isSuperAdmin) return;
+    if (!NetworkStatusService.instance.isOnline) {
+      _showOfflineNotice();
+      return;
+    }
     _checking = true;
     try {
+      if (!auth.hasNhostSession) {
+        await auth.ensureNhostSessionReady(reason: 'guard');
+        if (!auth.hasNhostSession) return;
+      }
       if (auth.hasPendingLocalWipe && !_pendingWipePrompted) {
         _pendingWipePrompted = true;
         await _showPendingWipeDialog(auth);
@@ -148,7 +160,7 @@ class _AuthGuardListenerState extends State<AuthGuardListener>
     _lastOfflineNoticeAt = now;
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('التطبيق غير متصل بالانترنت')),
+      const SnackBar(content: Text('يبدو ان الشبكة غير مستقرة لديك')),
     );
   }
 

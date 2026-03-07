@@ -13,6 +13,7 @@ import 'dart:async';
 import 'dart:developer' as dev;
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:graphql_flutter/graphql_flutter.dart';
 import 'package:nhost_dart/nhost_dart.dart';
 import 'package:nhost_sdk/nhost_sdk.dart' show AuthResponse;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -26,11 +27,15 @@ import 'package:aelmamclinic/services/nhost_auth_service.dart';
 import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/services/device_id_service.dart';
 import 'package:aelmamclinic/services/notification_service.dart';
+import 'package:aelmamclinic/services/network_status_service.dart';
 import 'package:aelmamclinic/services/nhost_graphql_service.dart';
 import 'package:aelmamclinic/services/sync_service.dart';
 import 'package:aelmamclinic/services/backup_restore_service.dart';
 import 'package:aelmamclinic/core/active_account_store.dart';
+import 'package:aelmamclinic/local/chat_local_store.dart';
+import 'package:aelmamclinic/services/attachment_cache.dart';
 import 'package:aelmamclinic/models/storage_type.dart';
+import 'package:aelmamclinic/utils/app_error_reporter.dart';
 import 'package:aelmamclinic/utils/logger.dart';
 
 /// مفاتيح التخزين المحلي
@@ -173,6 +178,8 @@ class AuthProvider extends ChangeNotifier {
   bool _allowAutoCreateAccount = false;
   bool _pendingLocalWipe = false;
   String? _pendingWipeAccountId;
+  StreamSubscription<QueryResult>? _planSub;
+  String? _planSubUid;
 
   Set<String> get allowedFeatures => _allowedFeatures;
   bool get allowAllFeatures => _allowAllFeatures;
@@ -207,9 +214,12 @@ class AuthProvider extends ChangeNotifier {
   DateTime? _lastRefreshAttemptAt;
   bool _lastRefreshSuccess = false;
   bool _offlineSession = false;
+  StreamSubscription<bool>? _netSub;
+  DateTime? _lastOnlineSyncAt;
   bool _authFlowRunning = false;
   DateTime? _lastGuardOkAt;
   bool _lastGuardOk = false;
+  DateTime? _lastSessionRestoreAttemptAt;
 
   /*──────── Getters ────────*/
   bool get isLoggedIn => currentUser != null;
@@ -239,6 +249,7 @@ class AuthProvider extends ChangeNotifier {
   bool get isDisabled => (currentUser?['disabled'] as bool?) ?? false;
   bool get isSuperAdmin => currentUser?['isSuperAdmin'] == true;
   bool get isOffline => _offlineSession;
+  bool get hasNhostSession => _auth.currentUser != null;
   bool get isOwnerOrAdmin {
     if (isSuperAdmin) return true;
     final r = role?.toLowerCase();
@@ -356,7 +367,15 @@ class AuthProvider extends ChangeNotifier {
     } else {
       await _loadFromStorage();
       if (currentUser != null) {
-        _offlineSession = true;
+        // نحاول استعادة جلسة Nhost إن كانت موجودة في التخزين الآمن.
+        final restored =
+            await _tryRestoreNhostSessionIfNeeded(reason: 'init');
+        if (restored) {
+          _offlineSession = false;
+          await _networkRefreshAndMark();
+        } else if (_auth.currentUser == null) {
+          _offlineSession = true;
+        }
       } else {
         // لا يوجد مستخدم على Nhost ولا بيانات محلية.
         currentUser = null;
@@ -373,14 +392,56 @@ class AuthProvider extends ChangeNotifier {
 
       // تحميل الصلاحيات من التخزين (إن وُجدت) ثم محاولة تحديثها من الشبكة
       await _loadPermissionsFromStorage();
-      if (accountId != null && accountId!.isNotEmpty && !isSuperAdmin) {
+      if (accountId != null &&
+          accountId!.isNotEmpty &&
+          !isSuperAdmin &&
+          _auth.currentUser != null) {
         unawaited(_refreshFeaturePermissions());
       }
 
-      unawaited(bootstrapSync());
+      if (!_offlineSession) {
+        unawaited(bootstrapSync());
+      }
     }
 
+    _startNetworkMonitor();
+
     notifyListeners();
+  }
+
+  void _startNetworkMonitor() {
+    _netSub?.cancel();
+    unawaited(NetworkStatusService.instance.start());
+    _netSub = NetworkStatusService.instance.changes.listen((online) async {
+      if (!isLoggedIn) return;
+      if (!online) {
+        _offlineSession = true;
+        try {
+          await pauseSync();
+        } catch (_) {}
+        return;
+      }
+      final now = DateTime.now();
+      if (_lastOnlineSyncAt != null &&
+          now.difference(_lastOnlineSyncAt!).inSeconds < 20) {
+        return;
+      }
+      _lastOnlineSyncAt = now;
+      try {
+        await ensureNhostSessionReady(reason: 'netBackOnline');
+        final result = await refreshAndValidateCurrentUser();
+        if (result.isSuccess) {
+          try {
+            await resumeSync();
+          } catch (_) {}
+          await bootstrapSync();
+          if (_offlineSession) {
+            AppErrorReporter.info('تم استعادة الاتصال وتمت المزامنة بنجاح');
+          }
+          _offlineSession = false;
+        }
+      } catch (_) {}
+    });
   }
 
   /// يحصّل ويخزّن معرّف الجهاز الدائم
@@ -417,7 +478,9 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
-    await _auth.signOut(); // يوقف المزامنة/الحراسة داخليًا
+    try {
+      await _auth.signOut(); // يوقف المزامنة/الحراسة داخليًا
+    } catch (_) {}
 
     currentUser = null;
     _resetPermissionsInMemory();
@@ -432,6 +495,7 @@ class AuthProvider extends ChangeNotifier {
     await ActiveAccountStore.clearPendingWipe();
     _pendingLocalWipe = false;
     _pendingWipeAccountId = null;
+    await _stopPlanRealtime();
 
     notifyListeners();
   }
@@ -444,6 +508,26 @@ class AuthProvider extends ChangeNotifier {
 
       switch (guard) {
         case AuthAccountGuardResult.ok:
+          // في حال كان التوكن يشير إلى سوبر أدمن ولم تُحدّث الحالة بعد
+          if (!isSuperAdmin) {
+            final nhostUser = _auth.currentUser;
+            final roles = nhostUser?.roles ?? const <String>[];
+            final isSuper = roles.any(
+                  (r) => r.toLowerCase() == 'superadmin',
+                ) ||
+                (nhostUser?.defaultRole ?? '').toLowerCase() == 'superadmin';
+            if (isSuper) {
+              currentUser ??= {};
+              currentUser!['uid'] = nhostUser?.id ?? currentUser?['uid'];
+              currentUser!['email'] =
+                  nhostUser?.email ?? currentUser?['email'];
+              currentUser!['role'] = 'superadmin';
+              currentUser!['isSuperAdmin'] = true;
+              currentUser!['accountId'] = null;
+              AuthRoleState.setSuperAdmin(true);
+              await _persistUser();
+            }
+          }
           if (!isSuperAdmin) {
             final accId = accountId;
             if (accId == null || accId.isEmpty) {
@@ -453,6 +537,7 @@ class AuthProvider extends ChangeNotifier {
             }
           }
           await _refreshClinicProfileCache();
+          await _ensurePlanRealtime();
           notifyListeners();
           return const AuthSessionResult.success();
         case AuthAccountGuardResult.accountFrozen:
@@ -474,6 +559,78 @@ class AuthProvider extends ChangeNotifier {
       dev.log('refreshAndValidateCurrentUser failed', error: e, stackTrace: st);
       return AuthSessionResult.unknown(error: e, stackTrace: st);
     }
+  }
+
+  Future<void> _ensurePlanRealtime() async {
+    final uid = currentUser?['uid']?.toString() ?? '';
+    if (uid.isEmpty || isSuperAdmin) return;
+    if (_planSubUid == uid && _planSub != null) return;
+    await _stopPlanRealtime();
+    _planSubUid = uid;
+
+    const doc = r'''
+      subscription PlanWatch($uid: uuid!) {
+        account_users(where: {user_uid: {_eq: $uid}}) {
+          plan_code
+          plan_end_at
+          chat_code
+        }
+      }
+    ''';
+
+    _planSub = NhostGraphqlService.client
+        .subscribe(
+          SubscriptionOptions(
+            document: gql(doc),
+            variables: {'uid': uid},
+          ),
+        )
+        .listen((result) async {
+      if (result.hasException) return;
+      final rows = result.data?['account_users'] as List?;
+      if (rows == null || rows.isEmpty) return;
+      final row = rows.first as Map;
+      final planCode =
+          (row['plan_code'] ?? 'free').toString().toLowerCase();
+      final planEndAt = _readPlanEndAt(row['plan_end_at']);
+      final chatCode = row['chat_code']?.toString();
+
+      var changed = false;
+      final currentPlan = (currentUser?['planCode'] ?? 'free')
+          .toString()
+          .toLowerCase();
+      if (currentPlan != planCode) {
+        currentUser ??= {};
+        currentUser!['planCode'] = planCode;
+        changed = true;
+      }
+      final currentEnd = _readPlanEndAt(currentUser?['planEndAt']);
+      if ((currentEnd?.toIso8601String() ?? '') !=
+          (planEndAt?.toIso8601String() ?? '')) {
+        currentUser ??= {};
+        currentUser!['planEndAt'] = planEndAt;
+        changed = true;
+      }
+      if (chatCode != null && chatCode.isNotEmpty) {
+        final currentChat = (currentUser?['chatCode'] ?? '').toString();
+        if (currentChat != chatCode) {
+          currentUser ??= {};
+          currentUser!['chatCode'] = chatCode;
+          changed = true;
+        }
+      }
+
+      if (changed) {
+        await _persistUser();
+        notifyListeners();
+      }
+    });
+  }
+
+  Future<void> _stopPlanRealtime() async {
+    await _planSub?.cancel();
+    _planSub = null;
+    _planSubUid = null;
   }
 
   /// تغيير سياق الحساب (مثلاً المالك يبدّل بين عيادات)
@@ -522,6 +679,10 @@ class AuthProvider extends ChangeNotifier {
         );
       }
       await DBService.instance.clearAllLocalTables();
+      await ChatLocalStore.instance.clearAllData();
+      try {
+        await AttachmentCache.instance.purgeAll();
+      } catch (_) {}
       await ActiveAccountStore.clearPendingWipe();
       _pendingLocalWipe = false;
       _pendingWipeAccountId = null;
@@ -600,6 +761,27 @@ class AuthProvider extends ChangeNotifier {
     _authDiag('_networkRefreshAndMark:start', context: startCtx);
     bool success = false;
     try {
+      var nhostUser = _auth.currentUser;
+      if (nhostUser == null && currentUser != null) {
+        final restored = await _tryRestoreNhostSessionIfNeeded(
+          reason: 'networkRefresh',
+        );
+        nhostUser = _auth.currentUser;
+        if (restored && nhostUser != null) {
+          _offlineSession = false;
+        }
+      }
+      if (nhostUser == null && currentUser != null) {
+        // لا تمسح الجلسة المحلية إذا كانت جلسة Nhost غير متاحة حالياً.
+        // تعامل معها كجلسة Offline مؤقتة.
+        _offlineSession = true;
+        _authDiagWarn('_networkRefreshAndMark:missingAuthSession', context: {
+          'uid': currentUser?['uid'],
+          'accountId': currentUser?['accountId'],
+        });
+        await _persistUser();
+        return false;
+      }
       _authDiag('_networkRefreshAndMark:refreshUser');
       await _refreshUser(); // يجلب من RPCs/fallbacks
       _authDiag(
@@ -680,9 +862,28 @@ class AuthProvider extends ChangeNotifier {
 
   bool _isTransientNetworkError(Object error) {
     if (error is SocketException || error is TimeoutException) return true;
+    if (error is OperationException) {
+      if (error.linkException != null) return true;
+      final msg = error.toString().toLowerCase();
+      if (msg.contains('socket') ||
+          msg.contains('failed host lookup') ||
+          msg.contains('connection') ||
+          msg.contains('handshake') ||
+          msg.contains('timeout') ||
+          msg.contains('503') ||
+          msg.contains('502')) {
+        return true;
+      }
+    }
     final msg = error.toString().toLowerCase();
     return msg.contains('timeout') ||
         msg.contains('timed out') ||
+        msg.contains('failed host lookup') ||
+        msg.contains('socketexception') ||
+        msg.contains('connection') ||
+        msg.contains('network') ||
+        msg.contains('503') ||
+        msg.contains('502') ||
         msg.contains('semaphore');
   }
 
@@ -779,6 +980,24 @@ class AuthProvider extends ChangeNotifier {
     if (!isLoggedIn) {
       _authDiag('_ensureActiveAccountOrSignOut:signedOutEarly');
       return AuthAccountGuardResult.signedOut;
+    }
+    if (_auth.currentUser == null && currentUser != null) {
+      final restored = await _tryRestoreNhostSessionIfNeeded(
+        reason: 'ensureActiveAccount',
+      );
+      if (restored && _auth.currentUser != null) {
+        _offlineSession = false;
+      } else {
+        // الجلسة المحلية موجودة لكن جلسة Nhost غير متاحة — ابقِ المستخدم
+        // ولا تفرض تسجيل خروج. سيتم التحقق عند رجوع الشبكة.
+        _offlineSession = true;
+        _authDiagWarn('_ensureActiveAccountOrSignOut:missingAuthSession',
+            context: {
+              'uid': uid,
+              'accountId': accountId,
+            });
+        return AuthAccountGuardResult.transientFailure;
+      }
     }
     if (isSuperAdmin) {
       _authDiag('_ensureActiveAccountOrSignOut:superAdminBypass', context: {
@@ -1005,6 +1224,69 @@ class AuthProvider extends ChangeNotifier {
     return AuthAccountGuardResult.unknown;
   }
 
+  Future<bool> ensureNhostSessionReady({String reason = 'guard'}) async {
+    if (_auth.currentUser != null) return true;
+    final restored = await _tryRestoreNhostSessionIfNeeded(reason: reason);
+    final ok = restored && _auth.currentUser != null;
+    if (ok) {
+      notifyListeners();
+    }
+    return ok;
+  }
+
+  Future<bool> _tryRestoreNhostSessionIfNeeded({required String reason}) async {
+    if (_auth.currentUser != null) return true;
+    if (currentUser == null) return false;
+    // حاول أولًا استعادة الجلسة من التخزين المحلي بدون اشتراط اتصال.
+    try {
+      await _auth.restoreSessionLocal();
+      if (_auth.currentUser != null) {
+        _authDiag('_restoreSession:ok', context: {'reason': '$reason/local'});
+        return true;
+      }
+    } catch (e) {
+      if (_isInvalidRefreshToken(e)) {
+        await _forceSignOutFromInvalidToken();
+        return false;
+      }
+    }
+    if (!NetworkStatusService.instance.isOnline) return false;
+    final now = DateTime.now();
+    if (_lastSessionRestoreAttemptAt != null &&
+        now.difference(_lastSessionRestoreAttemptAt!).inSeconds < 20) {
+      return false;
+    }
+    _lastSessionRestoreAttemptAt = now;
+    try {
+      await _auth.refreshSession();
+    } catch (e, st) {
+      if (_isInvalidRefreshToken(e)) {
+        await _forceSignOutFromInvalidToken();
+        return false;
+      }
+      _authDiagWarn('_restoreSession:failed', context: {
+        'reason': reason,
+        'error': e.runtimeType.toString(),
+      }, stackTrace: st);
+    }
+    if (_auth.currentUser != null) {
+      _authDiag('_restoreSession:ok', context: {'reason': reason});
+      return true;
+    }
+    return false;
+  }
+
+  bool _isInvalidRefreshToken(Object error) {
+    final msg = error.toString().toLowerCase();
+    return msg.contains('invalid-refresh-token') ||
+        (msg.contains('refresh token') && msg.contains('401')) ||
+        (msg.contains('invalid') && msg.contains('refresh') && msg.contains('401'));
+  }
+
+  Future<void> _forceSignOutFromInvalidToken() async {
+    await signOut();
+  }
+
   void setPendingClinicProfile(ClinicProfileInput? profile) {
     _pendingClinicProfile = profile;
   }
@@ -1040,6 +1322,20 @@ class AuthProvider extends ChangeNotifier {
     _autoCreateAttempted = false;
   }
 
+  /// يثبت صلاحية السوبر أدمن من التوكن (Fallback سريع لتجنّب مسار إنشاء الحساب).
+  Future<void> markSuperAdminFromSession() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+    currentUser ??= {};
+    currentUser!['uid'] = user.id;
+    currentUser!['email'] = user.email ?? currentUser?['email'];
+    currentUser!['role'] = 'superadmin';
+    currentUser!['isSuperAdmin'] = true;
+    currentUser!['accountId'] = null;
+    AuthRoleState.setSuperAdmin(true);
+    await _persistUser();
+  }
+
   FeaturePermissions _defaultPermissionsForRole() {
     final r = role?.toLowerCase();
     if (r == 'owner' || r == 'admin') {
@@ -1050,6 +1346,7 @@ class AuthProvider extends ChangeNotifier {
 
   /// يجلب صلاحيات الميزات + CRUD للحساب الحالي ويخزّنها محليًا
   Future<void> _refreshFeaturePermissions() async {
+    if (_auth.currentUser == null) return;
     final accId = accountId;
     if (accId == null || accId.isEmpty) return;
     try {
@@ -1128,9 +1425,24 @@ class AuthProvider extends ChangeNotifier {
       return;
     }
     final sp = await SharedPreferences.getInstance();
+    final oldUid = sp.getString(_kUid);
+    final newUid = (currentUser!['uid'] ?? '').toString();
+    if (oldUid != null && oldUid.isNotEmpty && oldUid != newUid) {
+      final acc = (currentUser!['accountId'] ?? '').toString().trim();
+      await ActiveAccountStore.setPendingWipe(acc);
+      _pendingLocalWipe = true;
+      _pendingWipeAccountId = acc.isEmpty ? null : acc;
+    }
     await sp.setString(_kUid, currentUser!['uid'] ?? '');
     await sp.setString(_kEmail, currentUser!['email'] ?? '');
-    await sp.setString(_kAccountId, currentUser!['accountId'] ?? '');
+    final acc = (currentUser!['accountId'] ?? '').toString().trim();
+    if (acc.isNotEmpty) {
+      await sp.setString(_kAccountId, acc);
+    } else {
+      if (NetworkStatusService.instance.isOnline) {
+        await sp.setString(_kAccountId, '');
+      }
+    }
     await sp.setString(
         _kRole, (currentUser!['role'] ?? '').toString().toLowerCase());
     await sp.setBool(_kDisabled, currentUser!['disabled'] ?? false);
@@ -1331,6 +1643,33 @@ class AuthProvider extends ChangeNotifier {
         debounce: debounce,
         wipeLocalFirst: wipeLocalFirst,
       );
+      final accId = accountId;
+      if (accId != null && accId.trim().isNotEmpty) {
+        await DBService.instance.backfillAccountForTables(const [
+          'patients',
+          'returns',
+          'consumptions',
+          'drugs',
+          'prescriptions',
+          'prescription_items',
+          'complaints',
+          'appointments',
+          'doctors',
+          'consumption_types',
+          'medical_services',
+          'service_doctor_share',
+          'employees',
+          'employees_loans',
+          'employees_salaries',
+          'employees_discounts',
+          'items',
+          'item_types',
+          'purchases',
+          'alert_settings',
+          'financial_logs',
+          'patient_services',
+        ], accId);
+      }
       await refreshPendingLocalWipeState();
       await _restartDoctorPatientAlerts();
     } catch (e, st) {
@@ -1355,6 +1694,7 @@ class AuthProvider extends ChangeNotifier {
     _authSub?.cancel();
     _patientAlertSub?.cancel();
     _patientAlertDebounce?.cancel();
+    _netSub?.cancel();
     super.dispose();
   }
 }

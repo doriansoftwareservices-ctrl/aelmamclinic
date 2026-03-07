@@ -39,6 +39,8 @@ class _ListReturnsScreenState extends State<ListReturnsScreen> {
   final TextEditingController _searchController = TextEditingController();
   DateTime? _startDate;
   DateTime? _endDate;
+  static const int _pageSize = 50;
+  int _visibleCount = 0;
 
   final _dateOnly = DateFormat('yyyy-MM-dd');
 
@@ -81,6 +83,8 @@ class _ListReturnsScreenState extends State<ListReturnsScreen> {
       setState(() {
         _returns = data;
         _filteredReturns = data;
+        _visibleCount =
+            _filteredReturns.length < _pageSize ? _filteredReturns.length : _pageSize;
       });
       Provider.of<AppointmentProvider>(context, listen: false)
           .loadAppointments();
@@ -150,7 +154,11 @@ class _ListReturnsScreenState extends State<ListReturnsScreen> {
       }
       return match && inRange;
     }).toList();
-    setState(() => _filteredReturns = tmp);
+    setState(() {
+      _filteredReturns = tmp;
+      _visibleCount =
+          _filteredReturns.length < _pageSize ? _filteredReturns.length : _pageSize;
+    });
   }
 
   /*────────────────── حذف ──────────────────*/
@@ -237,6 +245,8 @@ class _ListReturnsScreenState extends State<ListReturnsScreen> {
     bool isSameDay(DateTime a, DateTime b) =>
         a.year == b.year && a.month == b.month && a.day == b.day;
     final hasDue = _filteredReturns.any((r) => isSameDay(r.date, today));
+    final visibleReturns = _filteredReturns.take(_visibleCount).toList();
+    final hasMore = _visibleCount < _filteredReturns.length;
 
     return Directionality(
       textDirection: ui.TextDirection.rtl,
@@ -373,9 +383,33 @@ class _ListReturnsScreenState extends State<ListReturnsScreen> {
                           : ListView.builder(
                               physics: const AlwaysScrollableScrollPhysics(),
                               padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                              itemCount: _filteredReturns.length,
+                              itemCount: visibleReturns.length + (hasMore ? 1 : 0),
                               itemBuilder: (ctx, i) {
-                                final r = _filteredReturns[i];
+                                if (i >= visibleReturns.length) {
+                                  return Padding(
+                                    padding:
+                                        const EdgeInsets.symmetric(vertical: 8),
+                                    child: Center(
+                                      child: OutlinedButton.icon(
+                                        icon:
+                                            const Icon(Icons.expand_more_rounded),
+                                        label: Text(
+                                          'تحميل المزيد (${_visibleCount}/${_filteredReturns.length})',
+                                        ),
+                                        onPressed: () {
+                                          setState(() {
+                                            _visibleCount =
+                                                (_visibleCount + _pageSize).clamp(
+                                              0,
+                                              _filteredReturns.length,
+                                            );
+                                          });
+                                        },
+                                      ),
+                                    ),
+                                  );
+                                }
+                                final r = visibleReturns[i];
                                 final formatted = DateFormat('yyyy-MM-dd HH:mm')
                                     .format(r.date.toLocal());
                                 return Padding(

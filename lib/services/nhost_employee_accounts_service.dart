@@ -22,6 +22,7 @@ class NhostEmployeeAccountsService {
           created_at
           employee_id
           doctor_id
+          chat_code
         }
       }
     ''';

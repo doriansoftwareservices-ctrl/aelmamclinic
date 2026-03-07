@@ -1,6 +1,7 @@
 import 'package:nhost_dart/nhost_dart.dart';
 
 import 'nhost_config.dart';
+import 'persistent_auth_store.dart';
 
 /// Provides a lazily initialized [NhostClient] that can be reused across the
 /// application. This layer encapsulates environment defaults and makes it easy
@@ -44,6 +45,7 @@ class NhostManager {
               subdomain: NhostConfig.subdomain,
               region: NhostConfig.region,
             ),
+      authStore: PersistentAuthStore(),
     );
   }
 }

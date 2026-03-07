@@ -309,6 +309,21 @@ class ChatAttachment {
       }
     }
 
+    Map<String, dynamic>? parsedExtra;
+    final rawExtra = map['extra'];
+    if (rawExtra is Map<String, dynamic>) {
+      parsedExtra = rawExtra;
+    } else if (rawExtra is Map) {
+      parsedExtra = rawExtra.map((k, v) => MapEntry(k.toString(), v));
+    } else if (rawExtra is String && rawExtra.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(rawExtra);
+        if (decoded is Map) {
+          parsedExtra = decoded.map((k, v) => MapEntry(k.toString(), v));
+        }
+      } catch (_) {}
+    }
+
     return ChatAttachment(
       id: map['id']?.toString(),
       type: ChatAttachmentTypeX.fromDb(map['type']?.toString()),
@@ -321,10 +336,64 @@ class ChatAttachment {
       height: _toInt(map['height']),
       createdAt: _parseDate(map['created_at']),
       signedUrl: map['signed_url']?.toString(),
-      extra: map['extra'] is Map<String, dynamic>
-          ? (map['extra'] as Map<String, dynamic>)
-          : null,
+      extra: parsedExtra,
     );
+  }
+}
+
+/// حالة محادثات خدمة العملاء (مخزنة في chat_conversations.support_status).
+enum ChatSupportStatus { pendingReply, underReview, responded, closed }
+
+extension ChatSupportStatusX on ChatSupportStatus {
+  String get dbValue {
+    switch (this) {
+      case ChatSupportStatus.pendingReply:
+        return 'pending_reply';
+      case ChatSupportStatus.underReview:
+        return 'under_review';
+      case ChatSupportStatus.responded:
+        return 'responded';
+      case ChatSupportStatus.closed:
+        return 'closed';
+    }
+  }
+
+  String get labelAr {
+    switch (this) {
+      case ChatSupportStatus.pendingReply:
+        return 'قيد انتظار الرد عليه';
+      case ChatSupportStatus.underReview:
+        return 'قيد المراجعة';
+      case ChatSupportStatus.responded:
+        return 'تم التجاوب معه';
+      case ChatSupportStatus.closed:
+        return 'مغلقة';
+    }
+  }
+
+  static ChatSupportStatus? fromDb(String? raw) {
+    final s = (raw ?? '').trim().toLowerCase();
+    switch (s) {
+      case 'pending':
+      case 'pending_reply':
+      case 'pending-reply':
+      case 'waiting':
+      case 'waiting_reply':
+        return ChatSupportStatus.pendingReply;
+      case 'under_review':
+      case 'under-review':
+      case 'review':
+      case 'in_review':
+        return ChatSupportStatus.underReview;
+      case 'responded':
+      case 'done':
+      case 'answered':
+        return ChatSupportStatus.responded;
+      case 'closed':
+        return ChatSupportStatus.closed;
+      default:
+        return null;
+    }
   }
 }
 
@@ -341,6 +410,7 @@ class ChatConversation {
   final bool isFrozen;
   final bool adminsOnly;
   final bool isDeleted;
+  final ChatSupportStatus? supportStatus;
 
   // حقول آخر رسالة (اختيارية)
   final DateTime? lastMsgAt; // أو last_message_at
@@ -365,6 +435,7 @@ class ChatConversation {
     this.isFrozen = false,
     this.adminsOnly = false,
     this.isDeleted = false,
+    this.supportStatus,
   });
 
   bool get isGroup => type == ChatConversationType.group;
@@ -383,6 +454,7 @@ class ChatConversation {
     bool? isFrozen,
     bool? adminsOnly,
     bool? isDeleted,
+    ChatSupportStatus? supportStatus,
   }) {
     return ChatConversation(
       id: id ?? this.id,
@@ -398,6 +470,7 @@ class ChatConversation {
       isFrozen: isFrozen ?? this.isFrozen,
       adminsOnly: adminsOnly ?? this.adminsOnly,
       isDeleted: isDeleted ?? this.isDeleted,
+      supportStatus: supportStatus ?? this.supportStatus,
     );
   }
 
@@ -419,6 +492,7 @@ class ChatConversation {
       'last_message_at': _fmtDate(lastMsgAt),
       'last_message_text': lastMsgSnippet,
       'unread_count': unreadCount,
+      'support_status': supportStatus?.dbValue,
     };
   }
 
@@ -446,6 +520,10 @@ class ChatConversation {
       isFrozen: _isTruthy(map['is_frozen']),
       adminsOnly: _isTruthy(map['admins_only']),
       isDeleted: _isTruthy(map['is_deleted']),
+      supportStatus: ChatSupportStatusX.fromDb(
+        map['support_status']?.toString() ??
+            map['supportStatus']?.toString(),
+      ),
     );
   }
 
@@ -872,12 +950,41 @@ class ChatMessage {
   factory ChatMessage.fromMap(Map<String, dynamic> map, {String? currentUid}) {
     // ???????? (Storage ?? inline)
     List<ChatAttachment> atts = const [];
-    final rawAtt = map['attachments'];
+    dynamic rawAtt = map['attachments'];
+    if (rawAtt is String && rawAtt.trim().isNotEmpty) {
+      try {
+        rawAtt = jsonDecode(rawAtt);
+      } catch (_) {}
+    }
     if (rawAtt is List) {
-      atts = rawAtt
-          .whereType<Map<String, dynamic>>()
-          .map(ChatAttachment.fromMap)
-          .toList();
+      final parsed = <ChatAttachment>[];
+      for (final item in rawAtt) {
+        if (item is ChatAttachment) {
+          parsed.add(item);
+          continue;
+        }
+        if (item is Map<String, dynamic>) {
+          parsed.add(ChatAttachment.fromMap(item));
+          continue;
+        }
+        if (item is Map) {
+          final casted =
+              item.map((k, v) => MapEntry(k.toString(), v));
+          parsed.add(ChatAttachment.fromMap(casted));
+          continue;
+        }
+        if (item is String && item.trim().isNotEmpty) {
+          try {
+            final decoded = jsonDecode(item);
+            if (decoded is Map) {
+              final casted =
+                  decoded.map((k, v) => MapEntry(k.toString(), v));
+              parsed.add(ChatAttachment.fromMap(casted));
+            }
+          } catch (_) {}
+        }
+      }
+      atts = parsed;
     } else if (map['image_url'] != null) {
       atts = [
         ChatAttachment(
@@ -1030,11 +1137,11 @@ class ChatMessage {
     final atts = <ChatAttachment>[];
     for (final f in files) {
       final path = f.path;
-      final name = path.split(RegExp(r'[\\/]+')).last;
       atts.add(ChatAttachment(
         type: ChatAttachmentType.image,
         url: '',
-        path: name,
+        // استخدم المسار الكامل لتأمين العرض المحلي حتى لو فُقد extra
+        path: path,
         extra: {'local_path': path},
       ));
     }

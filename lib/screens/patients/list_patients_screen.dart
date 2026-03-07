@@ -13,6 +13,7 @@ import 'package:aelmamclinic/screens/patients/new_patient_screen.dart';
 import 'package:aelmamclinic/screens/patients/edit_patient_screen.dart';
 import 'package:aelmamclinic/screens/patients/view_patient_screen.dart';
 import 'package:aelmamclinic/screens/patients/duplicate_patients_screen.dart';
+import 'package:aelmamclinic/screens/patients/patient_balances_screen.dart';
 import 'package:aelmamclinic/screens/patient_questions/report_editor_screen.dart';
 import 'package:aelmamclinic/screens/patient_questions/patient_reports_list_screen.dart';
 
@@ -44,6 +45,8 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
   final TextEditingController _searchController = TextEditingController();
   DateTime? _startDate;
   DateTime? _endDate;
+  static const int _pageSize = 50;
+  int _visibleGroups = 0;
 
   final Map<int, List<PatientService>> _servicesByPatient = {};
   final PatientQuestionsService _questionsService = PatientQuestionsService();
@@ -75,6 +78,10 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
   void _onSearchChanged() {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 250), _filterPatients);
+  }
+
+  void _resetVisibleGroups(int total) {
+    _visibleGroups = total < _pageSize ? total : _pageSize;
   }
 
   Future<void> _resolveDoctorAndLoad() async {
@@ -159,6 +166,7 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
       setState(() {
         _patients = patients;
         _filteredPatients = patients;
+        _resetVisibleGroups(_filteredPatients.length);
         _servicesByPatient
           ..clear()
           ..addAll(svcMap);
@@ -378,6 +386,7 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
         }
         return (nameMatch || phoneMatch || qNorm.isEmpty) && inRange;
       }).toList();
+      _resetVisibleGroups(_filteredPatients.length);
     });
   }
 
@@ -496,6 +505,14 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
       ..sort(
         (a, b) => b.first.registerDate.compareTo(a.first.registerDate),
       ); // الأحدث أولاً
+    if (_visibleGroups == 0 || _visibleGroups > groups.length) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() => _resetVisibleGroups(groups.length));
+      });
+    }
+    final visibleGroups = groups.take(_visibleGroups).toList();
+    final hasMoreGroups = _visibleGroups < groups.length;
     final uniqueCount = grouped.length;
     final casesCount = _filteredPatients.length;
 
@@ -504,6 +521,18 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
         centerTitle: true,
         title: const Text('قائمة المرضى'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.account_balance_wallet_outlined),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const PatientBalancesScreen(),
+                ),
+              );
+            },
+            tooltip: 'مستحقات المرضى',
+          ),
           IconButton(
             icon: const Icon(Icons.share),
             onPressed: _shareFile,
@@ -625,8 +654,8 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
                 const SizedBox(height: 120),
                 const Center(child: Text('لا توجد بيانات')),
               ] else ...[
-                ...List.generate(groups.length, (i) {
-                  final grp = groups[i];
+                ...List.generate(visibleGroups.length, (i) {
+                  final grp = visibleGroups[i];
                   final p = grp[0];
 
                   final allSvcs = grp
@@ -882,6 +911,27 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
                     ),
                   );
                 }),
+                if (hasMoreGroups)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Center(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.expand_more_rounded),
+                        label: Text(
+                          'تحميل المزيد (${_visibleGroups}/${groups.length})',
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _visibleGroups =
+                                (_visibleGroups + _pageSize).clamp(
+                              0,
+                              groups.length,
+                            );
+                          });
+                        },
+                      ),
+                    ),
+                  ),
                 const SizedBox(height: 60),
               ],
             ],

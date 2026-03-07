@@ -11,11 +11,7 @@ import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:aelmamclinic/providers/repository_provider.dart';
 import 'package:aelmamclinic/services/repository_service.dart';
 import 'package:aelmamclinic/services/db_service.dart';
-
-/*──────── ألوان TBIAN الموحدة ────────*/
-const Color accentColor = Color(0xFF004A61);
-const Color lightAccentColor = Color(0xFF9ED9E6);
-const Color veryLightBg = Color(0xFFF7F9F9);
+import 'package:aelmamclinic/core/theme.dart';
 
 class ViewPCScreen extends StatelessWidget {
   const ViewPCScreen({super.key});
@@ -25,6 +21,7 @@ class ViewPCScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final repo = context.watch<RepositoryProvider>();
     final auth = context.watch<AuthProvider>();
+    final scheme = Theme.of(context).colorScheme;
 
     return Directionality(
       textDirection: ui.TextDirection.rtl,
@@ -33,10 +30,10 @@ class ViewPCScreen extends StatelessWidget {
           centerTitle: true,
           title: const Text('المشتريات والاستهلاكات',
               style: TextStyle(fontWeight: FontWeight.bold)),
-          flexibleSpace: const DecoratedBox(
+          flexibleSpace: DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [lightAccentColor, accentColor],
+                colors: [scheme.primaryContainer, scheme.primary],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
@@ -44,9 +41,13 @@ class ViewPCScreen extends StatelessWidget {
           ),
         ),
         body: Container(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [veryLightBg, Colors.white, veryLightBg],
+              colors: [
+                scheme.surfaceContainerHigh,
+                scheme.surface,
+                scheme.surfaceContainerHigh
+              ],
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
             ),
@@ -54,9 +55,9 @@ class ViewPCScreen extends StatelessWidget {
           child: (repo.types.isEmpty && repo.orphanItems.isEmpty)
               ? const Center(child: Text('لا بيانات بعد.'))
               : ListView(
-                  padding: const EdgeInsets.all(16),
+                  padding: kScreenPadding,
                   children: [
-                    _permissionBanner(auth),
+                    _permissionBanner(context, auth),
                     for (final type in repo.types)
                       Card(
                         margin: const EdgeInsets.symmetric(
@@ -82,17 +83,18 @@ class ViewPCScreen extends StatelessWidget {
     );
   }
 
-  Widget _permissionBanner(AuthProvider auth) {
+  Widget _permissionBanner(BuildContext context, AuthProvider auth) {
     if (auth.isOwnerOrAdmin || auth.isSuperAdmin) {
       return const SizedBox.shrink();
     }
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.amber.withValues(alpha: .15),
+        color: scheme.tertiaryContainer,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.amber.withValues(alpha: .4)),
+        border: Border.all(color: scheme.tertiary.withValues(alpha: .4)),
       ),
       child: const Text(
         'تنبيه: بعض البيانات قد تكون مخفية حسب صلاحيات الحساب.',
@@ -108,11 +110,12 @@ class _TypeSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final items = context.watch<RepositoryProvider>().itemsOf(type.id!);
 
     return ExpansionTile(
       tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      leading: const Icon(Icons.category_outlined, color: accentColor),
+      leading: Icon(Icons.category_outlined, color: scheme.primary),
       title: Text(type.name,
           style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
       childrenPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -152,6 +155,7 @@ class _ItemTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return FutureBuilder<Map<String, dynamic>?>(
       future: _fetchLastConsumption(),
       builder: (ctx, snap) {
@@ -177,7 +181,7 @@ class _ItemTile extends StatelessWidget {
             title: Text(item.name,
                 style: const TextStyle(fontWeight: FontWeight.bold)),
             subtitle: subtitle,
-            trailing: const Icon(Icons.chevron_right, color: accentColor),
+            trailing: Icon(Icons.chevron_right, color: scheme.primary),
             onTap: () => Navigator.push(
               ctx,
               MaterialPageRoute(
@@ -196,9 +200,10 @@ class _OrphanSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return ExpansionTile(
       tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      leading: const Icon(Icons.report_gmailerrorred, color: accentColor),
+      leading: Icon(Icons.report_gmailerrorred, color: scheme.error),
       title: const Text('أصناف بدون نوع',
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
       childrenPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -273,9 +278,13 @@ class _ItemConsumptionsPageState extends State<_ItemConsumptionsPage> {
                 onPressed: () => Navigator.pop(ctx, false),
                 child: const Text('إلغاء')),
             ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: accentColor),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.primary,
+              ),
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('حفظ', style: TextStyle(color: Colors.white)),
+              child: Text('حفظ',
+                  style: TextStyle(
+                      color: Theme.of(context).colorScheme.onPrimary)),
             ),
           ],
         ),
@@ -293,36 +302,36 @@ class _ItemConsumptionsPageState extends State<_ItemConsumptionsPage> {
         await dbService.runWithDbRetry(() async {
           final db = await RepositoryService.instance.database;
           await db.transaction((txn) async {
-          final itemRows = await txn.query(
-            Item.table,
-            columns: const ['stock', 'price'],
-            where: 'id = ?',
-            whereArgs: [widget.item.id],
-            limit: 1,
-          );
-          if (itemRows.isEmpty) {
-            throw StateError('الصنف غير موجود');
-          }
-          final currentStock =
-              (itemRows.first['stock'] as num?)?.toInt() ?? 0;
-          final unitPrice =
-              (itemRows.first['price'] as num?)?.toDouble() ?? 0.0;
-          final nextStock = currentStock - diff;
-          if (nextStock < 0) {
-            throw StateError('الكمية تتجاوز المخزون المتاح');
-          }
-          await txn.update(
-            Consumption.table,
-            {'quantity': newQty, 'amount': unitPrice * newQty},
-            where: 'id = ?',
-            whereArgs: [d.id],
-          );
-          await txn.update(
-            Item.table,
-            {'stock': nextStock},
-            where: 'id = ?',
-            whereArgs: [widget.item.id],
-          );
+            final itemRows = await txn.query(
+              Item.table,
+              columns: const ['stock', 'price'],
+              where: 'id = ?',
+              whereArgs: [widget.item.id],
+              limit: 1,
+            );
+            if (itemRows.isEmpty) {
+              throw StateError('الصنف غير موجود');
+            }
+            final currentStock =
+                (itemRows.first['stock'] as num?)?.toInt() ?? 0;
+            final unitPrice =
+                (itemRows.first['price'] as num?)?.toDouble() ?? 0.0;
+            final nextStock = currentStock - diff;
+            if (nextStock < 0) {
+              throw StateError('الكمية تتجاوز المخزون المتاح');
+            }
+            await txn.update(
+              Consumption.table,
+              {'quantity': newQty, 'amount': unitPrice * newQty},
+              where: 'id = ?',
+              whereArgs: [d.id],
+            );
+            await txn.update(
+              Item.table,
+              {'stock': nextStock},
+              where: 'id = ?',
+              whereArgs: [widget.item.id],
+            );
           });
         });
       });
@@ -347,6 +356,7 @@ class _ItemConsumptionsPageState extends State<_ItemConsumptionsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Directionality(
       textDirection: ui.TextDirection.rtl,
       child: Scaffold(
@@ -354,10 +364,10 @@ class _ItemConsumptionsPageState extends State<_ItemConsumptionsPage> {
           centerTitle: true,
           title: Text(widget.item.name,
               style: const TextStyle(fontWeight: FontWeight.bold)),
-          flexibleSpace: const DecoratedBox(
+          flexibleSpace: DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [lightAccentColor, accentColor],
+                colors: [scheme.primaryContainer, scheme.primary],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
@@ -365,9 +375,13 @@ class _ItemConsumptionsPageState extends State<_ItemConsumptionsPage> {
           ),
         ),
         body: Container(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [veryLightBg, Colors.white, veryLightBg],
+              colors: [
+                scheme.surfaceContainerHigh,
+                scheme.surface,
+                scheme.surfaceContainerHigh
+              ],
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
             ),
@@ -395,16 +409,16 @@ class _ItemConsumptionsPageState extends State<_ItemConsumptionsPage> {
                         borderRadius: BorderRadius.circular(20)),
                     elevation: 1,
                     child: ListTile(
-                      leading: const Icon(Icons.medical_services_outlined,
-                          color: accentColor),
+                      leading: Icon(Icons.medical_services_outlined,
+                          color: scheme.primary),
                       title: Text('الكمية: ${d.quantity}',
                           style: const TextStyle(fontWeight: FontWeight.bold)),
                       subtitle: Text(
                         '${DateFormat('yyyy-MM-dd – HH:mm').format(d.consumedAt)}  •  ${d.patientName}',
                       ),
                       trailing: IconButton(
-                        icon:
-                            const Icon(Icons.edit_outlined, color: accentColor),
+                        icon: Icon(Icons.edit_outlined,
+                            color: scheme.primary),
                         onPressed: () => _editQuantity(d),
                       ),
                     ),

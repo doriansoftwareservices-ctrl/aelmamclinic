@@ -6,11 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:aelmamclinic/models/item.dart';
 import 'package:aelmamclinic/models/item_type.dart';
 import 'package:aelmamclinic/providers/repository_provider.dart';
-
-/*──────── ألوان TBIAN الموحدة ────────*/
-const Color accentColor = Color(0xFF004A61);
-const Color lightAccentColor = Color(0xFF9ED9E6);
-const Color veryLightBg = Color(0xFFF7F9F9);
+import 'package:aelmamclinic/core/theme.dart';
 
 class NewPurchaseScreen extends StatefulWidget {
   const NewPurchaseScreen({super.key});
@@ -80,21 +76,23 @@ class _NewPurchaseScreenState extends State<NewPurchaseScreen> {
     return (q > 0 && p >= 0) ? q * p : 0.0;
   }
 
-  InputDecoration _dec(String label) => InputDecoration(
-        labelText: label,
-        filled: true,
-        fillColor: Colors.white,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(25),
-          borderSide: const BorderSide(color: accentColor),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(25),
-          borderSide: const BorderSide(color: accentColor, width: 2),
-        ),
-      );
+  InputDecoration _dec(BuildContext context, String label) {
+    final scheme = Theme.of(context).colorScheme;
+    return InputDecoration(
+      labelText: label,
+      filled: true,
+      fillColor: scheme.surface,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: scheme.outlineVariant.withValues(alpha: .5)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: scheme.primary, width: 2),
+      ),
+    );
+  }
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate() || _selectedItemId == null) return;
@@ -160,6 +158,7 @@ class _NewPurchaseScreenState extends State<NewPurchaseScreen> {
     }
 
     final predictedStock = _currentStock + _asInt(_qtyCtrl.text);
+    final scheme = Theme.of(context).colorScheme;
 
     return Directionality(
       textDirection: ui.TextDirection.rtl,
@@ -168,10 +167,10 @@ class _NewPurchaseScreenState extends State<NewPurchaseScreen> {
           title: const Text('إنشاء مشتريات جديدة'),
           centerTitle: true,
           elevation: 4,
-          flexibleSpace: const DecoratedBox(
+          flexibleSpace: DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [lightAccentColor, accentColor],
+                colors: [scheme.primaryContainer, scheme.primary],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
@@ -179,14 +178,18 @@ class _NewPurchaseScreenState extends State<NewPurchaseScreen> {
           ),
         ),
         body: Container(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [veryLightBg, Colors.white, veryLightBg],
+              colors: [
+                scheme.surfaceContainerHigh,
+                scheme.surface,
+                scheme.surfaceContainerHigh
+              ],
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
             ),
           ),
-          padding: const EdgeInsets.all(16),
+          padding: kScreenPadding,
           child: Form(
             key: _formKey,
             child: ListView(
@@ -194,7 +197,7 @@ class _NewPurchaseScreenState extends State<NewPurchaseScreen> {
                 // نوع الصنف
                 DropdownButtonFormField<ItemType>(
                   initialValue: selectedType,
-                  decoration: _dec('نوع الصنف'),
+                  decoration: _dec(context, 'نوع الصنف'),
                   items: types
                       .map((t) =>
                           DropdownMenuItem(value: t, child: Text(t.name)))
@@ -213,7 +216,7 @@ class _NewPurchaseScreenState extends State<NewPurchaseScreen> {
                           items.any((it) => it.id == _selectedItemId)
                       ? _selectedItemId
                       : null,
-                  decoration: _dec('اسم الصنف'),
+                  decoration: _dec(context, 'اسم الصنف'),
                   items: items
                       .map((it) => DropdownMenuItem(
                           value: it.id, child: Text(it.name)))
@@ -228,15 +231,15 @@ class _NewPurchaseScreenState extends State<NewPurchaseScreen> {
                     children: [
                       Container(
                         decoration: BoxDecoration(
-                          color: lightAccentColor.withValues(alpha: .18),
+                          color: scheme.primaryContainer,
                           borderRadius: BorderRadius.circular(12),
                         ),
                         padding: const EdgeInsets.symmetric(
                             horizontal: 10, vertical: 6),
                         child: Row(
                           children: [
-                            const Icon(Icons.inventory_2_outlined,
-                                size: 18, color: accentColor),
+                            Icon(Icons.inventory_2_outlined,
+                                size: 18, color: scheme.primary),
                             const SizedBox(width: 6),
                             Text('المخزون الحالي: $_currentStock',
                                 style: const TextStyle(
@@ -247,15 +250,15 @@ class _NewPurchaseScreenState extends State<NewPurchaseScreen> {
                       const SizedBox(width: 8),
                       Container(
                         decoration: BoxDecoration(
-                          color: Colors.green.withValues(alpha: .12),
+                          color: scheme.tertiaryContainer,
                           borderRadius: BorderRadius.circular(12),
                         ),
                         padding: const EdgeInsets.symmetric(
                             horizontal: 10, vertical: 6),
                         child: Row(
                           children: [
-                            const Icon(Icons.trending_up,
-                                size: 18, color: Colors.green),
+                            Icon(Icons.trending_up,
+                                size: 18, color: scheme.tertiary),
                             const SizedBox(width: 6),
                             Text('بعد الشراء: $predictedStock',
                                 style: const TextStyle(
@@ -276,7 +279,7 @@ class _NewPurchaseScreenState extends State<NewPurchaseScreen> {
                       child: TextFormField(
                         controller: _qtyCtrl,
                         keyboardType: TextInputType.number,
-                        decoration: _dec('الكمية'),
+                        decoration: _dec(context, 'الكمية'),
                         onChanged: (_) => setState(() {}),
                         validator: (v) {
                           final n = int.tryParse(v ?? '');
@@ -306,11 +309,11 @@ class _NewPurchaseScreenState extends State<NewPurchaseScreen> {
                     return ActionChip(
                       label: Text('+$n'),
                       onPressed: () => _bumpQty(n),
-                      backgroundColor: lightAccentColor.withValues(alpha: .18),
+                      backgroundColor: scheme.primaryContainer,
                       // لتوافقية أعلى مع نسخ Flutter القديمة استخدم shape بدل side
                       shape: StadiumBorder(
                         side: BorderSide(
-                          color: lightAccentColor.withValues(alpha: .5),
+                          color: scheme.primary.withValues(alpha: .4),
                         ),
                       ),
                     );
@@ -324,7 +327,7 @@ class _NewPurchaseScreenState extends State<NewPurchaseScreen> {
                   controller: _priceCtrl,
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
-                  decoration: _dec('سعر الوحدة'),
+                  decoration: _dec(context, 'سعر الوحدة'),
                   onChanged: (_) => setState(() {}),
                   validator: (v) {
                     final n = double.tryParse(v ?? '');
@@ -352,11 +355,11 @@ class _NewPurchaseScreenState extends State<NewPurchaseScreen> {
                             color: Colors.white,
                           ),
                         )
-                      : const Icon(Icons.save_outlined, color: Colors.white),
+                      : Icon(Icons.save_outlined, color: scheme.onPrimary),
                   label:
-                      const Text('حفظ', style: TextStyle(color: Colors.white)),
+                      Text('حفظ', style: TextStyle(color: scheme.onPrimary)),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: accentColor,
+                    backgroundColor: scheme.primary,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(25),
                     ),
@@ -386,17 +389,18 @@ class _SquareIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return SizedBox(
       width: 44,
       height: 44,
       child: Material(
-        color: lightAccentColor,
+        color: scheme.primary,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           onTap: onPressed,
           borderRadius: BorderRadius.circular(12),
           child: Center(
-            child: Icon(icon, color: Colors.white),
+            child: Icon(icon, color: scheme.onPrimary),
           ),
         ),
       ),
@@ -410,12 +414,13 @@ class _TotalCostCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: lightAccentColor.withValues(alpha: .18),
+        color: scheme.primaryContainer,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: lightAccentColor),
+        border: Border.all(color: scheme.primary.withValues(alpha: .35)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,

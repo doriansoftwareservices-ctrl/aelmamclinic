@@ -1,7 +1,6 @@
 import 'dart:convert';
-import 'dart:io';
 
-import 'package:path/path.dart' as p;
+import 'package:flutter/services.dart' show rootBundle;
 
 Future<
     ({
@@ -12,6 +11,7 @@ Future<
       String? nhostStorageUrl,
       String? nhostFunctionsUrl,
       String? resetPasswordRedirectUrl,
+      String? rootSuperAdminEmail,
       String? source
     })?> loadNhostRuntimeOverrides({
   required String windowsDataDir,
@@ -21,179 +21,95 @@ Future<
   required String androidDataDir,
   required String iosLogicalDataDir,
 }) async {
-  final candidatePaths = <String>{};
-
-  String? normalize(String? path) {
-    final trimmed = path?.trim();
-    if (trimmed == null || trimmed.isEmpty) return null;
-    return trimmed;
-  }
-
-  void addFile(String? path) {
-    final normalized = normalize(path);
-    if (normalized != null) {
-      candidatePaths.add(normalized);
-    }
-  }
-
-  void addDirConfig(String? dir, {bool expandHome = false}) {
-    final base = dir == null ? null : (expandHome ? expandHomeDir(dir) : dir);
-    addFile(base == null ? null : p.join(base, 'config.json'));
-  }
-
-  Map<String, String>? env;
   try {
-    env = Platform.environment;
-  } catch (_) {
-    env = null;
-  }
+    final raw = await rootBundle.loadString('assets/config.json');
+    if (raw.trim().isEmpty) return null;
 
-  if (env != null) {
-    addFile(env['AELMAM_CONFIG'] ?? env['AELMAM_CLINIC_CONFIG']);
-    addFile(env['AELMAM_NHOST_CONFIG']);
-    final envDir = env['AELMAM_DIR'] ?? env['AELMAM_CLINIC_DIR'];
-    if (envDir != null) {
-      addDirConfig(envDir, expandHome: true);
+    final data = jsonDecode(raw);
+    if (data is! Map) return null;
+
+    String? readKey(String key) {
+      final value = data[key] ?? data[lowerSnake(key)];
+      if (value == null) return null;
+      if (value is String) {
+        return value.trim();
+      }
+      return '$value'.trim();
     }
-  }
 
-  try {
-    if (Platform.isWindows) {
-      addDirConfig(windowsDataDir);
-      addDirConfig(legacyWindowsDataDir);
-      if (env != null) {
-        addDirConfig(env['APPDATA'] == null
-            ? null
-            : p.join(env['APPDATA']!, 'aelmam_clinic'));
-        addDirConfig(env['LOCALAPPDATA'] == null
-            ? null
-            : p.join(env['LOCALAPPDATA']!, 'aelmam_clinic'));
+    bool isValidSimpleToken(String? value) {
+      if (value == null) return false;
+      final trimmed = value.trim();
+      if (trimmed.isEmpty || trimmed.contains(',') || trimmed.contains(' ')) {
+        return false;
       }
-    } else if (Platform.isLinux) {
-      addDirConfig(linuxDataDir, expandHome: true);
-      addDirConfig('~/.config/aelmam_clinic', expandHome: true);
-      if (env != null) {
-        final xdg = env['XDG_CONFIG_HOME'];
-        if (xdg != null && xdg.trim().isNotEmpty) {
-          addDirConfig(
-            p.join(expandHomeDir(xdg), 'aelmam_clinic'),
-          );
-        }
-      }
-    } else if (Platform.isMacOS) {
-      addDirConfig(macOsDataDir, expandHome: true);
-    } else if (Platform.isAndroid) {
-      addDirConfig(androidDataDir);
-    } else if (Platform.isIOS) {
-      addDirConfig(iosLogicalDataDir);
+      return RegExp(r'^[a-z0-9-]+$', caseSensitive: false).hasMatch(trimmed);
     }
-  } catch (_) {
-    // ignore platform detection failures
-  }
 
-  try {
-    addDirConfig(Directory.current.path);
-  } catch (_) {
-    // ignore inability to resolve current directory (e.g. in tests)
-  }
-
-  for (final path in candidatePaths) {
-    try {
-      final file = File(path);
-      if (!await file.exists()) continue;
-      final raw = await file.readAsString();
-      if (raw.trim().isEmpty) continue;
-
-      final data = jsonDecode(raw);
-      if (data is! Map) {
-        continue;
+    String? sanitizeUrl(String? value) {
+      if (value == null) return null;
+      final trimmed = value.trim();
+      if (trimmed.isEmpty || trimmed.contains(',')) return null;
+      final uri = Uri.tryParse(trimmed);
+      if (uri == null ||
+          (uri.scheme != 'http' && uri.scheme != 'https') ||
+          uri.host.isEmpty ||
+          !uri.host.contains('nhost.run')) {
+        return null;
       }
-
-      String? readKey(String key) {
-        final value = data[key] ?? data[lowerSnake(key)];
-        if (value == null) return null;
-        if (value is String) {
-          return value.trim();
-        }
-        return '$value'.trim();
-      }
-
-      bool isValidSimpleToken(String? value) {
-        if (value == null) return false;
-        final trimmed = value.trim();
-        if (trimmed.isEmpty || trimmed.contains(',') || trimmed.contains(' ')) {
-          return false;
-        }
-        return RegExp(r'^[a-z0-9-]+$', caseSensitive: false)
-            .hasMatch(trimmed);
-      }
-
-      String? sanitizeUrl(String? value) {
-        if (value == null) return null;
-        final trimmed = value.trim();
-        if (trimmed.isEmpty || trimmed.contains(',')) return null;
-        final uri = Uri.tryParse(trimmed);
-        if (uri == null ||
-            (uri.scheme != 'http' && uri.scheme != 'https') ||
-            uri.host.isEmpty ||
-            !uri.host.contains('nhost.run')) {
-          return null;
-        }
-        return trimmed;
-      }
-
-      final rawSubdomain = readKey('nhostSubdomain');
-      final rawRegion = readKey('nhostRegion');
-      final nhostSubdomain = isValidSimpleToken(rawSubdomain)
-          ? rawSubdomain?.trim()
-          : null;
-      final nhostRegion = isValidSimpleToken(rawRegion) ? rawRegion?.trim() : null;
-      final nhostGraphqlUrl = sanitizeUrl(readKey('nhostGraphqlUrl'));
-      final nhostAuthUrl = sanitizeUrl(readKey('nhostAuthUrl'));
-      final nhostStorageUrl = sanitizeUrl(readKey('nhostStorageUrl'));
-      final nhostFunctionsUrl = sanitizeUrl(readKey('nhostFunctionsUrl'));
-      final resetPasswordRedirectUrl = readKey('resetPasswordRedirectUrl');
-
-      final noNhostOverrides =
-          (nhostSubdomain == null || nhostSubdomain.isEmpty) &&
-              (nhostRegion == null || nhostRegion.isEmpty) &&
-              (nhostGraphqlUrl == null || nhostGraphqlUrl.isEmpty) &&
-              (nhostAuthUrl == null || nhostAuthUrl.isEmpty) &&
-              (nhostStorageUrl == null || nhostStorageUrl.isEmpty) &&
-              (nhostFunctionsUrl == null || nhostFunctionsUrl.isEmpty) &&
-              (resetPasswordRedirectUrl == null ||
-                  resetPasswordRedirectUrl.isEmpty);
-
-      if (noNhostOverrides) {
-        continue;
-      }
-
-      return (
-        nhostSubdomain: nhostSubdomain,
-        nhostRegion: nhostRegion,
-        nhostGraphqlUrl: nhostGraphqlUrl,
-        nhostAuthUrl: nhostAuthUrl,
-        nhostStorageUrl: nhostStorageUrl,
-        nhostFunctionsUrl: nhostFunctionsUrl,
-        resetPasswordRedirectUrl: resetPasswordRedirectUrl,
-        source: file.path,
-      );
-    } catch (_) {
-      // ignore file read/parse errors and continue to the next candidate
+      return trimmed;
     }
-  }
 
-  return null;
-}
+    final rawSubdomain = readKey('nhostSubdomain');
+    final rawRegion = readKey('nhostRegion');
+    final nhostSubdomain =
+        isValidSimpleToken(rawSubdomain) ? rawSubdomain?.trim() : null;
+    final nhostRegion =
+        isValidSimpleToken(rawRegion) ? rawRegion?.trim() : null;
+    final nhostGraphqlUrl = sanitizeUrl(readKey('nhostGraphqlUrl'));
+    final nhostAuthUrl = sanitizeUrl(readKey('nhostAuthUrl'));
+    final nhostStorageUrl = sanitizeUrl(readKey('nhostStorageUrl'));
+    final nhostFunctionsUrl = sanitizeUrl(readKey('nhostFunctionsUrl'));
+    final resetPasswordRedirectUrl = readKey('resetPasswordRedirectUrl');
+    final rootSuperAdminEmail = readKey('rootSuperAdminEmail');
 
-String expandHomeDir(String value) {
-  if (!value.startsWith('~')) return value;
-  final home =
-      Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
-  if (home == null || home.isEmpty) {
-    return value.replaceFirst('~', '');
+    bool isValidEmail(String? value) {
+      if (value == null) return false;
+      final trimmed = value.trim();
+      if (trimmed.isEmpty) return false;
+      return RegExp(r'^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$').hasMatch(trimmed);
+    }
+
+    final noNhostOverrides =
+        (nhostSubdomain == null || nhostSubdomain.isEmpty) &&
+            (nhostRegion == null || nhostRegion.isEmpty) &&
+            (nhostGraphqlUrl == null || nhostGraphqlUrl.isEmpty) &&
+            (nhostAuthUrl == null || nhostAuthUrl.isEmpty) &&
+            (nhostStorageUrl == null || nhostStorageUrl.isEmpty) &&
+            (nhostFunctionsUrl == null || nhostFunctionsUrl.isEmpty) &&
+            (resetPasswordRedirectUrl == null ||
+                resetPasswordRedirectUrl.isEmpty) &&
+            (!isValidEmail(rootSuperAdminEmail));
+
+    if (noNhostOverrides) {
+      return null;
+    }
+
+    return (
+      nhostSubdomain: nhostSubdomain,
+      nhostRegion: nhostRegion,
+      nhostGraphqlUrl: nhostGraphqlUrl,
+      nhostAuthUrl: nhostAuthUrl,
+      nhostStorageUrl: nhostStorageUrl,
+      nhostFunctionsUrl: nhostFunctionsUrl,
+      resetPasswordRedirectUrl: resetPasswordRedirectUrl,
+      rootSuperAdminEmail:
+          isValidEmail(rootSuperAdminEmail) ? rootSuperAdminEmail : null,
+      source: 'assets/config.json',
+    );
+  } catch (_) {
+    return null;
   }
-  return value.replaceFirst('~', home);
 }
 
 String lowerSnake(String camel) {

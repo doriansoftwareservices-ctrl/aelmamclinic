@@ -8,6 +8,8 @@ import 'package:nhost_sdk/nhost_sdk.dart' show AuthResponse, User;
 import 'package:aelmamclinic/core/active_account_store.dart';
 import 'package:aelmamclinic/core/constants.dart';
 import 'package:aelmamclinic/core/nhost_manager.dart';
+import 'package:aelmamclinic/services/network_status_service.dart';
+import 'package:aelmamclinic/core/nhost_config.dart';
 import 'package:aelmamclinic/models/account_policy.dart';
 import 'package:aelmamclinic/models/backend_errors.dart';
 import 'package:aelmamclinic/models/clinic_profile.dart';
@@ -42,7 +44,6 @@ class NhostAuthService {
   SyncService? _sync;
   String? _boundAccountId;
   static const Duration _kGraphqlTimeout = Duration(seconds: 20);
-  static const String _rootSuperAdminEmail = 'elmam.clinic.c.s@elmam.com';
 
   NhostClient get client => _client;
   SyncService? get sync => _sync;
@@ -120,8 +121,23 @@ class NhostAuthService {
   /// محاولة تحديث الجلسة من refreshToken (إن وُجد).
   Future<void> refreshSession() async {
     final refreshToken = _client.auth.userSession.session?.refreshToken;
-    if (refreshToken == null || refreshToken.isEmpty) return;
-    await _client.auth.signInWithRefreshToken(refreshToken);
+    try {
+      if (refreshToken == null || refreshToken.isEmpty) {
+        // عند إعادة فتح التطبيق، قد لا تكون الجلسة محمّلة بعد.
+        // استخدم AuthStore لاستعادة الجلسة إن أمكن.
+        await _client.auth.signInWithStoredCredentials();
+        return;
+      }
+      await _client.auth.signInWithRefreshToken(refreshToken);
+    } catch (_) {
+      // تجاهل الأخطاء هنا؛ سيتم التعامل معها من طبقة الحراسة.
+      rethrow;
+    }
+  }
+
+  /// يحاول استعادة الجلسة من التخزين المحلي فقط (بدون اشتراط اتصال).
+  Future<void> restoreSessionLocal() async {
+    await _client.auth.signInWithStoredCredentials();
   }
 
   Future<void> dispose() async {
@@ -134,36 +150,58 @@ class NhostAuthService {
 
   GraphQLClient get _gql => _gqlOverride ?? NhostGraphqlService.client;
 
-  Future<Map<String, dynamic>?> _fetchSessionSnapshot(String uid) async {
-    try {
-      final data = await _runQuery(
-        r'''
-        query SessionSnapshot($uid: uuid!) {
-          my_profile {
-            account_id
-            role
-          }
-          account_users(
-            where: {user_uid: {_eq: $uid}}
-            order_by: {created_at: desc}
-            limit: 1
-          ) {
-            account_id
-            role
-            disabled
-          }
-          my_account_plan {
-            plan_code
-            plan_end_at
-          }
+  String _sessionSnapshotQuery({required bool includeSuperFlag}) {
+    final superField = includeSuperFlag
+        ? '''
           fn_is_super_admin_gql {
             is_super_admin
           }
+        '''
+        : '';
+    return '''
+      query SessionSnapshot(\$uid: uuid!) {
+        my_profile {
+          account_id
+          role
+          chat_code
         }
-        ''',
+        account_users(
+          where: {user_uid: {_eq: \$uid}}
+          order_by: {created_at: desc}
+          limit: 1
+        ) {
+          account_id
+          role
+          disabled
+        }
+        my_account_plan {
+          plan_code
+          plan_end_at
+        }
+        $superField
+      }
+    ''';
+  }
+
+  Future<Map<String, dynamic>?> _fetchSessionSnapshot(String uid) async {
+    final includeSuper = _superAdminQuerySupported != false;
+    try {
+      final data = await _runQuery(
+        _sessionSnapshotQuery(includeSuperFlag: includeSuper),
         {'uid': uid},
       );
       return data;
+    } on BackendSchemaException {
+      _superAdminQuerySupported = false;
+      try {
+        final data = await _runQuery(
+          _sessionSnapshotQuery(includeSuperFlag: false),
+          {'uid': uid},
+        );
+        return data;
+      } catch (_) {
+        return null;
+      }
     } catch (_) {
       return null;
     }
@@ -513,10 +551,14 @@ class NhostAuthService {
     return ex.graphqlErrors.map((e) => e.message).join(' | ');
   }
 
+  static bool? _superAdminQuerySupported;
+
   Future<bool> _resolveSuperAdminFlag({String? fallbackEmail}) async {
+    if (_superAdminQuerySupported == false) return false;
     const query = 'query { fn_is_super_admin_gql { is_super_admin } }';
     try {
       final data = await _runQuery(query, const {});
+      _superAdminQuerySupported = true;
       final rows = data['fn_is_super_admin_gql'];
       if (rows is List && rows.isNotEmpty) {
         final flag = rows.first['is_super_admin'];
@@ -530,6 +572,30 @@ class NhostAuthService {
       );
       return false;
     } catch (e, st) {
+      if (e is BackendSchemaException) {
+        _superAdminQuerySupported = false;
+        dev.log(
+          'fn_is_super_admin_gql missing; skipping super admin DB check',
+          name: 'AUTH',
+        );
+        return false;
+      }
+      if (e is TimeoutException) {
+        _superAdminQuerySupported = false;
+        dev.log(
+          'fn_is_super_admin_gql timeout; skipping super admin DB check',
+          name: 'AUTH',
+        );
+        return false;
+      }
+      if (e is OperationException && _isSchemaError(e)) {
+        _superAdminQuerySupported = false;
+        dev.log(
+          'fn_is_super_admin_gql not available; skipping super admin DB check',
+          name: 'AUTH',
+        );
+        return false;
+      }
       dev.log(
         'fn_is_super_admin_gql query failed: $e',
         name: 'AUTH',
@@ -582,6 +648,11 @@ class NhostAuthService {
           await ActiveAccountStore.writeAccountId(profileAccount);
         }
         role = profile['role']?.toString();
+        final code = profile['chat_code']?.toString();
+        if (code != null && code.isNotEmpty) {
+          // stash for AuthProvider
+          snap['__chat_code'] = code;
+        }
       }
 
       final accountRows = _rowsFromData(snap, 'account_users');
@@ -653,10 +724,24 @@ class NhostAuthService {
         (user.defaultRole.toLowerCase() == 'superadmin');
     final metaRole =
         (user.metadata?['role']?.toString().toLowerCase() == 'superadmin');
-    dbIsSuper ??= await _resolveSuperAdminFlag(fallbackEmail: user.email);
+    if (tokenIsSuper && _superAdminQuerySupported != false) {
+      dbIsSuper ??= await _resolveSuperAdminFlag(fallbackEmail: user.email);
+    }
     final emailLower = (user.email ?? '').toLowerCase().trim();
-    final isSuper = dbIsSuper ||
-        (emailLower == _rootSuperAdminEmail && (tokenIsSuper || metaRole));
+    final rootEmail = NhostConfig.rootSuperAdminEmail.toLowerCase().trim();
+    final isSuper = tokenIsSuper &&
+        (dbIsSuper == true ||
+            _superAdminQuerySupported == false ||
+            metaRole ||
+            (emailLower == rootEmail));
+
+    final chatCode = snap?['__chat_code']?.toString();
+    if (dbIsSuper == true && !tokenIsSuper) {
+      dev.log(
+        'User is super admin in DB but token lacks superadmin role; treating as non-superadmin until role is synced.',
+        name: 'AUTH',
+      );
+    }
     if (planCode == null) {
       try {
         final details = await fetchMyPlanDetails();
@@ -679,6 +764,7 @@ class NhostAuthService {
       'isSuperAdmin': isSuper,
       'planCode': planCode,
       'planEndAt': planEndAt,
+      if (chatCode != null && chatCode.isNotEmpty) 'chatCode': chatCode,
     };
   }
 
@@ -1013,20 +1099,23 @@ class NhostAuthService {
     );
     _boundAccountId = acc.id;
 
-    _bindDbPush(_sync!);
-
-    await _sync!.bootstrap(pull: pull, realtime: realtime);
-    // ادفع التغييرات المحلية ثم اسحب لتوحيد الحالة عبر الأجهزة.
-    unawaited(() async {
-      try {
-        await _sync!.pushAll();
-      } finally {
-        await _sync!.pullAll();
-      }
-    }());
+    final sync = _sync;
+    if (sync != null) {
+      _bindDbPush(sync);
+      await sync.bootstrap(pull: pull, realtime: realtime);
+      // ادفع التغييرات المحلية ثم اسحب لتوحيد الحالة عبر الأجهزة.
+      unawaited(() async {
+        try {
+          await sync.pushAll();
+        } finally {
+          await sync.pullAll();
+        }
+      }());
+    }
   }
 
   Future<bool> _canSyncGuard() async {
+    if (!NetworkStatusService.instance.isOnline) return false;
     final user = _client.auth.currentUser;
     if (user == null) return false;
     final accId = _boundAccountId ?? await resolveAccountId();

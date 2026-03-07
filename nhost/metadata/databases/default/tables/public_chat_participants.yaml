@@ -60,7 +60,7 @@ insert_permissions:
     permission:
       check: {}
       columns: '*'
-  - role: user
+  - role: support
     permission:
       check:
         _and:
@@ -110,7 +110,7 @@ insert_permissions:
         - role
         - joined_at
         - muted
-  - role: support
+  - role: user
     permission:
       check:
         _and:
@@ -179,24 +179,6 @@ select_permissions:
                   _eq: false
                 user_uid:
                   _eq: X-Hasura-User-Id
-  - role: support
-    permission:
-      columns: '*'
-      filter:
-        _or:
-          - user_uid:
-              _eq: X-Hasura-User-Id
-          - _exists:
-              _table:
-                name: account_users
-                schema: public
-              _where:
-                account_id:
-                  _ceq: account_id
-                disabled:
-                  _eq: false
-                user_uid:
-                  _eq: X-Hasura-User-Id
   - role: me
     permission:
       columns: '*'
@@ -237,6 +219,24 @@ select_permissions:
     permission:
       columns: '*'
       filter: {}
+  - role: support
+    permission:
+      columns: '*'
+      filter:
+        _or:
+          - user_uid:
+              _eq: X-Hasura-User-Id
+          - _exists:
+              _table:
+                name: account_users
+                schema: public
+              _where:
+                account_id:
+                  _ceq: account_id
+                disabled:
+                  _eq: false
+                user_uid:
+                  _eq: X-Hasura-User-Id
   - role: user
     permission:
       columns: '*'
@@ -257,15 +257,6 @@ select_permissions:
                   _eq: X-Hasura-User-Id
 update_permissions:
   - role: employee
-    permission:
-      columns: '*'
-      filter:
-        user_uid:
-          _eq: X-Hasura-User-Id
-      check:
-        user_uid:
-          _eq: X-Hasura-User-Id
-  - role: support
     permission:
       columns: '*'
       filter:
@@ -297,6 +288,15 @@ update_permissions:
       columns: '*'
       filter: {}
       check: {}
+  - role: support
+    permission:
+      columns: '*'
+      filter:
+        user_uid:
+          _eq: X-Hasura-User-Id
+      check:
+        user_uid:
+          _eq: X-Hasura-User-Id
   - role: user
     permission:
       columns: '*'

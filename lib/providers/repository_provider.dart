@@ -36,6 +36,7 @@ class RepositoryProvider extends ChangeNotifier {
   StreamSubscription<String>? _dbSub;
   Timer? _debounceTimer;
   bool _refreshBusy = false;
+  String? _boundAccountId;
 
   /* ─── البيانات المجمَّعة في الذاكرة ─── */
   List<ItemType> _types = [];
@@ -63,6 +64,36 @@ class RepositoryProvider extends ChangeNotifier {
   /// يعادل: DBService.instance.bindSyncPush(sync.pushFor)
   void attachSync(SyncService sync) {
     _db.bindSyncPush(sync.pushFor);
+  }
+
+  /// استدعِها عند تغيّر حساب المستخدم (تسجيل دخول/خروج).
+  Future<void> onAuthChanged(String? accountId) async {
+    final trimmed = accountId?.trim();
+    if (trimmed == _boundAccountId) return;
+    _boundAccountId = trimmed;
+
+    if (trimmed == null || trimmed.isEmpty) {
+      // نظّف الذاكرة حتى لا تختلط بيانات حسابين
+      _types = [];
+      _itemsByType.clear();
+      _orphanItems = [];
+      _lowStock = [];
+      _hasLowStockAlerts = false;
+      notifyListeners();
+      return;
+    }
+
+    // تأكد من ملء account_id للبيانات القديمة (قبل تفعيل عمود الحساب).
+    await _db.backfillAccountForTables(const [
+      'item_types',
+      'items',
+      'purchases',
+      'consumptions',
+      'alert_settings',
+    ], trimmed);
+
+    // إعادة تحميل بيانات المستودع للحساب الحالي
+    await _refreshAll(repair: true);
   }
 
   /* ─── عمليات التهيئة ─── */

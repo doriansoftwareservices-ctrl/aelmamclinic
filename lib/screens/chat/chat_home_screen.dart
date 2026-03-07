@@ -11,7 +11,9 @@ import 'package:aelmamclinic/models/chat_models.dart';
 import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:aelmamclinic/providers/chat_provider.dart';
 import 'package:aelmamclinic/widgets/chat/conversation_tile.dart';
+import 'package:aelmamclinic/utils/chat_code_utils.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import 'chat_room_screen.dart';
@@ -30,7 +32,9 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
   Timer? _searchDebounce;
   String _query = '';
   bool _unreadOnly = false;
+  bool _archivedOnly = false;
   String? _openingConversationId;
+  String? _selectedConversationId;
 
   @override
   void initState() {
@@ -47,18 +51,22 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
 
   Future<void> _ensureBootstrap() async {
     final chat = context.read<ChatProvider>();
-    if (chat.ready || chat.busy) return;
+    if (chat.busy) return;
     final auth = context.read<AuthProvider>();
-    await chat.bootstrap(
-      accountId: auth.accountId,
-      role: auth.role,
-      isSuperAdmin: auth.isSuperAdmin,
-    );
+    if (!chat.ready) {
+      await chat.bootstrap(
+        accountId: auth.accountId,
+        role: auth.role,
+        isSuperAdmin: auth.isSuperAdmin,
+      );
+    }
     if (!mounted) return;
     final isOwner = auth.role?.toLowerCase() == 'owner';
     if (isOwner) {
       await chat.ensureSupportConversation();
       if (!mounted) return;
+      await chat.refreshConversations();
+    } else if (chat.conversations.isEmpty) {
       await chat.refreshConversations();
     }
   }
@@ -75,20 +83,33 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
     final chat = context.read<ChatProvider>();
     await chat.ensureSupportConversation(force: true);
     final convId = chat.supportConversationId;
-    if (convId == null || !mounted) return;
+    if (convId == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('خدمة العملاء غير مفعّلة بعد.')),
+      );
+      return;
+    }
+    if (!mounted) return;
     final conv = chat.conversationById(convId);
     if (conv == null) {
       await chat.refreshConversations();
     }
     final resolved = chat.conversationById(convId);
     if (resolved == null || !mounted) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ChatRoomScreen(conversation: resolved),
-      ),
-    );
-    if (!mounted) return;
-    await chat.refreshConversations();
+    final isWide = MediaQuery.of(context).size.width >= 1000;
+    if (isWide) {
+      setState(() => _selectedConversationId = resolved.id);
+      await chat.openConversation(resolved.id);
+    } else {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ChatRoomScreen(conversation: resolved),
+        ),
+      );
+      if (!mounted) return;
+      await chat.refreshConversations();
+    }
   }
 
   ChatMessage? _latestMessageFor(ChatProvider chat, String conversationId) {
@@ -104,25 +125,30 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
     final auth = context.watch<AuthProvider>();
     final convs = chat.conversations;
     final query = _query.trim().toLowerCase();
+    final qDigits = ChatCodeUtils.normalize(query);
 
     final filtered = convs.where((conv) {
       if (_unreadOnly && (conv.unreadCount ?? 0) == 0) {
         return false;
       }
+      if (_archivedOnly && !chat.isConversationArchived(conv.id)) {
+        return false;
+      }
+      if (!_archivedOnly && chat.isConversationArchived(conv.id)) {
+        return false;
+      }
       if (query.isEmpty) return true;
-      final title = chat.displayTitleOf(conv.id).toLowerCase();
-      final snippet = (conv.lastMsgSnippet ?? '').toLowerCase();
+      final titleRaw = chat.displayTitleOf(conv.id);
+      final title = titleRaw.toLowerCase();
+      final titleDigits = ChatCodeUtils.normalize(titleRaw);
       final parts = chat.participantsOf(conv.id);
       final partsHay = parts
-          .map((p) => [
-                p.nickname ?? '',
-                p.email ?? '',
-              ].join(' '))
+          .map((p) => chat.displayForParticipant(conv.id, p.userUid))
           .join(' ')
           .toLowerCase();
       return title.contains(query) ||
-          snippet.contains(query) ||
-          partsHay.contains(query);
+          partsHay.contains(query) ||
+          (qDigits.isNotEmpty && titleDigits.contains(qDigits));
     }).toList()
       ..sort((a, b) {
         final aTime = a.lastMsgAt ?? a.updatedAt ?? a.createdAt;
@@ -140,13 +166,181 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
 
     final isBusy = chat.busy && !chat.ready;
     final isRefreshing = chat.busy && chat.ready;
+    final isWide = MediaQuery.of(context).size.width >= 1000;
+    final selectedConvId = _selectedConversationId;
 
-    return Directionality(
-      textDirection: ui.TextDirection.rtl,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('المحادثات'),
-          actions: [
+    final listBody = RefreshIndicator(
+      color: kPrimaryColor,
+      onRefresh: _refresh,
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _searchCtrl,
+                      onChanged: (value) {
+                        _searchDebounce?.cancel();
+                        _searchDebounce = Timer(
+                          const Duration(milliseconds: 220),
+                          () {
+                            if (!mounted) return;
+                            setState(() => _query = value);
+                          },
+                        );
+                      },
+                      decoration: InputDecoration(
+                        hintText: 'ابحث بالرقم أو البريد',
+                        prefixIcon: const Icon(Icons.search_rounded),
+                        suffixIcon: _query.isEmpty
+                            ? null
+                            : IconButton(
+                                onPressed: () {
+                                  _searchCtrl.clear();
+                                  setState(() => _query = '');
+                                },
+                                icon: const Icon(Icons.close_rounded),
+                              ),
+                        border: const OutlineInputBorder(),
+                      ),
+                      textDirection: ui.TextDirection.rtl,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  FilterChip(
+                    label: const Text('غير المقروءة'),
+                    avatar: const Icon(
+                      Icons.mark_chat_unread_rounded,
+                      size: 18,
+                    ),
+                    selected: _unreadOnly,
+                    onSelected: (value) => setState(() => _unreadOnly = value),
+                  ),
+                  const SizedBox(width: 8),
+                  FilterChip(
+                    label: const Text('المؤرشفة'),
+                    avatar: const Icon(Icons.archive_rounded, size: 18),
+                    selected: _archivedOnly,
+                    onSelected: (value) async {
+                      setState(() => _archivedOnly = value);
+                      await chat.refreshConversations();
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (isRefreshing)
+            const SliverToBoxAdapter(
+              child: LinearProgressIndicator(minHeight: 2),
+            ),
+          if (isBusy)
+            const SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (filtered.isEmpty)
+            const SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(
+                child: Text(
+                  'لا توجد محادثات متاحة.',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+            )
+          else
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(12, 6, 12, 18),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) {
+                    final conversation = filtered[index];
+                    final displayTitleRaw =
+                        chat.displayTitleOf(conversation.id);
+                    final displayTitle =
+                        ChatCodeUtils.isChatCode(displayTitleRaw)
+                            ? ChatCodeUtils.format(displayTitleRaw)
+                            : displayTitleRaw;
+                    final isSupport =
+                        chat.isSupportConversation(conversation.id);
+                    final typing = chat.typingUids(conversation.id);
+                    final lastMessage =
+                        _latestMessageFor(chat, conversation.id);
+                    final subtitleOverride =
+                        typing.isNotEmpty ? 'جارٍ الكتابة...' : null;
+                    final isOpen = chat.openedConversationId == conversation.id;
+
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: ConversationTile(
+                        conversation: conversation,
+                        titleOverride:
+                            isSupport ? chat.supportDisplayName : displayTitle,
+                        leadingImageAsset:
+                            isSupport ? 'assets/images/support icon.png' : null,
+                        leadingIcon: isSupport ? null : null,
+                        subtitleOverride: subtitleOverride,
+                        subtitleIsTyping: typing.isNotEmpty,
+                        lastMessage: lastMessage,
+                        unreadCount: conversation.unreadCount ?? 0,
+                        clinicLabel: null,
+                        isMuted: false,
+                        isOnline: null,
+                        showChevron: !isOpen,
+                        onTap: () {
+                          if (isWide) {
+                            setState(() =>
+                                _selectedConversationId = conversation.id);
+                            chat.openConversation(conversation.id);
+                          } else {
+                            _openConversation(conversation.id);
+                          }
+                        },
+                        onLongPress: () => _showConversationActions(
+                          context,
+                          conversation,
+                        ),
+                      ),
+                    );
+                  },
+                  childCount: filtered.length,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+
+    Widget buildHeader() {
+      return Container(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          border: Border(
+            bottom:
+                BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+          ),
+        ),
+        child: Row(
+          children: [
+            IconButton(
+              tooltip: 'رجوع',
+              onPressed: () => Navigator.of(context).maybePop(),
+              icon: const Icon(Icons.arrow_back_rounded),
+            ),
+            const Icon(Icons.chat_rounded),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text(
+                'المحادثات',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
             if (auth.role?.toLowerCase() == 'owner')
               IconButton(
                 tooltip: 'خدمة العملاء',
@@ -160,141 +354,121 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
             ),
           ],
         ),
-        floatingActionButton: FloatingActionButton(
-          onPressed: () => _showNewConversationDialog(context),
-          tooltip: 'بدء محادثة جديدة',
-          child: const Icon(Icons.chat_rounded),
-        ),
-        body: SafeArea(
-          child: RefreshIndicator(
-            color: kPrimaryColor,
-            onRefresh: _refresh,
-            child: CustomScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              slivers: [
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _searchCtrl,
-                            onChanged: (value) {
-                              _searchDebounce?.cancel();
-                              _searchDebounce = Timer(
-                                const Duration(milliseconds: 220),
-                                () {
-                                  if (!mounted) return;
-                                  setState(() => _query = value);
-                                },
-                              );
-                            },
-                            decoration: InputDecoration(
-                              hintText:
-                                  'ابحث بالرقم أو البريد أو محتوى الرسائل',
-                              prefixIcon: const Icon(Icons.search_rounded),
-                              suffixIcon: _query.isEmpty
-                                  ? null
-                                  : IconButton(
-                                      onPressed: () {
-                                        _searchCtrl.clear();
-                                        setState(() => _query = '');
-                                      },
-                                      icon: const Icon(Icons.close_rounded),
-                                    ),
-                              border: const OutlineInputBorder(),
-                            ),
-                            textDirection: ui.TextDirection.rtl,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        FilterChip(
-                          label: const Text('غير المقروءة'),
-                          avatar: const Icon(
-                            Icons.mark_chat_unread_rounded,
-                            size: 18,
-                          ),
-                          selected: _unreadOnly,
-                          onSelected: (value) =>
-                              setState(() => _unreadOnly = value),
-                        ),
-                      ],
+      );
+    }
+
+    return Directionality(
+      textDirection: ui.TextDirection.rtl,
+      child: Scaffold(
+        appBar: isWide
+            ? null
+            : AppBar(
+                title: const Text('المحادثات'),
+                actions: [
+                  if (auth.role?.toLowerCase() == 'owner')
+                    IconButton(
+                      tooltip: 'خدمة العملاء',
+                      onPressed: _openSupportChat,
+                      icon: const Icon(Icons.support_agent_rounded),
                     ),
+                  IconButton(
+                    tooltip: 'تحديث',
+                    onPressed: chat.busy ? null : _refresh,
+                    icon: const Icon(Icons.refresh_rounded),
                   ),
-                ),
-                if (isRefreshing)
-                  const SliverToBoxAdapter(
-                    child: LinearProgressIndicator(minHeight: 2),
-                  ),
-                if (isBusy)
-                  const SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: Center(child: CircularProgressIndicator()),
-                  )
-                else if (filtered.isEmpty)
-                  const SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: Center(
-                      child: Text(
-                        'لا توجد محادثات متاحة.',
-                        style: TextStyle(fontWeight: FontWeight.w700),
+                ],
+              ),
+        floatingActionButton: isWide
+            ? null
+            : FloatingActionButton(
+                onPressed: () => _showNewConversationDialog(context),
+                tooltip: 'بدء محادثة جديدة',
+                child: const Icon(Icons.chat_rounded),
+              ),
+        body: SafeArea(
+          child: isWide
+              ? Row(
+                  children: [
+                    SizedBox(
+                      width: MediaQuery.of(context).size.width * 0.40,
+                      child: Column(
+                        children: [
+                          buildHeader(),
+                          Expanded(
+                            child: Stack(
+                              children: [
+                                listBody,
+                                Positioned(
+                                  left: 16,
+                                  bottom: 16,
+                                  child: FloatingActionButton(
+                                    onPressed: () =>
+                                        _showNewConversationDialog(context),
+                                    tooltip: 'بدء محادثة جديدة',
+                                    child: const Icon(Icons.chat_rounded),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  )
-                else
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(12, 6, 12, 18),
-                    sliver: SliverList(
-                      delegate: SliverChildBuilderDelegate(
-                        (context, index) {
-                          final conversation = filtered[index];
-                          final displayTitle = chat.displayTitleOf(
-                            conversation.id,
-                          );
-                          final isSupport =
-                              chat.isSupportConversation(conversation.id);
-                          final typing = chat.typingUids(conversation.id);
-                          final lastMessage =
-                              _latestMessageFor(chat, conversation.id);
-                          final subtitleOverride =
-                              typing.isNotEmpty ? 'جارٍ الكتابة...' : null;
-                          final isOpen =
-                              chat.openedConversationId == conversation.id;
-
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 6),
-                            child: ConversationTile(
-                              conversation: conversation,
-                              titleOverride: isSupport
-                                  ? chat.supportDisplayName
-                                  : displayTitle,
-                              leadingIcon: isSupport
-                                  ? Icons.support_agent_rounded
-                                  : null,
-                              subtitleOverride: subtitleOverride,
-                              subtitleIsTyping: typing.isNotEmpty,
-                              lastMessage: lastMessage,
-                              unreadCount: conversation.unreadCount ?? 0,
-                              clinicLabel: null,
-                              isMuted: false,
-                              isOnline: null,
-                              showChevron: !isOpen,
-                              onTap: () => _openConversation(conversation.id),
-                              onLongPress: () => _showConversationActions(
-                                context,
-                                conversation,
+                    Expanded(
+                      child: () {
+                        if (selectedConvId == null) {
+                          final scheme = Theme.of(context).colorScheme;
+                          return Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  const Color(0xFFF2F6F9),
+                                  scheme.surface.withValues(alpha: .98),
+                                ],
+                              ),
+                              image: const DecorationImage(
+                                image: AssetImage('assets/images/buck.png'),
+                                fit: BoxFit.cover,
+                                alignment: Alignment.center,
+                              ),
+                            ),
+                            child: Center(
+                              child: Text(
+                                'اختر محادثة لعرضها هنا.',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  color: scheme.onSurface.withValues(alpha: .6),
+                                ),
                               ),
                             ),
                           );
-                        },
-                        childCount: filtered.length,
-                      ),
+                        }
+                        final conv = chat.conversationById(selectedConvId);
+                        if (conv == null) {
+                          return Center(
+                            child: Text(
+                              'اختر محادثة لعرضها هنا.',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurface
+                                    .withValues(alpha: .6),
+                              ),
+                            ),
+                          );
+                        }
+                        return ChatRoomScreen(
+                          conversation: conv,
+                          embedded: true,
+                        );
+                      }(),
                     ),
-                  ),
-              ],
-            ),
-          ),
+                  ],
+                )
+              : listBody,
         ),
       ),
     );
@@ -332,7 +506,6 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
         ),
       ),
     );
-    controller.dispose();
     if (result == null) return;
     final trimmed = result.trim();
     if (trimmed == initial.trim()) return;
@@ -462,8 +635,19 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
           content: TextField(
             controller: inputCtrl,
             keyboardType: TextInputType.emailAddress,
+            inputFormatters: [
+              TextInputFormatter.withFunction((oldValue, newValue) {
+                final text = newValue.text;
+                if (text.contains('@')) return newValue;
+                final digits = ChatCodeUtils.normalize(text);
+                return newValue.copyWith(
+                  text: digits,
+                  selection: TextSelection.collapsed(offset: digits.length),
+                );
+              }),
+            ],
             decoration: const InputDecoration(
-              hintText: 'أدخل البريد الإلكتروني أو الرقم',
+              hintText: 'أدخل رقم الحساب لبدء دردشة معه',
             ),
             textDirection: ui.TextDirection.ltr,
           ),
@@ -484,22 +668,28 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
     );
 
     if (result == null || result.isEmpty) {
-      inputCtrl.dispose();
       return;
     }
 
     try {
       final chat = context.read<ChatProvider>();
-      final conversation = await chat.startDirectByEmail(result);
+      final normalized =
+          result.contains('@') ? result : ChatCodeUtils.normalize(result);
+      final conversation = await chat.startDirectByEmail(normalized);
       await chat.openConversation(conversation.id);
       await chat.markConversationRead(conversation.id);
       if (!mounted) return;
-      await Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => ChatRoomScreen(conversation: conversation),
-        ),
-      );
-      await chat.refreshConversations();
+      final isWide = MediaQuery.of(context).size.width >= 1000;
+      if (isWide) {
+        setState(() => _selectedConversationId = conversation.id);
+      } else {
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => ChatRoomScreen(conversation: conversation),
+          ),
+        );
+        await chat.refreshConversations();
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(

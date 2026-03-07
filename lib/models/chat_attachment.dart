@@ -7,6 +7,8 @@
 // هذا الملف لا يعرّف فئة باسم ChatAttachment لتفادي التعارض مع
 // ChatAttachment الموجودة في lib/models/chat_models.dart.
 
+import 'package:aelmamclinic/core/constants.dart';
+
 import 'chat_attachment_record.dart';
 import 'chat_models.dart' show ChatAttachment, ChatAttachmentType;
 
@@ -45,7 +47,7 @@ extension ChatAttachmentRecordX on ChatAttachmentRecord {
 extension ChatAttachmentUiX on ChatAttachment {
   ChatAttachmentRecord toRecord({required String messageId}) {
     // إن لم توجد قيم، نضع افتراضيات مناسبة
-    final String bucketVal = (bucket ?? 'chat-attachments');
+    final String bucketVal = (bucket ?? AppConstants.chatBucketName);
     final String pathVal = (path ?? '');
 
     final String mime =

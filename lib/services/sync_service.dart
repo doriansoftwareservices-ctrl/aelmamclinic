@@ -193,6 +193,7 @@ class SyncService {
   final Map<String, Map<String, String>> _localColTypeCache = {};
   final Map<String, Set<String>> _localNotNullColsCache = {};
   final Map<String, int> _lastClampByTable = {};
+  final Set<String> _disabledRemoteTables = {};
 
   /// قفل دفع مخصص لكل جدول لمنع تكرار الدفع بالتوازي
   final Map<String, bool> _pushBusy = {};
@@ -218,6 +219,7 @@ class SyncService {
       'phone_number',
       'health_status',
       'preferences',
+      'collateral',
       'doctor_id',
       'doctor_name',
       'doctor_specialization',
@@ -322,7 +324,9 @@ class SyncService {
       'total_discounts',
       'net_pay',
       'is_paid',
-      'payment_date'
+      'payment_date',
+      'period_start',
+      'period_end'
     },
     'employees_discounts': {
       'employee_id',
@@ -332,8 +336,16 @@ class SyncService {
     },
     'items': {'type_id', 'name', 'price', 'stock', 'created_at'},
     'item_types': {'name'},
-    // نرسل total بدل unit_price + نضيف date
-    'purchases': {'item_id', 'quantity', 'total', 'created_at', 'date'},
+    // نرسل total بدل unit_price + نضيف date + snapshot names
+    'purchases': {
+      'item_id',
+      'item_name_snapshot',
+      'item_type_name_snapshot',
+      'quantity',
+      'total',
+      'created_at',
+      'date'
+    },
     // نضيف notify_time
     'alert_settings': {
       'item_id',
@@ -349,6 +361,7 @@ class SyncService {
       'operation',
       'amount',
       'employee_id',
+      'patient_id',
       'description',
       'modification_details',
       'timestamp'
@@ -448,12 +461,13 @@ class SyncService {
     'alert_settings': {
       'item_id': 'items',
     },
+    'financial_logs': {
+      'employee_id': 'employees',
+      'patient_id': 'patients',
+    },
     'patient_services': {
       'patient_id': 'patients',
       'service_id': 'medical_services',
-    },
-    'financial_logs': {
-      'employee_id': 'employees',
     },
   };
 
@@ -731,6 +745,119 @@ class SyncService {
       _log('Post-insert verify failed for $table#$id: $e');
       return false;
     }
+  }
+
+  Future<int?> _findExistingByNaturalKey(
+    String table,
+    Map<String, dynamic> filtered,
+  ) async {
+    try {
+      if (table == 'items') {
+        final name = (filtered['name'] ?? filtered['Name'])?.toString().trim();
+        final typeId = filtered['type_id'] ?? filtered['typeId'];
+        if (name == null || name.isEmpty || typeId == null) return null;
+        final int? t = typeId is num ? typeId.toInt() : int.tryParse('$typeId');
+        if (t == null || t <= 0) return null;
+        final rows = await _db.rawQuery(
+          'SELECT id FROM items WHERE type_id = ? AND lower(name) = lower(?) LIMIT 1',
+          [t, name],
+        );
+        if (rows.isNotEmpty) {
+          final raw = rows.first['id'];
+          if (raw is num) return raw.toInt();
+          return int.tryParse('${raw ?? ''}');
+        }
+      }
+      if (table == 'consumption_types') {
+        final type = (filtered['type'] ?? '').toString().trim();
+        if (type.isEmpty) return null;
+        final rows = await _db.rawQuery(
+          'SELECT id FROM consumption_types WHERE lower(type) = lower(?) LIMIT 1',
+          [type],
+        );
+        if (rows.isNotEmpty) {
+          final raw = rows.first['id'];
+          if (raw is num) return raw.toInt();
+          return int.tryParse('${raw ?? ''}');
+        }
+      }
+      if (table == 'item_types') {
+        final name = (filtered['name'] ?? filtered['Name'])?.toString().trim();
+        if (name == null || name.isEmpty) return null;
+        final rows = await _db.rawQuery(
+          'SELECT id FROM item_types WHERE lower(name) = lower(?) LIMIT 1',
+          [name],
+        );
+        if (rows.isNotEmpty) {
+          final raw = rows.first['id'];
+          if (raw is num) return raw.toInt();
+          return int.tryParse('${raw ?? ''}');
+        }
+      }
+      if (table == 'service_doctor_share') {
+        final serviceId = filtered['service_id'] ?? filtered['serviceId'];
+        final doctorId = filtered['doctor_id'] ?? filtered['doctorId'];
+        final int? s = serviceId is num
+            ? serviceId.toInt()
+            : int.tryParse('$serviceId');
+        final int? d =
+            doctorId is num ? doctorId.toInt() : int.tryParse('$doctorId');
+        if (s == null || d == null || s <= 0 || d <= 0) return null;
+        final rows = await _db.rawQuery(
+          'SELECT id FROM service_doctor_share WHERE service_id = ? AND doctor_id = ? LIMIT 1',
+          [s, d],
+        );
+        if (rows.isNotEmpty) {
+          final raw = rows.first['id'];
+          if (raw is num) return raw.toInt();
+          return int.tryParse('${raw ?? ''}');
+        }
+      }
+    } catch (e) {
+      _log('Natural-key lookup failed for $table: $e');
+    }
+    return null;
+  }
+
+  Future<int?> _findItemIdBySnapshot({
+    required String? itemName,
+    required String? typeName,
+  }) async {
+    if (itemName == null || itemName.trim().isEmpty) return null;
+    final name = itemName.trim();
+    int? typeId;
+    if (typeName != null && typeName.trim().isNotEmpty) {
+      final rows = await _db.rawQuery(
+        'SELECT id FROM item_types WHERE lower(name) = lower(?) LIMIT 1',
+        [typeName.trim()],
+      );
+      if (rows.isNotEmpty) {
+        final raw = rows.first['id'];
+        typeId = raw is num ? raw.toInt() : int.tryParse('${raw ?? ''}');
+      }
+    }
+
+    if (typeId != null && typeId > 0) {
+      final rows = await _db.rawQuery(
+        'SELECT id FROM items WHERE type_id = ? AND lower(name) = lower(?) LIMIT 1',
+        [typeId, name],
+      );
+      if (rows.isNotEmpty) {
+        final raw = rows.first['id'];
+        return raw is num ? raw.toInt() : int.tryParse('${raw ?? ''}');
+      }
+    }
+
+    // fallback: name-only if unique
+    final rows = await _db.rawQuery(
+      'SELECT id FROM items WHERE lower(name) = lower(?)',
+      [name],
+    );
+    if (rows.length == 1) {
+      final raw = rows.first['id'];
+      return raw is num ? raw.toInt() : int.tryParse('${raw ?? ''}');
+    }
+    return null;
   }
 
   void _logPullRowFailure({
@@ -1078,10 +1205,21 @@ class SyncService {
 
   Future<void> _applyStockDelta(int itemId, int delta) async {
     await _runDbWrite(() async {
-      await _db.rawUpdate(
-        'UPDATE items SET stock = stock + ? WHERE id = ?',
-        [delta, itemId],
-      );
+      final cols = await _getLocalColumns('items');
+      final hasUpdatedAt = cols.contains('updated_at');
+      final hasAcc = cols.contains('account_id');
+      final args = <Object?>[delta, itemId];
+      var sql = 'UPDATE items SET stock = stock + ?';
+      if (hasUpdatedAt) {
+        sql += ', updated_at = ?';
+        args.insert(1, DateTime.now().toIso8601String());
+      }
+      sql += ' WHERE id = ?';
+      if (hasAcc && accountId.trim().isNotEmpty) {
+        sql += ' AND account_id = ?';
+        args.add(accountId.trim());
+      }
+      await _db.rawUpdate(sql, args);
     });
     DBService.instance.emitPassiveChange('items');
   }
@@ -1144,6 +1282,45 @@ class SyncService {
     final notNullCols = _localNotNullColsCache[table] ?? const <String>{};
     if (notNullCols.isEmpty) return;
     values.removeWhere((key, value) => value == null && notNullCols.contains(key));
+  }
+
+  bool _hasMeaningfulValue(dynamic value) {
+    if (value == null) return false;
+    if (value is String) return value.trim().isNotEmpty;
+    if (value is num) return value.toInt() != 0;
+    return true;
+  }
+
+  Future<List<String>> _findMissingRequiredFks({
+    required String localTable,
+    required Map<String, dynamic> rawRow,
+    required Map<String, dynamic> filteredRow,
+    required Map<String, String> fkParentTables,
+  }) async {
+    if (fkParentTables.isEmpty) return const [];
+    if (!_localNotNullColsCache.containsKey(localTable)) {
+      await _getLocalColumns(localTable);
+    }
+    final notNullCols = _localNotNullColsCache[localTable] ?? const <String>{};
+    if (notNullCols.isEmpty) return const [];
+
+    final missing = <String>[];
+    for (final fkSnake in fkParentTables.keys) {
+      final fkCamel = _toCamel(fkSnake);
+      final hasCol =
+          notNullCols.contains(fkSnake) || notNullCols.contains(fkCamel);
+      if (!hasCol) continue;
+
+      final rawValue = rawRow[fkSnake];
+      if (!_hasMeaningfulValue(rawValue)) continue;
+
+      final filteredValue =
+          filteredRow.containsKey(fkSnake) ? filteredRow[fkSnake] : filteredRow[fkCamel];
+      if (!_hasMeaningfulValue(filteredValue)) {
+        missing.add(fkSnake);
+      }
+    }
+    return missing;
   }
 
   Future<_LocalSyncTriple?> _readLocalSyncTriple({
@@ -1363,6 +1540,23 @@ class SyncService {
       return localPk;
     }
 
+    final uuidRows = await _db.query(
+      _uuidMappingTable,
+      columns: const ['record_id'],
+      where: 'table_name = ? AND uuid = ?',
+      whereArgs: [table, remoteId],
+      limit: 1,
+    );
+    if (uuidRows.isNotEmpty) {
+      final raw = uuidRows.first['record_id'];
+      final localPk = (raw is num) ? raw.toInt() : int.tryParse('$raw');
+      if (localPk != null && localPk > 0) {
+        _fkRemoteReverseCache.putIfAbsent(table, () => {})[remoteId] = localPk;
+        _fkRemoteIdCache.putIfAbsent(table, () => {})[localPk] = remoteId;
+        return localPk;
+      }
+    }
+
     if (!_hasAccount) return null;
     try {
       final query = '''
@@ -1401,6 +1595,10 @@ class SyncService {
         return localPk;
       }
     } catch (e) {
+      if (e is OperationException && _isMissingRemoteField(e, table)) {
+        _disableRemoteTable(table, 'missing in remote schema');
+        return null;
+      }
       _log('resolve local pk failed for $table → $remoteId: $e');
     }
     return null;
@@ -1667,6 +1865,23 @@ class SyncService {
   bool _isSubscriptionsUnsupported(OperationException error) {
     final text = _formatGqlError(error).toLowerCase();
     return text.contains('no subscriptions exist');
+  }
+
+  bool _isMissingRemoteField(OperationException error, String remoteTable) {
+    final text = _formatGqlError(error).toLowerCase();
+    final needle = "field '${remoteTable.toLowerCase()}' not found";
+    return text.contains(needle) &&
+        (text.contains('query_root') || text.contains('subscription_root'));
+  }
+
+  void _disableRemoteTable(String remoteTable, String reason) {
+    if (_disabledRemoteTables.add(remoteTable)) {
+      _log('Remote table disabled: $remoteTable ($reason)');
+    }
+  }
+
+  bool _isRemoteTableDisabled(String remoteTable) {
+    return _disabledRemoteTables.contains(remoteTable);
   }
 
   Future<void> _disableRealtimeForUnsupportedSubscriptions() async {
@@ -2310,6 +2525,42 @@ class SyncService {
     // camel->snake (مبدئي)
     var snake = _mapKeysToSnake(data);
 
+    // إصلاح مخصص: أعمدة FK الضرورية قد تكون بقيت NULL في بعض الحالات
+    if (remoteTable == 'service_doctor_share') {
+      if (snake['service_id'] == null) {
+        final raw = localRow['serviceId'] ?? localRow['service_id'];
+        final int? localId = raw is num ? raw.toInt() : int.tryParse('${raw ?? ''}');
+        if (localId != null && localId > 0) {
+          snake['service_id'] =
+              await _resolveRemoteIdForLocal('medical_services', localId);
+        }
+      }
+      if (snake['doctor_id'] == null) {
+        final raw = localRow['doctorId'] ?? localRow['doctor_id'];
+        final int? localId = raw is num ? raw.toInt() : int.tryParse('${raw ?? ''}');
+        if (localId != null && localId > 0) {
+          snake['doctor_id'] = await _resolveRemoteIdForLocal('doctors', localId);
+        }
+      }
+    } else if (remoteTable == 'patient_services') {
+      if (snake['patient_id'] == null) {
+        final raw = localRow['patientId'] ?? localRow['patient_id'];
+        final int? localId = raw is num ? raw.toInt() : int.tryParse('${raw ?? ''}');
+        if (localId != null && localId > 0) {
+          snake['patient_id'] =
+              await _resolveRemoteIdForLocal('patients', localId);
+        }
+      }
+      if (snake['service_id'] == null) {
+        final raw = localRow['serviceId'] ?? localRow['service_id'];
+        final int? localId = raw is num ? raw.toInt() : int.tryParse('${raw ?? ''}');
+        if (localId != null && localId > 0) {
+          snake['service_id'] =
+              await _resolveRemoteIdForLocal('medical_services', localId);
+        }
+      }
+    }
+
     // إن وُجد Mapper مخصص للجدول، طبّقه
     final mapper = _mappers[remoteTable];
     if (mapper?.toCloudMap != null) {
@@ -2323,6 +2574,10 @@ class SyncService {
         final rawValue = snake[fkSnake];
         if (rawValue == null) {
           snake[fkSnake] = null;
+          continue;
+        }
+        // إذا كانت القيمة UUID صالحة فلا نعيد تحويلها
+        if (_looksLikeUuid(rawValue.toString())) {
           continue;
         }
 
@@ -2494,13 +2749,61 @@ class SyncService {
 
         await _remapOutgoingForeignKeys(remoteTable, chunk, errors: fkErrors);
 
+        // تحقّق صارم من أعمدة UUID المطلوبة قبل الإرسال
+        final requiredUuidByTable = <String, List<String>>{
+          'service_doctor_share': [
+            'id',
+            'account_id',
+            'service_id',
+            'doctor_id',
+          ],
+          'patient_services': [
+            'id',
+            'account_id',
+            'patient_id',
+            'service_id',
+          ],
+        };
+        final required = requiredUuidByTable[remoteTable];
+        var filteredChunk = chunk;
+        var filteredMeta = metaChunk;
+        if (required != null && required.isNotEmpty) {
+          final keepRows = <Map<String, dynamic>>[];
+          final keepMeta = <Map<String, dynamic>>[];
+          for (var i = 0; i < chunk.length; i++) {
+            final row = chunk[i];
+            final missing = <String>[];
+            for (final key in required) {
+              final v = row[key];
+              if (v == null || v.toString().trim().isEmpty) {
+                missing.add(key);
+              }
+            }
+            if (missing.isNotEmpty) {
+              hadFailure = true;
+              _log(
+                'PUSH $remoteTable skipped row (missing ${missing.join(', ')}). '
+                'local_id=${row['local_id']} device_id=${row['device_id']}',
+              );
+              continue;
+            }
+            keepRows.add(row);
+            keepMeta.add(metaChunk[i]);
+          }
+          filteredChunk = keepRows;
+          filteredMeta = keepMeta;
+          if (filteredChunk.isEmpty) {
+            continue;
+          }
+        }
+
         try {
           _log(
-              'PUSH $remoteTable: ${chunk.length} rows (acc=$accountId, dev=$_safeDeviceId)');
+              'PUSH $remoteTable: ${filteredChunk.length} rows (acc=$accountId, dev=$_safeDeviceId)');
           final response = await _withRetry(() async {
-            return await _upsertRemoteRows(remoteTable, chunk);
+            return await _upsertRemoteRows(remoteTable, filteredChunk);
           });
-          await _cacheRemoteIdsFromResponse(remoteTable, response, metaChunk);
+          await _cacheRemoteIdsFromResponse(remoteTable, response, filteredMeta);
         } on OperationException catch (e) {
           hadFailure = true;
           final bool isNameUniqueConflict = (remoteTable == 'drugs') &&
@@ -2853,6 +3156,10 @@ class SyncService {
       _log('PULL $remoteTable skipped (no accountId)');
       return;
     }
+    if (_isRemoteTableDisabled(remoteTable)) {
+      _log('PULL $remoteTable skipped (disabled)');
+      return;
+    }
     if (!_syncEnabled) {
       _log('PULL $remoteTable skipped (paused)');
       return;
@@ -2895,6 +3202,11 @@ class SyncService {
         });
         remoteRows = (data[remoteTable] as List?) ?? const [];
       } catch (e) {
+        if (e is OperationException &&
+            _isMissingRemoteField(e, remoteTable)) {
+          _disableRemoteTable(remoteTable, 'missing in remote schema');
+          break;
+        }
         _log('PULL FAILED for $remoteTable: $e');
         break;
       }
@@ -2928,6 +3240,14 @@ class SyncService {
                 ? raw['updated_at'].toString()
                 : null;
 
+        int baseLocalId = sourceLocalId;
+        if (baseLocalId <= 0) {
+          baseLocalId = await _newLocalId31(
+            localTable,
+            myDeviceId: _safeDeviceId,
+          );
+        }
+
         int? localId = await _findLocalRowIdByTriple(
           table: localTable,
           accountIdForRow: accountId,
@@ -2936,10 +3256,11 @@ class SyncService {
         );
 
         if (localId == null) {
-          localId = sourceLocalId;
+          localId = baseLocalId;
           if (remoteDeviceId.isNotEmpty &&
               myDeviceId.isNotEmpty &&
-              remoteDeviceId != myDeviceId) {
+              remoteDeviceId != myDeviceId &&
+              sourceLocalId > 0) {
             localId = _composeCrossDeviceId(remoteDeviceId, sourceLocalId);
           }
         }
@@ -2978,7 +3299,7 @@ class SyncService {
         if (accCol != null) filtered[accCol] = accountId;
         if (devCol != null) filtered[devCol] = remoteDeviceId;
         if (locCol != null) {
-          filtered[locCol] = rawLocalInt;
+          filtered[locCol] = baseLocalId;
         }
         if (updCol != null && remoteUpdatedAt != null) {
           filtered[updCol] = remoteUpdatedAt;
@@ -3051,19 +3372,29 @@ class SyncService {
           continue;
         }
 
+        int postInsertLocalId = resolvedLocalId;
         if (!inserted) {
-          _logPullRowFailure(
-            remoteTable: remoteTable,
-            localTable: localTable,
-            resolvedLocalId: resolvedLocalId,
-            remoteUuid: remoteUuid,
-            remoteDeviceId: remoteDeviceId,
-            remoteLocalId: rawLocalInt,
-            reason: 'post-insert verification failed',
-            filteredRow: filtered,
-            rawRow: raw,
-          );
-          continue;
+          final altId = await _findExistingByNaturalKey(localTable, filtered);
+          if (altId != null && altId > 0) {
+            postInsertLocalId = altId;
+            inserted = true;
+            _log(
+              'PULL $remoteTable: resolved by natural key -> localId=$altId',
+            );
+          } else {
+            _logPullRowFailure(
+              remoteTable: remoteTable,
+              localTable: localTable,
+              resolvedLocalId: resolvedLocalId,
+              remoteUuid: remoteUuid,
+              remoteDeviceId: remoteDeviceId,
+              remoteLocalId: rawLocalInt,
+              reason: 'post-insert verification failed',
+              filteredRow: filtered,
+              rawRow: raw,
+            );
+            continue;
+          }
         }
 
         if (localTable == 'complaints') {
@@ -3086,10 +3417,10 @@ class SyncService {
         }
 
         final String remoteId = remoteUuid ?? '';
-        if (remoteId.isNotEmpty && resolvedLocalId > 0) {
+        if (remoteId.isNotEmpty && postInsertLocalId > 0) {
           await _cacheRemoteMapping(
             remoteTable,
-            localPk: resolvedLocalId,
+            localPk: postInsertLocalId,
             remoteId: remoteId,
             remoteDeviceId: remoteDeviceId,
             remoteLocalId: rawLocalInt,
@@ -3099,10 +3430,10 @@ class SyncService {
         if (remoteUuid != null && remoteUuid.isNotEmpty) {
           final int syncLocal = (rawLocalId is num)
               ? rawLocalId.toInt()
-              : int.tryParse('$rawLocalId') ?? resolvedLocalId;
+              : int.tryParse('$rawLocalId') ?? postInsertLocalId;
           await _saveUuidMapping(
             table: remoteTable,
-            recordId: resolvedLocalId,
+            recordId: postInsertLocalId,
             uuid: remoteUuid,
             device: _normalizeDeviceId(remoteDeviceId),
             local: syncLocal,
@@ -3253,9 +3584,14 @@ class SyncService {
     String localTable,
     String remoteTable, {
     required Map<String, String> fkParentTables,
+    Set<String> extraRemoteCols = const {},
   }) async {
     if (!_hasAccount) {
       _log('PULL $remoteTable skipped (no accountId)');
+      return;
+    }
+    if (_isRemoteTableDisabled(remoteTable)) {
+      _log('PULL $remoteTable skipped (disabled)');
       return;
     }
     if (!_syncEnabled) {
@@ -3265,7 +3601,7 @@ class SyncService {
     final allowedCols = await _getLocalColumns(localTable);
     final selectClause = _buildSelectClause(
       allowedCols,
-      extraCols: fkParentTables.keys,
+      extraCols: {...fkParentTables.keys, ...extraRemoteCols},
       remoteAllowed: _remoteAllow[remoteTable],
     );
 
@@ -3300,6 +3636,11 @@ class SyncService {
         });
         remoteRows = (data[remoteTable] as List?) ?? const [];
       } catch (e) {
+        if (e is OperationException &&
+            _isMissingRemoteField(e, remoteTable)) {
+          _disableRemoteTable(remoteTable, 'missing in remote schema');
+          break;
+        }
         _log('PULL FAILED for $remoteTable: $e');
         break;
       }
@@ -3334,6 +3675,14 @@ class SyncService {
                 ? raw['updated_at'].toString()
                 : null;
 
+        int baseLocalId = sourceLocalId;
+        if (baseLocalId <= 0) {
+          baseLocalId = await _newLocalId31(
+            localTable,
+            myDeviceId: _safeDeviceId,
+          );
+        }
+
         int? localId = await _findLocalRowIdByTriple(
           table: localTable,
           accountIdForRow: accountId,
@@ -3342,10 +3691,11 @@ class SyncService {
         );
 
         if (localId == null) {
-          localId = sourceLocalId;
+          localId = baseLocalId;
           if (remoteDeviceId.isNotEmpty &&
               myDeviceId.isNotEmpty &&
-              remoteDeviceId != myDeviceId) {
+              remoteDeviceId != myDeviceId &&
+              sourceLocalId > 0) {
             localId = _composeCrossDeviceId(remoteDeviceId, sourceLocalId);
           }
         }
@@ -3390,6 +3740,27 @@ class SyncService {
           }
         }
 
+        final missingFks = await _findMissingRequiredFks(
+          localTable: localTable,
+          rawRow: raw,
+          filteredRow: filtered,
+          fkParentTables: fkParentTables,
+        );
+        if (missingFks.isNotEmpty) {
+          _logPullRowFailure(
+            remoteTable: remoteTable,
+            localTable: localTable,
+            resolvedLocalId: resolvedLocalId,
+            remoteUuid: remoteUuid,
+            remoteDeviceId: remoteDeviceId,
+            remoteLocalId: rawLocalInt,
+            reason: 'missing required FK mapping: ${missingFks.join(', ')}',
+            filteredRow: filtered,
+            rawRow: raw,
+          );
+          continue;
+        }
+
         if (localTable == 'items') {
           final nameKey =
               filtered.containsKey('name') ? 'name' : (filtered.containsKey('Name') ? 'Name' : null);
@@ -3429,6 +3800,25 @@ class SyncService {
           }
         }
 
+        if (localTable == 'purchases') {
+          final itemKey = filtered.containsKey('item_id')
+              ? 'item_id'
+              : (filtered.containsKey('itemId') ? 'itemId' : null);
+          if (itemKey != null && filtered[itemKey] == null) {
+            final nameSnap = filtered['item_name_snapshot']?.toString() ??
+                filtered['itemNameSnapshot']?.toString();
+            final typeSnap = filtered['item_type_name_snapshot']?.toString() ??
+                filtered['itemTypeNameSnapshot']?.toString();
+            final resolved = await _findItemIdBySnapshot(
+              itemName: nameSnap,
+              typeName: typeSnap,
+            );
+            if (resolved != null) {
+              filtered[itemKey] = resolved;
+            }
+          }
+        }
+
         // لا تسمح بإرسال قيم NULL لأعمدة FK غير قابلة للإلغاء
         if (localTable == 'service_doctor_share') {
           if (filtered['serviceId'] == null) filtered.remove('serviceId');
@@ -3451,7 +3841,7 @@ class SyncService {
         if (accCol != null) filtered[accCol] = accountId;
         if (devCol != null) filtered[devCol] = remoteDeviceId;
         if (locCol != null) {
-          filtered[locCol] = rawLocalInt;
+          filtered[locCol] = baseLocalId;
         }
         if (updCol != null && remoteUpdatedAt != null) {
           filtered[updCol] = remoteUpdatedAt;
@@ -3497,26 +3887,36 @@ class SyncService {
           continue;
         }
 
+        int postInsertLocalId = resolvedLocalId;
         if (!inserted) {
-          _logPullRowFailure(
-            remoteTable: remoteTable,
-            localTable: localTable,
-            resolvedLocalId: resolvedLocalId,
-            remoteUuid: remoteUuid,
-            remoteDeviceId: remoteDeviceId,
-            remoteLocalId: rawLocalInt,
-            reason: 'post-insert verification failed',
-            filteredRow: filtered,
-            rawRow: raw,
-          );
-          continue;
+          final altId = await _findExistingByNaturalKey(localTable, filtered);
+          if (altId != null && altId > 0) {
+            postInsertLocalId = altId;
+            inserted = true;
+            _log(
+              'PULL $remoteTable: resolved by natural key -> localId=$altId',
+            );
+          } else {
+            _logPullRowFailure(
+              remoteTable: remoteTable,
+              localTable: localTable,
+              resolvedLocalId: resolvedLocalId,
+              remoteUuid: remoteUuid,
+              remoteDeviceId: remoteDeviceId,
+              remoteLocalId: rawLocalInt,
+              reason: 'post-insert verification failed',
+              filteredRow: filtered,
+              rawRow: raw,
+            );
+            continue;
+          }
         }
 
         final String remoteId = remoteUuid ?? '';
-        if (remoteId.isNotEmpty && resolvedLocalId > 0) {
+        if (remoteId.isNotEmpty && postInsertLocalId > 0) {
           await _cacheRemoteMapping(
             remoteTable,
-            localPk: resolvedLocalId,
+            localPk: postInsertLocalId,
             remoteId: remoteId,
             remoteDeviceId: remoteDeviceId,
             remoteLocalId: rawLocalInt,
@@ -3526,10 +3926,10 @@ class SyncService {
         if (remoteUuid != null && remoteUuid.isNotEmpty) {
           final int syncLocal = (rawLocalId is num)
               ? rawLocalId.toInt()
-              : int.tryParse('$rawLocalId') ?? resolvedLocalId;
+              : int.tryParse('$rawLocalId') ?? postInsertLocalId;
           await _saveUuidMapping(
             table: remoteTable,
-            recordId: resolvedLocalId,
+            recordId: postInsertLocalId,
             uuid: remoteUuid,
             device: _normalizeDeviceId(remoteDeviceId),
             local: syncLocal,
@@ -3555,6 +3955,8 @@ class SyncService {
   bool _realtimeEnabled = false;
   bool _realtimeSupported = true;
   bool _realtimeUnsupportedNotified = false;
+  Timer? _realtimeRetryTimer;
+  int _realtimeRetryCount = 0;
   Timer? _periodicPullTimer;
   DateTime? _lastRealtimeEventAt;
   DateTime? _lastPullAt;
@@ -3613,6 +4015,10 @@ class SyncService {
     Map<String, String>? fkParentTables,
   }) async {
     if (!_hasAccount) return;
+    if (_isRemoteTableDisabled(remoteTable)) {
+      _log('Realtime skipped (disabled): $remoteTable');
+      return;
+    }
     final key = 'rt:$remoteTable:$accountId';
 
     if (_subscriptions.containsKey(key)) {
@@ -3645,8 +4051,13 @@ class SyncService {
             unawaited(_disableRealtimeForUnsupportedSubscriptions());
             return;
           }
+          if (_isMissingRemoteField(ex, remoteTable)) {
+            _disableRemoteTable(remoteTable, 'missing in remote schema');
+            return;
+          }
           _log(
               'Realtime subscription error for $remoteTable: ${_formatGqlError(ex)}');
+          _scheduleRealtimeRetry('subscription error: $remoteTable');
           return;
         }
         final rows = (result.data?[remoteTable] as List?) ?? const [];
@@ -3696,6 +4107,14 @@ class SyncService {
             ? raw['updated_at'].toString()
             : null;
 
+    int baseLocalId = sourceLocalId;
+    if (baseLocalId <= 0) {
+      baseLocalId = await _newLocalId31(
+        localTable,
+        myDeviceId: _safeDeviceId,
+      );
+    }
+
     int? localId = await _findLocalRowIdByTriple(
       table: localTable,
       accountIdForRow: accountId,
@@ -3704,26 +4123,16 @@ class SyncService {
     );
 
     if (localId == null) {
-      localId = sourceLocalId;
+      localId = baseLocalId;
       if (remoteDeviceId.isNotEmpty &&
           myDeviceId.isNotEmpty &&
-          remoteDeviceId != myDeviceId) {
+          remoteDeviceId != myDeviceId &&
+          sourceLocalId > 0) {
         localId = _composeCrossDeviceId(remoteDeviceId, sourceLocalId);
       }
     }
 
     final int resolvedLocalId = localId;
-
-    final String remoteId = remoteUuid ?? '';
-    if (remoteId.isNotEmpty && resolvedLocalId > 0) {
-      await _cacheRemoteMapping(
-        remoteTable,
-        localPk: resolvedLocalId,
-        remoteId: remoteId,
-        remoteDeviceId: remoteDeviceId,
-        remoteLocalId: rawLocalInt,
-      );
-    }
 
     raw.remove('account_id');
     raw.remove('local_id');
@@ -3776,6 +4185,67 @@ class SyncService {
         }
       }
     }
+
+    if (fkParentTables != null && fkParentTables.isNotEmpty) {
+      final missingFks = await _findMissingRequiredFks(
+        localTable: localTable,
+        rawRow: raw,
+        filteredRow: filtered,
+        fkParentTables: fkParentTables,
+      );
+      if (missingFks.isNotEmpty) {
+        _logPullRowFailure(
+          remoteTable: remoteTable,
+          localTable: localTable,
+          resolvedLocalId: resolvedLocalId,
+          remoteUuid: remoteUuid,
+          remoteDeviceId: remoteDeviceId,
+          remoteLocalId: rawLocalInt,
+          reason: 'realtime missing required FK mapping: ${missingFks.join(', ')}',
+          filteredRow: filtered,
+          rawRow: raw,
+        );
+        return;
+      }
+    }
+    if (localTable == 'items') {
+      final nameKey =
+          filtered.containsKey('name') ? 'name' : (filtered.containsKey('Name') ? 'Name' : null);
+      if (nameKey != null) {
+        final v = filtered[nameKey];
+        if (v == null || v.toString().trim().isEmpty) {
+          filtered[nameKey] = 'بدون اسم';
+        }
+      }
+
+      if (filtered.containsKey('price') && filtered['price'] == null) {
+        filtered['price'] = 0;
+      } else if (filtered.containsKey('Price') && filtered['Price'] == null) {
+        filtered['Price'] = 0;
+      }
+
+      if (filtered.containsKey('stock') && filtered['stock'] == null) {
+        filtered['stock'] = 0;
+      } else if (filtered.containsKey('Stock') && filtered['Stock'] == null) {
+        filtered['Stock'] = 0;
+      }
+
+      final typeKey = filtered.containsKey('type_id')
+          ? 'type_id'
+          : (filtered.containsKey('typeId') ? 'typeId' : null);
+      if (typeKey != null) {
+        final v = filtered[typeKey];
+        final isEmpty = v == null ||
+            (v is num && v.toInt() <= 0) ||
+            (v is String && v.trim().isEmpty);
+        if (isEmpty) {
+          final fallbackId = await _ensureFallbackItemTypeId();
+          if (fallbackId != null) {
+            filtered[typeKey] = fallbackId;
+          }
+        }
+      }
+    }
     if (localTable == 'service_doctor_share') {
       if (filtered['serviceId'] == null) filtered.remove('serviceId');
       if (filtered['doctorId'] == null) filtered.remove('doctorId');
@@ -3797,7 +4267,7 @@ class SyncService {
     if (accCol != null) filtered[accCol] = accountId;
     if (devCol != null) filtered[devCol] = remoteDeviceId;
     if (locCol != null) {
-      filtered[locCol] = rawLocalInt;
+      filtered[locCol] = baseLocalId;
     }
     if (updCol != null && remoteUpdatedAt != null) {
       filtered[updCol] = remoteUpdatedAt;
@@ -3834,15 +4304,68 @@ class SyncService {
       filteredRow: filtered,
     );
 
-    await _upsertLocalNonDestructive(localTable, filtered, id: resolvedLocalId);
+    bool inserted = false;
+    try {
+      await _upsertLocalNonDestructive(localTable, filtered, id: resolvedLocalId);
+      inserted = await _verifyLocalRowExists(localTable, resolvedLocalId);
+    } catch (e) {
+      _logPullRowFailure(
+        remoteTable: remoteTable,
+        localTable: localTable,
+        resolvedLocalId: resolvedLocalId,
+        remoteUuid: remoteUuid,
+        remoteDeviceId: remoteDeviceId,
+        remoteLocalId: rawLocalInt,
+        reason: 'realtime upsert exception: $e',
+        filteredRow: filtered,
+        rawRow: raw,
+      );
+      return;
+    }
+
+    int postInsertLocalId = resolvedLocalId;
+    if (!inserted) {
+      final altId = await _findExistingByNaturalKey(localTable, filtered);
+      if (altId != null && altId > 0) {
+        postInsertLocalId = altId;
+        inserted = true;
+        _log(
+          'RT $remoteTable: resolved by natural key -> localId=$altId',
+        );
+      } else {
+        _logPullRowFailure(
+          remoteTable: remoteTable,
+          localTable: localTable,
+          resolvedLocalId: resolvedLocalId,
+          remoteUuid: remoteUuid,
+          remoteDeviceId: remoteDeviceId,
+          remoteLocalId: rawLocalInt,
+          reason: 'realtime post-insert verification failed',
+          filteredRow: filtered,
+          rawRow: raw,
+        );
+        return;
+      }
+    }
+
+    final String remoteId = remoteUuid ?? '';
+    if (remoteId.isNotEmpty && postInsertLocalId > 0) {
+      await _cacheRemoteMapping(
+        remoteTable,
+        localPk: postInsertLocalId,
+        remoteId: remoteId,
+        remoteDeviceId: remoteDeviceId,
+        remoteLocalId: rawLocalInt,
+      );
+    }
 
     if (remoteUuid != null && remoteUuid.isNotEmpty) {
       final int syncLocal = (rawLocalId is num)
           ? rawLocalId.toInt()
-          : int.tryParse('$rawLocalId') ?? resolvedLocalId;
+          : int.tryParse('$rawLocalId') ?? postInsertLocalId;
       await _saveUuidMapping(
         table: remoteTable,
-        recordId: resolvedLocalId,
+        recordId: postInsertLocalId,
         uuid: remoteUuid,
         device: _normalizeDeviceId(remoteDeviceId),
         local: syncLocal,
@@ -4002,6 +4525,22 @@ class SyncService {
     );
   }
 
+  void _scheduleRealtimeRetry(String reason) {
+    if (!_realtimeSupported) return;
+    if (_realtimeRetryTimer != null) return;
+    if (!_hasAccount) return;
+    final delaySeconds = min(60, 4 * pow(2, _realtimeRetryCount)).toInt();
+    _realtimeRetryCount = min(_realtimeRetryCount + 1, 5);
+    _log('Realtime retry scheduled in ${delaySeconds}s ($reason)');
+    _realtimeRetryTimer = Timer(Duration(seconds: delaySeconds), () async {
+      _realtimeRetryTimer = null;
+      if (!_realtimeSupported || !_hasAccount) return;
+      try {
+        await startRealtime();
+      } catch (_) {}
+    });
+  }
+
   /// اشترك في كل الجداول (Realtime) لهذا الحساب.
   Future<void> startRealtime() {
     return _queueRealtimeOp(() async {
@@ -4103,6 +4642,9 @@ class SyncService {
         fkParentTables: _fkMap['patient_services'],
       );
       _realtimeEnabled = true;
+      _realtimeRetryCount = 0;
+      _realtimeRetryTimer?.cancel();
+      _realtimeRetryTimer = null;
       _ensurePeriodicPull();
       await _triggerPullIfStale();
     });
@@ -4116,6 +4658,8 @@ class SyncService {
   Future<void> _stopRealtimeInternal() async {
     _periodicPullTimer?.cancel();
     _periodicPullTimer = null;
+    _realtimeRetryTimer?.cancel();
+    _realtimeRetryTimer = null;
     final subs = _subscriptions.values.toList(growable: false);
     _subscriptions.clear();
     for (final sub in subs) {
@@ -4354,6 +4898,7 @@ class SyncService {
         'purchases',
         'purchases',
         fkParentTables: _fkMap['purchases']!,
+        extraRemoteCols: {'total'},
       );
 
   Future<void> pushAlertSettings() =>

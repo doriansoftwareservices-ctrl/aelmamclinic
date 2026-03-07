@@ -57,6 +57,7 @@ class PushNotificationsService {
     }
 
     final messaging = FirebaseMessaging.instance;
+    await messaging.setAutoInitEnabled(true);
     await messaging.requestPermission(
       alert: true,
       badge: true,

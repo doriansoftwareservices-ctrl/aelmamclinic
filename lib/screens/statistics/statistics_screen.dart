@@ -1,4 +1,5 @@
 // lib/screens/statistics/statistics_screen.dart
+import 'dart:async';
 import 'dart:ui' as ui show TextDirection;
 import 'dart:io';
 import 'dart:math' as math;
@@ -10,6 +11,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:share_plus/share_plus.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
+import 'package:provider/provider.dart';
 
 /*── تصميم TBIAN ─*/
 import 'package:aelmamclinic/core/theme.dart';
@@ -20,10 +22,11 @@ import 'package:aelmamclinic/models/clinic_profile.dart';
 import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/services/clinic_profile_service.dart';
 import 'package:aelmamclinic/services/save_file_service.dart';
-import 'package:aelmamclinic/models/patient.dart';
 import 'package:aelmamclinic/models/consumption.dart';
 import 'package:aelmamclinic/utils/pdf_fonts.dart';
 import 'package:aelmamclinic/utils/pdf_text.dart';
+import 'package:aelmamclinic/providers/statistics_provider.dart';
+import 'package:aelmamclinic/providers/auth_provider.dart';
 
 /// نموذج بيانات بسيط للرسوم
 class _ChartData {
@@ -44,6 +47,27 @@ double _safeNumber(double value) {
   if (value.isNaN || value.isInfinite) return 0;
   return value;
 }
+
+ZoomPanBehavior _defaultZoomPan() => ZoomPanBehavior(
+      enablePinching: true,
+      enablePanning: true,
+      enableDoubleTapZooming: true,
+      enableSelectionZooming: true,
+      zoomMode: ZoomMode.x,
+      maximumZoomLevel: 0.02,
+    );
+
+TrackballBehavior _defaultTrackball() => TrackballBehavior(
+      enable: true,
+      activationMode: ActivationMode.singleTap,
+      lineType: TrackballLineType.vertical,
+      tooltipDisplayMode: TrackballDisplayMode.groupAllPoints,
+    );
+
+TooltipBehavior _defaultTooltip() => TooltipBehavior(
+      enable: true,
+      canShowMarker: true,
+    );
 
 /*──────────────────────── أدوات PDF ────────────────────────*/
 class _PdfUtils {
@@ -533,32 +557,332 @@ class _FilterAndExportBar extends StatelessWidget {
 }
 
 /*──────────────────────── شاشة الرسوم البيانية الرئيسية ────────────────────────*/
-class StatisticsScreen extends StatefulWidget {
+class StatisticsScreen extends StatelessWidget {
   const StatisticsScreen({super.key});
 
-  @override
-  State<StatisticsScreen> createState() => _StatisticsScreenState();
-}
-
-class _StatisticsScreenState extends State<StatisticsScreen>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 6, vsync: this);
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
+  StatisticsProvider? _tryRead(BuildContext context) {
+    try {
+      return Provider.of<StatisticsProvider>(context, listen: false);
+    } catch (_) {
+      return null;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final existing = _tryRead(context);
+    if (existing != null) {
+      return const _StatisticsScreenBody();
+    }
+    return ChangeNotifierProvider(
+      create: (_) => StatisticsProvider(),
+      child: const _StatisticsScreenBody(),
+    );
+  }
+}
+
+class _StatisticsScreenBody extends StatefulWidget {
+  const _StatisticsScreenBody();
+
+  @override
+  State<_StatisticsScreenBody> createState() => _StatisticsScreenBodyState();
+}
+
+class _StatisticsScreenBodyState extends State<_StatisticsScreenBody> {
+  StatisticsProvider? _stats;
+
+  @override
+  void initState() {
+    super.initState();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _stats ??= (() {
+      try {
+        return Provider.of<StatisticsProvider>(context, listen: false);
+      } catch (_) {
+        return null;
+      }
+    })();
+    _stats?.setChartsActive(true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _stats?.refreshCharts();
+    });
+  }
+
+  @override
+  void dispose() {
+    _stats?.setChartsActive(false);
+    super.dispose();
+  }
+
+  Future<void> _pickStart() async {
+    final stats = context.read<StatisticsProvider>();
+    final d = await showDatePicker(
+      context: context,
+      initialDate: stats.chartsFrom ?? DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+      locale: const Locale('ar', ''),
+    );
+    if (d != null) {
+      if (!mounted) return;
+      stats.setChartsRange(from: d, to: stats.chartsTo);
+    }
+  }
+
+  Future<void> _pickEnd() async {
+    final stats = context.read<StatisticsProvider>();
+    final d = await showDatePicker(
+      context: context,
+      initialDate: stats.chartsTo ?? DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+      locale: const Locale('ar', ''),
+    );
+    if (d != null) {
+      if (!mounted) return;
+      stats.setChartsRange(from: stats.chartsFrom, to: d);
+    }
+  }
+
+  Future<void> _pickAsOf() async {
+    final stats = context.read<StatisticsProvider>();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: stats.doctorOutstandingAsOf,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+      locale: const Locale('ar', ''),
+    );
+    if (picked != null) {
+      if (!mounted) return;
+      stats.setDoctorOutstandingAsOf(
+        DateTime(picked.year, picked.month, picked.day, 23, 59, 59),
+      );
+    }
+  }
+
+  void _resetRange() {
+    final stats = context.read<StatisticsProvider>();
+    stats.setChartsRange(from: null, to: null);
+  }
+
+  List<_ChartData> _mapToData(Map<String, double> map) {
+    return map.entries
+        .map((e) => _ChartData(e.key, e.value))
+        .toList()
+      ..sort((a, b) => a.label.compareTo(b.label));
+  }
+
+  List<_ChartData> _mapToDataInt(Map<String, int> map) {
+    return map.entries
+        .map((e) => _ChartData(e.key, e.value.toDouble()))
+        .toList()
+      ..sort((a, b) => a.label.compareTo(b.label));
+  }
+
+  List<MapEntry<String, double>> _topEntries(
+    Map<String, double> map, {
+    int limit = 5,
+  }) {
+    final entries = map.entries
+        .map((e) => MapEntry(e.key, _safeNumber(e.value)))
+        .toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    if (entries.length <= limit) return entries;
+    return entries.take(limit).toList();
+  }
+
+  double _totalMap(Map<String, double> map) =>
+      _safeTotal(_mapToData(map));
+
+  Future<pw.Document> _buildMapPdf({
+    required String title,
+    required Map<String, double> map,
+    required List<String> headers,
+    required String chartKind, // line | bar
+    DateTime? from,
+    DateTime? to,
+  }) async {
+    final (base, bold) = await _PdfUtils._loadFonts();
+    final clinic = await ClinicProfileService.loadActiveOrFallback();
+    final logoBytes = await ClinicProfileService.loadReportLogoBytes();
+    final logo = pw.MemoryImage(logoBytes);
+
+    final rows = map.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+    final tableRows =
+        rows.map((e) => [e.key, _PdfUtils.formatNumber(e.value)]).toList();
+
+    final doc = pw.Document();
+    doc.addPage(
+      pw.MultiPage(
+        pageTheme: _PdfUtils._pageTheme(base, bold),
+        build: (_) => [
+          _PdfUtils.header(
+            title,
+            subtitle: _subtitleRange(from, to),
+            logo: logo,
+            clinic: clinic,
+          ),
+          pw.SizedBox(height: 6),
+          pw.Text(
+            pdfText('الإجمالي: ${_PdfUtils.formatNumber(_totalMap(map))}'),
+            style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+          ),
+          pw.SizedBox(height: 10),
+          if (chartKind == 'bar')
+            ..._PdfUtils.barChartsFromMap(map)
+          else
+            ..._PdfUtils.lineChartsFromMap(map),
+          _PdfUtils.simpleTable(headers: headers, rows: tableRows),
+        ],
+      ),
+    );
+    return doc;
+  }
+
+  Future<void> _exportMapPdf({
+    required String title,
+    required String prefix,
+    required Map<String, double> map,
+    required List<String> headers,
+    required String chartKind,
+    DateTime? from,
+    DateTime? to,
+  }) async {
+    final doc = await _buildMapPdf(
+      title: title,
+      map: map,
+      headers: headers,
+      chartKind: chartKind,
+      from: from,
+      to: to,
+    );
+    await _PdfUtils.shareDoc(doc, prefix);
+  }
+
+  Future<void> _downloadMapPdf({
+    required String title,
+    required String prefix,
+    required Map<String, double> map,
+    required List<String> headers,
+    required String chartKind,
+    DateTime? from,
+    DateTime? to,
+  }) async {
+    final doc = await _buildMapPdf(
+      title: title,
+      map: map,
+      headers: headers,
+      chartKind: chartKind,
+      from: from,
+      to: to,
+    );
+    await _PdfUtils.downloadDoc(context, doc, prefix);
+  }
+
+  Future<pw.Document> _buildOutstandingPdf(
+    List<Map<String, dynamic>> rows,
+    DateTime asOf,
+  ) async {
+    final (base, bold) = await _PdfUtils._loadFonts();
+    final clinic = await ClinicProfileService.loadActiveOrFallback();
+    final logoBytes = await ClinicProfileService.loadReportLogoBytes();
+    final logo = pw.MemoryImage(logoBytes);
+
+    final fmt = DateFormat('yyyy-MM-dd');
+    final tableRows = rows.map((r) {
+      final start = DateTime.tryParse('${r['periodStart'] ?? ''}');
+      final end = DateTime.tryParse('${r['periodEnd'] ?? ''}');
+      final period =
+          '${start != null ? fmt.format(start) : '—'} → ${end != null ? fmt.format(end) : '—'}';
+      return [
+        r['doctorName']?.toString() ?? '—',
+        period,
+        _PdfUtils.formatNumber((r['ratioSum'] as num?)?.toDouble() ?? 0.0),
+        _PdfUtils.formatNumber((r['directInput'] as num?)?.toDouble() ?? 0.0),
+        _PdfUtils.formatNumber((r['totalLoans'] as num?)?.toDouble() ?? 0.0),
+        _PdfUtils.formatNumber((r['totalDiscounts'] as num?)?.toDouble() ?? 0.0),
+        _PdfUtils.formatNumber((r['totalPaid'] as num?)?.toDouble() ?? 0.0),
+        _PdfUtils.formatNumber((r['netPay'] as num?)?.toDouble() ?? 0.0),
+      ];
+    }).toList();
+
+    final totalNet = rows.fold<double>(
+      0.0,
+      (sum, r) => sum + _safeNumber((r['netPay'] as num?)?.toDouble() ?? 0.0),
+    );
+
+    final doc = pw.Document();
+    doc.addPage(
+      pw.MultiPage(
+        pageTheme: _PdfUtils._pageTheme(base, bold),
+        build: (_) => [
+          _PdfUtils.header(
+            'تقرير مستحقات الأطباء',
+            subtitle: 'حتى تاريخ: ${fmt.format(asOf)}',
+            logo: logo,
+            clinic: clinic,
+          ),
+          pw.SizedBox(height: 6),
+          pw.Text(
+            pdfText('الإجمالي: ${_PdfUtils.formatNumber(totalNet)}'),
+            style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+          ),
+          pw.SizedBox(height: 10),
+          _PdfUtils.simpleTable(
+            headers: [
+              'الطبيب',
+              'الفترة',
+              'النِّسب',
+              'المدخلات',
+              'السلف',
+              'الخصومات',
+              'المدفوع',
+              'الصافي',
+            ],
+            rows: tableRows,
+          ),
+        ],
+      ),
+    );
+    return doc;
+  }
+
+  Future<void> _exportOutstanding(
+    List<Map<String, dynamic>> rows,
+    DateTime asOf,
+  ) async {
+    final doc = await _buildOutstandingPdf(rows, asOf);
+    await _PdfUtils.shareDoc(doc, 'doctor_outstanding');
+  }
+
+  Future<void> _downloadOutstanding(
+    List<Map<String, dynamic>> rows,
+    DateTime asOf,
+  ) async {
+    final doc = await _buildOutstandingPdf(rows, asOf);
+    await _PdfUtils.downloadDoc(context, doc, 'doctor_outstanding');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final stats = context.watch<StatisticsProvider>();
     final scheme = Theme.of(context).colorScheme;
+    final isSuperAdmin = context.watch<AuthProvider>().isSuperAdmin;
+    final incomeData = _mapToData(stats.incomeByDate);
+    final consumptionData = _mapToData(stats.consumptionByDate);
+    final incomeByDoctor = _mapToData(stats.incomeByDoctor);
+    final consumptionByType = _mapToData(stats.consumptionByType);
+    final doctorShareByDate = _mapToData(stats.doctorShareByDate);
+    final netProfitByDate = _mapToData(stats.netProfitByDate);
+    final supportStarsData = _mapToDataInt(stats.supportStarsCount);
+
     return Directionality(
       textDirection: ui.TextDirection.rtl,
       child: Scaffold(
@@ -568,41 +892,1260 @@ class _StatisticsScreenState extends State<StatisticsScreen>
             mainAxisSize: MainAxisSize.min,
             children: [
               Image.asset(
-                'assets/images/logo2.png', // ← استبدال الشعار
+                'assets/images/logo2.png',
                 height: 24,
                 fit: BoxFit.contain,
                 errorBuilder: (_, __, ___) => const SizedBox.shrink(),
               ),
               const SizedBox(width: 8),
-              const Text('ELMAM CLINIC'),
+              const Text('الرسوم البيانية'),
             ],
           ),
-          bottom: TabBar(
-            controller: _tabController,
-            indicatorColor: scheme.primary,
-            labelColor: scheme.onSurface,
-            unselectedLabelColor: scheme.onSurface.withValues(alpha: .6),
-            tabs: const [
-              Tab(icon: Icon(Icons.date_range), text: "الدخل بالتاريخ"),
-              Tab(icon: Icon(Icons.calendar_today), text: "الاستهلاك بالتاريخ"),
-              Tab(icon: Icon(Icons.person), text: "الدخل حسب الطبيب"),
-              Tab(icon: Icon(Icons.category), text: "نوعية الاستهلاك"),
-              Tab(icon: Icon(Icons.medical_services), text: "حصة الأطباء"),
-              Tab(icon: Icon(Icons.attach_money), text: "صافي الأرباح"),
-            ],
-          ),
-        ),
-        body: TabBarView(
-          controller: _tabController,
-          children: const [
-            _IncomeByDateWidget(),
-            _ConsumptionByDateWidget(),
-            _IncomeByDoctorWidget(),
-            _ConsumptionTypeWidget(),
-            _DoctorShareByDateWidget(),
-            _NetProfitWidget(),
+          actions: [
+            IconButton(
+              tooltip: 'تحديث',
+              onPressed: stats.chartsBusy ? null : stats.refreshCharts,
+              icon: const Icon(Icons.refresh_rounded),
+            ),
           ],
         ),
+        body: CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(
+              child: Container(
+                margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(18),
+                  gradient: LinearGradient(
+                    colors: [
+                      scheme.primary.withValues(alpha: 0.12),
+                      scheme.secondary.withValues(alpha: 0.08),
+                    ],
+                    begin: Alignment.topRight,
+                    end: Alignment.bottomLeft,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.auto_graph_rounded,
+                            color: kPrimaryColor),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Text(
+                            'لوحة التحليل المتقدم',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w900,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed: _resetRange,
+                          icon: const Icon(Icons.refresh_rounded),
+                          label: const Text('الكل'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TOutlinedButton(
+                            icon: Icons.date_range,
+                            label: stats.chartsFrom == null
+                                ? 'من...'
+                                : DateFormat('yyyy-MM-dd')
+                                    .format(stats.chartsFrom!),
+                            onPressed: _pickStart,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TOutlinedButton(
+                            icon: Icons.date_range,
+                            label: stats.chartsTo == null
+                                ? 'إلى...'
+                                : DateFormat('yyyy-MM-dd')
+                                    .format(stats.chartsTo!),
+                            onPressed: _pickEnd,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              sliver: SliverToBoxAdapter(
+                child: _SummaryGrid(stats: stats),
+              ),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              sliver: SliverToBoxAdapter(
+                child: _GrowthAnalysisPanel(stats: stats),
+              ),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              sliver: SliverToBoxAdapter(
+                child: _ChartsSection(
+                  title: 'مقارنة شهرية',
+                  totalLabel: 'آخر 6 أشهر',
+                  onExport: () => _exportMapPdf(
+                    title: 'تقرير المقارنة الشهرية (الدخل)',
+                    prefix: 'monthly_income_comparison',
+                    map: stats.monthlyIncome,
+                    headers: const ['الشهر', 'الدخل'],
+                    chartKind: 'bar',
+                  ),
+                  onDownload: () => _downloadMapPdf(
+                    title: 'تقرير المقارنة الشهرية (الدخل)',
+                    prefix: 'monthly_income_comparison',
+                    map: stats.monthlyIncome,
+                    headers: const ['الشهر', 'الدخل'],
+                    chartKind: 'bar',
+                  ),
+                  child: _MultiBarChart(
+                    categories: (stats.monthlyIncome.keys.toList()
+                      ..sort((a, b) => a.compareTo(b))),
+                    series: [
+                      _SeriesSpec(
+                        name: 'الدخل',
+                        color: scheme.primary,
+                        data: stats.monthlyIncome,
+                      ),
+                      _SeriesSpec(
+                        name: 'الاستهلاك',
+                        color: scheme.secondary,
+                        data: stats.monthlyConsumption,
+                      ),
+                      _SeriesSpec(
+                        name: 'صافي الربح',
+                        color: scheme.tertiary,
+                        data: stats.monthlyNetProfitSeries,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              sliver: SliverToBoxAdapter(
+                child: _ChartsSection(
+                  title: 'مقارنة سنوية (${stats.compareYearA} مقابل ${stats.compareYearB})',
+                  totalLabel: 'ملخص الأشهر من 01 إلى 12',
+                  onExport: () => _exportMapPdf(
+                    title:
+                        'تقرير مقارنة سنوية الدخل (${stats.compareYearA} vs ${stats.compareYearB})',
+                    prefix: 'year_income_compare',
+                    map: stats.yearIncomeB,
+                    headers: const ['الشهر', 'الدخل'],
+                    chartKind: 'bar',
+                  ),
+                  onDownload: () => _downloadMapPdf(
+                    title:
+                        'تقرير مقارنة سنوية الدخل (${stats.compareYearA} vs ${stats.compareYearB})',
+                    prefix: 'year_income_compare',
+                    map: stats.yearIncomeB,
+                    headers: const ['الشهر', 'الدخل'],
+                    chartKind: 'bar',
+                  ),
+                  child: Column(
+                    children: [
+                      _MultiBarChart(
+                        categories: (stats.yearIncomeA.keys.toList()
+                          ..sort((a, b) => a.compareTo(b))),
+                        series: [
+                          _SeriesSpec(
+                            name: '${stats.compareYearA} دخل',
+                            color: scheme.secondary,
+                            data: stats.yearIncomeA,
+                          ),
+                          _SeriesSpec(
+                            name: '${stats.compareYearB} دخل',
+                            color: scheme.primary,
+                            data: stats.yearIncomeB,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      _MultiBarChart(
+                        categories: (stats.yearNetA.keys.toList()
+                          ..sort((a, b) => a.compareTo(b))),
+                        series: [
+                          _SeriesSpec(
+                            name: '${stats.compareYearA} صافي',
+                            color: scheme.tertiary,
+                            data: stats.yearNetA,
+                          ),
+                          _SeriesSpec(
+                            name: '${stats.compareYearB} صافي',
+                            color: scheme.primary,
+                            data: stats.yearNetB,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              sliver: SliverToBoxAdapter(
+                child: _ChartsSection(
+                  title: 'توقعات الاتجاه (3 أشهر القادمة)',
+                  totalLabel: 'توقعات مبنية على آخر 6 أشهر',
+                  onExport: () => _exportMapPdf(
+                    title: 'توقعات الدخل للأشهر القادمة',
+                    prefix: 'forecast_income',
+                    map: stats.incomeForecast,
+                    headers: const ['الشهر', 'القيمة'],
+                    chartKind: 'line',
+                  ),
+                  onDownload: () => _downloadMapPdf(
+                    title: 'توقعات الدخل للأشهر القادمة',
+                    prefix: 'forecast_income',
+                    map: stats.incomeForecast,
+                    headers: const ['الشهر', 'القيمة'],
+                    chartKind: 'line',
+                  ),
+                  child: Column(
+                    children: [
+                      _ForecastChart(
+                        title: 'الدخل المتوقع',
+                        actual: stats.monthlyIncome,
+                        forecast: stats.incomeForecast,
+                        actualColor: scheme.primary,
+                        forecastColor: scheme.secondary,
+                      ),
+                      const SizedBox(height: 12),
+                      _ForecastChart(
+                        title: 'صافي الربح المتوقع',
+                        actual: stats.monthlyNetProfitSeries,
+                        forecast: stats.netForecast,
+                        actualColor: scheme.tertiary,
+                        forecastColor: scheme.primary,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              sliver: SliverList(
+                delegate: SliverChildListDelegate(
+                  [
+                    _ChartsSection(
+                      title: 'الدخل بالتاريخ',
+                      totalLabel:
+                          'الإجمالي: ${_PdfUtils.formatNumber(_totalMap(stats.incomeByDate))}',
+                      onExport: () => _exportMapPdf(
+                        title: 'تقرير الدخل بالتاريخ',
+                        prefix: 'income_by_date',
+                        map: stats.incomeByDate,
+                        headers: const ['التاريخ', 'الدخل'],
+                        chartKind: 'line',
+                        from: stats.chartsFrom,
+                        to: stats.chartsTo,
+                      ),
+                      onDownload: () => _downloadMapPdf(
+                        title: 'تقرير الدخل بالتاريخ',
+                        prefix: 'income_by_date',
+                        map: stats.incomeByDate,
+                        headers: const ['التاريخ', 'الدخل'],
+                        chartKind: 'line',
+                        from: stats.chartsFrom,
+                        to: stats.chartsTo,
+                      ),
+                      child: Column(
+                        children: [
+                          _LineAndPieCharts(
+                            data: incomeData,
+                            primaryTitle: 'الدخل بالتاريخ',
+                            accent: scheme.primary,
+                          ),
+                          const SizedBox(height: 12),
+                          _TopList(
+                            title: 'أعلى الأيام دخلاً',
+                            entries: _topEntries(stats.incomeByDate),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _ChartsSection(
+                      title: 'الاستهلاك بالتاريخ',
+                      totalLabel:
+                          'الإجمالي: ${_PdfUtils.formatNumber(_totalMap(stats.consumptionByDate))}',
+                      onExport: () => _exportMapPdf(
+                        title: 'تقرير الاستهلاك بالتاريخ',
+                        prefix: 'consumption_by_date',
+                        map: stats.consumptionByDate,
+                        headers: const ['التاريخ', 'الاستهلاك'],
+                        chartKind: 'line',
+                        from: stats.chartsFrom,
+                        to: stats.chartsTo,
+                      ),
+                      onDownload: () => _downloadMapPdf(
+                        title: 'تقرير الاستهلاك بالتاريخ',
+                        prefix: 'consumption_by_date',
+                        map: stats.consumptionByDate,
+                        headers: const ['التاريخ', 'الاستهلاك'],
+                        chartKind: 'line',
+                        from: stats.chartsFrom,
+                        to: stats.chartsTo,
+                      ),
+                      child: Column(
+                        children: [
+                          _LineAndPieCharts(
+                            data: consumptionData,
+                            primaryTitle: 'الاستهلاك بالتاريخ',
+                            accent: scheme.secondary,
+                          ),
+                          const SizedBox(height: 12),
+                          _TopList(
+                            title: 'أعلى أيام الاستهلاك',
+                            entries: _topEntries(stats.consumptionByDate),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _ChartsSection(
+                      title: 'الدخل حسب الطبيب',
+                      totalLabel:
+                          'الإجمالي: ${_PdfUtils.formatNumber(_totalMap(stats.incomeByDoctor))}',
+                      onExport: () => _exportMapPdf(
+                        title: 'تقرير الدخل حسب الطبيب',
+                        prefix: 'income_by_doctor',
+                        map: stats.incomeByDoctor,
+                        headers: const ['الطبيب', 'الدخل'],
+                        chartKind: 'bar',
+                        from: stats.chartsFrom,
+                        to: stats.chartsTo,
+                      ),
+                      onDownload: () => _downloadMapPdf(
+                        title: 'تقرير الدخل حسب الطبيب',
+                        prefix: 'income_by_doctor',
+                        map: stats.incomeByDoctor,
+                        headers: const ['الطبيب', 'الدخل'],
+                        chartKind: 'bar',
+                        from: stats.chartsFrom,
+                        to: stats.chartsTo,
+                      ),
+                      child: Column(
+                        children: [
+                          _BarChart(
+                            data: incomeByDoctor,
+                            title: 'الدخل حسب الطبيب',
+                            accent: scheme.primary,
+                          ),
+                          const SizedBox(height: 12),
+                          _TopList(
+                            title: 'الأطباء الأعلى دخلاً',
+                            entries: _topEntries(stats.incomeByDoctor),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _ChartsSection(
+                      title: 'نوعية الاستهلاك',
+                      totalLabel:
+                          'الإجمالي: ${_PdfUtils.formatNumber(_totalMap(stats.consumptionByType))}',
+                      onExport: () => _exportMapPdf(
+                        title: 'تقرير نوعية الاستهلاك',
+                        prefix: 'consumption_by_type',
+                        map: stats.consumptionByType,
+                        headers: const ['النوع', 'القيمة'],
+                        chartKind: 'bar',
+                        from: stats.chartsFrom,
+                        to: stats.chartsTo,
+                      ),
+                      onDownload: () => _downloadMapPdf(
+                        title: 'تقرير نوعية الاستهلاك',
+                        prefix: 'consumption_by_type',
+                        map: stats.consumptionByType,
+                        headers: const ['النوع', 'القيمة'],
+                        chartKind: 'bar',
+                        from: stats.chartsFrom,
+                        to: stats.chartsTo,
+                      ),
+                      child: Column(
+                        children: [
+                          _BarChart(
+                            data: consumptionByType,
+                            title: 'نوعية الاستهلاك',
+                            accent: scheme.tertiary,
+                          ),
+                          const SizedBox(height: 12),
+                          _TopList(
+                            title: 'الأصناف الأعلى استهلاكاً',
+                            entries: _topEntries(stats.consumptionByType),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _ChartsSection(
+                      title: 'حصة الأطباء بالتاريخ',
+                      totalLabel:
+                          'الإجمالي: ${_PdfUtils.formatNumber(_totalMap(stats.doctorShareByDate))}',
+                      onExport: () => _exportMapPdf(
+                        title: 'تقرير حصة الأطباء بالتاريخ',
+                        prefix: 'doctor_share_by_date',
+                        map: stats.doctorShareByDate,
+                        headers: const ['التاريخ', 'الحصة'],
+                        chartKind: 'line',
+                        from: stats.chartsFrom,
+                        to: stats.chartsTo,
+                      ),
+                      onDownload: () => _downloadMapPdf(
+                        title: 'تقرير حصة الأطباء بالتاريخ',
+                        prefix: 'doctor_share_by_date',
+                        map: stats.doctorShareByDate,
+                        headers: const ['التاريخ', 'الحصة'],
+                        chartKind: 'line',
+                        from: stats.chartsFrom,
+                        to: stats.chartsTo,
+                      ),
+                      child: _LineAndPieCharts(
+                        data: doctorShareByDate,
+                        primaryTitle: 'حصة الأطباء بالتاريخ',
+                        accent: scheme.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _ChartsSection(
+                      title: 'مستحقات الأطباء',
+                      totalLabel:
+                          'حتى تاريخ: ${DateFormat('yyyy-MM-dd').format(stats.doctorOutstandingAsOf)}',
+                      leadingAction: TextButton.icon(
+                        onPressed: _pickAsOf,
+                        icon: const Icon(Icons.event),
+                        label: const Text('تاريخ'),
+                      ),
+                      onExport: () => _exportOutstanding(
+                        stats.doctorOutstandingRows,
+                        stats.doctorOutstandingAsOf,
+                      ),
+                      onDownload: () => _downloadOutstanding(
+                        stats.doctorOutstandingRows,
+                        stats.doctorOutstandingAsOf,
+                      ),
+                      child: _OutstandingTable(rows: stats.doctorOutstandingRows),
+                    ),
+                    const SizedBox(height: 16),
+                    _ChartsSection(
+                      title: 'صافي الأرباح بالتاريخ',
+                      totalLabel:
+                          'الإجمالي: ${_PdfUtils.formatNumber(_totalMap(stats.netProfitByDate))}',
+                      onExport: () => _exportMapPdf(
+                        title: 'تقرير صافي الأرباح بالتاريخ',
+                        prefix: 'net_profit_by_date',
+                        map: stats.netProfitByDate,
+                        headers: const ['التاريخ', 'الصافي'],
+                        chartKind: 'line',
+                        from: stats.chartsFrom,
+                        to: stats.chartsTo,
+                      ),
+                      onDownload: () => _downloadMapPdf(
+                        title: 'تقرير صافي الأرباح بالتاريخ',
+                        prefix: 'net_profit_by_date',
+                        map: stats.netProfitByDate,
+                        headers: const ['التاريخ', 'الصافي'],
+                        chartKind: 'line',
+                        from: stats.chartsFrom,
+                        to: stats.chartsTo,
+                      ),
+                      child: _LineAndPieCharts(
+                        data: netProfitByDate,
+                        primaryTitle: 'صافي الأرباح بالتاريخ',
+                        accent: scheme.secondary,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    if (isSuperAdmin) ...[
+                      _ChartsSection(
+                        title: 'تقييم خدمة العملاء',
+                        totalLabel:
+                            'المتوسط: ${stats.supportRatingAvg.toStringAsFixed(2)} | الإجمالي: ${stats.supportRatingsCount}',
+                        onExport: () => _exportMapPdf(
+                          title: 'تقرير تقييمات خدمة العملاء (متوسط شهري)',
+                          prefix: 'support_ratings_monthly_avg',
+                          map: stats.supportMonthlyAvg,
+                          headers: const ['الشهر', 'المتوسط'],
+                          chartKind: 'bar',
+                          from: stats.chartsFrom,
+                          to: stats.chartsTo,
+                        ),
+                        onDownload: () => _downloadMapPdf(
+                          title: 'تقرير تقييمات خدمة العملاء (متوسط شهري)',
+                          prefix: 'support_ratings_monthly_avg',
+                          map: stats.supportMonthlyAvg,
+                          headers: const ['الشهر', 'المتوسط'],
+                          chartKind: 'bar',
+                          from: stats.chartsFrom,
+                          to: stats.chartsTo,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Wrap(
+                              spacing: 10,
+                              runSpacing: 10,
+                              children: [
+                                _KpiCard(
+                                  item: _KpiItem(
+                                    title: 'متوسط التقييم',
+                                    value: stats.supportRatingAvg
+                                        .toStringAsFixed(2),
+                                    icon: Icons.star_rounded,
+                                    color: scheme.primary,
+                                  ),
+                                ),
+                                _KpiCard(
+                                  item: _KpiItem(
+                                    title: 'عدد التقييمات',
+                                    value:
+                                        stats.supportRatingsCount.toString(),
+                                    icon: Icons.rate_review_rounded,
+                                    color: scheme.secondary,
+                                  ),
+                                ),
+                                _KpiCard(
+                                  item: _KpiItem(
+                                    title: 'نسبة الرضا (4-5)',
+                                    value:
+                                        '${stats.supportSatisfactionPct.toStringAsFixed(1)}%',
+                                    icon: Icons.sentiment_satisfied_alt_rounded,
+                                    color: scheme.tertiary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            _BarChart(
+                              data: _mapToData(stats.supportMonthlyAvg),
+                              title: 'متوسط التقييم شهرياً',
+                              accent: scheme.primary,
+                            ),
+                            const SizedBox(height: 12),
+                            _BarChart(
+                              data: _mapToDataInt(stats.supportMonthlyCount),
+                              title: 'عدد التقييمات شهرياً',
+                              accent: scheme.secondary,
+                            ),
+                            const SizedBox(height: 12),
+                            _BarChart(
+                              data: supportStarsData,
+                              title: 'توزيع النجوم (1-5)',
+                              accent: scheme.tertiary,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ChartsSection extends StatelessWidget {
+  final String title;
+  final String totalLabel;
+  final Widget child;
+  final VoidCallback onExport;
+  final VoidCallback onDownload;
+  final Widget? leadingAction;
+
+  const _ChartsSection({
+    required this.title,
+    required this.totalLabel,
+    required this.child,
+    required this.onExport,
+    required this.onDownload,
+    this.leadingAction,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return NeuCard(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                  ),
+                ),
+              ),
+              if (leadingAction != null) leadingAction!,
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert),
+                onSelected: (v) {
+                  if (v == 'export') onExport();
+                  if (v == 'download') onDownload();
+                },
+                itemBuilder: (ctx) => const [
+                  PopupMenuItem(
+                    value: 'export',
+                    child: Text('مشاركة PDF'),
+                  ),
+                  PopupMenuItem(
+                    value: 'download',
+                    child: Text('تنزيل PDF'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            totalLabel,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.primary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 12),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _SummaryGrid extends StatelessWidget {
+  final StatisticsProvider stats;
+
+  const _SummaryGrid({required this.stats});
+
+  @override
+  Widget build(BuildContext context) {
+    final items = [
+      _KpiItem(
+        title: 'إيرادات الشهر',
+        value: stats.fmtRevenue,
+        icon: Icons.trending_up_rounded,
+        color: Theme.of(context).colorScheme.primary,
+      ),
+      _KpiItem(
+        title: 'مصاريف الشهر',
+        value: stats.fmtExpense,
+        icon: Icons.payments_rounded,
+        color: Theme.of(context).colorScheme.secondary,
+      ),
+      _KpiItem(
+        title: 'صافي الربح',
+        value: stats.fmtNetProfit,
+        icon: Icons.savings_rounded,
+        color: Theme.of(context).colorScheme.tertiary,
+      ),
+      _KpiItem(
+        title: 'حصة الأطباء',
+        value: stats.fmtDoctorRatios,
+        icon: Icons.medical_services_rounded,
+        color: const Color(0xFF3A7FF6),
+      ),
+      _KpiItem(
+        title: 'مدخلات الأطباء',
+        value: stats.fmtDoctorInputs,
+        icon: Icons.stacked_line_chart_rounded,
+        color: const Color(0xFF0FA3B1),
+      ),
+      _KpiItem(
+        title: 'مستحقات المرضى',
+        value: stats.fmtPatientsRemaining,
+        icon: Icons.account_balance_wallet_rounded,
+        color: const Color(0xFF2E8B57),
+      ),
+    ];
+
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      children: items.map((item) => _KpiCard(item: item)).toList(),
+    );
+  }
+}
+
+class _GrowthAnalysisPanel extends StatelessWidget {
+  final StatisticsProvider stats;
+
+  const _GrowthAnalysisPanel({required this.stats});
+
+  @override
+  Widget build(BuildContext context) {
+    return NeuCard(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'تحليل النمو والانخفاض (مقارنة بالفترة السابقة)',
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              _GrowthCard(
+                title: 'الدخل',
+                pct: stats.incomeGrowthPct,
+                trend: stats.incomeTrend,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              _GrowthCard(
+                title: 'الاستهلاك',
+                pct: stats.consumptionGrowthPct,
+                trend: stats.consumptionTrend,
+                color: Theme.of(context).colorScheme.secondary,
+              ),
+              _GrowthCard(
+                title: 'صافي الربح',
+                pct: stats.netGrowthPct,
+                trend: stats.netTrend,
+                color: Theme.of(context).colorScheme.tertiary,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GrowthCard extends StatelessWidget {
+  final String title;
+  final double pct;
+  final String trend;
+  final Color color;
+
+  const _GrowthCard({
+    required this.title,
+    required this.pct,
+    required this.trend,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isUp = pct > 0.5;
+    final isDown = pct < -0.5;
+    final icon = isUp
+        ? Icons.trending_up_rounded
+        : (isDown ? Icons.trending_down_rounded : Icons.trending_flat_rounded);
+    final pctText = '${pct.toStringAsFixed(1)}%';
+    return SizedBox(
+      width: 220,
+      child: NeuCard(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(icon, color: color, size: 18),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              pctText,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'الاتجاه: $trend',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SeriesSpec {
+  final String name;
+  final Color color;
+  final Map<String, double> data;
+
+  _SeriesSpec({
+    required this.name,
+    required this.color,
+    required this.data,
+  });
+}
+
+class _MultiBarChart extends StatelessWidget {
+  final List<String> categories;
+  final List<_SeriesSpec> series;
+
+  const _MultiBarChart({
+    required this.categories,
+    required this.series,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (categories.isEmpty) {
+      return _EmptyChart(
+        message: 'لا توجد بيانات كافية للمقارنة الشهرية',
+      );
+    }
+
+    final chartWidth = math.max(320.0, 90.0 * categories.length);
+    final tooltip = _defaultTooltip();
+    final zoomPan = _defaultZoomPan();
+    final trackball = _defaultTrackball();
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: SizedBox(
+        width: chartWidth,
+        height: 320,
+        child: SfCartesianChart(
+          title: ChartTitle(text: 'مقارنة شهرية'),
+          enableAxisAnimation: false,
+          plotAreaBorderWidth: 0,
+          legend: Legend(isVisible: true, position: LegendPosition.bottom),
+          primaryXAxis: CategoryAxis(labelRotation: 45),
+          primaryYAxis: NumericAxis(),
+          tooltipBehavior: tooltip,
+          zoomPanBehavior: zoomPan,
+          trackballBehavior: trackball,
+          series: series.map((s) {
+            return ColumnSeries<_ChartData, String>(
+              name: s.name,
+              color: s.color,
+              dataSource: categories
+                  .map((c) => _ChartData(c, s.data[c] ?? 0))
+                  .toList(),
+              xValueMapper: (d, _) => d.label,
+              yValueMapper: (d, _) => d.value,
+              animationDuration: 0,
+              dataLabelSettings: const DataLabelSettings(isVisible: false),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+}
+
+class _ForecastChart extends StatelessWidget {
+  final String title;
+  final Map<String, double> actual;
+  final Map<String, double> forecast;
+  final Color actualColor;
+  final Color forecastColor;
+
+  const _ForecastChart({
+    required this.title,
+    required this.actual,
+    required this.forecast,
+    required this.actualColor,
+    required this.forecastColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final keys = <String>{...actual.keys, ...forecast.keys};
+    final categories = keys.toList()..sort((a, b) => a.compareTo(b));
+    if (categories.isEmpty) {
+      return _EmptyChart(
+        message: 'لا توجد بيانات كافية للتوقع',
+      );
+    }
+    final chartWidth = math.max(320.0, 90.0 * categories.length);
+    final tooltip = _defaultTooltip();
+    final zoomPan = _defaultZoomPan();
+    final trackball = _defaultTrackball();
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: SizedBox(
+        width: chartWidth,
+        height: 300,
+        child: SfCartesianChart(
+          title: ChartTitle(text: title),
+          enableAxisAnimation: false,
+          plotAreaBorderWidth: 0,
+          legend: Legend(isVisible: true, position: LegendPosition.bottom),
+          primaryXAxis: CategoryAxis(labelRotation: 45),
+          primaryYAxis: NumericAxis(),
+          tooltipBehavior: tooltip,
+          zoomPanBehavior: zoomPan,
+          trackballBehavior: trackball,
+          series: [
+            LineSeries<_ChartData, String>(
+              name: 'فعلي',
+              color: actualColor,
+              dataSource: categories
+                  .map((c) => _ChartData(c, actual[c] ?? 0))
+                  .toList(),
+              xValueMapper: (d, _) => d.label,
+              yValueMapper: (d, _) => d.value,
+              animationDuration: 0,
+              dataLabelSettings: const DataLabelSettings(isVisible: false),
+            ),
+            LineSeries<_ChartData, String>(
+              name: 'متوقع',
+              color: forecastColor,
+              dataSource: categories
+                  .map((c) => _ChartData(c, forecast[c] ?? 0))
+                  .toList(),
+              xValueMapper: (d, _) => d.label,
+              yValueMapper: (d, _) => d.value,
+              animationDuration: 0,
+              dataLabelSettings: const DataLabelSettings(isVisible: false),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _KpiItem {
+  final String title;
+  final String value;
+  final IconData icon;
+  final Color color;
+
+  _KpiItem({
+    required this.title,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
+}
+
+class _KpiCard extends StatelessWidget {
+  final _KpiItem item;
+
+  const _KpiCard({required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 220,
+      child: NeuCard(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: item.color.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(item.icon, color: item.color, size: 20),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              item.title,
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              item.value,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TopList extends StatelessWidget {
+  final String title;
+  final List<MapEntry<String, double>> entries;
+
+  const _TopList({required this.title, required this.entries});
+
+  @override
+  Widget build(BuildContext context) {
+    if (entries.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return NeuCard(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 8),
+          ...entries.map(
+            (e) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  Expanded(child: Text(e.key)),
+                  Text(_PdfUtils.formatNumber(e.value)),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyChart extends StatelessWidget {
+  final String message;
+
+  const _EmptyChart({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return NeuCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          Icon(Icons.bar_chart_outlined,
+              size: 36, color: Theme.of(context).colorScheme.primary),
+          const SizedBox(height: 8),
+          Text(message, textAlign: TextAlign.center),
+        ],
+      ),
+    );
+  }
+}
+
+class _LineAndPieCharts extends StatelessWidget {
+  final List<_ChartData> data;
+  final String primaryTitle;
+  final Color accent;
+
+  const _LineAndPieCharts({
+    required this.data,
+    required this.primaryTitle,
+    required this.accent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final chartWidth = math.max(280.0, 60.0 * data.length);
+    final zoomPan = _defaultZoomPan();
+    final trackball = _defaultTrackball();
+    final tooltip = _defaultTooltip();
+
+    if (data.isEmpty) {
+      return _EmptyChart(
+        message: 'لا توجد بيانات لعرضها ضمن الفترة المحددة',
+      );
+    }
+
+    return Column(
+      children: [
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SizedBox(
+            width: chartWidth,
+            height: 280,
+            child: SfCartesianChart(
+              title: ChartTitle(text: '$primaryTitle (خطي)'),
+              enableAxisAnimation: false,
+              plotAreaBorderWidth: 0,
+              primaryXAxis: CategoryAxis(labelRotation: 45),
+              primaryYAxis: NumericAxis(),
+              zoomPanBehavior: zoomPan,
+              trackballBehavior: trackball,
+              tooltipBehavior: tooltip,
+              series: <LineSeries<_ChartData, String>>[
+                LineSeries<_ChartData, String>(
+                  dataSource: data,
+                  xValueMapper: (d, _) => d.label,
+                  yValueMapper: (d, _) => d.value,
+                  color: accent,
+                  animationDuration: 0,
+                  dataLabelSettings: const DataLabelSettings(isVisible: false),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 280,
+          child: InteractiveViewer(
+            minScale: 0.9,
+            maxScale: 4,
+            panEnabled: true,
+            child: SfCircularChart(
+              title: ChartTitle(text: '$primaryTitle (دائري)'),
+              legend: Legend(
+                isVisible: true,
+                overflowMode: LegendItemOverflowMode.wrap,
+              ),
+              tooltipBehavior: tooltip,
+              series: <PieSeries<_ChartData, String>>[
+                PieSeries<_ChartData, String>(
+                  dataSource: data,
+                  xValueMapper: (d, _) => d.label,
+                  yValueMapper: (d, _) => d.value,
+                  animationDuration: 0,
+                  dataLabelSettings: const DataLabelSettings(isVisible: false),
+                )
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _BarChart extends StatelessWidget {
+  final List<_ChartData> data;
+  final String title;
+  final Color accent;
+
+  const _BarChart({
+    required this.data,
+    required this.title,
+    required this.accent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final chartWidth = math.max(280.0, 70.0 * data.length);
+    final tooltip = _defaultTooltip();
+    final zoomPan = _defaultZoomPan();
+    final trackball = _defaultTrackball();
+    if (data.isEmpty) {
+      return _EmptyChart(
+        message: 'لا توجد بيانات لعرضها ضمن الفترة المحددة',
+      );
+    }
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: SizedBox(
+        width: chartWidth,
+        height: 300,
+        child: SfCartesianChart(
+          title: ChartTitle(text: title),
+          enableAxisAnimation: false,
+          plotAreaBorderWidth: 0,
+          primaryXAxis: CategoryAxis(labelRotation: 45),
+          primaryYAxis: NumericAxis(),
+          tooltipBehavior: tooltip,
+          zoomPanBehavior: zoomPan,
+          trackballBehavior: trackball,
+          series: <ColumnSeries<_ChartData, String>>[
+            ColumnSeries<_ChartData, String>(
+              dataSource: data,
+              xValueMapper: (d, _) => d.label,
+              yValueMapper: (d, _) => d.value,
+              color: accent,
+              animationDuration: 0,
+              dataLabelSettings: const DataLabelSettings(isVisible: false),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _OutstandingTable extends StatelessWidget {
+  final List<Map<String, dynamic>> rows;
+
+  const _OutstandingTable({required this.rows});
+
+  @override
+  Widget build(BuildContext context) {
+    if (rows.isEmpty) {
+      return _EmptyChart(
+        message: 'لا توجد مستحقات ضمن الفترة المحددة',
+      );
+    }
+    final money = NumberFormat('#,##0.00');
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: DataTable(
+        columns: const [
+          DataColumn(label: Text('الطبيب')),
+          DataColumn(label: Text('النِّسب')),
+          DataColumn(label: Text('المدخلات')),
+          DataColumn(label: Text('السلف')),
+          DataColumn(label: Text('الخصومات')),
+          DataColumn(label: Text('المدفوع')),
+          DataColumn(label: Text('الصافي')),
+        ],
+        rows: rows.map((r) {
+          return DataRow(
+            cells: [
+              DataCell(Text(r['doctorName']?.toString() ?? '—')),
+              DataCell(Text(money.format(
+                  (r['ratioSum'] as num?)?.toDouble() ?? 0.0))),
+              DataCell(Text(money.format(
+                  (r['directInput'] as num?)?.toDouble() ?? 0.0))),
+              DataCell(Text(money.format(
+                  (r['totalLoans'] as num?)?.toDouble() ?? 0.0))),
+              DataCell(Text(money.format(
+                  (r['totalDiscounts'] as num?)?.toDouble() ?? 0.0))),
+              DataCell(Text(money.format(
+                  (r['totalPaid'] as num?)?.toDouble() ?? 0.0))),
+              DataCell(Text(money.format(
+                  (r['netPay'] as num?)?.toDouble() ?? 0.0))),
+            ],
+          );
+        }).toList(),
       ),
     );
   }
@@ -618,41 +2161,46 @@ class _IncomeByDateWidget extends StatefulWidget {
 class _IncomeByDateWidgetState extends State<_IncomeByDateWidget> {
   DateTime? _startDate;
   DateTime? _endDate;
-  List<Patient> _patients = [];
   Map<String, double> _incomeByDate = {};
+  StreamSubscription<String>? _dbSub;
+  Timer? _refreshDebounce;
+
+  static const Set<String> _watchTables = {
+    'patients',
+    'patient_services',
+    'financial_logs',
+  };
 
   @override
   void initState() {
     super.initState();
-    _loadPatients();
+    _loadIncome();
+    _dbSub = DBService.instance.changes.listen((table) {
+      if (!_watchTables.contains(table)) return;
+      _scheduleRefresh();
+    });
   }
 
-  Future<void> _loadPatients() async {
-    final patients = await DBService.instance.getAllPatients();
-    if (!mounted) return;
-    _patients = patients;
-    await _applyFilters();
+  void _scheduleRefresh() {
+    _refreshDebounce?.cancel();
+    _refreshDebounce = Timer(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      _loadIncome();
+    });
   }
 
-  Future<void> _applyFilters() async {
-    Iterable<Patient> filtered = _patients;
+  @override
+  void dispose() {
+    _dbSub?.cancel();
+    _refreshDebounce?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadIncome() async {
     final range = _normalizedRange(_startDate, _endDate);
-    final start = range.start;
-    final end = range.end;
-    if (start != null) {
-      filtered = filtered.where((p) =>
-          p.registerDate.isAfter(start.subtract(const Duration(days: 1))));
-    }
-    if (end != null) {
-      filtered = filtered.where(
-          (p) => p.registerDate.isBefore(end.add(const Duration(days: 1))));
-    }
-    final df = DateFormat('yyyy-MM-dd');
-    final map = <String, double>{};
-    for (final p in filtered) {
-      final k = df.format(p.registerDate);
-      map[k] = (map[k] ?? 0) + _safeNumber(p.paidAmount);
-    }
+    final start = range.start ?? DateTime(2000, 1, 1);
+    final end = range.end ?? DateTime(2100, 1, 1);
+    final map = await DBService.instance.getIncomeByDateBetween(start, end);
     if (!mounted) return;
     setState(() => _incomeByDate = map);
   }
@@ -666,8 +2214,9 @@ class _IncomeByDateWidgetState extends State<_IncomeByDateWidget> {
       locale: const Locale('ar', ''),
     );
     if (d != null) {
+      if (!mounted) return;
       setState(() => _startDate = d);
-      _applyFilters();
+      _loadIncome();
     }
   }
 
@@ -680,8 +2229,9 @@ class _IncomeByDateWidgetState extends State<_IncomeByDateWidget> {
       locale: const Locale('ar', ''),
     );
     if (d != null) {
+      if (!mounted) return;
       setState(() => _endDate = d);
-      _applyFilters();
+      _loadIncome();
     }
   }
 
@@ -740,28 +2290,16 @@ class _IncomeByDateWidgetState extends State<_IncomeByDateWidget> {
       _startDate = null;
       _endDate = null;
     });
-    _applyFilters();
+    _loadIncome();
   }
 
   @override
   Widget build(BuildContext context) {
     final data = _data;
-    final chartWidth = (60.0 * data.length).clamp(300.0, 1200.0);
-
-    final zoomPan = ZoomPanBehavior(
-      enablePinching: true,
-      enablePanning: true,
-      enableDoubleTapZooming: true,
-      enableMouseWheelZooming: true,
-      zoomMode: ZoomMode.x,
-    );
-
-    final trackball = TrackballBehavior(
-      enable: true,
-      activationMode: ActivationMode.singleTap,
-      lineType: TrackballLineType.vertical,
-      tooltipDisplayMode: TrackballDisplayMode.groupAllPoints,
-    );
+    final chartWidth = math.max(300.0, 60.0 * data.length);
+    final zoomPan = _defaultZoomPan();
+    final trackball = _defaultTrackball();
+    final tooltip = _defaultTooltip();
 
     return Column(
       children: [
@@ -807,10 +2345,12 @@ class _IncomeByDateWidgetState extends State<_IncomeByDateWidget> {
                         child: SfCartesianChart(
                           title: ChartTitle(text: "الدخل بالتاريخ (Line)"),
                           enableAxisAnimation: false,
+                          plotAreaBorderWidth: 0,
                           primaryXAxis: CategoryAxis(labelRotation: 45),
                           primaryYAxis: NumericAxis(),
                           zoomPanBehavior: zoomPan,
                           trackballBehavior: trackball,
+                          tooltipBehavior: tooltip,
                           series: <LineSeries<_ChartData, String>>[
                             LineSeries<_ChartData, String>(
                               dataSource: data,
@@ -818,7 +2358,7 @@ class _IncomeByDateWidgetState extends State<_IncomeByDateWidget> {
                               yValueMapper: (d, _) => d.value,
                               animationDuration: 0,
                               dataLabelSettings:
-                                  const DataLabelSettings(isVisible: true),
+                                  const DataLabelSettings(isVisible: false),
                             ),
                           ],
                         ),
@@ -844,6 +2384,7 @@ class _IncomeByDateWidgetState extends State<_IncomeByDateWidget> {
                           legend: Legend(
                               isVisible: true,
                               overflowMode: LegendItemOverflowMode.wrap),
+                          tooltipBehavior: tooltip,
                           series: <PieSeries<_ChartData, String>>[
                             PieSeries<_ChartData, String>(
                               dataSource: data,
@@ -851,7 +2392,7 @@ class _IncomeByDateWidgetState extends State<_IncomeByDateWidget> {
                               yValueMapper: (d, _) => d.value,
                               animationDuration: 0,
                               dataLabelSettings:
-                                  const DataLabelSettings(isVisible: true),
+                                  const DataLabelSettings(isVisible: false),
                             )
                           ],
                         ),
@@ -882,11 +2423,38 @@ class _ConsumptionByDateWidgetState extends State<_ConsumptionByDateWidget> {
   DateTime? _endDate;
   List<Consumption> _all = [];
   Map<String, double> _byDate = {};
+  StreamSubscription<String>? _dbSub;
+  Timer? _refreshDebounce;
+
+  static const Set<String> _watchTables = {
+    'consumptions',
+    'items',
+    'item_types',
+  };
 
   @override
   void initState() {
     super.initState();
     _load();
+    _dbSub = DBService.instance.changes.listen((table) {
+      if (!_watchTables.contains(table)) return;
+      _scheduleRefresh();
+    });
+  }
+
+  void _scheduleRefresh() {
+    _refreshDebounce?.cancel();
+    _refreshDebounce = Timer(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      _load();
+    });
+  }
+
+  @override
+  void dispose() {
+    _dbSub?.cancel();
+    _refreshDebounce?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -928,6 +2496,7 @@ class _ConsumptionByDateWidgetState extends State<_ConsumptionByDateWidget> {
       locale: const Locale('ar', ''),
     );
     if (d != null) {
+      if (!mounted) return;
       setState(() => _startDate = d);
       _applyFilters();
     }
@@ -942,6 +2511,7 @@ class _ConsumptionByDateWidgetState extends State<_ConsumptionByDateWidget> {
       locale: const Locale('ar', ''),
     );
     if (d != null) {
+      if (!mounted) return;
       setState(() => _endDate = d);
       _applyFilters();
     }
@@ -1001,22 +2571,10 @@ class _ConsumptionByDateWidgetState extends State<_ConsumptionByDateWidget> {
   @override
   Widget build(BuildContext context) {
     final data = _data;
-    final chartWidth = (60.0 * data.length).clamp(300.0, 1200.0);
-
-    final zoomPan = ZoomPanBehavior(
-      enablePinching: true,
-      enablePanning: true,
-      enableDoubleTapZooming: true,
-      enableMouseWheelZooming: true,
-      zoomMode: ZoomMode.x,
-    );
-
-    final trackball = TrackballBehavior(
-      enable: true,
-      activationMode: ActivationMode.singleTap,
-      lineType: TrackballLineType.vertical,
-      tooltipDisplayMode: TrackballDisplayMode.groupAllPoints,
-    );
+    final chartWidth = math.max(300.0, 60.0 * data.length);
+    final zoomPan = _defaultZoomPan();
+    final trackball = _defaultTrackball();
+    final tooltip = _defaultTooltip();
 
     return Column(
       children: [
@@ -1066,10 +2624,12 @@ class _ConsumptionByDateWidgetState extends State<_ConsumptionByDateWidget> {
                         child: SfCartesianChart(
                           title: ChartTitle(text: "الاستهلاك بالتاريخ (Line)"),
                           enableAxisAnimation: false,
+                          plotAreaBorderWidth: 0,
                           primaryXAxis: CategoryAxis(labelRotation: 45),
                           primaryYAxis: NumericAxis(),
                           zoomPanBehavior: zoomPan,
                           trackballBehavior: trackball,
+                          tooltipBehavior: tooltip,
                           series: <LineSeries<_ChartData, String>>[
                             LineSeries<_ChartData, String>(
                               dataSource: data,
@@ -1077,7 +2637,7 @@ class _ConsumptionByDateWidgetState extends State<_ConsumptionByDateWidget> {
                               yValueMapper: (d, _) => d.value,
                               animationDuration: 0,
                               dataLabelSettings:
-                                  const DataLabelSettings(isVisible: true),
+                                  const DataLabelSettings(isVisible: false),
                             ),
                           ],
                         ),
@@ -1102,6 +2662,7 @@ class _ConsumptionByDateWidgetState extends State<_ConsumptionByDateWidget> {
                           legend: Legend(
                               isVisible: true,
                               overflowMode: LegendItemOverflowMode.wrap),
+                          tooltipBehavior: tooltip,
                           series: <PieSeries<_ChartData, String>>[
                             PieSeries<_ChartData, String>(
                               dataSource: data,
@@ -1109,7 +2670,7 @@ class _ConsumptionByDateWidgetState extends State<_ConsumptionByDateWidget> {
                               yValueMapper: (d, _) => d.value,
                               animationDuration: 0,
                               dataLabelSettings:
-                                  const DataLabelSettings(isVisible: true),
+                                  const DataLabelSettings(isVisible: false),
                             ),
                           ],
                         ),
@@ -1138,43 +2699,52 @@ class _IncomeByDoctorWidget extends StatefulWidget {
 class _IncomeByDoctorWidgetState extends State<_IncomeByDoctorWidget> {
   DateTime? _startDate;
   DateTime? _endDate;
-  List<Patient> _patients = [];
   Map<String, double> _byDoctor = {};
+  StreamSubscription<String>? _dbSub;
+  Timer? _refreshDebounce;
+
+  static const Set<String> _watchTables = {
+    'patients',
+    'doctors',
+    'patient_services',
+    'financial_logs',
+  };
 
   @override
   void initState() {
     super.initState();
     _load();
+    _dbSub = DBService.instance.changes.listen((table) {
+      if (!_watchTables.contains(table)) return;
+      _scheduleRefresh();
+    });
+  }
+
+  void _scheduleRefresh() {
+    _refreshDebounce?.cancel();
+    _refreshDebounce = Timer(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      _load();
+    });
+  }
+
+  @override
+  void dispose() {
+    _dbSub?.cancel();
+    _refreshDebounce?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
-    final patients = await DBService.instance.getAllPatients();
-    if (!mounted) return;
-    _patients = patients;
     await _applyFilters();
   }
 
   Future<void> _applyFilters() async {
-    Iterable<Patient> filtered = _patients;
     final range = _normalizedRange(_startDate, _endDate);
-    final start = range.start;
-    final end = range.end;
-    if (start != null) {
-      filtered = filtered.where((p) =>
-          p.registerDate.isAfter(start.subtract(const Duration(days: 1))));
-    }
-    if (end != null) {
-      filtered = filtered.where(
-          (p) => p.registerDate.isBefore(end.add(const Duration(days: 1))));
-    }
-    final m = <String, double>{};
-    for (final p in filtered) {
-      final nameRaw = p.doctorName;
-      final doc = (nameRaw == null || nameRaw.trim().isEmpty)
-          ? 'الأشعة/المختبر'
-          : nameRaw.trim();
-      m[doc] = (m[doc] ?? 0) + _safeNumber(p.paidAmount);
-    }
+    final start = range.start ?? DateTime(2000, 1, 1);
+    final end = range.end ?? DateTime(2100, 1, 1);
+    final m =
+        await DBService.instance.getPatientPaymentsByDoctorBetween(start, end);
     if (!mounted) return;
     setState(() => _byDoctor = m);
   }
@@ -1188,6 +2758,7 @@ class _IncomeByDoctorWidgetState extends State<_IncomeByDoctorWidget> {
       locale: const Locale('ar', ''),
     );
     if (d != null) {
+      if (!mounted) return;
       setState(() => _startDate = d);
       _applyFilters();
     }
@@ -1202,6 +2773,7 @@ class _IncomeByDoctorWidgetState extends State<_IncomeByDoctorWidget> {
       locale: const Locale('ar', ''),
     );
     if (d != null) {
+      if (!mounted) return;
       setState(() => _endDate = d);
       _applyFilters();
     }
@@ -1260,22 +2832,10 @@ class _IncomeByDoctorWidgetState extends State<_IncomeByDoctorWidget> {
   @override
   Widget build(BuildContext context) {
     final data = _data;
-    final chartWidth = (70.0 * data.length).clamp(300.0, 1400.0);
-
-    final zoomPan = ZoomPanBehavior(
-      enablePinching: true,
-      enablePanning: true,
-      enableDoubleTapZooming: true,
-      enableMouseWheelZooming: true,
-      zoomMode: ZoomMode.x,
-    );
-
-    final trackball = TrackballBehavior(
-      enable: true,
-      activationMode: ActivationMode.singleTap,
-      lineType: TrackballLineType.vertical,
-      tooltipDisplayMode: TrackballDisplayMode.groupAllPoints,
-    );
+    final chartWidth = math.max(300.0, 70.0 * data.length);
+    final zoomPan = _defaultZoomPan();
+    final trackball = _defaultTrackball();
+    final tooltip = _defaultTooltip();
 
     return Column(
       children: [
@@ -1325,10 +2885,12 @@ class _IncomeByDoctorWidgetState extends State<_IncomeByDoctorWidget> {
                         child: SfCartesianChart(
                           title: ChartTitle(text: "الدخل حسب الطبيب (Bar)"),
                           enableAxisAnimation: false,
+                          plotAreaBorderWidth: 0,
                           primaryXAxis: CategoryAxis(labelRotation: 45),
                           primaryYAxis: NumericAxis(),
                           zoomPanBehavior: zoomPan,
                           trackballBehavior: trackball,
+                          tooltipBehavior: tooltip,
                           series: <ColumnSeries<_ChartData, String>>[
                             ColumnSeries<_ChartData, String>(
                               dataSource: data,
@@ -1336,7 +2898,7 @@ class _IncomeByDoctorWidgetState extends State<_IncomeByDoctorWidget> {
                               yValueMapper: (d, _) => d.value,
                               animationDuration: 0,
                               dataLabelSettings:
-                                  const DataLabelSettings(isVisible: true),
+                                  const DataLabelSettings(isVisible: false),
                             ),
                           ],
                         ),
@@ -1361,6 +2923,7 @@ class _IncomeByDoctorWidgetState extends State<_IncomeByDoctorWidget> {
                           legend: Legend(
                               isVisible: true,
                               overflowMode: LegendItemOverflowMode.wrap),
+                          tooltipBehavior: tooltip,
                           series: <PieSeries<_ChartData, String>>[
                             PieSeries<_ChartData, String>(
                               dataSource: data,
@@ -1368,7 +2931,7 @@ class _IncomeByDoctorWidgetState extends State<_IncomeByDoctorWidget> {
                               yValueMapper: (d, _) => d.value,
                               animationDuration: 0,
                               dataLabelSettings:
-                                  const DataLabelSettings(isVisible: true),
+                                  const DataLabelSettings(isVisible: false),
                             ),
                           ],
                         ),
@@ -1399,11 +2962,38 @@ class _ConsumptionTypeWidgetState extends State<_ConsumptionTypeWidget> {
   DateTime? _endDate;
   List<Consumption> _all = [];
   Map<String, double> _byType = {};
+  StreamSubscription<String>? _dbSub;
+  Timer? _refreshDebounce;
+
+  static const Set<String> _watchTables = {
+    'consumptions',
+    'items',
+    'item_types',
+  };
 
   @override
   void initState() {
     super.initState();
     _load();
+    _dbSub = DBService.instance.changes.listen((table) {
+      if (!_watchTables.contains(table)) return;
+      _scheduleRefresh();
+    });
+  }
+
+  void _scheduleRefresh() {
+    _refreshDebounce?.cancel();
+    _refreshDebounce = Timer(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      _load();
+    });
+  }
+
+  @override
+  void dispose() {
+    _dbSub?.cancel();
+    _refreshDebounce?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -1445,6 +3035,7 @@ class _ConsumptionTypeWidgetState extends State<_ConsumptionTypeWidget> {
       locale: const Locale('ar', ''),
     );
     if (d != null) {
+      if (!mounted) return;
       setState(() => _startDate = d);
       _applyFilters();
     }
@@ -1459,6 +3050,7 @@ class _ConsumptionTypeWidgetState extends State<_ConsumptionTypeWidget> {
       locale: const Locale('ar', ''),
     );
     if (d != null) {
+      if (!mounted) return;
       setState(() => _endDate = d);
       _applyFilters();
     }
@@ -1517,22 +3109,11 @@ class _ConsumptionTypeWidgetState extends State<_ConsumptionTypeWidget> {
   @override
   Widget build(BuildContext context) {
     final data = _data;
-    final chartWidth = (70.0 * data.length).clamp(300.0, 1400.0);
+    final chartWidth = math.max(300.0, 70.0 * data.length);
 
-    final zoomPan = ZoomPanBehavior(
-      enablePinching: true,
-      enablePanning: true,
-      enableDoubleTapZooming: true,
-      enableMouseWheelZooming: true,
-      zoomMode: ZoomMode.x,
-    );
-
-    final trackball = TrackballBehavior(
-      enable: true,
-      activationMode: ActivationMode.singleTap,
-      lineType: TrackballLineType.vertical,
-      tooltipDisplayMode: TrackballDisplayMode.groupAllPoints,
-    );
+    final zoomPan = _defaultZoomPan();
+    final trackball = _defaultTrackball();
+    final tooltip = _defaultTooltip();
 
     return Column(
       children: [
@@ -1582,10 +3163,12 @@ class _ConsumptionTypeWidgetState extends State<_ConsumptionTypeWidget> {
                         child: SfCartesianChart(
                           title: ChartTitle(text: "نوعية الاستهلاك (Bar)"),
                           enableAxisAnimation: false,
+                          plotAreaBorderWidth: 0,
                           primaryXAxis: CategoryAxis(labelRotation: 45),
                           primaryYAxis: NumericAxis(),
                           zoomPanBehavior: zoomPan,
                           trackballBehavior: trackball,
+                          tooltipBehavior: tooltip,
                           series: <ColumnSeries<_ChartData, String>>[
                             ColumnSeries<_ChartData, String>(
                               dataSource: data,
@@ -1593,7 +3176,7 @@ class _ConsumptionTypeWidgetState extends State<_ConsumptionTypeWidget> {
                               yValueMapper: (d, _) => d.value,
                               animationDuration: 0,
                               dataLabelSettings:
-                                  const DataLabelSettings(isVisible: true),
+                                  const DataLabelSettings(isVisible: false),
                             ),
                           ],
                         ),
@@ -1618,6 +3201,7 @@ class _ConsumptionTypeWidgetState extends State<_ConsumptionTypeWidget> {
                           legend: Legend(
                               isVisible: true,
                               overflowMode: LegendItemOverflowMode.wrap),
+                          tooltipBehavior: tooltip,
                           series: <PieSeries<_ChartData, String>>[
                             PieSeries<_ChartData, String>(
                               dataSource: data,
@@ -1625,7 +3209,7 @@ class _ConsumptionTypeWidgetState extends State<_ConsumptionTypeWidget> {
                               yValueMapper: (d, _) => d.value,
                               animationDuration: 0,
                               dataLabelSettings:
-                                  const DataLabelSettings(isVisible: true),
+                                  const DataLabelSettings(isVisible: false),
                             ),
                           ],
                         ),
@@ -1656,11 +3240,39 @@ class _DoctorShareByDateWidgetState extends State<_DoctorShareByDateWidget> {
   DateTime? _startDate;
   DateTime? _endDate;
   Map<String, double> _shareByDate = {};
+  StreamSubscription<String>? _dbSub;
+  Timer? _refreshDebounce;
+
+  static const Set<String> _watchTables = {
+    'patient_services',
+    'service_doctor_share',
+    'medical_services',
+    'doctors',
+  };
 
   @override
   void initState() {
     super.initState();
     _load();
+    _dbSub = DBService.instance.changes.listen((table) {
+      if (!_watchTables.contains(table)) return;
+      _scheduleRefresh();
+    });
+  }
+
+  void _scheduleRefresh() {
+    _refreshDebounce?.cancel();
+    _refreshDebounce = Timer(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      _load();
+    });
+  }
+
+  @override
+  void dispose() {
+    _dbSub?.cancel();
+    _refreshDebounce?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -1685,6 +3297,7 @@ class _DoctorShareByDateWidgetState extends State<_DoctorShareByDateWidget> {
       locale: const Locale('ar', ''),
     );
     if (d != null) {
+      if (!mounted) return;
       setState(() => _startDate = d);
       _applyFilters();
     }
@@ -1699,6 +3312,7 @@ class _DoctorShareByDateWidgetState extends State<_DoctorShareByDateWidget> {
       locale: const Locale('ar', ''),
     );
     if (d != null) {
+      if (!mounted) return;
       setState(() => _endDate = d);
       _applyFilters();
     }
@@ -1757,22 +3371,11 @@ class _DoctorShareByDateWidgetState extends State<_DoctorShareByDateWidget> {
   @override
   Widget build(BuildContext context) {
     final data = _data;
-    final chartWidth = (60.0 * data.length).clamp(300.0, 1200.0);
+    final chartWidth = math.max(300.0, 60.0 * data.length);
 
-    final zoomPan = ZoomPanBehavior(
-      enablePinching: true,
-      enablePanning: true,
-      enableDoubleTapZooming: true,
-      enableMouseWheelZooming: true,
-      zoomMode: ZoomMode.x,
-    );
-
-    final trackball = TrackballBehavior(
-      enable: true,
-      activationMode: ActivationMode.singleTap,
-      lineType: TrackballLineType.vertical,
-      tooltipDisplayMode: TrackballDisplayMode.groupAllPoints,
-    );
+    final zoomPan = _defaultZoomPan();
+    final trackball = _defaultTrackball();
+    final tooltip = _defaultTooltip();
 
     return Column(
       children: [
@@ -1819,10 +3422,12 @@ class _DoctorShareByDateWidgetState extends State<_DoctorShareByDateWidget> {
                   child: SfCartesianChart(
                     title: ChartTitle(text: "حصة الأطباء بالتاريخ (Line)"),
                     enableAxisAnimation: false,
+                    plotAreaBorderWidth: 0,
                     primaryXAxis: CategoryAxis(labelRotation: 45),
                     primaryYAxis: NumericAxis(),
                     zoomPanBehavior: zoomPan,
                     trackballBehavior: trackball,
+                    tooltipBehavior: tooltip,
                     series: <LineSeries<_ChartData, String>>[
                       LineSeries<_ChartData, String>(
                         dataSource: data,
@@ -1830,7 +3435,7 @@ class _DoctorShareByDateWidgetState extends State<_DoctorShareByDateWidget> {
                         yValueMapper: (d, _) => d.value,
                         animationDuration: 0,
                         dataLabelSettings:
-                            const DataLabelSettings(isVisible: true),
+                            const DataLabelSettings(isVisible: false),
                       ),
                     ],
                   ),
@@ -1840,6 +3445,292 @@ class _DoctorShareByDateWidgetState extends State<_DoctorShareByDateWidget> {
           ),
         ),
         const SizedBox(height: 16),
+      ],
+    );
+  }
+}
+
+/*──────────────────────── القسم 6: مستحقات الأطباء ────────────────────────*/
+class _DoctorOutstandingWidget extends StatefulWidget {
+  const _DoctorOutstandingWidget();
+
+  @override
+  State<_DoctorOutstandingWidget> createState() =>
+      _DoctorOutstandingWidgetState();
+}
+
+class _DoctorOutstandingWidgetState extends State<_DoctorOutstandingWidget> {
+  DateTime _asOf = DateTime.now();
+  bool _loading = false;
+  List<Map<String, dynamic>> _rows = [];
+  StreamSubscription<String>? _dbSub;
+  Timer? _refreshDebounce;
+
+  static const Set<String> _watchTables = {
+    'employees',
+    'employees_loans',
+    'employees_discounts',
+    'employees_salaries',
+    'patient_services',
+    'service_doctor_share',
+  };
+
+  final DateFormat _dateFmt = DateFormat('yyyy-MM-dd');
+  final NumberFormat _moneyFmt = NumberFormat('#,##0.00');
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+    _dbSub = DBService.instance.changes.listen((table) {
+      if (!_watchTables.contains(table)) return;
+      _scheduleRefresh();
+    });
+  }
+
+  void _scheduleRefresh() {
+    _refreshDebounce?.cancel();
+    _refreshDebounce = Timer(const Duration(milliseconds: 400), () {
+      if (!mounted) return;
+      _load();
+    });
+  }
+
+  @override
+  void dispose() {
+    _dbSub?.cancel();
+    _refreshDebounce?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    if (!mounted) return;
+    setState(() => _loading = true);
+    try {
+      final data =
+          await DBService.instance.getDoctorOutstandingBalances(asOf: _asOf);
+      if (!mounted) return;
+      setState(() => _rows = data);
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _pickAsOf() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _asOf,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+      locale: const Locale('ar', ''),
+    );
+    if (picked != null) {
+      if (!mounted) return;
+      setState(() => _asOf =
+          DateTime(picked.year, picked.month, picked.day, 23, 59, 59));
+      _load();
+    }
+  }
+
+  double get _totalNet => _rows.fold<double>(
+      0.0,
+      (sum, r) =>
+          sum + _safeNumber((r['netPay'] as num?)?.toDouble() ?? 0.0));
+
+  Future<pw.Document> _buildPdf() async {
+    final (base, bold) = await _PdfUtils._loadFonts();
+    final clinic = await ClinicProfileService.loadActiveOrFallback();
+    final logoBytes = await ClinicProfileService.loadReportLogoBytes();
+    final logo = pw.MemoryImage(logoBytes);
+
+    final rows = _rows.map((r) {
+      final start = DateTime.tryParse('${r['periodStart'] ?? ''}');
+      final end = DateTime.tryParse('${r['periodEnd'] ?? ''}');
+      final period =
+          '${start != null ? _dateFmt.format(start) : '—'} → ${end != null ? _dateFmt.format(end) : '—'}';
+      return [
+        r['doctorName']?.toString() ?? '—',
+        period,
+        _PdfUtils.formatNumber(
+            (r['ratioSum'] as num?)?.toDouble() ?? 0.0),
+        _PdfUtils.formatNumber(
+            (r['directInput'] as num?)?.toDouble() ?? 0.0),
+        _PdfUtils.formatNumber(
+            (r['totalLoans'] as num?)?.toDouble() ?? 0.0),
+        _PdfUtils.formatNumber(
+            (r['totalDiscounts'] as num?)?.toDouble() ?? 0.0),
+        _PdfUtils.formatNumber(
+            (r['netPay'] as num?)?.toDouble() ?? 0.0),
+      ];
+    }).toList();
+
+    final doc = pw.Document();
+    doc.addPage(
+      pw.MultiPage(
+        pageTheme: _PdfUtils._pageTheme(base, bold),
+        build: (_) => [
+          _PdfUtils.header('تقرير مستحقات الأطباء',
+              subtitle: 'حتى تاريخ: ${_dateFmt.format(_asOf)}',
+              logo: logo,
+              clinic: clinic),
+          pw.SizedBox(height: 6),
+          pw.Text(
+            pdfText('الإجمالي: ${_PdfUtils.formatNumber(_totalNet)}'),
+            style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+          ),
+          pw.SizedBox(height: 10),
+          _PdfUtils.simpleTable(
+            headers: [
+              'الطبيب',
+              'الفترة',
+              'النسب',
+              'مدخلات',
+              'سلف',
+              'خصومات',
+              'الصافي'
+            ],
+            rows: rows,
+          ),
+        ],
+      ),
+    );
+    return doc;
+  }
+
+  Future<void> _exportPdf() async {
+    final doc = await _buildPdf();
+    await _PdfUtils.shareDoc(doc, 'doctor_outstanding');
+  }
+
+  Future<void> _downloadPdf() async {
+    final doc = await _buildPdf();
+    await _PdfUtils.downloadDoc(context, doc, 'doctor_outstanding');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+          child: Column(
+            children: [
+              NeuCard(
+                padding: const EdgeInsets.all(14),
+                child: Row(
+                  children: [
+                    Container(
+                      decoration: BoxDecoration(
+                        color: kPrimaryColor.withValues(alpha: .10),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      padding: const EdgeInsets.all(10),
+                      child: const Icon(Icons.account_balance_wallet,
+                          color: kPrimaryColor, size: 22),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'مستحقات الأطباء',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.right,
+                        style:
+                            TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: TDateButton(
+                      icon: Icons.event_rounded,
+                      label: 'حتى ${_dateFmt.format(_asOf)}',
+                      onTap: _pickAsOf,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  TOutlinedButton(
+                    icon: Icons.picture_as_pdf,
+                    label: 'تصدير',
+                    onPressed: _exportPdf,
+                  ),
+                  const SizedBox(width: 8),
+                  TOutlinedButton(
+                    icon: Icons.download_rounded,
+                    label: 'تنزيل',
+                    onPressed: _downloadPdf,
+                  ),
+                  const SizedBox(width: 8),
+                  TOutlinedButton(
+                    icon: Icons.refresh_rounded,
+                    label: 'تحديث',
+                    onPressed: _load,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : _rows.isEmpty
+                  ? const Center(child: Text('لا توجد بيانات'))
+                  : ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
+                      itemBuilder: (ctx, i) {
+                        final r = _rows[i];
+                        final start =
+                            DateTime.tryParse('${r['periodStart'] ?? ''}');
+                        final end =
+                            DateTime.tryParse('${r['periodEnd'] ?? ''}');
+                        final period =
+                            '${start != null ? _dateFmt.format(start) : '—'} → ${end != null ? _dateFmt.format(end) : '—'}';
+                        final ratio =
+                            _safeNumber((r['ratioSum'] as num?)?.toDouble() ?? 0);
+                        final direct =
+                            _safeNumber((r['directInput'] as num?)?.toDouble() ?? 0);
+                        final loans =
+                            _safeNumber((r['totalLoans'] as num?)?.toDouble() ?? 0);
+                        final discounts = _safeNumber(
+                            (r['totalDiscounts'] as num?)?.toDouble() ?? 0);
+                        final net =
+                            _safeNumber((r['netPay'] as num?)?.toDouble() ?? 0);
+                        return NeuCard(
+                          padding: const EdgeInsets.all(12),
+                          child: ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(
+                              (r['doctorName'] ?? '—').toString(),
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w800),
+                            ),
+                            subtitle: Text(
+                              'الفترة: $period\n'
+                              'النسب: ${_moneyFmt.format(ratio)}، '
+                              'مدخلات: ${_moneyFmt.format(direct)}\n'
+                              'سلف: ${_moneyFmt.format(loans)}، '
+                              'خصومات: ${_moneyFmt.format(discounts)}\n'
+                              'الصافي: ${_moneyFmt.format(net)}',
+                            ),
+                          ),
+                        );
+                      },
+                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      itemCount: _rows.length,
+                    ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          child: Text(
+            'إجمالي المستحقات: ${_moneyFmt.format(_totalNet)}',
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+        ),
       ],
     );
   }
@@ -1858,11 +3749,43 @@ class _NetProfitWidgetState extends State<_NetProfitWidget> {
   DateTime? _endDate;
 
   Map<String, double> _netByDate = {};
+  StreamSubscription<String>? _dbSub;
+  Timer? _refreshDebounce;
+
+  static const Set<String> _watchTables = {
+    'patients',
+    'patient_services',
+    'consumptions',
+    'purchases',
+    'employees_salaries',
+    'employees_loans',
+    'employees_discounts',
+    'financial_logs',
+  };
 
   @override
   void initState() {
     super.initState();
     _load();
+    _dbSub = DBService.instance.changes.listen((table) {
+      if (!_watchTables.contains(table)) return;
+      _scheduleRefresh();
+    });
+  }
+
+  void _scheduleRefresh() {
+    _refreshDebounce?.cancel();
+    _refreshDebounce = Timer(const Duration(milliseconds: 400), () {
+      if (!mounted) return;
+      _load();
+    });
+  }
+
+  @override
+  void dispose() {
+    _dbSub?.cancel();
+    _refreshDebounce?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -1887,6 +3810,7 @@ class _NetProfitWidgetState extends State<_NetProfitWidget> {
       locale: const Locale('ar', ''),
     );
     if (d != null) {
+      if (!mounted) return;
       setState(() => _startDate = d);
       await _applyFilters();
     }
@@ -1901,6 +3825,7 @@ class _NetProfitWidgetState extends State<_NetProfitWidget> {
       locale: const Locale('ar', ''),
     );
     if (d != null) {
+      if (!mounted) return;
       setState(() => _endDate = d);
       await _applyFilters();
     }
@@ -1968,22 +3893,11 @@ class _NetProfitWidgetState extends State<_NetProfitWidget> {
   @override
   Widget build(BuildContext context) {
     final data = _data;
-    final chartWidth = (60.0 * data.length).clamp(300.0, 1200.0);
+    final chartWidth = math.max(300.0, 60.0 * data.length);
 
-    final zoomPan = ZoomPanBehavior(
-      enablePinching: true,
-      enablePanning: true,
-      enableDoubleTapZooming: true,
-      enableMouseWheelZooming: true,
-      zoomMode: ZoomMode.x,
-    );
-
-    final trackball = TrackballBehavior(
-      enable: true,
-      activationMode: ActivationMode.singleTap,
-      lineType: TrackballLineType.vertical,
-      tooltipDisplayMode: TrackballDisplayMode.groupAllPoints,
-    );
+    final zoomPan = _defaultZoomPan();
+    final trackball = _defaultTrackball();
+    final tooltip = _defaultTooltip();
 
     return Column(
       children: [
@@ -2024,10 +3938,12 @@ class _NetProfitWidgetState extends State<_NetProfitWidget> {
                   child: SfCartesianChart(
                     title: ChartTitle(text: "صافي الأرباح بالتاريخ (Line)"),
                     enableAxisAnimation: false,
+                    plotAreaBorderWidth: 0,
                     primaryXAxis: CategoryAxis(labelRotation: 45),
                     primaryYAxis: NumericAxis(),
                     zoomPanBehavior: zoomPan,
                     trackballBehavior: trackball,
+                    tooltipBehavior: tooltip,
                     series: <LineSeries<_ChartData, String>>[
                       LineSeries<_ChartData, String>(
                         dataSource: data,
@@ -2035,7 +3951,7 @@ class _NetProfitWidgetState extends State<_NetProfitWidget> {
                         yValueMapper: (d, _) => d.value,
                         animationDuration: 0,
                         dataLabelSettings:
-                            const DataLabelSettings(isVisible: true),
+                            const DataLabelSettings(isVisible: false),
                       ),
                     ],
                   ),
