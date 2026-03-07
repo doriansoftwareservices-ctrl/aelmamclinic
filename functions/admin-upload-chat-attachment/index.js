@@ -2,13 +2,15 @@
 let _fetch = globalThis.fetch;
 let _FormData = globalThis.FormData;
 let _Blob = globalThis.Blob;
+let _File = globalThis.File;
 
 try {
-  if (!_fetch || !_FormData || !_Blob) {
+  if (!_fetch || !_FormData || !_Blob || !_File) {
     const undici = require('undici');
     _fetch = _fetch || undici.fetch;
     _FormData = _FormData || undici.FormData;
     _Blob = _Blob || undici.Blob;
+    _File = _File || undici.File;
   }
 } catch (_) {}
 
@@ -118,12 +120,14 @@ module.exports = async (req, res) => {
     }
 
     const buf = Buffer.from(base64, 'base64');
-    const blob = new _Blob([buf], { type: mimeType || 'application/octet-stream' });
+    const fileObj = new _File(
+      [buf],
+      safeBasename(filename),
+      { type: mimeType || 'application/octet-stream' },
+    );
 
     const form = new _FormData();
     form.append('bucketId', bucketId);
-    form.append('bucket_id', bucketId);
-    form.append('bucket-id', bucketId);
 
     const meta = {
       name: filename,
@@ -136,7 +140,7 @@ module.exports = async (req, res) => {
       },
     };
     form.append('metadata', JSON.stringify(meta));
-    form.append('file', blob, safeBasename(filename));
+    form.append('file', fileObj);
 
     const upRes = await _fetch(`${storageUrl}/files`, {
       method: 'POST',
