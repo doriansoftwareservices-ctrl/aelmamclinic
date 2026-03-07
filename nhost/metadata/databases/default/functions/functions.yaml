@@ -32,6 +32,7 @@
 - "!include public_chat_resolve_user_for_dm.yaml"
 - "!include public_chat_set_support_agent_gql.yaml"
 - "!include public_chat_start_dm.yaml"
+- "!include public_chat_start_support.yaml"
 - "!include public_chat_support_agent_gql.yaml"
 - "!include public_create_subscription_request.yaml"
 - "!include public_delete_employee.yaml"
