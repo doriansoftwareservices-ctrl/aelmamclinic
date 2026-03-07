@@ -128,6 +128,7 @@ module.exports = async (req, res) => {
     form.append('bucketId', bucketId);
     const meta = {
       name: filename,
+      bucketId,
       metadata: {
         ...metadata,
         conversation_id: metadata.conversation_id || conversationId,
@@ -135,7 +136,10 @@ module.exports = async (req, res) => {
         uploaded_by_user_id: uid,
       },
     };
-    form.append('metadata', JSON.stringify(meta));
+    const metaBlob = new _Blob([JSON.stringify(meta)], {
+      type: 'application/json',
+    });
+    form.append('metadata', metaBlob);
     form.append('file', fileBlob, safeBasename(filename));
 
     const upRes = await _fetch(`${storageUrl}/files`, {
@@ -148,7 +152,15 @@ module.exports = async (req, res) => {
 
     const txt = await upRes.text();
     if (!upRes.ok) {
-      return res.status(upRes.status).type('application/json').send(txt || '{}');
+      let parsed = null;
+      try {
+        parsed = JSON.parse(txt);
+      } catch (_) {}
+      return res.status(upRes.status).json({
+        error: 'storage-upload-failed',
+        status: upRes.status,
+        body: parsed ?? txt,
+      });
     }
 
     return res.status(200).type('application/json').send(txt || '{}');
