@@ -342,7 +342,14 @@ class NhostStorageService {
       meta['bucketId'] = bucket;
     }
 
-    request.fields['metadata[]'] = jsonEncode(meta);
+    request.files.add(
+      http.MultipartFile.fromString(
+        'metadata[]',
+        jsonEncode(meta),
+        filename: '',
+        contentType: MediaType('application', 'json'),
+      ),
+    );
 
     request.files.add(
       http.MultipartFile.fromBytes(

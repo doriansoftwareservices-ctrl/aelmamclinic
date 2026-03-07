@@ -1,18 +1,4 @@
-// Compatibility for Nhost Functions runtime (ensures fetch/FormData/Blob exist)
-let _fetch = globalThis.fetch;
-let _FormData = globalThis.FormData;
-let _Blob = globalThis.Blob;
-let _File = globalThis.File;
-
-try {
-  if (!_fetch || !_FormData || !_Blob || !_File) {
-    const undici = require('undici');
-    _fetch = _fetch || undici.fetch;
-    _FormData = _FormData || undici.FormData;
-    _Blob = _Blob || undici.Blob;
-    _File = _File || undici.File;
-  }
-} catch (_) {}
+// Use manual multipart builder (same pattern as subscription-proof) for max compatibility
 
 const {
   readBody,
@@ -120,13 +106,10 @@ module.exports = async (req, res) => {
     }
 
     const buf = Buffer.from(base64, 'base64');
-    const fileBlob = new _Blob([buf], {
-      type: mimeType || 'application/octet-stream',
-    });
-
-    const form = new _FormData();
-    form.append('bucketId', bucketId);
-    form.append('bucket-id', bucketId); // compatibility
+    const fields = {
+      'bucket-id': bucketId,
+      bucketId,
+    };
     const meta = {
       name: filename,
       bucketId,
@@ -137,39 +120,138 @@ module.exports = async (req, res) => {
         uploaded_by_user_id: uid,
       },
     };
-    form.append('metadata[]', JSON.stringify(meta));
-    form.append('file[]', fileBlob, safeBasename(filename));
-
-    const upRes = await _fetch(`${storageUrl}/files`, {
-      method: 'POST',
-      headers: {
-        'x-hasura-admin-secret': secret,
+    const metaJson = JSON.stringify(meta);
+    const extraFiles = [
+      {
+        name: 'metadata[]',
+        filename: '',
+        contentType: 'application/json',
+        buffer: Buffer.from(metaJson, 'utf8'),
       },
-      body: form,
+    ];
+    const multipart = buildMultipart({
+      fieldName: 'file[]',
+      filename: safeBasename(filename),
+      contentType: mimeType || 'application/octet-stream',
+      buffer: buf,
+      fields,
+      extraFiles,
     });
 
-    const txt = await upRes.text();
-    if (!upRes.ok) {
-      let parsed = null;
-      try {
-        parsed = JSON.parse(txt);
-      } catch (_) {}
+    const uploadResp = await postMultipart(
+      `${storageUrl}/files`,
+      {
+        'x-hasura-admin-secret': secret,
+        ...multipart.headers,
+      },
+      multipart.body,
+    );
+
+    let responsePayload = uploadResp.text;
+    try {
+      responsePayload = JSON.parse(uploadResp.text);
+    } catch (_) {}
+    const ok = uploadResp.status >= 200 && uploadResp.status < 300;
+    if (!ok) {
       const details =
-        typeof parsed === 'string'
-          ? parsed
-          : JSON.stringify(parsed ?? txt);
-      return res.status(upRes.status).json({
-        error: 'storage-upload-failed',
-        message: `status=${upRes.status} body=${details}`,
-        status: upRes.status,
-        body: parsed ?? txt,
+        typeof responsePayload === 'string'
+          ? responsePayload
+          : JSON.stringify(responsePayload ?? {});
+      const detailed = `storage-upload-failed: status=${uploadResp.status} body=${details}`;
+      return res.status(uploadResp.status || 500).json({
+        error: detailed,
+        message: detailed,
+        status: uploadResp.status,
+        body: responsePayload,
       });
     }
 
-    return res.status(200).type('application/json').send(txt || '{}');
+    return res.status(uploadResp.status).json(responsePayload);
   } catch (e) {
     return res
       .status(500)
       .json({ error: 'internal', message: `${e?.message || e}` });
   }
 };
+
+function buildMultipart({
+  fieldName,
+  filename,
+  contentType,
+  buffer,
+  fields,
+  extraFiles,
+}) {
+  const boundary = `--------------------------${Date.now().toString(16)}${Math.random()
+    .toString(16)
+    .slice(2)}`;
+  const chunks = [];
+  const push = (s) => chunks.push(Buffer.from(s, 'utf8'));
+  const pushField = (name, value) => {
+    push(`--${boundary}\r\n`);
+    push(`Content-Disposition: form-data; name="${name}"\r\n\r\n`);
+    push(`${value}\r\n`);
+  };
+  if (fields && typeof fields === 'object') {
+    for (const [k, v] of Object.entries(fields)) {
+      if (v === undefined || v === null) continue;
+      pushField(k, `${v}`);
+    }
+  }
+  push(`--${boundary}\r\n`);
+  push(
+    `Content-Disposition: form-data; name="${fieldName}"; filename="${filename}"\r\n`,
+  );
+  push(`Content-Type: ${contentType}\r\n\r\n`);
+  chunks.push(buffer);
+  push('\r\n');
+  if (Array.isArray(extraFiles)) {
+    for (const part of extraFiles) {
+      if (!part || !part.name || !part.buffer) continue;
+      const partName = part.name;
+      const partFilename = part.filename ?? '';
+      const partType = part.contentType ?? 'application/octet-stream';
+      push(`--${boundary}\r\n`);
+      push(
+        `Content-Disposition: form-data; name="${partName}"; filename="${partFilename}"\r\n`,
+      );
+      push(`Content-Type: ${partType}\r\n\r\n`);
+      chunks.push(part.buffer);
+      push('\r\n');
+    }
+  }
+  push(`--${boundary}--\r\n`);
+  const body = Buffer.concat(chunks);
+  return {
+    body,
+    headers: {
+      'Content-Type': `multipart/form-data; boundary=${boundary}`,
+      'Content-Length': String(body.length),
+    },
+  };
+}
+
+function postMultipart(url, headers, body) {
+  return new Promise((resolve, reject) => {
+    const target = new URL(url);
+    const opts = {
+      method: 'POST',
+      hostname: target.hostname,
+      port: target.port || 443,
+      path: target.pathname + target.search,
+      headers,
+    };
+    const req = require('https').request(opts, (resp) => {
+      let data = '';
+      resp.on('data', (chunk) => {
+        data += chunk;
+      });
+      resp.on('end', () => {
+        resolve({ status: resp.statusCode || 0, text: data });
+      });
+    });
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
