@@ -1,4 +1,11 @@
-const { readBody, gqlRequest, sendFcm } = require('../_shared/notify_utils');
+const {
+  readBody,
+  gqlRequest,
+  sendFcm,
+  groupTokensByLocale,
+  mergeSendResults,
+  normalizeLanguageCode,
+} = require('../_shared/notify_utils');
 
 const pickBody = (row) =>
   row?.body ||
@@ -6,6 +13,25 @@ const pickBody = (row) =>
   row?.message_body ||
   row?.message ||
   '';
+
+const buildPayload = (languageCode, conversationId, body) => {
+  const locale = normalizeLanguageCode(languageCode);
+  const title = locale === 'en' ? 'New message' : 'رسالة جديدة';
+  const safeBody = body || (locale === 'en' ? 'Message' : 'رسالة');
+  return {
+    notification: {
+      title,
+      body: safeBody,
+    },
+    data: {
+      type: 'chat',
+      conversation_id: conversationId,
+      title,
+      body: safeBody,
+      payload: conversationId,
+    },
+  };
+};
 
 module.exports = async (req, res) => {
   try {
@@ -80,17 +106,33 @@ module.exports = async (req, res) => {
       return;
     }
 
-    const tokensData = await gqlRequest(
-      `query Tokens($uids: [uuid!]!) {
-        push_device_tokens(
-          where: {user_uid: {_in: $uids}, is_active: {_eq: true}}
-        ) { token }
-      }`,
-      { uids: targetUids },
-    );
-    const tokens = (tokensData?.push_device_tokens || [])
-      .map((t) => t.token)
-      .filter(Boolean);
+    let tokenRows = [];
+    try {
+      const tokensData = await gqlRequest(
+        `query Tokens($uids: [uuid!]!) {
+          push_device_tokens(
+            where: {user_uid: {_in: $uids}, is_active: {_eq: true}}
+          ) { token locale_code }
+        }`,
+        { uids: targetUids },
+      );
+      tokenRows = tokensData?.push_device_tokens || [];
+    } catch (error) {
+      if (!`${error}`.includes('locale_code')) throw error;
+      const legacyTokens = await gqlRequest(
+        `query TokensLegacy($uids: [uuid!]!) {
+          push_device_tokens(
+            where: {user_uid: {_in: $uids}, is_active: {_eq: true}}
+          ) { token }
+        }`,
+        { uids: targetUids },
+      );
+      tokenRows = (legacyTokens?.push_device_tokens || []).map((entry) => ({
+        token: entry.token,
+        locale_code: 'ar',
+      }));
+    }
+    const tokens = tokenRows.map((t) => t.token).filter(Boolean);
 
     if (tokens.length === 0) {
       res.status(200).json({ ok: true, skipped: 'no_tokens' });
@@ -98,19 +140,15 @@ module.exports = async (req, res) => {
     }
 
     const body = pickBody(row);
-    const title = 'رسالة جديدة';
-    const data = {
-      type: 'chat',
-      conversation_id: conversationId,
-      title,
-      body: body || 'رسالة',
-      payload: conversationId,
-    };
-
-    const result = await sendFcm(tokens, {
-      notification: { title, body: body || 'رسالة' },
-      data,
-    });
+    const byLocale = groupTokensByLocale(tokenRows);
+    const results = [];
+    if (byLocale.ar.length > 0) {
+      results.push(await sendFcm(byLocale.ar, buildPayload('ar', conversationId, body)));
+    }
+    if (byLocale.en.length > 0) {
+      results.push(await sendFcm(byLocale.en, buildPayload('en', conversationId, body)));
+    }
+    const result = mergeSendResults(results);
     res.status(200).json({ ok: true, ...result });
   } catch (e) {
     res.status(200).json({ ok: false, error: `${e}` });

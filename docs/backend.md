@@ -1,80 +1,163 @@
 # Backend Integration
 
-مستند مرجعي يوضح العقد الحالي بين تطبيق Flutter وطبقة Supabase.
-يجب تحديثه كلما تغيّرت الدوال أو السياسات.
-سجلات تنفيذ الإصلاحات مخزّنة تحت:
-`\\wsl.localhost\Ubuntu-24.04\home\zidan\dev\aelmamclinic\.ci\logs\2025-11-16_19-23`.
+هذا المستند يصف العقد الحالي بين تطبيق Flutter وبيئة `Nhost`:
+- `Auth`
+- `GraphQL/Hasura`
+- `Storage`
+- `Edge Functions`
+- `FCM push lifecycle`
 
-## بيئة Supabase
+أي تعديل في الطبقات التالية يجب أن يراجع معه هذا المستند:
+- `lib/providers/auth_provider.dart`
+- `lib/services/nhost_auth_service.dart`
+- `lib/services/nhost_graphql_service.dart`
+- `lib/services/push_notifications_service.dart`
+- `lib/providers/chat_provider.dart`
 
-- **Supabase URL/Anon Key** تأتي من `AppConstants` أو ملفات الإعداد (راجع `lib/core/constants.dart`).
-- **نسخ Flutter محليّة** تقرأ الدوال/المفاتيح قبل `runApp`.
-- تأكد من تشغيل `supabase start` (أو البيئة السحابية) قبل أي اختبار.
+## Runtime Endpoints
 
-## دوال RPC الحرجة
+المصدر النهائي لعناوين الخدمات هو `lib/core/nhost_config.dart` مع دعم overrides
+آمنة من `config.json` أو `--dart-define`.
 
-| الدالة | معاملاتها | الغرض | ملاحظات |
-|--------|-----------|-------|---------|
-| `my_feature_permissions(p_account uuid)` | `p_account`: معرّف العيادة الحالية | إعادة أذونات الخصائص و CRUD لكل مستخدم | يجب أن تعيد `{allowed_features[],can_create,...}` وإلا ستتعطل شاشات المستودع. |
-| `my_profile()` / `my_account_id()` | لا شيء | تحديد العيادة والحالة | يتم استدعاؤها أثناء `AuthProvider._refreshUser`. أي فشل يسجَّل عبر `_authDiagWarn`. |
-| `chat_accept_invitation(p_invitation_id uuid)` | معرف الدعوة | يحدّث الدعوة، يسجّل المستَخدم في `chat_participants` | يعاد JSON `{ok: true}`. أي قيمة أخرى = خطأ. |
-| `chat_decline_invitation(p_invitation_id uuid, p_note text?)` | معرف الدعوة + ملاحظة اختيارية | وضع الدعوة في حالة `declined` | يجب أن تعيد `{ok: true}`. |
-| `chat_mark_delivered(p_message_ids uuid[])` | قائمة معرفات رسائل | تسجيل الاستلام | يُستدعى بعد جلب الرسائل/المرفقات. |
-| `admin_*` RPCs | مختلفة | إدارة المالكين والموظفين | غير مستخدمة في مرحلة الدخان، لكن أي تعديل يتطلب تحديث هذا الجدول. |
+القيم المسموح بوجودها على العميل:
+- `nhostSubdomain`
+- `nhostRegion`
+- `nhostGraphqlUrl`
+- `nhostAuthUrl`
+- `nhostStorageUrl`
+- `nhostFunctionsUrl`
 
-## الباقات والميزات (Plans/Features)
+القيم الممنوع شحنها داخل العميل:
+- `HASURA_GRAPHQL_ADMIN_SECRET`
+- `HASURA_GRAPHQL_JWT_SECRET`
+- `NHOST_WEBHOOK_SECRET`
+- أي مفاتيح admin مشابهة
 
-المصدر الأساسي لصلاحيات الباقة هو جدول `plan_features` ثم يتم إسقاطه إلى
-`account_feature_permissions` عبر دالة `apply_plan_permissions`.
+## Session Contract
 
-الجداول ذات الصلة:
-- `subscription_plans`: تعريف الباقات (FREE/MONTH/YEAR).
-- `plan_features`: مصفوفة ربط الباقة ← الميزة (feature_key).
-- `account_subscriptions`: الاشتراك النشط لكل حساب.
-- `account_feature_permissions`: الصلاحيات المطبقة فعليًا على الحساب/المستخدم.
-- `subscription_requests`: طلبات الترقية، وتشمل `proof_url` (معرّف الملف في التخزين) وحقول مرجعية الدفع.
+مصدر الحقيقة للجلسة:
+- `Nhost auth session` في `PersistentAuthStore`
+- `AuthProvider.currentUser` كتمثيل واجهة محلي
 
-الدوال ذات الصلة:
-- `plan_allowed_features(p_plan text)`: تُعيد قائمة مفاتيح الميزات المسموحة للباقة.
-- `apply_plan_permissions(p_account uuid, p_plan text)`: تُطبّق صلاحيات الباقة على الحساب.
-- `my_account_plan()`: تُعيد الباقة النشطة للحساب الحالي مع `plan_end_at` (fallback = free).
-- `admin_approve_subscription_request(...)`: اعتماد طلب اشتراك وتفعيل الخطة.
-- `admin_reject_subscription_request(...)`: رفض طلب الاشتراك مع سبب.
-- `admin_set_account_plan(...)`: تغيير خطة الحساب يدويًا (سوبر أدمن).
-- `expire_account_subscriptions(p_dry_run boolean)`: إنهاء الاشتراكات المنتهية وفق grace_days.
-- `self_create_account(p_clinic_name text)`: إنشاء حساب مالك جديد بخطة FREE وتوليد الصلاحيات الافتراضية.
-- `account_is_paid(p_account uuid)`: يحدد إن كانت العيادة على خطة مدفوعة ضمن فترة السماح.
-- `fn_is_account_member(p_account uuid)`: يمنع دخول الموظفين عندما تكون الخطة FREE (يُسمح للمالك فقط).
-- `admin_payment_stats_by_plan()`: إحصاءات المدفوعات حسب الباقة.
-- `admin_payment_stats_by_month()`: إحصاءات المدفوعات حسب الشهر.
-- `admin_payment_stats_by_day()`: إحصاءات المدفوعات حسب اليوم.
+قواعد أساسية:
+- لا يجوز إعادة تسجيل الدخول تلقائيًا من كلمة مرور مخزنة
+- استعادة الجلسة تتم فقط من `stored credentials/refresh token`
+- `signOut()` يجب أن ينظف:
+  - `ActiveAccountStore`
+  - مفاتيح `auth.*`
+  - `chatCode`
+  - `accountId`
+  - أي `pending wipe`
+- تغير الحساب يجب أن يوقف اشتراكات الدردشة و`push token binding` قبل إعادة bootstrap
 
-## Storage: chat-attachments
+## GraphQL / RPC
 
-- الدلو: `chat-attachments`.
-- السياسات:
-  - مشارك في المحادثة (`chat_attachments_insert_participant` / `chat_attachments_delete_participant`) يسمح بالرفع/الحذف عبر Sessions عادية.
-  - `chat_write_service_only` يسمح لخدمات الخلفية (service_role) بالتعديل.
-- العميل يستخدم `_uploadToStorage` داخل `ChatService`. أي 403 سينتج عن السياسات أعلاه ويظهر للمستخدم برسالة واضحة.
+الدوال الحرجة أثناء الإقلاع والتحقق:
 
-## Storage: subscription-proofs
+| الدالة | الغرض | الملاحظات |
+| --- | --- | --- |
+| `my_profile()` | حساب المستخدم الحالي | تستخدم لتحديد `account_id`, `role`, `chat_code` |
+| `my_account_id()` | fallback لحسم الحساب | يجب ألا تسقط الجلسة محليًا عند فشل شبكي عابر |
+| `my_account_plan()` | الخطة الحالية | يستخدمها `AuthProvider` وشاشات الإحصائيات والترقية |
+| `my_feature_permissions(p_account uuid)` | أذونات الخصائص وCRUD | أي كسر هنا ينعكس مباشرة على المستودع والإحصائيات |
+| `fn_is_super_admin_gql` | تمييز السوبر أدمن | يوجد fallback عند غياب الاستعلام في بعض البيئات |
+| `chat_accept_invitation(...)` | قبول دعوة دردشة | يجب أن يعيد `{ok: true}` |
+| `chat_decline_invitation(...)` | رفض دعوة دردشة | يجب أن يعيد `{ok: true}` |
+| `chat_mark_delivered(uuid[])` | تسجيل الاستلام | يستدعى بعد مزامنة الرسائل |
 
-- الدلو: `subscription-proofs`.
-- يستخدم لرفع إثباتات الدفع للترقية.
-- يتم تخزين معرف الملف في `subscription_requests.proof_url`.
+## Sync Contract
 
-## Cron: انتهاء الاشتراكات
+الربط الحالي بين الجلسة والمزامنة:
+- `AuthProvider.bootstrapSync(...)`
+- `NhostAuthService.bootstrapSyncForCurrentUser(...)`
+- `DBService.bindSyncPush(...)`
 
-- Trigger: `expire_account_subscriptions_daily`
-- يستدعي `expire_account_subscriptions(p_dry_run=false)` يوميًا عبر GraphQL.
+القواعد الحالية بعد الإصلاح:
+- يعاد استخدام `SyncService` إذا كان `accountId + deviceId` لم يتغيرا
+- لا يتم `pushAll()/pullAll()` بعد bootstrap إلا عند وجود جداول متسخة فعليًا
+- `backfillAccountForTables(...)` يعمل مرة واحدة لكل جلسة حساب
+- عند `signedOut` أو تبديل الحساب يجب التخلص من `SyncService` القديم كاملًا
 
-## تليمترية وتحذيرات
+## Push Notifications Contract
 
-- `AuthProvider` يسجل `_authDiagWarn` عند فشل RPCات `my_profile`، `my_account_id`، أو `resolveAccountId`.
-- `ChatProvider` يسجل `log.w` لكل فشل RPC (جلب الحساب، الدعوات، إلخ).
-- راقب القيم في `lastError` من الـ Provider لإظهار الرسائل المناسبة في الواجهات.
+ملفات الترابط:
+- `lib/services/push_notifications_service.dart`
+- `lib/services/notification_service.dart`
+- `functions/_shared/notify_utils.js`
+- `functions/notify-plan-request/index.js`
 
-## اختبارات دخان
+قواعد التوكن:
+- الجدول: `push_device_tokens`
+- المفتاح الفريد: `token`
+- `on_conflict` يجب أن يحدث:
+  - `user_uid`
+  - `account_id`
+  - `role`
+  - `platform`
+  - `locale_code`
+  - `is_active`
+  - `updated_at`
 
-راجع `docs/smoke_tests.md` لخطوات اختبار الدخان لكل دور (Super Admin، Owner، Employee، Disabled).
-عند تشغيل أي سيناريو، سجل النتائج في مجلد السجلات المذكور بالأعلى مع التاريخ والوقت.
+قواعد اللغة:
+- `locale_code` يجب أن يحتوي فقط:
+  - `ar`
+  - `en`
+- عند تغيير اللغة من التطبيق يجب أن يعاد ربط التوكن بنفس الحساب مع `locale_code`
+  الجديد.
+- Edge Functions يجب أن تجمع التوكنات حسب `locale_code` وترسل دفعات مستقلة لكل
+  لغة.
+- إذا لم تكن migration مطبقة بعد، يوجد fallback مرحلي إلى `ar` فقط، لكنه ليس
+  حالة اعتماد نهائية.
+
+قواعد العميل:
+- `initForAuth()` يجب أن يكون idempotent لنفس `accountId + role + languageCode`
+- عند تغيير التوكن: يعطل التوكن القديم ثم يسجل الجديد
+- عند `signOut()`: يعطل التوكن الحالي ثم ينهي الخدمة
+- `getInitialMessage()` يجب أن يعالج فتح التطبيق من إشعار وهو مغلق
+- تغيير اللغة يجب أن يحدّث:
+  - local channels
+  - scheduled reminders
+  - `push_device_tokens.locale_code`
+
+أنواع payload المستخدمة حاليًا:
+- `patient:<id>`
+- `admin:plan_request`
+- `admin:seat_request`
+- `conversation_id`
+
+ملفات الترابط الخلفي الحالية:
+- `functions/notify-chat-message/index.js`
+- `functions/notify-new-patient/index.js`
+- `functions/notify-plan-request/index.js`
+
+ملاحظة تشغيلية:
+- بعد أي تعديل في Event Triggers يجب إعادة التحقق من:
+  - `scripts/setup_push_triggers.sh`
+  - وصول `chat/patient/plan_request/seat_request` فعليًا
+
+## Storage
+
+Buckets الحرجة:
+- `chat-attachments`
+- `subscription-proofs`
+
+المتوقع من العميل:
+- الرفع عبر `NhostStorageService`
+- التعامل مع `403` كخطأ صلاحيات واضح للمستخدم
+- عدم حفظ أسرار وصول داخل العميل
+
+## Edge Functions
+
+المسارات الحرجة:
+- `notify-plan-request`
+- دوال إنشاء المالك/الموظف الإدارية
+
+المتوقع:
+- أي Function ترسل FCM يجب أن تعطل التوكنات غير الصالحة
+- أي Function إدارية يجب أن تعتمد على Nhost Auth Admin API أو service role على الخادم فقط
+
+## Manual Validation
+
+التحقق التشغيلي الكامل موثق في:
+- `docs/smoke_tests.md`
+- `docs/runtime_dependency_matrix.md`
