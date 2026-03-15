@@ -1,6 +1,5 @@
 // lib/screens/services/doctors_services_home_screen.dart
 
-import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 
 /*── تصميم TBIAN ─*/
@@ -8,6 +7,7 @@ import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/widgets/feature_hub.dart';
 
 import 'doctors_services_list_screen.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class DoctorsServicesHomeScreen extends StatelessWidget {
   const DoctorsServicesHomeScreen({super.key});
@@ -15,7 +15,7 @@ class DoctorsServicesHomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -56,7 +56,7 @@ class DoctorsServicesHomeScreen extends StatelessWidget {
                   title: 'النِّسب الخاصة بالأطباء',
                   subtitle:
                       'تحديث نسب المشاركة ونسبة الأطباء من الأشعة والمختبرات',
-                  badgeText: 'تحت التطوير',
+                  badgeText: context.trRaw('تحت التطوير'),
                   disabled: true,
                 ),
               ],

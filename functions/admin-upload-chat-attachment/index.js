@@ -23,6 +23,19 @@ const pick = (obj, keys, fallback = null) => {
   return fallback;
 };
 
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+const STORAGE_UPLOAD_TIMEOUT_MS = Number(
+  process.env.STORAGE_UPLOAD_TIMEOUT_MS || 30000,
+);
+
+const estimateBase64Bytes = (value) => {
+  const normalized = `${value || ''}`.replace(/\s+/g, '');
+  if (!normalized) return 0;
+  const paddingMatch = normalized.match(/=+$/);
+  const padding = paddingMatch ? paddingMatch[0].length : 0;
+  return Math.floor((normalized.length * 3) / 4) - padding;
+};
+
 module.exports = async (req, res) => {
   try {
     if (req.method !== 'POST') {
@@ -41,7 +54,7 @@ module.exports = async (req, res) => {
       ['mimeType', 'mime_type'],
       'application/octet-stream',
     )}`.trim();
-    const base64 = `${pick(body, ['base64', 'data'], '')}`.trim();
+    let base64 = `${pick(body, ['base64', 'data'], '')}`.trim();
     const metadata =
       body.metadata && typeof body.metadata === 'object' ? body.metadata : {};
 
@@ -49,6 +62,18 @@ module.exports = async (req, res) => {
       return res
         .status(400)
         .json({ error: 'bad-request', message: 'filename/base64 required' });
+    }
+
+    if (base64.startsWith('data:')) {
+      const comma = base64.indexOf(',');
+      base64 = comma >= 0 ? base64.slice(comma + 1).trim() : '';
+    }
+
+    const estimatedBytes = estimateBase64Bytes(base64);
+    if (estimatedBytes > MAX_ATTACHMENT_BYTES) {
+      return res
+        .status(413)
+        .json({ error: 'file_too_large', message: 'attachment exceeds max size' });
     }
 
     const token = extractBearer(req);
@@ -105,6 +130,11 @@ module.exports = async (req, res) => {
     }
 
     const buf = Buffer.from(base64, 'base64');
+    if (buf.length > MAX_ATTACHMENT_BYTES) {
+      return res
+        .status(413)
+        .json({ error: 'file_too_large', message: 'attachment exceeds max size' });
+    }
     const meta = {
       name: filename,
       bucketId,
@@ -136,6 +166,7 @@ module.exports = async (req, res) => {
         ...multipart.headers,
       },
       multipart.body,
+      STORAGE_UPLOAD_TIMEOUT_MS,
     );
 
     let responsePayload = uploadResp.text;
@@ -222,7 +253,7 @@ function buildMultipart({
   };
 }
 
-function postMultipart(url, headers, body) {
+function postMultipart(url, headers, body, timeoutMs) {
   return new Promise((resolve, reject) => {
     const target = new URL(url);
     const opts = {
@@ -242,6 +273,9 @@ function postMultipart(url, headers, body) {
       });
     });
     req.on('error', reject);
+    req.setTimeout(timeoutMs, () => {
+      req.destroy(new Error(`storage upload timeout after ${timeoutMs}ms`));
+    });
     req.write(body);
     req.end();
   });

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'package:aelmamclinic/providers/auth_provider.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
 
 class FinanceAccessGuard extends StatelessWidget {
   const FinanceAccessGuard({
@@ -19,17 +20,16 @@ class FinanceAccessGuard extends StatelessWidget {
 
     final scheme = Theme.of(context).colorScheme;
     return Directionality(
-      textDirection: TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
-          title: const Text('المالية للموظفين'),
+          title: const LocalizedText('المالية للموظفين'),
         ),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(16),
-            child: Text(
-              'هذه الشاشة مخصّصة للمالك أو المدير فقط.',
+            child: LocalizedText('هذه الشاشة مخصّصة للمالك أو المدير فقط.',
               textAlign: TextAlign.center,
               style: TextStyle(color: scheme.error),
             ),

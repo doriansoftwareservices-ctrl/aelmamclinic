@@ -31,6 +31,8 @@ import 'package:aelmamclinic/models/chat_models.dart';
 import 'package:aelmamclinic/services/chat_service.dart';
 import 'package:aelmamclinic/utils/time.dart' as t;
 import 'package:aelmamclinic/utils/text_direction.dart' as bidi;
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class ChatSearchScreen extends StatefulWidget {
   final String conversationId;
@@ -236,7 +238,7 @@ class _ChatSearchScreenState extends State<ChatSearchScreen> {
     final count = _results.length;
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           elevation: 0,
@@ -266,13 +268,13 @@ class _ChatSearchScreenState extends State<ChatSearchScreen> {
               ),
             if (!_loading && hasQuery)
               IconButton(
-                tooltip: 'السابق',
+                tooltip: context.trRaw('السابق'),
                 onPressed: count > 0 ? _prev : null,
                 icon: const Icon(Icons.keyboard_arrow_right_rounded),
               ),
             if (!_loading && hasQuery)
               IconButton(
-                tooltip: 'التالي',
+                tooltip: context.trRaw('التالي'),
                 onPressed: count > 0 ? _next : null,
                 icon: const Icon(Icons.keyboard_arrow_left_rounded),
               ),
@@ -407,7 +409,7 @@ class _ChatSearchScreenState extends State<ChatSearchScreen> {
                   ),
                 ),
                 trailing: IconButton(
-                  tooltip: 'انتقال',
+                  tooltip: context.trRaw('انتقال'),
                   onPressed: () => _jumpToSelectedInRoom(i),
                   icon: const Icon(Icons.open_in_new_rounded),
                 ),
@@ -440,7 +442,7 @@ class _SearchBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Container(
         margin: const EdgeInsetsDirectional.only(end: 8, top: 6, bottom: 6),
         padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -467,7 +469,7 @@ class _SearchBar extends StatelessWidget {
             ),
             if (controller.text.isNotEmpty)
               IconButton(
-                tooltip: 'مسح',
+                tooltip: context.trRaw('مسح'),
                 onPressed: onClear,
                 icon: const Icon(Icons.close_rounded),
               ),
@@ -498,7 +500,7 @@ class _FiltersRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         child: Wrap(
@@ -528,7 +530,7 @@ class _FiltersRow extends StatelessWidget {
             FilterChip(
               selected: onlyMine,
               onSelected: onOnlyMineChanged,
-              label: const Text('منّي فقط'),
+              label: const LocalizedText('منّي فقط'),
               avatar: const Icon(Icons.person_rounded, size: 18),
             ),
           ],
@@ -657,7 +659,7 @@ class _CenterMsg extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Directionality(
-        textDirection: ui.TextDirection.rtl,
+        textDirection: Directionality.of(context),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

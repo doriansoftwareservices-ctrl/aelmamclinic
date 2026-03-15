@@ -3,6 +3,24 @@ import 'package:intl/intl.dart';
 
 String trRaw(String raw) => RawStringLocalizer.translateWithCurrentLocale(raw);
 
+typedef _RawStringPatternBuilder = String? Function(RegExpMatch match);
+
+final class _RawStringPatternRule {
+  const _RawStringPatternRule({
+    required this.pattern,
+    required this.builder,
+  });
+
+  final RegExp pattern;
+  final _RawStringPatternBuilder builder;
+
+  String? tryTranslate(String input) {
+    final match = pattern.firstMatch(input);
+    if (match == null) return null;
+    return builder(match);
+  }
+}
+
 abstract final class RawStringLocalizer {
   static String translate(String raw, {required String languageCode}) {
     if (raw.isEmpty) return raw;
@@ -75,25 +93,137 @@ abstract final class RawStringLocalizer {
       return segment;
     }
 
+    final patternTranslated = _translateWithPatterns(core);
+    if (patternTranslated != null) {
+      core = patternTranslated;
+    } else {
+      core = _translateCore(core);
+    }
+
+    return '$leading$core$trailing';
+  }
+
+  static String _translateCore(String core) {
+    var output = core;
     var changed = true;
     while (changed) {
       changed = false;
+      for (final entry in _containedGlossary) {
+        final next = output.replaceAll(entry.key, entry.value);
+        if (next != output) {
+          output = next;
+          changed = true;
+        }
+      }
       for (final entry in _orderedGlossary) {
-        final next = _replaceBoundary(core, entry.key, entry.value);
-        if (next != core) {
-          core = next;
+        final next = _replaceBoundary(output, entry.key, entry.value);
+        if (next != output) {
+          output = next;
           changed = true;
         }
       }
 
-      final translated = _exact[_normalize(core)];
+      final translated = _exact[_normalize(output)];
       if (translated != null && translated.isNotEmpty) {
-        core = translated;
+        output = translated;
         break;
       }
     }
+    return output;
+  }
 
-    return '$leading$core$trailing';
+  static String? _translateWithPatterns(String raw) {
+    for (final rule in _patternRules) {
+      final translated = rule.tryTranslate(raw);
+      if (translated != null && translated.isNotEmpty && translated != raw) {
+        return translated;
+      }
+    }
+    return null;
+  }
+
+  static String _translateStandaloneFragment(String raw) {
+    final normalized = _normalize(raw);
+    if (normalized.isEmpty) return normalized;
+
+    final exact = _exact[normalized];
+    if (exact != null && exact.isNotEmpty) {
+      return exact;
+    }
+
+    final containedLabel = _translateBareLabelFromContainedGlossary(normalized);
+    if (containedLabel != null && containedLabel.isNotEmpty) {
+      return containedLabel;
+    }
+
+    return _translateCore(normalized);
+  }
+
+  static String? _translateBareLabelFromContainedGlossary(String normalized) {
+    final arabicNeedle = '$normalized: ';
+    for (final entry in _containedGlossary) {
+      if (entry.key != arabicNeedle) continue;
+      final translated = entry.value.trimRight();
+      final colonIndex = translated.indexOf(':');
+      if (colonIndex <= 0) return null;
+      return translated.substring(0, colonIndex).trimRight();
+    }
+    return null;
+  }
+
+  static String? _translateLabelValue(RegExpMatch match) {
+    final sourceLabel = _normalize(match.group(1) ?? '');
+    final translatedLabel = _translateStandaloneFragment(sourceLabel);
+    if (translatedLabel == sourceLabel) return null;
+    final separator = match.group(2) ?? ': ';
+    final value = match.group(3) ?? '';
+    return '$translatedLabel$separator$value';
+  }
+
+  static String? _translateParenthetical(RegExpMatch match) {
+    final sourceLabel = _normalize(match.group(1) ?? '');
+    final translatedLabel = _translateStandaloneFragment(sourceLabel);
+    if (translatedLabel == sourceLabel) return null;
+    final payload = match.group(2) ?? '';
+    final translatedPayload = _translateStandaloneFragment(payload);
+    return '$translatedLabel (${translatedPayload == payload ? payload : translatedPayload})';
+  }
+
+  static String? _translateCountUnit(RegExpMatch match) {
+    final count = match.group(1) ?? '';
+    final separator = match.group(2) ?? ' ';
+    final unit = match.group(3) ?? '';
+    final translatedUnit = _translateCountUnitLabel(unit, count);
+    if (translatedUnit == unit) return null;
+    return '$count$separator$translatedUnit';
+  }
+
+  static String? _translateMoreItems(RegExpMatch match) {
+    final prefix = match.group(1) ?? '';
+    final count = match.group(2) ?? '';
+    final unit = match.group(3) ?? '';
+    final translatedUnit = _translateCountUnitLabel(unit, count);
+    if (translatedUnit == unit) return null;
+    return '$prefix +$count more $translatedUnit';
+  }
+
+  static String _translateCountUnitLabel(String rawUnit, String rawCount) {
+    final unit = _countUnitEnglishForms[rawUnit];
+    if (unit == null) return rawUnit;
+
+    final count = int.tryParse(
+      rawCount.replaceAll(',', '').replaceAll(' ', '').trim(),
+    );
+    final isSingular = count == 1;
+    return isSingular ? unit.$1 : unit.$2;
+  }
+
+  static String? _translateTrailingLabel(RegExpMatch match) {
+    final prefix = match.group(1) ?? '';
+    final label = match.group(2) ?? '';
+    final translatedLabel = _translateStandaloneFragment(label);
+    if (translatedLabel == label) return null;
+    return '$prefix $translatedLabel';
   }
 
   static String _replaceBoundary(String input, String source, String target) {
@@ -144,6 +274,8 @@ abstract final class RawStringLocalizer {
     'ملاحظات': 'Notes',
     'رجوع': 'Back',
     'يبدو ان الشبكة غير مستقرة لديك': 'Your network connection appears unstable.',
+    'تعذر الوصول إلى الخادم حاليًا. حاول مرة أخرى بعد قليل.':
+        'The server is currently unavailable. Please try again shortly.',
     'إجراءات الرسالة': 'Message actions',
     'معاينة الرد': 'Reply preview',
     'الانتقال للرسالة الأصلية': 'Jump to original message',
@@ -185,6 +317,7 @@ abstract final class RawStringLocalizer {
     'لا توجد بيانات للمشاركة': 'There is no data to share.',
     'لا توجد بيانات للتنزيل': 'There is no data to download.',
     'تنزيل': 'Download',
+    'تاريخ': 'Date',
     'الاستهلاك': 'Consumption',
     'القيمة': 'Value',
     'قيد المراجعة': 'Under review',
@@ -495,6 +628,46 @@ abstract final class RawStringLocalizer {
     '• الحسابات المجمّدة/المعطّلة لن تتمكن من الدخول.': '• Frozen or disabled accounts cannot sign in.',
     '• إذا لم يظهر حسابك بعد التسجيل، أكمل إنشاء العيادة أولًا.': '• If your account does not appear after registration, finish creating the clinic first.',
     'مرضى الطبيب': 'Doctor patients',
+    'التقارير والإحصائيات': 'Reports and statistics',
+    'المواعيد الناجحة': 'Successful appointments',
+    'عدد المرضى': 'Patient count',
+    'عدد المتابعات': 'Follow-up count',
+    'إجمالي الدخل المالي': 'Total financial income',
+    'حصة المركز ضمن المدى': 'Clinic share within range',
+    'كل الفترات': 'All periods',
+    'استعراض العودات': 'Browse follow-ups',
+    'إدارة الأدوية': 'Medication management',
+    'وصفات المرضى': 'Patient prescriptions',
+    'قائمة الوصفات الطبية': 'Prescription list',
+    'البيانات العربية': 'Arabic details',
+    'التفاصيل الإنجليزية': 'English details',
+    'الهاتف': 'Phone',
+    'هذا الحقل مطلوب': 'This field is required',
+    'تم نسخ الرقم.': 'The number was copied.',
+    'تم حفظ الملف بنجاح': 'The file was saved successfully.',
+    'مدفوعة': 'Paid',
+    'لا يوجد شعار مخصص بعد.': 'No custom logo has been added yet.',
+    'يظهر هذا الشعار في جميع تقارير PDF.':
+        'This logo appears in all PDF reports.',
+    'يظهر الشعار فقط للخطط المدفوعة.':
+        'The logo is available only for paid plans.',
+    'المرتجعات': 'Returns',
+    'المدفوعات': 'Payments',
+    'أصناف منخفضة': 'Low-stock items',
+    'حصة الأطباء': 'Doctors share',
+    'متوقع': 'Forecast',
+    'النسب': 'Ratios',
+    'مدخلات': 'Inputs',
+    'سلف': 'Loans',
+    'خصومات': 'Discounts',
+    'مدفوع': 'Paid',
+    'برو': 'Pro',
+    'بلس': 'Plus',
+    'تجديد': 'Renew',
+    'يمكن طلب مقاعد إضافية بعد الوصول للسقف.':
+        'Additional seats can be requested after reaching the limit.',
+    'لا يمكن تجاوز السقف إلا بالترقية لخطة أعلى.':
+        'The limit cannot be exceeded without upgrading to a higher plan.',
     'خدمات الطبيب': 'Doctor services',
     'إلغاء الرد': 'Cancel reply',
     'إدارة الجلسة': 'Session controls',
@@ -542,18 +715,27 @@ abstract final class RawStringLocalizer {
     'الشهرية': 'Monthly',
     'الشهرية بلس': 'Monthly Plus',
     'الشهرية برو': 'Monthly Pro',
+    'الشهرية القديمة': 'Legacy Monthly',
+    'الشهرية بلس القديمة': 'Legacy Monthly Plus',
+    'الشهرية برو القديمة': 'Legacy Monthly Pro',
+    'التجريبية الشهرية': 'Monthly Trial',
+    'الخطة التجريبية الشهرية': 'Monthly trial plan',
     'السنوية': 'Annual',
     'السنوية بلس': 'Annual Plus',
     'السنوية برو': 'Annual Pro',
     'الخطة المجانية': 'Free plan',
-    'الخطط الشهرية': 'Monthly plans',
     'الخطط السنوية': 'Annual plans',
     'أفضل قيمة': 'Best value',
     'الأكثر استخدامًا': 'Most popular',
     'أساسيات إدارة العيادة مع مزايا محدودة.': 'Clinic management basics with limited features.',
-    'خطط شهرية مرنة مع إمكانية الترقية.': 'Flexible monthly plans with upgrade options.',
+    'تجربة مجانية لمدة شهر واحد بصلاحيات الخطة الشهرية الحالية ولمرة واحدة فقط.':
+        'A free one-month trial with the same access as the current monthly plan, available only once.',
     'الخطط السنوية مع مزايا كاملة ومدة 12 شهر.': 'Annual plans with full features for 12 months.',
     'ابدأ مجانًا واستكشف الأساسيات.': 'Start free and explore the basics.',
+    'فعّل شهراً تجريبياً واحداً مجاناً لتجربة مزايا الخطة الشهرية الحالية.':
+        'Activate one free trial month to experience the features of the current monthly plan.',
+    'تفعيل مجاني لمرة واحدة لمدة شهر كامل بصلاحيات الخطة الشهرية الحالية.':
+        'A one-time free activation for a full month with the same access as the current monthly plan.',
     'اشتراك شهري مرن مع تجديد شهري.': 'Flexible monthly subscription with monthly renewal.',
     'اشتراك شهري بلس مرن مع تجديد شهري.': 'Flexible monthly Plus subscription with monthly renewal.',
     'اشتراك شهري برو مرن مع تجديد شهري.': 'Flexible monthly Pro subscription with monthly renewal.',
@@ -566,7 +748,40 @@ abstract final class RawStringLocalizer {
     'لا يمكنك طلب ترقية قبل تسجيل الدخول.': 'You cannot request an upgrade before signing in.',
     'سجّل الدخول أولاً لطلب الترقية.': 'Sign in first to request an upgrade.',
     'تم إرسال طلب الاشتراك بنجاح. سيتم مراجعته قريبًا.': 'The subscription request was sent successfully and will be reviewed soon.',
+    'طلب تفعيل الخطة التجريبية': 'Request trial plan activation',
+    'سيتم إرسال طلب تفعيل تجريبي مجاني لمدة شهر واحد. هذه التجربة متاحة مرة واحدة فقط لهذا الحساب.':
+        'A free one-month trial activation request will be sent. This trial is available only once for this account.',
+    'تم إرسال طلب التفعيل التجريبي بنجاح. سيتم مراجعته قريبًا.':
+        'The trial activation request was sent successfully and will be reviewed soon.',
+    'يوجد طلب تجريبي قيد المراجعة.': 'A trial request is already under review.',
+    'تم استخدام التجربة الشهرية سابقًا لهذا الحساب.':
+        'This account has already used the monthly trial.',
+    'التجربة الشهرية متاحة فقط قبل تفعيل أي خطة أخرى.':
+        'The monthly trial is available only before activating any other plan.',
+    'يوجد طلب اشتراك آخر قيد المراجعة لهذا الحساب.':
+        'Another subscription request is already under review for this account.',
+    'طلب التفعيل التجريبي': 'Request trial activation',
+    'فقط مالك العيادة يمكنه طلب التفعيل التجريبي.':
+        'Only the clinic owner can request trial activation.',
+    'تعذّر إرسال طلب التفعيل التجريبي.':
+        'Unable to submit the trial activation request.',
+    'استُخدمت سابقًا': 'Already used',
+    'الطلب قيد المراجعة': 'Request under review',
+    'مرة واحدة': 'One time',
+    'تجربة مجانية': 'Free trial',
+    'إدارة الخطة': 'Manage plan',
+    'فقط مالك العيادة يمكنه طلب الاشتراك.': 'Only the clinic owner can request a subscription.',
+    'هذه الشاشة متاحة فقط لمالك العيادة.': 'This screen is available only to the clinic owner.',
+    'إدارة الخطط والاشتراكات متاحة فقط لمالك العيادة.':
+        'Plan and subscription management is available only to the clinic owner.',
+    'فقط مالك العيادة يمكنه إدارة الخطة أو طلب التفعيل.':
+        'Only the clinic owner can manage the plan or request activation.',
+    'الاشتراكات السنوية الرسمية بعد انتهاء التجربة أو عند الترقية المباشرة.':
+        'Official annual subscriptions after the trial ends or through direct upgrade.',
+    'مجاني': 'Free',
+    'لا يوجد إثبات': 'No proof',
     'لوحة التحكم': 'Dashboard',
+    'إلمام كلينك': 'Elmam Clinic',
     'استخراج تقارير للمرضى': 'Export patient reports',
     'ادارة المخزن': 'Inventory management',
     'اضافة طبيب وخدماته': 'Add doctor and services',
@@ -576,7 +791,21 @@ abstract final class RawStringLocalizer {
     'الأشعة والمختبرات (تحت التطوير)': 'Radiology and labs (under development)',
     'إيرادات الشهر': 'Monthly revenue',
     'مصاريف الشهر': 'Monthly expenses',
+    'إيرادات الفترة (قيمة الخدمات)': 'Period revenue (service value)',
+    'استهلاكات المرفق الصحي': 'Clinic consumptions',
     'مدخلات الأطباء': 'Doctor inputs',
+    'مدخلات المركز الطبي': 'Clinic inputs',
+    'المبالغ المتبقية على المرضى': 'Outstanding patient balances',
+    'مبالغ الرواتب المصروفة': 'Salaries paid',
+    'نسبة الأطباء أشعة/مختبر': 'Doctors share (radiology/lab)',
+    'مرضى الفترة': 'Patients in period',
+    'مواعيد مؤكدة اليوم': 'Confirmed appointments today',
+    'أتت لموعدها اليوم': 'Patients attended today',
+    'أصناف منتهية': 'Out-of-stock items',
+    'اختر تاريخ البداية': 'Choose start date',
+    'اختر تاريخ النهاية': 'Choose end date',
+    'تمت الموافقة على الترقية': 'Upgrade approved',
+    'نسخ الرقم': 'Copy code',
     'لا توجد بيانات كافية للمقارنة الشهرية': 'There is not enough data for monthly comparison.',
     'لا توجد بيانات كافية للتوقع': 'There is not enough data for forecasting.',
     'لا توجد بيانات لعرضها ضمن الفترة المحددة': 'There is no data to display for the selected period.',
@@ -740,8 +969,8 @@ abstract final class RawStringLocalizer {
     'مقاعد إضافية': 'Extra seats',
     'إجمالي دخل الاشتراكات السنوية': 'Total annual subscription revenue',
     'الاشتراكات السنوية': 'Annual subscriptions',
-    'إجمالي دخل الاشتراكات الشهرية': 'Total monthly subscription revenue',
-    'الاشتراكات الشهرية': 'Monthly subscriptions',
+    'إجمالي التفعيلات التجريبية الشهرية': 'Total monthly trial activations',
+    'الخطط التجريبية المعتمدة': 'Approved trial plans',
     'إجمالي دخل المقاعد الإضافية': 'Total extra seats revenue',
     'رسوم المقاعد الإضافية': 'Extra seat fees',
     'اسم العيادة': 'Clinic name',
@@ -774,13 +1003,473 @@ abstract final class RawStringLocalizer {
     'الرجاء إدخال': 'Please enter',
     'يجب أن لا يقل عن': 'must be at least',
     'خارج النطاق المسموح': 'out of the allowed range',
+    'بيانات الدفع': 'Payment details',
+    'معلومات التحويل': 'Transfer information',
+    'يرجى اختيار صورة فقط.': 'Please choose an image only.',
+    'رقم العملية / مرجع التحويل': 'Transaction number / transfer reference',
+    'اسم المحوّل (اختياري)': 'Sender name (optional)',
+    'املأ البيانات ثم أرفق إثبات الدفع لإرسال الطلب.':
+        'Fill in the details, then attach the payment proof to submit the request.',
+    'عند إرسال الطلب سيتم مراجعته واعتماده من الإدارة.':
+        'Once the request is submitted, it will be reviewed and approved by the administration.',
+    'الخطة المطلوبة': 'Requested plan',
+    'وسيلة الدفع': 'Payment method',
+    'لم يتم إرفاق إثبات الدفع': 'No payment proof attached',
+    'إرسال الطلب': 'Submit request',
+    'جارٍ الإرسال...': 'Submitting...',
+    'ليست لديك صلاحية لعرض بيانات المرفق الصحي':
+        'You do not have permission to view the clinic profile.',
+    'حدّث بيانات المرفق الصحي لتظهر في كل تقارير PDF.':
+        'Update the clinic profile so it appears in all PDF reports.',
+    'شعار المرفق الصحي': 'Clinic logo',
+    'اختيار شعار': 'Choose logo',
+    'رقم هاتف إضافي (اختياري)': 'Additional phone number (optional)',
+    'التعديل متاح للمالك أو المدير فقط.':
+        'Editing is available only to the owner or manager.',
+    'إدارة الموظفين': 'Employee management',
+    'إدارة شاشات وسجلات الأطباء.': 'Manage doctor screens and records.',
+    'إنشاء موظف': 'Create employee',
+    'إضافة موظف جديد وربطه لاحقًا كطبيب إن لزم.':
+        'Add a new employee and link them later as a doctor if needed.',
+    'قائمة الموظفين': 'Employee list',
+    'عرض، بحث، مشاركة وتعديل بيانات الموظفين.':
+        'View, search, share, and edit employee records.',
+    'إنشاء موظف جديد': 'Create a new employee',
+    'البيانات الأساسية': 'Basic information',
+    'ربط الموظف بحساب دخول': 'Link the employee to a sign-in account',
+    'يمكن تركه بدون حساب عند الحاجة.':
+        'This can be left without an account when needed.',
+    'ربط حسابي': 'Link my account',
+    'هل الموظف طبيب؟': 'Is this employee a doctor?',
+    'المالية للموظفين': 'Employee finance',
+    'إنشاء معاملة سُلَف': 'Create loan transaction',
+    'تسجيل سلفة جديدة ومتابعة المستحقات.':
+        'Record a new loan and track outstanding amounts.',
+    'إنشاء معاملة خصم': 'Create deduction transaction',
+    'إضافة خصم وربطه بالموظف المعني.':
+        'Add a deduction and link it to the relevant employee.',
+    'إنشاء صرف الراتب': 'Create salary payment',
+    'تسجيل صرف راتب مع تفاصيل المدفوعات.':
+        'Record a salary payment with payment details.',
+    'الاستعراض (ملخّص)': 'Overview (summary)',
+    'عرض ملخص الرواتب والسلف والخصومات.':
+        'View a summary of salaries, loans, and deductions.',
+    'المعاملات': 'Transactions',
+    'استعراض الحركات المالية التفصيلية.':
+        'View detailed financial transactions.',
+    'سجلات المعاملات': 'Transaction logs',
+    'سجل التعديلات والإجراءات المالية.':
+        'Audit log of financial changes and actions.',
+    'معاملة الخصومات': 'Deductions',
+    'إنشاء خصم جديد': 'Create new deduction',
+    'إنشاء إدخال خصم على موظف محدّد مع اختيار التاريخ والوقت وتوثيق السبب.':
+        'Create a deduction for a selected employee, choose the date and time, and document the reason.',
+    'استعراض الخصومات': 'View deductions',
+    'استعراض الخصومات السابقة حسب الموظف للاطلاع والتتبّع.':
+        'Review previous deductions by employee for tracking.',
+    'معاملة السلفة': 'Loans',
+    'إنشاء سلفة جديدة': 'Create new loan',
+    'اختَر الموظف ثم أدخل قيمة السلفة وتاريخها وطريقة الصرف.':
+        'Choose an employee, then enter the loan amount, date, and payment method.',
+    'استعراض السلف للموظفين': 'View employee loans',
+    'ابحث واستعرض سلف جميع الموظفين مع إمكانيات التعديل والإلغاء.':
+        'Search and review loans for all employees with edit and delete actions.',
+    'اختر الموظف (خصم جديد)': 'Choose employee (new deduction)',
+    'اختر الموظف (استعراض الخصومات)': 'Choose employee (view deductions)',
+    'اختر الموظف (سلفة جديدة)': 'Choose employee (new loan)',
+    'اختر الموظف (استعراض السلف)': 'Choose employee (view loans)',
+    'اختر الموظف لإنشاء خصم جديد': 'Choose an employee to create a new deduction',
+    'اختر الموظف لاستعراض الخصومات':
+        'Choose an employee to review deductions',
+    'اختر الموظف لإنشاء سلفة جديدة': 'Choose an employee to create a new loan',
+    'تفاصيل صرف الراتب': 'Salary payment details',
+    'تفاصيل صرف الراتب (غير الأطباء)':
+        'Salary payment details (non-doctors)',
+    'هذه الشاشة مخصّصة للمالك أو المدير فقط.':
+        'This screen is available only to the owner or manager.',
+    'الخلاصة المالية': 'Financial summary',
+    'إجمالي قيمة الخدمات': 'Total service value',
+    'مبلغ النسب للأطباء من الأشعة/المختبر':
+        'Doctor shares from radiology/lab',
+    'مدخلات الأطباء بعد خصم نسب المركز الطبي':
+        'Doctor earnings after clinic share deduction',
+    'مجموع نسب المركز الطبي من كل الخدمات':
+        'Total clinic shares from all services',
+    'مبالغ الرواتب والمستحقات المصروفة':
+        'Paid salaries and dues',
+    'الصافي/الأرباح': 'Net / profit',
+    'إنشاء وصفة طبية': 'Create prescription',
+    'تعبئة المريض والطبيب تلقائيًا':
+        'Automatically fill the patient and doctor',
+    'من الشكاوى والإجابات المحفوظة':
+        'From the saved complaints and answers',
+    'تقارير المريض': 'Patient reports',
+    'استعراض وطباعة التقارير السابقة':
+        'Browse and print previous reports',
+    'إنشاء عودة': 'Create follow-up',
+    'فتح نموذج العودة لهذا المريض':
+        'Open the follow-up form for this patient',
+    'إجراءات الطبيب': 'Doctor actions',
+    'السجل الطبي': 'Medical record',
+    'جارِ تحميل بيانات السجل...': 'Loading record data...',
+    'لا توجد زيارات محفوظة لهذا المريض.':
+        'There are no saved visits for this patient.',
+    'لا توجد وصفات طبية محفوظة لهذا المريض بعد.':
+        'There are no saved prescriptions for this patient yet.',
+    'إنشاء وصفة': 'Create prescription',
+    'لا توجد تقارير محفوظة لهذا المريض بعد.':
+        'There are no saved reports for this patient yet.',
+    'عرض قائمة التقارير كاملة': 'View the full reports list',
+    'لا توجد عودات مرتبطة بهذا المريض حتى الآن.':
+        'There are no follow-ups linked to this patient yet.',
+    'تم مقابلة المريض': 'Patient was seen',
+    'لا توجد خدمات مسجلة (قد تكون أتت من المزامنة بدون تفاصيل).':
+        'No services were recorded. They may have arrived from sync without details.',
+    'لا توجد مرفقات': 'No attachments',
+    'إضافة سجل جديد': 'Add new record',
+    'إنشاء تقرير': 'Create report',
+    'استعرض التقرير': 'View report',
+    'هل تريد حذف سجل المريض؟': 'Do you want to delete the patient record?',
+    'تم الحذف بنجاح': 'Deleted successfully',
+    'المبلغ المدفوع': 'Paid amount',
+    'لا توجد مستحقات حالياً.': 'There are currently no dues.',
+    'لا توجد شكاوى مرتبطة بهذا المريض.':
+        'There are no complaints linked to this patient.',
+    'اختيار المريض': 'Select patient',
+    'مشاركة العودات كملف Excel': 'Share follow-ups as an Excel file',
+    'تنزيل العودات كملف Excel': 'Download follow-ups as an Excel file',
+    'لا توجد عودات لعرضها': 'There are no follow-ups to display.',
+    'تم حفظ معلومات العودة بنجاح.':
+        'Follow-up information was saved successfully.',
+    'تم تعديل بيانات العودة بنجاح.':
+        'Follow-up information was updated successfully.',
+    'التاريخ المحدد هو اليوم أو تاريخ ماضٍ. هل تريد بالفعل حفظ بيانات العودة لهذا التاريخ؟':
+        'The selected date is today or in the past. Do you still want to save the follow-up information for this date?',
+    'لا توجد عودات للمشاركة': 'There are no follow-ups to share.',
+    'لا توجد عودات للتنزيل': 'There are no follow-ups to download.',
+    'الرجاء اختيار مريض أولًا.': 'Please choose a patient first.',
+    'تأكيد الحفظ': 'Confirm save',
+    'اضغط للاختيار…': 'Tap to select...',
+    'المبلغ المتبقي عليه': 'Remaining amount due',
+    'قسم المستودع': 'Repository',
+    'إضافة صنف جديد': 'Add new item',
+    'إضافة صنف جديد للمستودع.': 'Add a new item to the repository.',
+    'استعراض الأصناف المضافة': 'View added items',
+    'قائمة الأصناف مع تفاصيل المخزون.':
+        'Item list with inventory details.',
+    'مشتريات واستهلاكات المستودع': 'Repository purchases and consumption',
+    'إدارة المشتريات والاستهلاكات اليومية.':
+        'Manage daily purchases and consumption.',
+    'إحصائيات وكشوفات المستودع': 'Repository statistics and reports',
+    'تقارير وإحصاءات المخزون.': 'Inventory reports and statistics.',
+    'تنبيهات الأصناف منخفضة الكمية.': 'Alerts for low-quantity items.',
+    'تشخيص صحة المستودع': 'Repository health diagnostics',
+    'فحص سريع للعلاقات والبيانات المفقودة.':
+        'Quick scan for broken relations and missing data.',
+    'المشتريات والاستهلاكات': 'Purchases and consumption',
+    'إدخال فاتورة شراء وتحديث المخزون':
+        'Enter a purchase invoice and update stock',
+    'عرض المشتريات والاستهلاكات':
+        'View purchases and consumption',
+    'استعراض/فلترة الفواتير وحركات الصرف':
+        'Browse and filter invoices and consumption movements',
+    'إنشاء توقيت تنبيه': 'Create alert rule',
+    'ضبط شرط ومستوى الكمية': 'Set the condition and quantity threshold',
+    'استعراض التنبيهات': 'View alerts',
+    'عرض التنبيهات الحالية وإدارتها': 'View and manage current alerts',
+    'الأصناف المضافة': 'Added items',
+    'الأصناف منخفضة المخزون': 'Low-stock items',
+    'الحرِجة فقط': 'Critical only',
+    'المنتهية فقط': 'Out-of-stock only',
+    'إضافة استهلاك': 'Add consumption',
+    'إنشاء مشتريات جديدة': 'Create new purchase',
+    'إجمالي التكلفة': 'Total cost',
+    'سيتم حذف السجل نهائيًا. هل أنت متأكد؟':
+        'The record will be deleted permanently. Are you sure?',
+    'حذف المحدد': 'Delete selected',
+    'تحديد/إلغاء الكل': 'Select / clear all',
+    'تصدير المحدد إلى PDF': 'Export selected to PDF',
+    'لا توجد خدمات': 'No services',
+    'تم حفظ الوصفة الطبية.': 'The prescription was saved.',
+    'تم إنشاء العودة بنجاح.': 'The follow-up was created successfully.',
+    'احفظ الشكوى وإجاباتها أولًا قبل إنشاء التقرير.':
+        'Save the complaint and its answers first before creating the report.',
+    'تم حفظ التقرير الطبي.': 'The medical report was saved.',
+    'تعذر العثور على التقرير.': 'Unable to find the report.',
+    'طباعة': 'Print',
+    'لا يوجد حسابات متاحة غير مرتبطة بموظفين.':
+        'There are no available accounts that are not linked to employees.',
+    'اختر حساب الموظف': 'Choose the employee account',
+    'يرجى اختيار حساب الموظف أولًا.':
+        'Please choose the employee account first.',
+    'هذا الحساب مجمّد حالياً.': 'This account is currently frozen.',
+    'تم تحديث بيانات الموظف بنجاح':
+        'Employee data was updated successfully.',
+    'إضافة موظف': 'Add employee',
+    'تم إنشاء الموظف بنجاح': 'The employee was created successfully.',
+    'الرجاء اختيار العام والشهر أولاً':
+        'Please choose the year and month first.',
+    'تم صرف الراتب مسبقاً': 'The salary has already been paid.',
+    'الرجاء اختيار العام والشهر': 'Please choose the year and month.',
+    'هذا الموظف محدد كطبيب، لكن لا يوجد سجل طبيب مرتبط':
+        'This employee is marked as a doctor, but no doctor record is linked.',
+    'تاريخ البداية أكبر من تاريخ النهاية':
+        'The start date is later than the end date.',
+    'لا توجد عناصر لعرضها': 'There are no items to display.',
+    'تفاصيل السجل': 'Log details',
+    'لا توجد سجلات مطابقة': 'No matching logs.',
+    'أدخل مبلغ الخصم أكبر من صفر':
+        'Enter a deduction amount greater than zero.',
+    'تم إنشاء الخصم بنجاح': 'The deduction was created successfully.',
+    'إنشاء خصم': 'Create deduction',
+    'تاريخ ووقت الخصم': 'Deduction date and time',
+    'مبلغ الخصم': 'Deduction amount',
+    'ملاحظات (سبب الخصم)': 'Notes (reason for the deduction)',
+    'المتبقي النظري بعد الخصم': 'Theoretical remaining balance after deduction',
+    'مسح البحث': 'Clear search',
+    'حدث خطأ': 'An error occurred',
+    'حاول مجدداً': 'Try again',
+    'هل تريد حذف السلفة؟': 'Do you want to delete the loan?',
+    'تم حذف السلفة بنجاح': 'The loan was deleted successfully.',
+    'سلفة جديدة': 'New loan',
+    'السلف الخاصة بالموظف': 'Employee loans',
+    'لا توجد سلف لهذا الموظف': 'There are no loans for this employee.',
+    'هذا الموظف محدد كطبيب لكن لا يوجد سجل طبيب مرتبط':
+        'This employee is marked as a doctor, but no doctor record is linked.',
+    'أدخل مبلغ سلفة أكبر من صفر': 'Enter a loan amount greater than zero.',
+    'تم إنشاء السلفة بنجاح': 'The loan was created successfully.',
+    'إنشاء سلفة': 'Create loan',
+    'تاريخ ووقت السلفة': 'Loan date and time',
+    'مبلغ السلفة': 'Loan amount',
+    'لا توجد فترة صالحة لهذا الشهر بعد':
+        'There is no valid period for this month yet.',
+    'الفترة غير صالحة لصرف الراتب':
+        'The period is not valid for salary payment.',
+    'تم صرف الراتب بنجاح': 'The salary was paid successfully.',
+    'تم حفظ التنبيه بنجاح': 'The alert was saved successfully.',
+    'إنشاء تنبيه': 'Create alert',
+    'اضبط تنبيهًا يظهر عند نزول مخزون الصنف إلى حد معيّن':
+        'Configure an alert that appears when item stock drops to a certain level.',
+    'اختر نوع الصنف ثم الصنف، وحدّد العتبة التي عندها يتم إشعارك.':
+        'Choose the item type, then the item, and set the threshold that will trigger the alert.',
+    'العدد الذي عنده يصدر التنبيه':
+        'Quantity threshold that triggers the alert',
+    'تعديل العتبة': 'Edit threshold',
+    'العدد الجديد': 'New quantity',
+    'حذف التنبيه': 'Delete alert',
+    'التنبيهات': 'Alerts',
+    'إضافة تنبيه': 'Add alert',
+    'المفعَّلة فقط': 'Enabled only',
+    'لا توجد تنبيهات مسجّلة.': 'There are no saved alerts.',
+    'لا نتائج مطابقة للمرشّحات.': 'No results match the filters.',
+    'تنبيه جديد': 'New alert',
+    'الأنواع': 'Types',
+    'مشتريات بلا صنف': 'Purchases without item',
+    'استهلاكات بلا صنف': 'Consumptions without item',
+    'سجلات بلا حساب': 'Records without account',
+    'اختر نوع الصنف': 'Choose the item type',
+    'تم حفظ الصنف بنجاح': 'The item was saved successfully.',
+    'مراجعة قبل الاستيراد': 'Review before import',
+    'إنشاء نوع صنف جديد': 'Create a new item type',
+    'اسم النوع': 'Type name',
+    'هذا النوع موجود بالفعل': 'This type already exists.',
+    'أضف صنفًا جديدًا أو استورد مجموعة أصناف من ملف Excel. يمكنك إنشاء نوع جديد أثناء الإدخال.':
+        'Add a new item or import a group of items from an Excel file. You can create a new type while entering the data.',
+    '— إنشاء نوع جديد —': '— Create a new type —',
+    'إضافة صنف': 'Add item',
+    'لا توجد أصناف بعد.': 'There are no items yet.',
+    'تعديل الصنف': 'Edit item',
+    'تم تحديث الصنف': 'The item was updated.',
+    'حذف الصنف': 'Delete item',
+    'كمية الاستهلاك': 'Consumption quantity',
+    'تم حذف الصنف': 'The item was deleted.',
+    'كل الأنواع': 'All types',
+    'لا أصناف منخفضة حاليًا.': 'There are no low-stock items at the moment.',
+    'لا نتائج مطابقة لمرشّحاتك.': 'No results match your filters.',
+    'شراء': 'Purchase',
+    'تم حفظ عملية الشراء بنجاح':
+        'The purchase was saved successfully.',
+    'سجلات': 'Records',
+    'سجلات المرضى المكررة': 'Duplicate patient records',
+    'السكن': 'Address',
+    'حالة الموظف': 'Employee status',
+    'غير طبيب': 'Non-doctor',
+    'غير الأطباء': 'Non-doctors',
+    'تفريغ': 'Clear',
+    'تم الصرف': 'Paid count',
+    'لم يُصرف': 'Unpaid count',
+    'قائمة الموظفين المحفوظة': 'Saved employee list',
+    'كشف العودات المحفوظ': 'Saved follow-up report',
+    'ملف المرضى المحفوظ': 'Saved patient file',
+    'طيّ': 'Collapse',
+    'توسيع': 'Expand',
+    'ابحث بالخدمة أو الطبيب': 'Search by service or doctor',
+    'ابحث بالاسم…': 'Search by name...',
+    'المجموع': 'Total',
+    'النتائج': 'Results',
+    'حرِجة': 'Critical',
+    'عدد الفئات': 'Categories count',
+    'إجمالي الأصناف': 'Total items',
+    'يتيمة': 'Orphans',
+    'منتهية': 'Out of stock',
     'الاختيار': 'selection',
   };
+
+  static const Map<String, (String, String)> _countUnitEnglishForms =
+      <String, (String, String)>{
+    'زيارة': ('visit', 'visits'),
+    'زيارات': ('visit', 'visits'),
+    'دواء': ('medication', 'medications'),
+    'أدوية': ('medication', 'medications'),
+    'خدمة': ('service', 'services'),
+    'خدمات': ('service', 'services'),
+    'سلفة': ('loan', 'loans'),
+    'سلف': ('loan', 'loans'),
+    'خصم': ('deduction', 'deductions'),
+    'خصومات': ('deduction', 'deductions'),
+    'نتيجة': ('result', 'results'),
+    'نتائج': ('result', 'results'),
+    'حالة': ('case', 'cases'),
+    'حالات': ('case', 'cases'),
+    'سجل': ('record', 'records'),
+    'سجلات': ('record', 'records'),
+    'تبويب': ('tab', 'tabs'),
+    'تبويبات': ('tab', 'tabs'),
+    'مريض': ('patient', 'patients'),
+    'مرضى': ('patient', 'patients'),
+    'موظف': ('employee', 'employees'),
+    'موظفين': ('employee', 'employees'),
+  };
+
+  static final List<_RawStringPatternRule> _patternRules =
+      <_RawStringPatternRule>[
+    _RawStringPatternRule(
+      pattern: RegExp(r'^(.+?)(:\s+)(.+)$'),
+      builder: _translateLabelValue,
+    ),
+    _RawStringPatternRule(
+      pattern: RegExp(r'^(.+?)\s+\(([^()]*)\)$'),
+      builder: _translateParenthetical,
+    ),
+    _RawStringPatternRule(
+      pattern: RegExp(
+        r'^([0-9]+(?:[.,/\-][0-9]+)*)(\s+)(زيارة|زيارات|دواء|أدوية|خدمة|خدمات|سلفة|سلف|خصم|خصومات|نتيجة|نتائج|حالة|حالات|سجل|سجلات|تبويب|تبويبات|مريض|مرضى|موظف|موظفين)$',
+      ),
+      builder: _translateCountUnit,
+    ),
+    _RawStringPatternRule(
+      pattern: RegExp(
+        r'^(.+?)\s+و\s+\+([0-9]+)\s+(خدمة|خدمات|زيارة|زيارات|دواء|أدوية|نتيجة|نتائج|سجل|سجلات)$',
+      ),
+      builder: _translateMoreItems,
+    ),
+    _RawStringPatternRule(
+      pattern: RegExp(r'^(.+?)\s+(دخل|صافي)$'),
+      builder: _translateTrailingLabel,
+    ),
+  ];
+
+  static final List<MapEntry<String, String>> _containedGlossary =
+      <MapEntry<String, String>>[
+    const MapEntry<String, String>('عدد المرضى: ', 'Patients: '),
+    const MapEntry<String, String>('عدد الحالات: ', 'Cases: '),
+    const MapEntry<String, String>('النتائج: ', 'Results: '),
+    const MapEntry<String, String>(
+      'تقرير مقارنة سنوية الدخل (',
+      'Annual income comparison report (',
+    ),
+    const MapEntry<String, String>('مقارنة سنوية (', 'Annual comparison ('),
+    const MapEntry<String, String>('تحميل المزيد (', 'Load more ('),
+    const MapEntry<String, String>(' زيارات', ' visits'),
+    const MapEntry<String, String>('اختر زيارة لـ ', 'Choose a visit for '),
+    const MapEntry<String, String>('وصفة ', 'Prescription '),
+    const MapEntry<String, String>('الطبيب: ', 'Doctor: '),
+    const MapEntry<String, String>('الرهن: ', 'Collateral: '),
+    const MapEntry<String, String>('المحدَّد: ', 'Selected: '),
+    const MapEntry<String, String>('تم التنزيل إلى: ', 'Downloaded to: '),
+    const MapEntry<String, String>(
+      'تم إنشاء ملف HTML في Downloads:\n',
+      'The HTML file was created in Downloads:\n',
+    ),
+    const MapEntry<String, String>('تم حفظ ', 'Saved '),
+    const MapEntry<String, String>('تم إنشاء ', 'Created '),
+    const MapEntry<String, String>('تم تحديث ', 'Updated '),
+    const MapEntry<String, String>('تم حذف ', 'Deleted '),
+    const MapEntry<String, String>('تم تعديل ', 'Updated '),
+    const MapEntry<String, String>('تم خصم ', 'Deducted '),
+    const MapEntry<String, String>(' من المخزون', ' from stock'),
+    const MapEntry<String, String>('خدمات: ', 'Services: '),
+    const MapEntry<String, String>('التشخيص: ', 'Diagnosis: '),
+    const MapEntry<String, String>('ملاحظات: ', 'Notes: '),
+    const MapEntry<String, String>('تاريخ ووقت العود: ', 'Follow-up date and time: '),
+    const MapEntry<String, String>('رقم الحساب: ', 'Account number: '),
+    const MapEntry<String, String>('الموظف: ', 'Employee: '),
+    const MapEntry<String, String>('الشهر/السنة: ', 'Month/Year: '),
+    const MapEntry<String, String>('التاريخ: ', 'Date: '),
+    const MapEntry<String, String>('هاتف: ', 'Phone: '),
+    const MapEntry<String, String>('خصم: ', 'Deduction: '),
+    const MapEntry<String, String>('سلفة: ', 'Loan: '),
+    const MapEntry<String, String>('الحد: ', 'Threshold: '),
+    const MapEntry<String, String>('المخزون الحالي: ', 'Current stock: '),
+    const MapEntry<String, String>('بعد الشراء: ', 'After purchase: '),
+    const MapEntry<String, String>('أدخل كمية أقل من ', 'Enter a quantity less than '),
+    const MapEntry<String, String>('مشتراة: ', 'Purchased: '),
+    const MapEntry<String, String>('تكلفة المشتريات: ', 'Purchase cost: '),
+    const MapEntry<String, String>('الرصيد النظري الحالي: ', 'Current theoretical balance: '),
+    const MapEntry<String, String>('مبلغ الخصم (', 'Deduction amount ('),
+    const MapEntry<String, String>(') يتجاوز المتاح (', ') exceeds the available amount ('),
+    const MapEntry<String, String>('لا يمكن أن تتجاوز السلفة الإجمالي (', 'The loan cannot exceed the total ('),
+    const MapEntry<String, String>('سيتم صرف راتب ', 'A salary payment will be recorded for '),
+    const MapEntry<String, String>(' لشهر ', ' for '),
+    const MapEntry<String, String>('بمبلغ صافي ', ' with a net amount of '),
+    const MapEntry<String, String>('الفترة الفعلية: ', 'Actual period: '),
+    const MapEntry<String, String>('⚠️ الصافي بالسالب! سيتم تسجيله كما هو.', '⚠️ The net amount is negative and will be recorded as is.'),
+    const MapEntry<String, String>('دفع راتب: ', 'Salary payment: '),
+    const MapEntry<String, String>('تم صرف راتب أحدث من هذه الفترة، اختر شهرًا أحدث.', 'A newer salary has already been paid for a later period. Choose a newer month.'),
+    const MapEntry<String, String>('تعذّر تحميل البيانات: ', 'Unable to load data: '),
+    const MapEntry<String, String>('فشل تحميل البيانات: ', 'Failed to load data: '),
+    const MapEntry<String, String>('تعذر تحميل السجل الطبي: ', 'Unable to load the medical history: '),
+    const MapEntry<String, String>('تعذر تحميل التقارير: ', 'Unable to load reports: '),
+    const MapEntry<String, String>('تم صرف الراتب لـ ', 'Salary was paid for '),
+    const MapEntry<String, String>('لم يتم صرف الراتب لـ ', 'Salary has not been paid for '),
+    const MapEntry<String, String>('تعذّر تحميل الموظفين: ', 'Unable to load employees: '),
+    const MapEntry<String, String>('تعذّر تحميل حسابات الموظفين: ', 'Unable to load employee accounts: '),
+    const MapEntry<String, String>('تعذّر تحميل بيانات الموظف: ', 'Unable to load employee data: '),
+    const MapEntry<String, String>('تعذّر احتساب مجاميع الطبيب للشهر: ', 'Unable to calculate the doctor totals for the month: '),
+    const MapEntry<String, String>('تعذّرت قراءة السلف: ', 'Unable to read loans: '),
+    const MapEntry<String, String>('تعذّر جلب الموظفين: ', 'Unable to fetch employees: '),
+    const MapEntry<String, String>('تعذر فتح التقرير: ', 'Unable to open the report: '),
+    const MapEntry<String, String>('تعذر فتح الملف: ', 'Unable to open the file: '),
+    const MapEntry<String, String>('تعذّر تصدير الوصفة: ', 'Unable to export the prescription: '),
+    const MapEntry<String, String>('تعذّرت الطباعة: ', 'Printing failed: '),
+    const MapEntry<String, String>('تعذّر حفظ الشعار: ', 'Unable to save the logo: '),
+    const MapEntry<String, String>('تعذّر حذف الشعار: ', 'Unable to delete the logo: '),
+    const MapEntry<String, String>('تعذّر الحفظ: ', 'Unable to save: '),
+    const MapEntry<String, String>('تعذّر تحميل الخطط: ', 'Unable to load plans: '),
+    const MapEntry<String, String>('فشل إنشاء الخصم: ', 'Failed to create the deduction: '),
+    const MapEntry<String, String>('فشل إنشاء السلفة: ', 'Failed to create the loan: '),
+    const MapEntry<String, String>('فشل حفظ العودة: ', 'Failed to save the follow-up: '),
+    const MapEntry<String, String>('فشل صرف الراتب: ', 'Failed to pay the salary: '),
+    const MapEntry<String, String>('حدث خطأ: ', 'An error occurred: '),
+    const MapEntry<String, String>('حدث خطأ أثناء التحديث: ', 'An error occurred while updating: '),
+    const MapEntry<String, String>('حدث خطأ أثناء الحفظ: ', 'An error occurred while saving: '),
+    const MapEntry<String, String>('حدث خطأ أثناء المشاركة: ', 'An error occurred while sharing: '),
+    const MapEntry<String, String>('حدث خطأ أثناء التنزيل: ', 'An error occurred while downloading: '),
+    const MapEntry<String, String>('خطأ في جلب السجلات: ', 'Error loading logs: '),
+    const MapEntry<String, String>('خطأ أثناء المشاركة: ', 'Error while sharing: '),
+    const MapEntry<String, String>('خطأ أثناء التنزيل: ', 'Error while downloading: '),
+    const MapEntry<String, String>('تعذر الحساب: ', 'Calculation failed: '),
+  ];
 
   static final List<MapEntry<String, String>> _orderedGlossary =
       <MapEntry<String, String>>[
     const MapEntry<String, String>('لوحة تحكم المشرف العام', 'Super Admin Dashboard'),
     const MapEntry<String, String>('لوحة الإحصاءات', 'Dashboard'),
+    const MapEntry<String, String>('مستحقات المرضى', 'Patient balances'),
+    const MapEntry<String, String>('من تاريخ', 'From date'),
+    const MapEntry<String, String>('إلى تاريخ', 'To date'),
+    const MapEntry<String, String>('اختر تاريخ العودة', 'Choose follow-up date'),
+    const MapEntry<String, String>('اختر وقت العودة', 'Choose follow-up time'),
     const MapEntry<String, String>('د/ ', 'Dr. '),
     const MapEntry<String, String>('د/', 'Dr. '),
     const MapEntry<String, String>('تم إرسال طلب إضافة موظف: ', 'Additional employee request submitted: '),
@@ -790,6 +1479,7 @@ abstract final class RawStringLocalizer {
     const MapEntry<String, String>(' وحدات فقط!', ' units remain in stock!'),
     const MapEntry<String, String>(' أوشك على النفاد', ' is running low'),
     const MapEntry<String, String>('الفترة: ', 'Period: '),
+    const MapEntry<String, String>(' مقابل ', ' vs '),
     const MapEntry<String, String>('حتى تاريخ: ', 'As of: '),
     const MapEntry<String, String>('حتى ', 'Until '),
     const MapEntry<String, String>('الحد الأساسي: حتى ', 'Base limit: up to '),

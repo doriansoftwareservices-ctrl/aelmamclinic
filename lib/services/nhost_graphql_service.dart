@@ -1,10 +1,10 @@
-import 'dart:io';
-
 import 'package:flutter/foundation.dart';
 import 'package:gql/ast.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
-import 'package:http/io_client.dart';
 import 'package:nhost_dart/nhost_dart.dart';
+import 'package:aelmamclinic/l10n/raw_string_localizer.dart';
+import 'package:aelmamclinic/utils/network_error_classifier.dart';
+import 'package:aelmamclinic/services/nhost_dns_http_client.dart';
 
 import '../core/auth_role_state.dart';
 import '../core/nhost_config.dart';
@@ -17,13 +17,9 @@ class NhostGraphqlService {
   static ValueNotifier<GraphQLClient>? _notifier;
 
   static HttpLink _buildHttpLink() {
-    final httpClient = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 30)
-      ..idleTimeout = const Duration(seconds: 30)
-      ..maxConnectionsPerHost = 4;
     return HttpLink(
       NhostConfig.graphqlUrl,
-      httpClient: IOClient(httpClient),
+      httpClient: NhostDnsHttpClient.createClient(),
     );
   }
 
@@ -115,20 +111,21 @@ class NhostGraphqlService {
 
   static bool _shouldRetry(Object error) {
     final msg = error.toString().toLowerCase();
-    return msg.contains('responseformatexception') ||
-        msg.contains('formatexception') ||
-        msg.contains('unexpected character') ||
-        msg.contains('document is empty') ||
-        msg.contains('connection closed before full header was received') ||
-        msg.contains('clientexception') ||
-        msg.contains('semaphore timeout') ||
-        msg.contains('semaphore') ||
-        msg.contains('502') ||
-        msg.contains('503') ||
-        msg.contains('bad gateway') ||
-        msg.contains('service temporarily unavailable') ||
-        msg.contains('eof') ||
+    return NetworkErrorClassifier.isTransportLikeMessage(msg) ||
+        NetworkErrorClassifier.isServerUnavailableLikeMessage(msg) ||
         msg.contains('context deadline exceeded');
+  }
+
+  static String _retryFailureMessage(Object error) {
+    final raw = error.toString();
+    if (NetworkErrorClassifier.isServerUnavailableLikeMessage(raw)) {
+      return RawStringLocalizer.translateWithCurrentLocale(
+        'تعذر الوصول إلى الخادم حاليًا. حاول مرة أخرى بعد قليل.',
+      );
+    }
+    return RawStringLocalizer.translateWithCurrentLocale(
+      'يبدو ان الشبكة غير مستقرة لديك',
+    );
   }
 
   static Stream<Response> _retryRequest({
@@ -139,7 +136,9 @@ class NhostGraphqlService {
     var attempt = 0;
     while (true) {
       try {
-        yield* forward(request);
+        await for (final resp in forward(request)) {
+          yield resp;
+        }
         return;
       } catch (e) {
         attempt += 1;
@@ -148,7 +147,7 @@ class NhostGraphqlService {
             response: const <String, dynamic>{},
             errors: [
               GraphQLError(
-                message: 'يبدو ان الشبكة غير مستقرة لديك',
+                message: _retryFailureMessage(e),
               ),
             ],
           );

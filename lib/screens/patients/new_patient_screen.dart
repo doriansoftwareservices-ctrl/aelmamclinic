@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:mime/mime.dart';
-import 'dart:ui' as ui show TextDirection;
 
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/validators.dart';
@@ -24,6 +23,8 @@ import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/providers/repository_provider.dart';
 import 'list_patients_screen.dart';
 import 'duplicate_patients_screen.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class NewPatientScreen extends StatefulWidget {
   final String? initialName;
@@ -76,6 +77,14 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
   final List<PlatformFile> _pickedFiles = [];
 
   final _formKey = GlobalKey<FormState>();
+
+  String _doctorDisplayName(String name) {
+    final normalized = name
+        .trim()
+        .replaceFirst(RegExp(r'^(د/\s*|Dr\.\s*)', caseSensitive: false), '');
+    if (normalized.isEmpty) return '';
+    return context.isRtl ? 'د/$normalized' : 'Dr. $normalized';
+  }
   bool _saving = false;
   bool _doctorRestricted = false;
   @override
@@ -146,7 +155,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
     if (!mounted) return;
     if (doctor != null) {
       setState(() {
-        final selectedName = 'د/${doctor.name}';
+        final selectedName = _doctorDisplayName(doctor.name);
         _linkedDoctor = doctor;
         _doctorRestricted = true;
         _selectedDoctorId = doctor.id;
@@ -167,11 +176,11 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
     final res = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (ctx) => Directionality(
-        textDirection: ui.TextDirection.rtl,
+        textDirection: Directionality.of(context),
         child: AlertDialog(
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('استخدام من المستودع',
+          title: const LocalizedText('استخدام من المستودع',
               style: TextStyle(fontWeight: FontWeight.w800)),
           content: StatefulBuilder(
             builder: (ctx2, setStateDlg) => SingleChildScrollView(
@@ -181,7 +190,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
                   NeuCard(
                     padding: const EdgeInsets.all(10),
                     child: DropdownButtonFormField<int>(
-                      decoration: const InputDecoration(labelText: 'نوع الصنف'),
+                      decoration: InputDecoration(labelText: context.trRaw('نوع الصنف')),
                       items: _invTypes
                           .map((t) => DropdownMenuItem(
                                 value: t['id'] as int,
@@ -206,7 +215,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
                       padding: const EdgeInsets.all(10),
                       child: DropdownButtonFormField<int>(
                         decoration:
-                            const InputDecoration(labelText: 'اسم الصنف'),
+                            InputDecoration(labelText: context.trRaw('اسم الصنف')),
                         items: dlgItems
                             .map((i) => DropdownMenuItem(
                                   value: i['id'] as int,
@@ -228,7 +237,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
                     NeuField(
                       controller: qtyCtrl,
                       keyboardType: TextInputType.number,
-                      labelText: 'الكمية المستخدمة',
+                      labelText: context.trRaw('الكمية المستخدمة'),
                     ),
                 ],
               ),
@@ -259,8 +268,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
                     if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text(
-                              'الكمية المطلوبة ($q) تتجاوز المتاح في المخزون ($stock)'),
+                          content: LocalizedText('الكمية المطلوبة ($q) تتجاوز المتاح في المخزون ($stock)'),
                           backgroundColor: Theme.of(context).colorScheme.error,
                         ),
                       );
@@ -298,8 +306,8 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
       initialDate: _registerDate,
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
-      locale: const Locale('ar', ''),
-      helpText: 'اختر تاريخ التسجيل',
+      locale: Localizations.localeOf(context),
+      helpText: context.trRaw('اختر تاريخ التسجيل'),
     );
     if (d != null) {
       final t =
@@ -366,7 +374,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
     final cost = _parseDouble(_manualCostCtrl.text);
     if (name.isEmpty || cost <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('أدخل اسم الخدمة وتكلفتها (> 0)')),
+        const SnackBar(content: LocalizedText('أدخل اسم الخدمة وتكلفتها (> 0)')),
       );
       return;
     }
@@ -427,7 +435,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
       final linkedDoctor = linked;
       final linkedDoctorId = linkedDoctor.id;
       if (linkedDoctorId != null) {
-        final selectedName = 'د/${linkedDoctor.name}';
+        final selectedName = _doctorDisplayName(linkedDoctor.name);
         setState(() {
           if (_selectedDoctorId == null) {
             _selectedDoctorId = linkedDoctorId;
@@ -452,7 +460,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
   Future<void> _selectDoctorForRadLab() async {
     if (_doctorRestricted && _linkedDoctor != null) {
       setState(() {
-        final selectedName = 'د/${_linkedDoctor!.name}';
+        final selectedName = _doctorDisplayName(_linkedDoctor!.name);
         _selectedDoctorId = _linkedDoctor!.id;
         _selectedDoctorName = selectedName;
         _doctorCtrl.text = selectedName;
@@ -465,11 +473,11 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
     final chosen = await showDialog<Doctor>(
       context: context,
       builder: (ctx) => Directionality(
-        textDirection: ui.TextDirection.rtl,
+        textDirection: Directionality.of(context),
         child: AlertDialog(
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('اختر الطبيب',
+          title: const LocalizedText('اختر الطبيب',
               style: TextStyle(fontWeight: FontWeight.w800)),
           content: SizedBox(
             width: double.maxFinite,
@@ -477,7 +485,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
             child: Column(
               children: [
                 NeuField(
-                  hintText: 'بحث عن الطبيب…',
+                  hintText: context.trRaw('بحث عن الطبيب…'),
                   prefix: const Icon(Icons.search),
                   onChanged: (v) {
                     filtered = source
@@ -490,7 +498,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
                 const SizedBox(height: 10),
                 Expanded(
                   child: filtered.isEmpty
-                      ? const Center(child: Text('لا يوجد نتائج'))
+                      ? const Center(child: LocalizedText('لا يوجد نتائج'))
                       : ListView.builder(
                           itemCount: filtered.length,
                           itemBuilder: (c, i) {
@@ -502,12 +510,18 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
                                   horizontal: 10, vertical: 8),
                               child: ListTile(
                                 contentPadding: EdgeInsets.zero,
-                                title: Text('د/${d.name}',
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.w700)),
+                                title: Text(
+                                  _doctorDisplayName(d.name),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
                                 subtitle: Text(d.specialization),
-                                trailing:
-                                    const Icon(Icons.chevron_left_rounded),
+                                trailing: Icon(
+                                  context.isRtl
+                                      ? Icons.chevron_left_rounded
+                                      : Icons.chevron_right_rounded,
+                                ),
                                 onTap: () => Navigator.pop(ctx, d),
                               ),
                             );
@@ -529,7 +543,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
 
     if (chosen != null) {
       setState(() {
-        final selectedName = 'د/${chosen.name}';
+        final selectedName = _doctorDisplayName(chosen.name);
         _selectedDoctorId = chosen.id;
         _selectedDoctorName = selectedName;
         _doctorCtrl.text = selectedName;
@@ -545,7 +559,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
   Future<void> _selectDoctorGeneralService() async {
     if (_selectedDoctorId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('اختر الطبيب أولاً')),
+        const SnackBar(content: LocalizedText('اختر الطبيب أولاً')),
       );
       return;
     }
@@ -553,7 +567,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
         await DBService.instance.getDoctorGeneralServices(_selectedDoctorId!);
     if (svcs.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('لا توجد خدمات عامة لهذا الطبيب')),
+        const SnackBar(content: LocalizedText('لا توجد خدمات عامة لهذا الطبيب')),
       );
       return;
     }
@@ -564,11 +578,11 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
     final chosen = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (ctx) => Directionality(
-        textDirection: ui.TextDirection.rtl,
+        textDirection: Directionality.of(context),
         child: AlertDialog(
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('اختر خدمة الطبيب',
+          title: const LocalizedText('اختر خدمة الطبيب',
               style: TextStyle(fontWeight: FontWeight.w800)),
           content: SizedBox(
             width: double.maxFinite,
@@ -578,7 +592,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
               children: [
                 NeuField(
                   controller: searchCtrl,
-                  hintText: 'بحث عن الخدمة...',
+                  hintText: context.trRaw('بحث عن الخدمة...'),
                   prefix: const Icon(Icons.search),
                   onChanged: (v) {
                     filteredServices = svcs
@@ -592,7 +606,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
                 const SizedBox(height: 10),
                 Expanded(
                   child: filteredServices.isEmpty
-                      ? const Center(child: Text('لا توجد نتائج'))
+                      ? const Center(child: LocalizedText('لا توجد نتائج'))
                       : ListView.builder(
                           itemCount: filteredServices.length,
                           itemBuilder: (c, i) {
@@ -607,10 +621,12 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
                                 title: Text(s['name'] as String,
                                     style: const TextStyle(
                                         fontWeight: FontWeight.w700)),
-                                subtitle: Text(
-                                    'السعر: ${(s['cost'] as num).toStringAsFixed(2)}'),
-                                trailing:
-                                    const Icon(Icons.chevron_left_rounded),
+                                subtitle: LocalizedText('السعر: ${(s['cost'] as num).toStringAsFixed(2)}'),
+                                trailing: Icon(
+                                  context.isRtl
+                                      ? Icons.chevron_left_rounded
+                                      : Icons.chevron_right_rounded,
+                                ),
                                 onTap: () => Navigator.pop(ctx, s),
                               ),
                             );
@@ -685,7 +701,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
         columns: const ['name'], where: 'id = ?', whereArgs: [id], limit: 1);
     if (rows.isEmpty) return null;
     final name = (rows.first['name'] ?? '').toString().trim();
-    return name.isEmpty ? null : 'د/$name';
+    return name.isEmpty ? null : _doctorDisplayName(name);
   }
 
   /*──────────────────── تحذير مكررات ────────────────────*/
@@ -697,14 +713,13 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
     final proceed = await showDialog<bool>(
       context: context,
       builder: (ctx) => Directionality(
-        textDirection: ui.TextDirection.rtl,
+        textDirection: Directionality.of(context),
         child: AlertDialog(
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('تنبيه تكرار',
+          title: const LocalizedText('تنبيه تكرار',
               style: TextStyle(fontWeight: FontWeight.w800)),
-          content: Text(
-              'هناك سجلات أخرى برقم الهاتف نفسه (${dups.length}). هل ترغب بعرضها قبل المتابعة؟'),
+          content: LocalizedText('هناك سجلات أخرى برقم الهاتف نفسه (${dups.length}). هل ترغب بعرضها قبل المتابعة؟'),
           actions: [
             TPrimaryButton(
               icon: Icons.check_circle_outline,
@@ -741,7 +756,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
     if (!_formKey.currentState!.validate()) return;
     if (_selectedServiceType == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('اختر نوع الخدمة')),
+        const SnackBar(content: LocalizedText('اختر نوع الخدمة')),
       );
       return;
     }
@@ -767,13 +782,13 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
     }
     if (needsDoctor && _selectedDoctorId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('يجب اختيار الطبيب')),
+        const SnackBar(content: LocalizedText('يجب اختيار الطبيب')),
       );
       return;
     }
     if (_selectedServices.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('اختر خدمة واحدة على الأقل')),
+        const SnackBar(content: LocalizedText('اختر خدمة واحدة على الأقل')),
       );
       return;
     }
@@ -1026,7 +1041,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
       // 5) Reload alerts and notify
       if (mounted) context.read<RepositoryProvider>().loadAlerts();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم حفظ بيانات المريض والخدمات بنجاح')),
+        const SnackBar(content: LocalizedText('تم حفظ بيانات المريض والخدمات بنجاح')),
       );
 
       // 6) Navigate back to list
@@ -1080,7 +1095,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
       ),
       body: SafeArea(
         child: Directionality(
-          textDirection: ui.TextDirection.rtl,
+          textDirection: Directionality.of(context),
           child: Stack(
             children: [
               // المحتوى
@@ -1114,7 +1129,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
                           children: [
                             NeuField(
                               controller: _nameCtrl,
-                              labelText: 'اسم المريض',
+                              labelText: context.trRaw('اسم المريض'),
                               validator: (v) => Validators.required(v,
                                   fieldName: 'اسم المريض'),
                             ),
@@ -1124,7 +1139,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
                                 Expanded(
                                   child: NeuField(
                                     controller: _ageCtrl,
-                                    labelText: 'العمر',
+                                    labelText: context.trRaw('العمر'),
                                     keyboardType: TextInputType.number,
                                   ),
                                 ),
@@ -1132,7 +1147,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
                                 Expanded(
                                   child: NeuField(
                                     controller: _phoneCtrl,
-                                    labelText: 'رقم الهاتف',
+                                    labelText: context.trRaw('رقم الهاتف'),
                                     keyboardType: TextInputType.phone,
                                     validator: (v) => Validators.phone(v),
                                   ),
@@ -1210,8 +1225,8 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
                             horizontal: 12, vertical: 10),
                         child: DropdownButtonFormField<String>(
                           initialValue: _selectedServiceType,
-                          decoration: const InputDecoration(
-                            labelText: 'اختر نوع الخدمة',
+                          decoration: InputDecoration(
+                            labelText: context.trRaw('اختر نوع الخدمة'),
                             border: InputBorder.none,
                             contentPadding: EdgeInsets.zero,
                           ),
@@ -1221,7 +1236,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
                               enabled: false,
                               child: Row(
                                 children: [
-                                  Text('الأشعة'),
+                                  LocalizedText('الأشعة'),
                                   SizedBox(width: 8),
                                   _UnderDevBadge(),
                                 ],
@@ -1232,18 +1247,18 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
                               enabled: false,
                               child: Row(
                                 children: [
-                                  Text('المختبر'),
+                                  LocalizedText('المختبر'),
                                   SizedBox(width: 8),
                                   _UnderDevBadge(),
                                 ],
                               ),
                             ),
                             DropdownMenuItem(
-                                value: 'طبيب', child: Text('طبيب')),
+                                value: 'طبيب', child: LocalizedText('طبيب')),
                           ],
                           onChanged: _onServiceTypeChanged,
                           validator: (v) =>
-                              v == null ? 'اختر نوع الخدمة' : null,
+                              v == null ? context.trRaw('اختر نوع الخدمة') : null,
                         ),
                       ),
 
@@ -1259,8 +1274,12 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
                           child: AbsorbPointer(
                             child: NeuField(
                               controller: _doctorCtrl,
-                              labelText: 'الطبيب المختص',
-                              suffix: const Icon(Icons.chevron_left_rounded),
+                              labelText: context.trRaw('الطبيب المختص'),
+                              suffix: Icon(
+                                context.isRtl
+                                    ? Icons.chevron_left_rounded
+                                    : Icons.chevron_right_rounded,
+                              ),
                             ),
                           ),
                         ),
@@ -1275,8 +1294,12 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
                           child: AbsorbPointer(
                             child: NeuField(
                               controller: _doctorCtrl,
-                              labelText: 'عيادة الطبيب',
-                              suffix: const Icon(Icons.chevron_left_rounded),
+                              labelText: context.trRaw('عيادة الطبيب'),
+                              suffix: Icon(
+                                context.isRtl
+                                    ? Icons.chevron_left_rounded
+                                    : Icons.chevron_right_rounded,
+                              ),
                             ),
                           ),
                         ),
@@ -1286,16 +1309,20 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 12, vertical: 12),
                           child: Row(
-                            children: const [
-                              Icon(Icons.add_circle_outline,
+                            children: [
+                              const Icon(Icons.add_circle_outline,
                                   color: kPrimaryColor),
-                              SizedBox(width: 8),
-                              Expanded(
-                                child: Text('إضافة خدمة من عيادة الطبيب',
+                              const SizedBox(width: 8),
+                              const Expanded(
+                                child: LocalizedText('إضافة خدمة من عيادة الطبيب',
                                     style:
                                         TextStyle(fontWeight: FontWeight.w700)),
                               ),
-                              Icon(Icons.chevron_left_rounded),
+                              Icon(
+                                context.isRtl
+                                    ? Icons.chevron_left_rounded
+                                    : Icons.chevron_right_rounded,
+                              ),
                             ],
                           ),
                         ),
@@ -1306,14 +1333,14 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
                               flex: 2,
                               child: NeuField(
                                 controller: _diagnosisCtrl,
-                                labelText: 'خدمة/حالة نصيّة',
+                                labelText: context.trRaw('خدمة/حالة نصيّة'),
                               ),
                             ),
                             const SizedBox(width: 10),
                             Expanded(
                               child: NeuField(
                                 controller: _manualCostCtrl,
-                                labelText: 'تكلفة اليدوية',
+                                labelText: context.trRaw('تكلفة اليدوية'),
                                 keyboardType: TextInputType.number,
                               ),
                             ),
@@ -1375,7 +1402,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
                           children: [
                             NeuField(
                               controller: _totalCtrl,
-                              labelText: 'المجموع الكلي للخدمات',
+                              labelText: context.trRaw('المجموع الكلي للخدمات'),
                               enabled: false,
                             ),
                             const SizedBox(height: 10),
@@ -1384,7 +1411,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
                                 Expanded(
                                   child: NeuField(
                                     controller: _paidCtrl,
-                                    labelText: 'المبلغ المقدم',
+                                    labelText: context.trRaw('المبلغ المقدم'),
                                     keyboardType: TextInputType.number,
                                     onChanged: _onPaidChanged,
                                   ),
@@ -1393,7 +1420,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
                                 Expanded(
                                   child: NeuField(
                                     controller: _remainingCtrl,
-                                    labelText: 'المتبقي (يُحسب تلقائيًا)',
+                                    labelText: context.trRaw('المتبقي (يُحسب تلقائيًا)'),
                                     enabled: false,
                                   ),
                                 ),
@@ -1418,7 +1445,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
                       TSectionHeader('الرهن (اختياري)'),
                       NeuField(
                         controller: _collateralCtrl,
-                        labelText: 'مثال: سيارة، ذهب، سند...',
+                        labelText: context.trRaw('مثال: سيارة، ذهب، سند...'),
                         maxLines: 2,
                       ),
 
@@ -1428,7 +1455,7 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
                       TSectionHeader('ملاحظات'),
                       NeuField(
                         controller: _notesCtrl,
-                        labelText: 'ملاحظات',
+                        labelText: context.trRaw('ملاحظات'),
                         maxLines: 3,
                       ),
                     ],
@@ -1452,11 +1479,11 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text('الإجمالي: ${_totalCtrl.text}',
+                              LocalizedText('الإجمالي: ${_totalCtrl.text}',
                                   style: const TextStyle(
                                       fontWeight: FontWeight.w800)),
                               const SizedBox(height: 4),
-                              Text('المتبقي: ${_remainingCtrl.text}'),
+                              LocalizedText('المتبقي: ${_remainingCtrl.text}'),
                             ],
                           ),
                         ),
@@ -1495,11 +1522,11 @@ class _NewPatientScreenState extends State<NewPatientScreen> {
     if (_availableServices.isEmpty) {
       return NeuCard(
         padding: const EdgeInsets.all(12),
-        child: const Text('لا توجد خدمات محفوظة لهذا النوع'),
+        child: const LocalizedText('لا توجد خدمات محفوظة لهذا النوع'),
       );
     }
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Wrap(
         alignment: WrapAlignment.start,
         spacing: 8,
@@ -1576,7 +1603,7 @@ class _DateRow extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         Expanded(
-          child: Text(
+          child: LocalizedText(
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -1584,7 +1611,7 @@ class _DateRow extends StatelessWidget {
           ),
         ),
         if (action != null)
-          Text(action!,
+          LocalizedText(action!,
               style: TextStyle(
                 color: scheme.onSurface.withValues(alpha: .6),
                 fontWeight: FontWeight.w700,
@@ -1632,8 +1659,7 @@ class _UnderDevBadge extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: scheme.error.withValues(alpha: .35)),
       ),
-      child: Text(
-        'تحت التطوير',
+      child: LocalizedText('تحت التطوير',
         style: TextStyle(
           color: scheme.error,
           fontWeight: FontWeight.w700,

@@ -1,5 +1,4 @@
 // lib/screens/payments/payments_home_screen.dart
-import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 
 import 'package:aelmamclinic/screens/consumption/list_consumption_screen.dart';
@@ -10,6 +9,7 @@ import 'package:aelmamclinic/screens/employees/finance/employees_finance_home_sc
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/widgets/feature_hub.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
 
 class PaymentsHomeScreen extends StatelessWidget {
   const PaymentsHomeScreen({super.key});
@@ -42,7 +42,7 @@ class PaymentsHomeScreen extends StatelessWidget {
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 child: ListTile(
                   leading: const Icon(Icons.add_circle_outline),
-                  title: const Text('إضافة مبلغ المصروفات / الاستهلاكات',
+                  title: const LocalizedText('إضافة مبلغ المصروفات / الاستهلاكات',
                       style: TextStyle(fontWeight: FontWeight.w700)),
                   trailing: const Icon(Icons.chevron_left_rounded),
                   onTap: () {
@@ -60,7 +60,7 @@ class PaymentsHomeScreen extends StatelessWidget {
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 child: ListTile(
                   leading: const Icon(Icons.list_alt_outlined),
-                  title: const Text('استعراض المصروفات / الاستهلاكات',
+                  title: const LocalizedText('استعراض المصروفات / الاستهلاكات',
                       style: TextStyle(fontWeight: FontWeight.w700)),
                   trailing: const Icon(Icons.chevron_left_rounded),
                   onTap: () {
@@ -83,7 +83,7 @@ class PaymentsHomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,

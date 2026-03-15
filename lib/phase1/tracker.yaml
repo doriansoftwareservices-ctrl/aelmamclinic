@@ -1,0 +1,58 @@
+phase: 1
+name: baseline_and_governance
+status: completed
+started_at: "2026-03-09"
+completed_at: "2026-03-09"
+scope:
+  - lib
+  - functions
+  - nhost
+deliverables:
+  - id: P1-D1
+    name: baseline_command_bundle
+    status: completed
+    paths:
+      - lib/phase1/run_phase1_baseline.sh
+      - lib/phase1/check_lib_baseline.sh
+      - functions/phase1/check_functions_baseline.sh
+      - nhost/phase1/check_nhost_baseline.sh
+  - id: P1-D2
+    name: issue_traceability_matrix
+    status: completed
+    paths:
+      - lib/phase1/issue_traceability.yaml
+  - id: P1-D3
+    name: critical_path_freeze_manifest
+    status: completed
+    paths:
+      - lib/phase1/critical_path_files.txt
+  - id: P1-D4
+    name: baseline_execution_report
+    status: completed
+    paths:
+      - lib/phase1/phase1_baseline_latest.txt
+  - id: P1-D5
+    name: toolchain_gate_assessment
+    status: completed
+    notes:
+      - flutter/dart linux wrappers are operational via scripts/flutterw and scripts/dartw.
+      - unified verification report generated at docs/phase1/reports/20260309_113223.
+gates:
+  - id: G1
+    name: syntax_scan_functions
+    status: passed
+  - id: G2
+    name: nhost_metadata_risk_scan
+    status: passed
+  - id: G3
+    name: lib_hotspot_metrics_scan
+    status: passed
+  - id: G4
+    name: flutter_analyze_and_tests
+    status: local_pass_with_deferred_warnings
+    reason: local WSL sandbox still blocks full analyze/test/build completion; CI strict gate is the canonical enforcement path
+next_phase_readiness:
+  phase_2_allowed: true
+  notes:
+    - security hotfix scope has been applied and verified across lib/functions/nhost baselines.
+    - CI strict workflow remains required for canonical analyze/test/build enforcement outside the current sandbox.

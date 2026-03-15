@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:aelmamclinic/models/chat_models.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
 
 /// دالة مساعدة لفتح الـ BottomSheet بسهولة — متوافقة مع ChatRoomScreen.
 Future<void> showMessageActionsSheet(
@@ -105,7 +106,7 @@ class MessageActionsSheet extends StatelessWidget {
     final theme = Theme.of(context);
 
     return Directionality(
-      textDirection: TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: SafeArea(
         child: Padding(
           padding: const EdgeInsets.only(bottom: 12),
@@ -127,7 +128,7 @@ class MessageActionsSheet extends StatelessWidget {
               if (!message.deleted)
                 ListTile(
                   leading: const Icon(Icons.reply),
-                  title: const Text('الردّ على الرسالة'),
+                  title: const LocalizedText('الردّ على الرسالة'),
                   onTap: () {
                     Navigator.of(context).maybePop();
                     onReply?.call(message);
@@ -138,7 +139,7 @@ class MessageActionsSheet extends StatelessWidget {
               if (_canMention)
                 ListTile(
                   leading: const Icon(Icons.alternate_email_rounded),
-                  title: const Text('ذكر المرسل'),
+                  title: const LocalizedText('ذكر المرسل'),
                   onTap: () {
                     Navigator.of(context).maybePop();
                     onMention?.call(message);
@@ -149,7 +150,7 @@ class MessageActionsSheet extends StatelessWidget {
               if (_hasCopyableText)
                 ListTile(
                   leading: const Icon(Icons.copy),
-                  title: const Text('نسخ النص'),
+                  title: const LocalizedText('نسخ النص'),
                   onTap: () async {
                     Navigator.of(context).maybePop();
                     if (onCopy != null) {
@@ -160,7 +161,7 @@ class MessageActionsSheet extends StatelessWidget {
                       );
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('تم نسخ النص')),
+                          const SnackBar(content: LocalizedText('تم نسخ النص')),
                         );
                       }
                     }
@@ -171,7 +172,7 @@ class MessageActionsSheet extends StatelessWidget {
               if (_canEdit)
                 ListTile(
                   leading: const Icon(Icons.edit),
-                  title: const Text('تعديل الرسالة'),
+                  title: const LocalizedText('تعديل الرسالة'),
                   onTap: () async {
                     Navigator.of(context).maybePop();
                     await onEdit?.call(message);
@@ -182,8 +183,7 @@ class MessageActionsSheet extends StatelessWidget {
               if (_canDelete)
                 ListTile(
                   leading: Icon(Icons.delete, color: theme.colorScheme.error),
-                  title: Text(
-                    'حذف للجميع',
+                  title: LocalizedText('حذف للجميع',
                     style: TextStyle(color: theme.colorScheme.error),
                   ),
                   onTap: () async {

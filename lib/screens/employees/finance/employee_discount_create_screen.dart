@@ -1,7 +1,7 @@
 // lib/screens/employees/finance/employee_discount_create_screen.dart
-import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:aelmamclinic/utils/app_formatters.dart';
 
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
@@ -10,6 +10,8 @@ import 'package:aelmamclinic/core/formatters.dart';
 import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/models/doctor.dart';
 import 'finance_access_guard.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class EmployeeDiscountCreateScreen extends StatefulWidget {
   final int empId;
@@ -51,7 +53,7 @@ class _EmployeeDiscountCreateScreenState
   double _leftover = 0.0;
 
   // تنسيق
-  final _dateOnly = DateFormat('yyyy-MM-dd');
+  DateFormat get _dateOnly => AppFormatters.dateFormat('yyyy-MM-dd');
 
   @override
   void initState() {
@@ -79,7 +81,7 @@ class _EmployeeDiscountCreateScreenState
 
       if (emp == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('لم يتم العثور على الموظف')),
+          const SnackBar(content: LocalizedText('لم يتم العثور على الموظف')),
         );
         Navigator.pop(context);
         return;
@@ -101,7 +103,7 @@ class _EmployeeDiscountCreateScreenState
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذّر تحميل بيانات الموظف: $e')),
+        SnackBar(content: LocalizedText('تعذّر تحميل بيانات الموظف: $e')),
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -206,7 +208,7 @@ class _EmployeeDiscountCreateScreenState
       if (!mounted) return;
       setState(() => _ratioSum = 0.0);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذّر احتساب مجاميع الطبيب للشهر: $e')),
+        SnackBar(content: LocalizedText('تعذّر احتساب مجاميع الطبيب للشهر: $e')),
       );
     } finally {
       _recomputeLeftover();
@@ -292,7 +294,7 @@ class _EmployeeDiscountCreateScreenState
 
     if (discount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('أدخل مبلغ الخصم أكبر من صفر')),
+        const SnackBar(content: LocalizedText('أدخل مبلغ الخصم أكبر من صفر')),
       );
       return;
     }
@@ -300,8 +302,7 @@ class _EmployeeDiscountCreateScreenState
       // منع خصم يتجاوز المتاح النظري (بهوامش عائمة طفيفة)
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            'مبلغ الخصم (${discount.toStringAsFixed(2)}) يتجاوز المتاح (${maxAllowed.toStringAsFixed(2)}).',
+          content: LocalizedText('مبلغ الخصم (${discount.toStringAsFixed(2)}) يتجاوز المتاح (${maxAllowed.toStringAsFixed(2)}).',
           ),
         ),
       );
@@ -344,13 +345,13 @@ class _EmployeeDiscountCreateScreenState
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم إنشاء الخصم بنجاح')),
+        const SnackBar(content: LocalizedText('تم إنشاء الخصم بنجاح')),
       );
       Navigator.pop(context);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('فشل إنشاء الخصم: $e')),
+        SnackBar(content: LocalizedText('فشل إنشاء الخصم: $e')),
       );
     }
   }
@@ -366,7 +367,7 @@ class _EmployeeDiscountCreateScreenState
 
     return FinanceAccessGuard(
       child: Directionality(
-        textDirection: ui.TextDirection.rtl,
+        textDirection: Directionality.of(context),
         child: Scaffold(
           appBar: AppBar(
             centerTitle: true,
@@ -375,7 +376,7 @@ class _EmployeeDiscountCreateScreenState
               children: const [
                 Icon(Icons.receipt_long_rounded),
                 SizedBox(width: 8),
-                Text('إنشاء خصم'),
+                LocalizedText('إنشاء خصم'),
               ],
             ),
           ),
@@ -482,8 +483,7 @@ class _EmployeeDiscountCreateScreenState
                               child: const Icon(Icons.calendar_month_rounded,
                                   color: kPrimaryColor),
                             ),
-                            title: const Text(
-                              'تاريخ ووقت الخصم',
+                            title: const LocalizedText('تاريخ ووقت الخصم',
                               style: TextStyle(fontWeight: FontWeight.w800),
                             ),
                             subtitle: Text(
@@ -501,7 +501,7 @@ class _EmployeeDiscountCreateScreenState
                         // مبلغ الخصم (مع تحقق)
                         NeuField(
                           controller: _amountCtrl,
-                          hintText: 'مبلغ الخصم',
+                          hintText: context.trRaw('مبلغ الخصم'),
                           keyboardType: const TextInputType.numberWithOptions(
                               decimal: true),
                           prefix: const Icon(Icons.attach_money_rounded),
@@ -519,7 +519,7 @@ class _EmployeeDiscountCreateScreenState
                         // الملاحظات
                         NeuField(
                           controller: _notesCtrl,
-                          hintText: 'ملاحظات (سبب الخصم)',
+                          hintText: context.trRaw('ملاحظات (سبب الخصم)'),
                           maxLines: 2,
                           prefix: const Icon(Icons.notes_rounded),
                         ),
@@ -540,8 +540,7 @@ class _EmployeeDiscountCreateScreenState
                               child: const Icon(Icons.calculate_rounded,
                                   color: kPrimaryColor),
                             ),
-                            title: Text(
-                              'المتبقي النظري بعد الخصم',
+                            title: LocalizedText('المتبقي النظري بعد الخصم',
                               style: TextStyle(
                                 fontWeight: FontWeight.w800,
                                 color: overBudget ? Colors.red : cs.onSurface,
@@ -569,7 +568,7 @@ class _EmployeeDiscountCreateScreenState
                           child: FilledButton.icon(
                             onPressed: _saveDiscount,
                             icon: const Icon(Icons.save_rounded),
-                            label: const Text('حفظ'),
+                            label: const LocalizedText('حفظ'),
                           ),
                         ),
                         ],

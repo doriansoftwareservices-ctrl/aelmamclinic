@@ -7,12 +7,34 @@ import 'package:aelmamclinic/models/subscription_plan.dart';
 import 'package:aelmamclinic/services/clinic_profile_service.dart';
 import 'package:aelmamclinic/services/nhost_graphql_service.dart';
 
+class TrialPlanStatus {
+  const TrialPlanStatus({
+    required this.hasPending,
+    required this.hasUsed,
+    required this.hasBlockingPending,
+    this.latestRequestId,
+    this.latestStatus,
+  });
+
+  final bool hasPending;
+  final bool hasUsed;
+  final bool hasBlockingPending;
+  final String? latestRequestId;
+  final String? latestStatus;
+}
+
 class BillingService {
   BillingService({GraphQLClient? client})
       : _gql = client ?? NhostGraphqlService.client;
 
   final GraphQLClient _gql;
   static const int _maxQueryAttempts = 4;
+
+  Context _userContext() {
+    return Context().withEntry(
+      HttpLinkHeaders(headers: const {'x-hasura-role': 'user'}),
+    );
+  }
 
   bool _isTransientException(OperationException ex) {
     final msg = ex.toString().toLowerCase();
@@ -56,7 +78,11 @@ class BillingService {
       }
     ''';
     final res = await _queryWithRetry(
-      QueryOptions(document: gql(query), fetchPolicy: FetchPolicy.noCache),
+      QueryOptions(
+        document: gql(query),
+        fetchPolicy: FetchPolicy.noCache,
+        context: _userContext(),
+      ),
     );
     final rows = (res.data?['my_account_plan'] as List?) ?? const [];
     if (rows.isEmpty) return {'plan_code': 'free', 'plan_end_at': null};
@@ -99,6 +125,51 @@ class BillingService {
     final rows = (res.data?['my_account_plan'] as List?) ?? const [];
     if (rows.isEmpty) return 'free';
     return (rows.first as Map)['plan_code']?.toString().toLowerCase() ?? 'free';
+  }
+
+  Future<TrialPlanStatus> fetchTrialPlanStatus() async {
+    const query = r'''
+      query TrialPlanStatus {
+        subscription_requests(
+          where: {plan_code: {_eq: "trial_month"}},
+          order_by: {created_at: desc},
+          limit: 20
+        ) {
+          id
+          status
+        }
+        blocking_pending: subscription_requests(
+          where: {
+            status: {_eq: "pending"},
+            plan_code: {_neq: "trial_month"}
+          },
+          order_by: {created_at: desc},
+          limit: 1
+        ) {
+          id
+        }
+      }
+    ''';
+    final res = await _queryWithRetry(
+      QueryOptions(document: gql(query), fetchPolicy: FetchPolicy.noCache),
+    );
+    final rows = (res.data?['subscription_requests'] as List?) ?? const [];
+    final trialRows = rows.whereType<Map>().toList(growable: false);
+    final latest = trialRows.isEmpty
+        ? null
+        : Map<String, dynamic>.from(trialRows.first);
+    final blockingPendingRows =
+        (res.data?['blocking_pending'] as List?) ?? const [];
+    final statuses = trialRows
+        .map((row) => (row['status'] ?? '').toString().toLowerCase())
+        .toList(growable: false);
+    return TrialPlanStatus(
+      hasPending: statuses.contains('pending'),
+      hasUsed: statuses.contains('approved'),
+      hasBlockingPending: blockingPendingRows.isNotEmpty,
+      latestRequestId: latest?['id']?.toString(),
+      latestStatus: latest?['status']?.toString(),
+    );
   }
 
   Future<List<PaymentMethod>> fetchPaymentMethods() async {
@@ -193,6 +264,37 @@ class BillingService {
     }
     final rows =
         (res.data?['create_subscription_request'] as List?) ?? const [];
+    if (rows.isEmpty) return '';
+    return (rows.first as Map)['id']?.toString() ?? '';
+  }
+
+  Future<String> createTrialPlanRequest({String? clinicName}) async {
+    if (clinicName == null || clinicName.trim().isEmpty) {
+      try {
+        final profile = await ClinicProfileService.loadActiveOrFallback();
+        if (profile.nameAr.trim().isNotEmpty) {
+          clinicName = profile.nameAr.trim();
+        }
+      } catch (_) {}
+    }
+
+    const mutation = r'''
+      mutation CreateTrialRequest($clinic: String) {
+        create_trial_plan_request(args: {p_clinic_name: $clinic}) {
+          id
+        }
+      }
+    ''';
+    final res = await _gql.mutate(
+      MutationOptions(
+        document: gql(mutation),
+        variables: {'clinic': clinicName},
+        fetchPolicy: FetchPolicy.noCache,
+      ),
+    );
+    if (res.hasException) throw res.exception!;
+    final rows =
+        (res.data?['create_trial_plan_request'] as List?) ?? const [];
     if (rows.isEmpty) return '';
     return (rows.first as Map)['id']?.toString() ?? '';
   }

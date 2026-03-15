@@ -5,6 +5,7 @@ import 'package:aelmamclinic/models/patient.dart';
 import 'package:aelmamclinic/models/patient_report.dart';
 import 'package:aelmamclinic/services/patient_questions_service.dart';
 import 'package:aelmamclinic/screens/patient_questions/report_view_screen.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
 
 class PatientReportsListScreen extends StatefulWidget {
   final Patient patient;
@@ -39,7 +40,7 @@ class _PatientReportsListScreenState extends State<PatientReportsListScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('تعذر تحميل التقارير: $e')));
+          .showSnackBar(SnackBar(content: LocalizedText('تعذر تحميل التقارير: $e')));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -48,10 +49,10 @@ class _PatientReportsListScreenState extends State<PatientReportsListScreen> {
   @override
   Widget build(BuildContext context) {
     return Directionality(
-      textDirection: TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('تقارير المريض'),
+          title: const LocalizedText('تقارير المريض'),
           actions: [
             IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
           ],
@@ -62,7 +63,7 @@ class _PatientReportsListScreenState extends State<PatientReportsListScreen> {
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
                 : _reports.isEmpty
-                    ? const Center(child: Text('لا توجد تقارير بعد'))
+                    ? const Center(child: LocalizedText('لا توجد تقارير بعد'))
                     : ListView.separated(
                         itemCount: _reports.length,
                         separatorBuilder: (_, __) => const SizedBox(height: 10),

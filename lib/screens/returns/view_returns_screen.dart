@@ -1,8 +1,7 @@
 // lib/screens/returns/view_return_screen.dart
-import 'dart:ui' as ui show TextDirection;
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import 'package:aelmamclinic/utils/app_formatters.dart';
 
 /*── تصميم TBIAN ─*/
 import 'package:aelmamclinic/core/neumorphism.dart';
@@ -10,6 +9,7 @@ import 'package:aelmamclinic/core/tbian_ui.dart';
 
 import 'package:aelmamclinic/models/return_entry.dart';
 import 'edit_return_screen.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class ViewReturnScreen extends StatelessWidget {
   final ReturnEntry returnEntry;
@@ -19,8 +19,8 @@ class ViewReturnScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dateOnly = DateFormat('yyyy-MM-dd');
-    final timeOnly = DateFormat('HH:mm');
+    final dateOnly = AppFormatters.dateFormat('yyyy-MM-dd');
+    final timeOnly = AppFormatters.dateFormat('HH:mm');
 
     final dateStr = dateOnly.format(returnEntry.date.toLocal());
     final timeStr = timeOnly.format(returnEntry.date.toLocal());
@@ -28,7 +28,7 @@ class ViewReturnScreen extends StatelessWidget {
     String orDash(String s) => (s.trim().isEmpty) ? '—' : s;
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -47,7 +47,7 @@ class ViewReturnScreen extends StatelessWidget {
           ),
           actions: [
             IconButton(
-              tooltip: 'تعديل',
+              tooltip: context.trRaw('تعديل'),
               icon: const Icon(Icons.edit_rounded),
               onPressed: () {
                 Navigator.push(
@@ -134,7 +134,7 @@ class ViewReturnScreen extends StatelessWidget {
                     child: Column(
                       children: [
                         NeuField(
-                          labelText: 'حالة المريض',
+                          labelText: context.trRaw('حالة المريض'),
                           controller: TextEditingController(
                             text: orDash(returnEntry.diagnosis),
                           ),
@@ -143,7 +143,7 @@ class ViewReturnScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 10),
                         NeuField(
-                          labelText: 'ملاحظات',
+                          labelText: context.trRaw('ملاحظات'),
                           controller: TextEditingController(
                             text: orDash(returnEntry.notes),
                           ),

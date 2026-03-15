@@ -1,5 +1,6 @@
 import 'package:nhost_dart/nhost_dart.dart';
 
+import '../services/nhost_dns_http_client.dart';
 import 'nhost_config.dart';
 import 'persistent_auth_store.dart';
 
@@ -46,6 +47,7 @@ class NhostManager {
               region: NhostConfig.region,
             ),
       authStore: PersistentAuthStore(),
+      httpClientOverride: NhostDnsHttpClient.createClient(),
     );
   }
 }

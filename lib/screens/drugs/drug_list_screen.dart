@@ -7,6 +7,8 @@ import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/models/drug.dart';
 import 'new_drug_screen.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class DrugListScreen extends StatefulWidget {
   const DrugListScreen({super.key});
@@ -89,16 +91,15 @@ class _DrugListScreenState extends State<DrugListScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('تأكيد الحذف'),
-        content: const Text(
-            'سيتم حذف الدواء (حذف منطقي) وإرسال التغيير للسحابة. تأكيد؟'),
+        title: const LocalizedText('تأكيد الحذف'),
+        content: const LocalizedText('سيتم حذف الدواء (حذف منطقي) وإرسال التغيير للسحابة. تأكيد؟'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('إلغاء')),
+              child: const LocalizedText('إلغاء')),
           FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('حذف')),
+              child: const LocalizedText('حذف')),
         ],
         backgroundColor: scheme.surface,
         shape: RoundedRectangleBorder(
@@ -116,12 +117,12 @@ class _DrugListScreenState extends State<DrugListScreen> {
       await _loadDrugs();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم حذف الدواء ودفع التغيير للسحابة')),
+        const SnackBar(content: LocalizedText('تم حذف الدواء ودفع التغيير للسحابة')),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('لا يمكن الحذف: $e')),
+        SnackBar(content: LocalizedText('لا يمكن الحذف: $e')),
       );
     }
   }
@@ -131,7 +132,7 @@ class _DrugListScreenState extends State<DrugListScreen> {
     final visibleDrugs = _filteredDrugs.take(_visibleCount).toList();
     final hasMore = _visibleCount < _filteredDrugs.length;
     return Directionality(
-      textDirection: TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -140,7 +141,7 @@ class _DrugListScreenState extends State<DrugListScreen> {
             children: const [
               Icon(Icons.medication_rounded),
               SizedBox(width: 8),
-              Text('إدارة الأدوية'),
+              LocalizedText('إدارة الأدوية'),
             ],
           ),
           // ✅ تمت إزالة الأزرار (تحديث، دفع الآن، تشخيص)
@@ -148,7 +149,7 @@ class _DrugListScreenState extends State<DrugListScreen> {
         floatingActionButton: FloatingActionButton.extended(
           onPressed: () => _openNewDrug(),
           icon: const Icon(Icons.add_rounded),
-          label: const Text('إضافة'),
+          label: const LocalizedText('إضافة'),
         ),
         body: SafeArea(
           child: Padding(
@@ -158,12 +159,12 @@ class _DrugListScreenState extends State<DrugListScreen> {
                 // بحث
                 NeuField(
                   controller: _searchCtrl,
-                  hintText: 'بحث باسم الدواء…',
+                  hintText: context.trRaw('بحث باسم الدواء…'),
                   prefix: const Icon(Icons.search_rounded),
                   suffix: (_searchCtrl.text.isEmpty)
                       ? null
                       : IconButton(
-                          tooltip: 'مسح',
+                          tooltip: context.trRaw('مسح'),
                           icon: const Icon(Icons.close_rounded),
                           onPressed: () {
                             _searchCtrl.clear();
@@ -179,13 +180,12 @@ class _DrugListScreenState extends State<DrugListScreen> {
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   child: Row(
                     children: [
-                      const Text('الإجمالي: ',
+                      const LocalizedText('الإجمالي: ',
                           style: TextStyle(fontWeight: FontWeight.w900)),
                       Text('${_allDrugs.length}',
                           style: const TextStyle(fontWeight: FontWeight.w900)),
                       const SizedBox(width: 16),
-                      Text(
-                        'الظاهر: ${_filteredDrugs.length}',
+                      LocalizedText('الظاهر: ${_filteredDrugs.length}',
                         style: TextStyle(
                           color: Theme.of(context)
                               .colorScheme
@@ -205,8 +205,7 @@ class _DrugListScreenState extends State<DrugListScreen> {
                       ? const Center(child: CircularProgressIndicator())
                       : _filteredDrugs.isEmpty
                           ? Center(
-                              child: Text(
-                                'لا توجد بيانات',
+                              child: LocalizedText('لا توجد بيانات',
                                 style: TextStyle(
                                   color: Theme.of(context)
                                       .colorScheme
@@ -233,8 +232,7 @@ class _DrugListScreenState extends State<DrugListScreen> {
                                           icon: const Icon(
                                             Icons.expand_more_rounded,
                                           ),
-                                          label: Text(
-                                            'تحميل المزيد (${_visibleCount}/${_filteredDrugs.length})',
+                                          label: LocalizedText('تحميل المزيد (${_visibleCount}/${_filteredDrugs.length})',
                                           ),
                                           onPressed: () {
                                             setState(() {
@@ -311,7 +309,7 @@ class _DrugListScreenState extends State<DrugListScreen> {
                                                         .colorScheme
                                                         .primary),
                                                 const SizedBox(width: 8),
-                                                const Text('تعديل'),
+                                                const LocalizedText('تعديل'),
                                               ],
                                             ),
                                           ),
@@ -323,7 +321,7 @@ class _DrugListScreenState extends State<DrugListScreen> {
                                                     size: 20,
                                                     color: Colors.red),
                                                 SizedBox(width: 8),
-                                                Text('حذف'),
+                                                LocalizedText('حذف'),
                                               ],
                                             ),
                                           ),

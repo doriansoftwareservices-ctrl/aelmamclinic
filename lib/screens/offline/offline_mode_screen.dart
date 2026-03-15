@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
 
 /// Minimal app shell that informs the operator that all backend connectivity
 /// has been disabled for this build.
@@ -45,20 +46,17 @@ class OfflineModeScreen extends StatelessWidget {
                     color: colorScheme.primary,
                   ),
                   const SizedBox(height: 16),
-                  Text(
-                    'الوضع غير المتصل',
+                  LocalizedText('الوضع غير المتصل',
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                           color: colorScheme.onSurface,
                         ),
                   ),
                   const SizedBox(height: 12),
-                  const Text(
-                    'تم تعطيل جميع الاتصالات بالخوادم وفقًا لمتطلبات العمل. '
+                  const LocalizedText('تم تعطيل جميع الاتصالات بالخوادم وفقًا لمتطلبات العمل. '
                     'لن يحاول التطبيق الاتصال بأي خدمة خارجية في هذا الإصدار.',
                   ),
                   const SizedBox(height: 12),
-                  const Text(
-                    'فعّل الوصول إلى الخوادم فقط عندما تتم إعادة تفعيل البنية '
+                  const LocalizedText('فعّل الوصول إلى الخوادم فقط عندما تتم إعادة تفعيل البنية '
                     'التحتية الخلفية أو كنت بحاجة لاختبارات التكامل.',
                   ),
                 ],

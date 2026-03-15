@@ -1,0 +1,12 @@
+function:
+  name: create_trial_plan_request
+  schema: public
+configuration:
+  custom_name: create_trial_plan_request
+  custom_root_fields: {}
+  exposed_as: mutation
+  session_argument: hasura_session
+permissions:
+  - role: me
+  - role: user
+  - role: superadmin

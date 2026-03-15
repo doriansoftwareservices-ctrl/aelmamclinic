@@ -1,11 +1,11 @@
 // lib/screens/statistics/statistics_screen.dart
 import 'dart:async';
-import 'dart:ui' as ui show TextDirection;
 import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:aelmamclinic/utils/app_formatters.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -24,9 +24,11 @@ import 'package:aelmamclinic/services/clinic_profile_service.dart';
 import 'package:aelmamclinic/services/save_file_service.dart';
 import 'package:aelmamclinic/models/consumption.dart';
 import 'package:aelmamclinic/utils/pdf_fonts.dart';
-import 'package:aelmamclinic/utils/pdf_text.dart';
+import 'package:aelmamclinic/utils/report_localizer.dart';
 import 'package:aelmamclinic/providers/statistics_provider.dart';
 import 'package:aelmamclinic/providers/auth_provider.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 /// نموذج بيانات بسيط للرسوم
 class _ChartData {
@@ -34,6 +36,8 @@ class _ChartData {
   final double value;
   _ChartData(this.label, this.value);
 }
+
+String _displayChartLabel(String raw) => AppFormatters.localizeDateKey(raw);
 
 double _safeTotal(Iterable<_ChartData> data) {
   return data.fold<double>(0, (sum, d) {
@@ -71,25 +75,30 @@ TooltipBehavior _defaultTooltip() => TooltipBehavior(
 
 /*──────────────────────── أدوات PDF ────────────────────────*/
 class _PdfUtils {
+  static ReportLocalizer _i18n() => ReportLocalizer();
+
   static Future<(pw.Font, pw.Font)> _loadFonts() async {
     final fonts = await loadPdfFonts();
     return (fonts.regular, fonts.bold);
   }
 
   static pw.PageTheme _pageTheme(pw.Font base, pw.Font bold) {
-    return pw.PageTheme(
+    return _i18n().pageTheme(
+      base: base,
+      bold: bold,
       margin: const pw.EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-      textDirection: pw.TextDirection.rtl,
-      theme: pw.ThemeData.withFont(base: base, bold: bold),
     );
   }
 
   static String formatNumber(double value, {int decimals = 2}) {
+    final i18n = _i18n();
     if (value.isNaN || value.isInfinite) {
-      return (0).toStringAsFixed(decimals);
+      return i18n.formatNumber(0, decimalDigits: decimals);
     }
-    return value.toStringAsFixed(decimals);
+    return i18n.formatNumber(value, decimalDigits: decimals);
   }
+
+  static String pdf(String raw) => _i18n().pdf(raw);
 
   static pw.Widget header(
     String title, {
@@ -97,100 +106,84 @@ class _PdfUtils {
     pw.ImageProvider? logo,
     ClinicProfile? clinic,
   }) {
+    final i18n = _i18n();
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.stretch,
       children: [
         if (clinic != null)
           pw.Row(
-            children: [
-              pw.Expanded(
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text(pdfText(clinic.nameAr),
-                        style: pw.TextStyle(
-                            fontSize: 14, fontWeight: pw.FontWeight.bold)),
-                    pw.Text(pdfText(clinic.addressAr),
-                        style: pw.TextStyle(
-                            fontSize: 9, color: PdfColors.grey700)),
-                    pw.Text(
-                        pdfText('هاتف: ${_clinicPhones(clinic)}'),
-                        style: pw.TextStyle(
-                            fontSize: 9, color: PdfColors.grey700)),
-                  ],
-                ),
-              ),
-              pw.Container(
-                width: 48,
-                height: 48,
-                decoration: pw.BoxDecoration(
-                  borderRadius: pw.BorderRadius.circular(12),
-                  color: PdfColor.fromHex('#E8F1FB'),
-                ),
-                child: logo == null
-                    ? pw.Center(
-                        child: pw.Text(
-                          'A',
-                          style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-                        ),
-                      )
-                    : pw.Padding(
-                        padding: const pw.EdgeInsets.all(6),
-                        child: pw.Image(logo, fit: pw.BoxFit.contain),
+            children: i18n.isRtl
+                ? <pw.Widget>[
+                    pw.Expanded(
+                      child: pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.end,
+                        children: [
+                          pw.Text(i18n.pdf(i18n.clinicName(clinic)),
+                              textAlign: i18n.startAlign,
+                              style: pw.TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: pw.FontWeight.bold)),
+                          pw.Text(i18n.pdf(i18n.clinicAddress(clinic)),
+                              textAlign: i18n.startAlign,
+                              style: pw.TextStyle(
+                                  fontSize: 9, color: PdfColors.grey700)),
+                          pw.Text(
+                              i18n.pdf(i18n.withLabel('الهاتف', _clinicPhones(clinic))),
+                              textAlign: i18n.startAlign,
+                              style: pw.TextStyle(
+                                  fontSize: 9, color: PdfColors.grey700)),
+                        ],
                       ),
-              ),
-              pw.Expanded(
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.end,
-                  children: [
-                    pw.Text(clinic.nameEn,
-                        style: pw.TextStyle(
-                            fontSize: 14, fontWeight: pw.FontWeight.bold)),
-                    pw.Text(clinic.addressEn,
-                        style: pw.TextStyle(
-                            fontSize: 9, color: PdfColors.grey700)),
-                    pw.Text('Tel: ${_clinicPhones(clinic)}',
-                        style: pw.TextStyle(
-                            fontSize: 9, color: PdfColors.grey700)),
+                    ),
+                    _logoBox(logo),
+                  ]
+                : <pw.Widget>[
+                    _logoBox(logo),
+                    pw.SizedBox(width: 12),
+                    pw.Expanded(
+                      child: pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Text(i18n.pdf(i18n.clinicName(clinic)),
+                              textAlign: i18n.startAlign,
+                              style: pw.TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: pw.FontWeight.bold)),
+                          pw.Text(i18n.pdf(i18n.clinicAddress(clinic)),
+                              textAlign: i18n.startAlign,
+                              style: pw.TextStyle(
+                                  fontSize: 9, color: PdfColors.grey700)),
+                          pw.Text(
+                              i18n.pdf(i18n.withLabel('الهاتف', _clinicPhones(clinic))),
+                              textAlign: i18n.startAlign,
+                              style: pw.TextStyle(
+                                  fontSize: 9, color: PdfColors.grey700)),
+                        ],
+                      ),
+                    ),
                   ],
-                ),
-              ),
-            ],
           )
         else
           pw.Row(
           children: [
-            pw.Container(
-              width: 48,
-              height: 48,
-              decoration: pw.BoxDecoration(
-                borderRadius: pw.BorderRadius.circular(12),
-                color: PdfColor.fromHex('#E8F1FB'),
-              ),
-              child: logo == null
-                  ? pw.Center(
-                      child: pw.Text(
-                        'A',
-                        style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-                      ),
-                    )
-                  : pw.Padding(
-                      padding: const pw.EdgeInsets.all(6),
-                      child: pw.Image(logo, fit: pw.BoxFit.contain),
-                    ),
-            ),
+            _logoBox(logo),
             pw.SizedBox(width: 12),
             pw.Expanded(
               child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.end,
+                crossAxisAlignment:
+                    i18n.isRtl ? pw.CrossAxisAlignment.end : pw.CrossAxisAlignment.start,
                 children: [
-                  pw.Text('ELMAM CLINIC',
+                  pw.Text(
+                      i18n.pdf(i18n.isRtl ? 'إلمام كلينك' : 'Elmam Clinic'),
+                      textAlign: i18n.startAlign,
                       style: pw.TextStyle(
                           fontSize: 16, fontWeight: pw.FontWeight.bold)),
-                  pw.Text(pdfText(title),
+                  pw.Text(i18n.pdf(title),
+                      textAlign: i18n.startAlign,
                       style: const pw.TextStyle(fontSize: 12)),
                   if (subtitle != null)
-                    pw.Text(pdfText(subtitle),
+                    pw.Text(i18n.pdf(subtitle),
+                        textAlign: i18n.startAlign,
                         style: pw.TextStyle(
                             fontSize: 10, color: PdfColors.grey700)),
                 ],
@@ -202,12 +195,12 @@ class _PdfUtils {
           pw.Column(
             children: [
               pw.SizedBox(height: 6),
-              pw.Text(pdfText(title),
+              pw.Text(i18n.pdf(title),
                   textAlign: pw.TextAlign.center,
                   style: pw.TextStyle(
                       fontSize: 12, fontWeight: pw.FontWeight.bold)),
               if (subtitle != null)
-                pw.Text(pdfText(subtitle),
+                pw.Text(i18n.pdf(subtitle),
                     textAlign: pw.TextAlign.center,
                     style: pw.TextStyle(
                         fontSize: 10, color: PdfColors.grey700)),
@@ -220,10 +213,55 @@ class _PdfUtils {
     );
   }
 
+  static pw.Widget footer(
+    pw.Context ctx,
+    ClinicProfile? clinic,
+  ) {
+    final i18n = _i18n();
+    final parts = <String>[
+      if (clinic != null) i18n.clinicName(clinic),
+      if (clinic != null) i18n.clinicAddress(clinic),
+      if (clinic != null) i18n.withLabel('الهاتف', _clinicPhones(clinic)),
+    ].where((part) => part.trim().isNotEmpty).toList();
+
+    return pw.Container(
+      alignment: pw.Alignment.center,
+      padding: const pw.EdgeInsets.only(top: 6),
+      decoration: const pw.BoxDecoration(
+        border: pw.Border(
+          top: pw.BorderSide(width: 0.6, color: PdfColors.grey300),
+        ),
+      ),
+      child: pw.Row(
+        children: [
+          pw.Expanded(
+            child: pw.Text(
+              i18n.pdf(parts.join(' - ')),
+              textAlign: i18n.startAlign,
+              style: pw.TextStyle(
+                fontSize: 9,
+                color: PdfColors.blueGrey,
+              ),
+            ),
+          ),
+          pw.SizedBox(width: 8),
+          pw.Text(
+            i18n.pdf(i18n.pageLabel(ctx.pageNumber, ctx.pagesCount)),
+            style: pw.TextStyle(
+              fontSize: 9,
+              color: PdfColors.blueGrey,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   static pw.Widget simpleTable({
     required List<String> headers,
     required List<List<String>> rows,
   }) {
+    final i18n = _i18n();
     return pw.Table(
       border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.6),
       defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
@@ -234,7 +272,7 @@ class _PdfUtils {
               .map(
                 (h) => pw.Padding(
                   padding: const pw.EdgeInsets.all(8),
-                  child: pw.Text(pdfText(h),
+                  child: pw.Text(i18n.pdf(h),
                       textAlign: pw.TextAlign.center,
                       style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
                 ),
@@ -248,7 +286,7 @@ class _PdfUtils {
                   (c) => pw.Padding(
                     padding: const pw.EdgeInsets.symmetric(
                         horizontal: 8, vertical: 6),
-                    child: pw.Text(pdfText(c),
+                    child: pw.Text(i18n.pdf(c),
                         textAlign: pw.TextAlign.center),
                   ),
                 )
@@ -297,11 +335,12 @@ class _PdfUtils {
   }
 
   static pw.GridAxis _yAxisAuto(double maxY) {
+    final i18n = _i18n();
     final m = (maxY <= 0 || maxY.isNaN || maxY.isInfinite) ? 1 : maxY;
     final top = (m * 1.2);
     return pw.FixedAxis(
       List<double>.generate(6, (i) => top * i / 5.0),
-      format: (v) => v.toStringAsFixed(0),
+      format: (v) => i18n.formatNumber(v, decimalDigits: 0),
       textStyle: const pw.TextStyle(fontSize: 7),
       marginStart: 8,
       marginEnd: 8,
@@ -315,13 +354,17 @@ class _PdfUtils {
     int chunkSize = 35,
     double height = 260,
   }) {
+    final i18n = _i18n();
     final map = _sanitizeMap(rawMap);
     final entries = map.entries.toList()
       ..sort((a, b) => a.key.compareTo(b.key));
     final widgets = <pw.Widget>[];
 
     for (final part in _chunk(entries, size: chunkSize)) {
-      var labels = part.map((e) => pdfText(e.key)).toList();
+      var labels = part.map((e) => i18n.pdf(AppFormatters.localizeDateKey(
+        e.key,
+        languageCode: i18n.languageCode,
+      ))).toList();
       var values = part.map((e) => e.value).toList();
 
       // إن كان لدينا نقطة واحدة فقط، نضيف نقطة وهمية لتفادي مشاكل step=0
@@ -334,7 +377,7 @@ class _PdfUtils {
 
       widgets.addAll([
         if (title != null && entries.length <= chunkSize)
-          pw.Text(pdfText(title),
+          pw.Text(i18n.pdf(title),
               style:
                   pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 12)),
         pw.Container(
@@ -370,13 +413,17 @@ class _PdfUtils {
     int chunkSize = 25,
     double height = 280,
   }) {
+    final i18n = _i18n();
     final map = _sanitizeMap(rawMap);
     final entries = map.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
     final widgets = <pw.Widget>[];
 
     for (final part in _chunk(entries, size: chunkSize)) {
-      var labels = part.map((e) => pdfText(e.key)).toList();
+      var labels = part.map((e) => i18n.pdf(AppFormatters.localizeDateKey(
+        e.key,
+        languageCode: i18n.languageCode,
+      ))).toList();
       var values = part.map((e) => e.value).toList();
 
       // إن كان لدينا عمود واحد فقط، نضيف عمودًا صفرّيًا (label فارغ) لضمان ≥2
@@ -389,7 +436,7 @@ class _PdfUtils {
 
       widgets.addAll([
         if (title != null && entries.length <= chunkSize)
-          pw.Text(pdfText(title),
+          pw.Text(i18n.pdf(title),
               style:
                   pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 12)),
         pw.Container(
@@ -419,29 +466,39 @@ class _PdfUtils {
   }
 
   /// مشاركة
-  static Future<void> shareDoc(pw.Document doc, String prefix) async {
+  static Future<void> shareDoc(pw.Document doc, String rawStem) async {
+    final i18n = _i18n();
     final dir = await getTemporaryDirectory();
-    final path =
-        "${dir.path}/${prefix}_${DateTime.now().millisecondsSinceEpoch}.pdf";
+    final fileName = i18n.fileName(
+      rawStem,
+      extension: 'pdf',
+      suffixes: [DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())],
+    );
+    final path = '${dir.path}/$fileName';
     final file = File(path);
     await file.writeAsBytes(await doc.save());
     await SharePlus.instance.share(
       ShareParams(
         files: [XFile(path)],
-        text: prefix,
+        text: i18n.tr(rawStem),
       ),
     );
   }
 
   /// تنزيل
   static Future<void> downloadDoc(
-      BuildContext context, pw.Document doc, String prefix) async {
+      BuildContext context, pw.Document doc, String rawStem) async {
+    final i18n = _i18n();
     final bytes = await doc.save();
-    final fileName = "${prefix}_${DateTime.now().millisecondsSinceEpoch}.pdf";
+    final fileName = i18n.fileName(
+      rawStem,
+      extension: 'pdf',
+      suffixes: [DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())],
+    );
     await saveFileBytes(bytes, fileName);
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("تم حفظ الملف بنجاح")),
+      const SnackBar(content: LocalizedText('تم حفظ الملف بنجاح.')),
     );
   }
 
@@ -450,6 +507,28 @@ class _PdfUtils {
     final p1 = (map['phone'] ?? '').toString().trim();
     final p2 = (map['phone2'] ?? '').toString().trim();
     return p2.isEmpty ? p1 : '$p1 / $p2';
+  }
+
+  static pw.Widget _logoBox(pw.ImageProvider? logo) {
+    return pw.Container(
+      width: 48,
+      height: 48,
+      decoration: pw.BoxDecoration(
+        borderRadius: pw.BorderRadius.circular(12),
+        color: PdfColor.fromHex('#E8F1FB'),
+      ),
+      child: logo == null
+          ? pw.Center(
+              child: pw.Text(
+                'A',
+                style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+              ),
+            )
+          : pw.Padding(
+              padding: const pw.EdgeInsets.all(6),
+              child: pw.Image(logo, fit: pw.BoxFit.contain),
+            ),
+    );
   }
 }
 
@@ -477,7 +556,7 @@ class _FilterAndExportBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final df = DateFormat('yyyy-MM-dd');
+    final df = AppFormatters.dateFormat('yyyy-MM-dd');
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
       child: Column(
@@ -497,11 +576,11 @@ class _FilterAndExportBar extends StatelessWidget {
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Text(
+                  child: LocalizedText(
                     title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.right,
+                    textAlign: TextAlign.start,
                     style: const TextStyle(
                       fontWeight: FontWeight.w900,
                       fontSize: 18,
@@ -626,7 +705,7 @@ class _StatisticsScreenBodyState extends State<_StatisticsScreenBody> {
       initialDate: stats.chartsFrom ?? DateTime.now(),
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
-      locale: const Locale('ar', ''),
+      locale: Localizations.localeOf(context),
     );
     if (d != null) {
       if (!mounted) return;
@@ -641,7 +720,7 @@ class _StatisticsScreenBodyState extends State<_StatisticsScreenBody> {
       initialDate: stats.chartsTo ?? DateTime.now(),
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
-      locale: const Locale('ar', ''),
+      locale: Localizations.localeOf(context),
     );
     if (d != null) {
       if (!mounted) return;
@@ -656,7 +735,7 @@ class _StatisticsScreenBodyState extends State<_StatisticsScreenBody> {
       initialDate: stats.doctorOutstandingAsOf,
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
-      locale: const Locale('ar', ''),
+      locale: Localizations.localeOf(context),
     );
     if (picked != null) {
       if (!mounted) return;
@@ -673,14 +752,14 @@ class _StatisticsScreenBodyState extends State<_StatisticsScreenBody> {
 
   List<_ChartData> _mapToData(Map<String, double> map) {
     return map.entries
-        .map((e) => _ChartData(e.key, e.value))
+        .map((e) => _ChartData(_displayChartLabel(e.key), e.value))
         .toList()
       ..sort((a, b) => a.label.compareTo(b.label));
   }
 
   List<_ChartData> _mapToDataInt(Map<String, int> map) {
     return map.entries
-        .map((e) => _ChartData(e.key, e.value.toDouble()))
+        .map((e) => _ChartData(_displayChartLabel(e.key), e.value.toDouble()))
         .toList()
       ..sort((a, b) => a.label.compareTo(b.label));
   }
@@ -722,6 +801,7 @@ class _StatisticsScreenBodyState extends State<_StatisticsScreenBody> {
     doc.addPage(
       pw.MultiPage(
         pageTheme: _PdfUtils._pageTheme(base, bold),
+        footer: (ctx) => _PdfUtils.footer(ctx, clinic),
         build: (_) => [
           _PdfUtils.header(
             title,
@@ -731,7 +811,7 @@ class _StatisticsScreenBodyState extends State<_StatisticsScreenBody> {
           ),
           pw.SizedBox(height: 6),
           pw.Text(
-            pdfText('الإجمالي: ${_PdfUtils.formatNumber(_totalMap(map))}'),
+            _PdfUtils.pdf('الإجمالي: ${_PdfUtils.formatNumber(_totalMap(map))}'),
             style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
           ),
           pw.SizedBox(height: 10),
@@ -763,7 +843,7 @@ class _StatisticsScreenBodyState extends State<_StatisticsScreenBody> {
       from: from,
       to: to,
     );
-    await _PdfUtils.shareDoc(doc, prefix);
+    await _PdfUtils.shareDoc(doc, title);
   }
 
   Future<void> _downloadMapPdf({
@@ -783,7 +863,7 @@ class _StatisticsScreenBodyState extends State<_StatisticsScreenBody> {
       from: from,
       to: to,
     );
-    await _PdfUtils.downloadDoc(context, doc, prefix);
+    await _PdfUtils.downloadDoc(context, doc, title);
   }
 
   Future<pw.Document> _buildOutstandingPdf(
@@ -795,7 +875,7 @@ class _StatisticsScreenBodyState extends State<_StatisticsScreenBody> {
     final logoBytes = await ClinicProfileService.loadReportLogoBytes();
     final logo = pw.MemoryImage(logoBytes);
 
-    final fmt = DateFormat('yyyy-MM-dd');
+    final fmt = AppFormatters.dateFormat('yyyy-MM-dd');
     final tableRows = rows.map((r) {
       final start = DateTime.tryParse('${r['periodStart'] ?? ''}');
       final end = DateTime.tryParse('${r['periodEnd'] ?? ''}');
@@ -822,6 +902,7 @@ class _StatisticsScreenBodyState extends State<_StatisticsScreenBody> {
     doc.addPage(
       pw.MultiPage(
         pageTheme: _PdfUtils._pageTheme(base, bold),
+        footer: (ctx) => _PdfUtils.footer(ctx, clinic),
         build: (_) => [
           _PdfUtils.header(
             'تقرير مستحقات الأطباء',
@@ -831,7 +912,7 @@ class _StatisticsScreenBodyState extends State<_StatisticsScreenBody> {
           ),
           pw.SizedBox(height: 6),
           pw.Text(
-            pdfText('الإجمالي: ${_PdfUtils.formatNumber(totalNet)}'),
+            _PdfUtils.pdf('الإجمالي: ${_PdfUtils.formatNumber(totalNet)}'),
             style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
           ),
           pw.SizedBox(height: 10),
@@ -859,7 +940,7 @@ class _StatisticsScreenBodyState extends State<_StatisticsScreenBody> {
     DateTime asOf,
   ) async {
     final doc = await _buildOutstandingPdf(rows, asOf);
-    await _PdfUtils.shareDoc(doc, 'doctor_outstanding');
+    await _PdfUtils.shareDoc(doc, 'تقرير مستحقات الأطباء');
   }
 
   Future<void> _downloadOutstanding(
@@ -867,7 +948,7 @@ class _StatisticsScreenBodyState extends State<_StatisticsScreenBody> {
     DateTime asOf,
   ) async {
     final doc = await _buildOutstandingPdf(rows, asOf);
-    await _PdfUtils.downloadDoc(context, doc, 'doctor_outstanding');
+    await _PdfUtils.downloadDoc(context, doc, 'تقرير مستحقات الأطباء');
   }
 
   @override
@@ -883,10 +964,8 @@ class _StatisticsScreenBodyState extends State<_StatisticsScreenBody> {
     final netProfitByDate = _mapToData(stats.netProfitByDate);
     final supportStarsData = _mapToDataInt(stats.supportStarsCount);
 
-    return Directionality(
-      textDirection: ui.TextDirection.rtl,
-      child: Scaffold(
-        appBar: AppBar(
+    return Scaffold(
+      appBar: AppBar(
           centerTitle: true,
           title: Row(
             mainAxisSize: MainAxisSize.min,
@@ -898,18 +977,18 @@ class _StatisticsScreenBodyState extends State<_StatisticsScreenBody> {
                 errorBuilder: (_, __, ___) => const SizedBox.shrink(),
               ),
               const SizedBox(width: 8),
-              const Text('الرسوم البيانية'),
+              const LocalizedText('الرسوم البيانية'),
             ],
           ),
           actions: [
             IconButton(
-              tooltip: 'تحديث',
+              tooltip: context.trRaw('تحديث'),
               onPressed: stats.chartsBusy ? null : stats.refreshCharts,
               icon: const Icon(Icons.refresh_rounded),
             ),
           ],
         ),
-        body: CustomScrollView(
+      body: CustomScrollView(
           slivers: [
             SliverToBoxAdapter(
               child: Container(
@@ -935,8 +1014,7 @@ class _StatisticsScreenBodyState extends State<_StatisticsScreenBody> {
                             color: kPrimaryColor),
                         const SizedBox(width: 8),
                         const Expanded(
-                          child: Text(
-                            'لوحة التحليل المتقدم',
+                          child: LocalizedText('لوحة التحليل المتقدم',
                             style: TextStyle(
                               fontWeight: FontWeight.w900,
                               fontSize: 16,
@@ -946,7 +1024,7 @@ class _StatisticsScreenBodyState extends State<_StatisticsScreenBody> {
                         TextButton.icon(
                           onPressed: _resetRange,
                           icon: const Icon(Icons.refresh_rounded),
-                          label: const Text('الكل'),
+                          label: const LocalizedText('الكل'),
                         ),
                       ],
                     ),
@@ -1333,7 +1411,7 @@ class _StatisticsScreenBodyState extends State<_StatisticsScreenBody> {
                       leadingAction: TextButton.icon(
                         onPressed: _pickAsOf,
                         icon: const Icon(Icons.event),
-                        label: const Text('تاريخ'),
+                        label: const LocalizedText('تاريخ'),
                       ),
                       onExport: () => _exportOutstanding(
                         stats.doctorOutstandingRows,
@@ -1463,7 +1541,6 @@ class _StatisticsScreenBodyState extends State<_StatisticsScreenBody> {
             ),
           ],
         ),
-      ),
     );
   }
 }
@@ -1495,7 +1572,7 @@ class _ChartsSection extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text(
+                child: LocalizedText(
                   title,
                   style: const TextStyle(
                     fontWeight: FontWeight.w800,
@@ -1513,18 +1590,18 @@ class _ChartsSection extends StatelessWidget {
                 itemBuilder: (ctx) => const [
                   PopupMenuItem(
                     value: 'export',
-                    child: Text('مشاركة PDF'),
+                    child: LocalizedText('مشاركة PDF'),
                   ),
                   PopupMenuItem(
                     value: 'download',
-                    child: Text('تنزيل PDF'),
+                    child: LocalizedText('تنزيل PDF'),
                   ),
                 ],
               ),
             ],
           ),
           const SizedBox(height: 6),
-          Text(
+          LocalizedText(
             totalLabel,
             style: TextStyle(
               color: Theme.of(context).colorScheme.primary,
@@ -1605,8 +1682,7 @@ class _GrowthAnalysisPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text(
-            'تحليل النمو والانخفاض (مقارنة بالفترة السابقة)',
+          const LocalizedText('تحليل النمو والانخفاض (مقارنة بالفترة السابقة)',
             style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
           ),
           const SizedBox(height: 12),
@@ -1681,7 +1757,7 @@ class _GrowthCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(
+                  child: LocalizedText(
                     title,
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
@@ -1689,13 +1765,12 @@ class _GrowthCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 10),
-            Text(
+            LocalizedText(
               pctText,
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 4),
-            Text(
-              'الاتجاه: $trend',
+            LocalizedText('الاتجاه: $trend',
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
               ),
@@ -1732,7 +1807,7 @@ class _MultiBarChart extends StatelessWidget {
   Widget build(BuildContext context) {
     if (categories.isEmpty) {
       return _EmptyChart(
-        message: 'لا توجد بيانات كافية للمقارنة الشهرية',
+        message: context.trRaw('لا توجد بيانات كافية للمقارنة الشهرية'),
       );
     }
 
@@ -1746,7 +1821,7 @@ class _MultiBarChart extends StatelessWidget {
         width: chartWidth,
         height: 320,
         child: SfCartesianChart(
-          title: ChartTitle(text: 'مقارنة شهرية'),
+          title: ChartTitle(text: context.trRaw('مقارنة شهرية')),
           enableAxisAnimation: false,
           plotAreaBorderWidth: 0,
           legend: Legend(isVisible: true, position: LegendPosition.bottom),
@@ -1757,10 +1832,10 @@ class _MultiBarChart extends StatelessWidget {
           trackballBehavior: trackball,
           series: series.map((s) {
             return ColumnSeries<_ChartData, String>(
-              name: s.name,
+              name: context.trRaw(s.name),
               color: s.color,
               dataSource: categories
-                  .map((c) => _ChartData(c, s.data[c] ?? 0))
+                  .map((c) => _ChartData(_displayChartLabel(c), s.data[c] ?? 0))
                   .toList(),
               xValueMapper: (d, _) => d.label,
               yValueMapper: (d, _) => d.value,
@@ -1795,7 +1870,7 @@ class _ForecastChart extends StatelessWidget {
     final categories = keys.toList()..sort((a, b) => a.compareTo(b));
     if (categories.isEmpty) {
       return _EmptyChart(
-        message: 'لا توجد بيانات كافية للتوقع',
+        message: context.trRaw('لا توجد بيانات كافية للتوقع'),
       );
     }
     final chartWidth = math.max(320.0, 90.0 * categories.length);
@@ -1808,7 +1883,7 @@ class _ForecastChart extends StatelessWidget {
         width: chartWidth,
         height: 300,
         child: SfCartesianChart(
-          title: ChartTitle(text: title),
+          title: ChartTitle(text: context.trRaw(title)),
           enableAxisAnimation: false,
           plotAreaBorderWidth: 0,
           legend: Legend(isVisible: true, position: LegendPosition.bottom),
@@ -1819,10 +1894,10 @@ class _ForecastChart extends StatelessWidget {
           trackballBehavior: trackball,
           series: [
             LineSeries<_ChartData, String>(
-              name: 'فعلي',
+              name: context.trRaw('فعلي'),
               color: actualColor,
               dataSource: categories
-                  .map((c) => _ChartData(c, actual[c] ?? 0))
+                  .map((c) => _ChartData(_displayChartLabel(c), actual[c] ?? 0))
                   .toList(),
               xValueMapper: (d, _) => d.label,
               yValueMapper: (d, _) => d.value,
@@ -1830,10 +1905,10 @@ class _ForecastChart extends StatelessWidget {
               dataLabelSettings: const DataLabelSettings(isVisible: false),
             ),
             LineSeries<_ChartData, String>(
-              name: 'متوقع',
+              name: context.trRaw('متوقع'),
               color: forecastColor,
               dataSource: categories
-                  .map((c) => _ChartData(c, forecast[c] ?? 0))
+                  .map((c) => _ChartData(_displayChartLabel(c), forecast[c] ?? 0))
                   .toList(),
               xValueMapper: (d, _) => d.label,
               yValueMapper: (d, _) => d.value,
@@ -1885,7 +1960,7 @@ class _KpiCard extends StatelessWidget {
               child: Icon(item.icon, color: item.color, size: 20),
             ),
             const SizedBox(height: 10),
-            Text(
+            LocalizedText(
               item.title,
               style: TextStyle(
                 fontSize: 12,
@@ -1893,7 +1968,7 @@ class _KpiCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 6),
-            Text(
+            LocalizedText(
               item.value,
               style: const TextStyle(
                 fontSize: 16,
@@ -1923,7 +1998,7 @@ class _TopList extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
+          LocalizedText(
             title,
             style: const TextStyle(fontWeight: FontWeight.w700),
           ),
@@ -1933,8 +2008,8 @@ class _TopList extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: Row(
                 children: [
-                  Expanded(child: Text(e.key)),
-                  Text(_PdfUtils.formatNumber(e.value)),
+                  Expanded(child: LocalizedText(AppFormatters.localizeDateKey(e.key))),
+                  LocalizedText(_PdfUtils.formatNumber(e.value)),
                 ],
               ),
             ),
@@ -1959,7 +2034,7 @@ class _EmptyChart extends StatelessWidget {
           Icon(Icons.bar_chart_outlined,
               size: 36, color: Theme.of(context).colorScheme.primary),
           const SizedBox(height: 8),
-          Text(message, textAlign: TextAlign.center),
+          LocalizedText(message, textAlign: TextAlign.center),
         ],
       ),
     );
@@ -1986,7 +2061,7 @@ class _LineAndPieCharts extends StatelessWidget {
 
     if (data.isEmpty) {
       return _EmptyChart(
-        message: 'لا توجد بيانات لعرضها ضمن الفترة المحددة',
+        message: context.trRaw('لا توجد بيانات لعرضها ضمن الفترة المحددة'),
       );
     }
 
@@ -1998,7 +2073,7 @@ class _LineAndPieCharts extends StatelessWidget {
             width: chartWidth,
             height: 280,
             child: SfCartesianChart(
-              title: ChartTitle(text: '$primaryTitle (خطي)'),
+          title: ChartTitle(text: context.trRaw('$primaryTitle (خطي)')),
               enableAxisAnimation: false,
               plotAreaBorderWidth: 0,
               primaryXAxis: CategoryAxis(labelRotation: 45),
@@ -2027,7 +2102,7 @@ class _LineAndPieCharts extends StatelessWidget {
             maxScale: 4,
             panEnabled: true,
             child: SfCircularChart(
-              title: ChartTitle(text: '$primaryTitle (دائري)'),
+              title: ChartTitle(text: context.trRaw('$primaryTitle (دائري)')),
               legend: Legend(
                 isVisible: true,
                 overflowMode: LegendItemOverflowMode.wrap,
@@ -2069,7 +2144,7 @@ class _BarChart extends StatelessWidget {
     final trackball = _defaultTrackball();
     if (data.isEmpty) {
       return _EmptyChart(
-        message: 'لا توجد بيانات لعرضها ضمن الفترة المحددة',
+        message: context.trRaw('لا توجد بيانات لعرضها ضمن الفترة المحددة'),
       );
     }
     return SingleChildScrollView(
@@ -2078,7 +2153,7 @@ class _BarChart extends StatelessWidget {
         width: chartWidth,
         height: 300,
         child: SfCartesianChart(
-          title: ChartTitle(text: title),
+          title: ChartTitle(text: context.trRaw(title)),
           enableAxisAnimation: false,
           plotAreaBorderWidth: 0,
           primaryXAxis: CategoryAxis(labelRotation: 45),
@@ -2111,37 +2186,37 @@ class _OutstandingTable extends StatelessWidget {
   Widget build(BuildContext context) {
     if (rows.isEmpty) {
       return _EmptyChart(
-        message: 'لا توجد مستحقات ضمن الفترة المحددة',
+        message: context.trRaw('لا توجد مستحقات ضمن الفترة المحددة'),
       );
     }
-    final money = NumberFormat('#,##0.00');
+    final money = AppFormatters.numberFormat('#,##0.00');
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: DataTable(
         columns: const [
-          DataColumn(label: Text('الطبيب')),
-          DataColumn(label: Text('النِّسب')),
-          DataColumn(label: Text('المدخلات')),
-          DataColumn(label: Text('السلف')),
-          DataColumn(label: Text('الخصومات')),
-          DataColumn(label: Text('المدفوع')),
-          DataColumn(label: Text('الصافي')),
+          DataColumn(label: LocalizedText('الطبيب')),
+          DataColumn(label: LocalizedText('النِّسب')),
+          DataColumn(label: LocalizedText('المدخلات')),
+          DataColumn(label: LocalizedText('السلف')),
+          DataColumn(label: LocalizedText('الخصومات')),
+          DataColumn(label: LocalizedText('المدفوع')),
+          DataColumn(label: LocalizedText('الصافي')),
         ],
         rows: rows.map((r) {
           return DataRow(
             cells: [
-              DataCell(Text(r['doctorName']?.toString() ?? '—')),
-              DataCell(Text(money.format(
+              DataCell(LocalizedText(r['doctorName']?.toString() ?? '—')),
+              DataCell(LocalizedText(money.format(
                   (r['ratioSum'] as num?)?.toDouble() ?? 0.0))),
-              DataCell(Text(money.format(
+              DataCell(LocalizedText(money.format(
                   (r['directInput'] as num?)?.toDouble() ?? 0.0))),
-              DataCell(Text(money.format(
+              DataCell(LocalizedText(money.format(
                   (r['totalLoans'] as num?)?.toDouble() ?? 0.0))),
-              DataCell(Text(money.format(
+              DataCell(LocalizedText(money.format(
                   (r['totalDiscounts'] as num?)?.toDouble() ?? 0.0))),
-              DataCell(Text(money.format(
+              DataCell(LocalizedText(money.format(
                   (r['totalPaid'] as num?)?.toDouble() ?? 0.0))),
-              DataCell(Text(money.format(
+              DataCell(LocalizedText(money.format(
                   (r['netPay'] as num?)?.toDouble() ?? 0.0))),
             ],
           );
@@ -2211,7 +2286,7 @@ class _IncomeByDateWidgetState extends State<_IncomeByDateWidget> {
       initialDate: _startDate ?? DateTime.now(),
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
-      locale: const Locale('ar', ''),
+      locale: Localizations.localeOf(context),
     );
     if (d != null) {
       if (!mounted) return;
@@ -2226,7 +2301,7 @@ class _IncomeByDateWidgetState extends State<_IncomeByDateWidget> {
       initialDate: _endDate ?? DateTime.now(),
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
-      locale: const Locale('ar', ''),
+      locale: Localizations.localeOf(context),
     );
     if (d != null) {
       if (!mounted) return;
@@ -2236,7 +2311,9 @@ class _IncomeByDateWidgetState extends State<_IncomeByDateWidget> {
   }
 
   List<_ChartData> get _data =>
-      _incomeByDate.entries.map((e) => _ChartData(e.key, e.value)).toList()
+      _incomeByDate.entries
+          .map((e) => _ChartData(_displayChartLabel(e.key), e.value))
+          .toList()
         ..sort((a, b) => a.label.compareTo(b.label));
 
   double get _total => _safeTotal(_data);
@@ -2256,13 +2333,14 @@ class _IncomeByDateWidgetState extends State<_IncomeByDateWidget> {
     doc.addPage(
       pw.MultiPage(
         pageTheme: _PdfUtils._pageTheme(base, bold),
+        footer: (ctx) => _PdfUtils.footer(ctx, clinic),
         build: (_) => [
           _PdfUtils.header('تقرير الدخل بالتاريخ',
               subtitle: _subtitleRange(_startDate, _endDate),
               logo: logo,
               clinic: clinic),
           pw.SizedBox(height: 6),
-          pw.Text(pdfText('الإجمالي: ${_PdfUtils.formatNumber(_total)}'),
+          pw.Text(_PdfUtils.pdf('الإجمالي: ${_PdfUtils.formatNumber(_total)}'),
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 10),
           ..._PdfUtils.lineChartsFromMap(_incomeByDate,
@@ -2277,12 +2355,12 @@ class _IncomeByDateWidgetState extends State<_IncomeByDateWidget> {
 
   Future<void> _exportPdf() async {
     final doc = await _buildPdf();
-    await _PdfUtils.shareDoc(doc, 'income_by_date');
+    await _PdfUtils.shareDoc(doc, 'تقرير الدخل بالتاريخ');
   }
 
   Future<void> _downloadPdf() async {
     final doc = await _buildPdf();
-    await _PdfUtils.downloadDoc(context, doc, 'income_by_date');
+    await _PdfUtils.downloadDoc(context, doc, 'تقرير الدخل بالتاريخ');
   }
 
   void _reset() {
@@ -2322,7 +2400,7 @@ class _IncomeByDateWidgetState extends State<_IncomeByDateWidget> {
               children: [
                 const Icon(Icons.summarize_outlined, color: kPrimaryColor),
                 const SizedBox(width: 8),
-                Text('الإجمالي: ${_total.toStringAsFixed(2)}',
+                LocalizedText('الإجمالي: ${_total.toStringAsFixed(2)}',
                     style: const TextStyle(fontWeight: FontWeight.w800)),
               ],
             ),
@@ -2343,7 +2421,7 @@ class _IncomeByDateWidgetState extends State<_IncomeByDateWidget> {
                         width: chartWidth,
                         height: 300,
                         child: SfCartesianChart(
-                          title: ChartTitle(text: "الدخل بالتاريخ (Line)"),
+                          title: ChartTitle(text: context.trRaw('الدخل بالتاريخ (خطي)')),
                           enableAxisAnimation: false,
                           plotAreaBorderWidth: 0,
                           primaryXAxis: CategoryAxis(labelRotation: 45),
@@ -2380,7 +2458,7 @@ class _IncomeByDateWidgetState extends State<_IncomeByDateWidget> {
                         maxScale: 5,
                         panEnabled: true,
                         child: SfCircularChart(
-                          title: ChartTitle(text: "نسبة الدخل (Pie)"),
+                          title: ChartTitle(text: context.trRaw('نسبة الدخل (دائري)')),
                           legend: Legend(
                               isVisible: true,
                               overflowMode: LegendItemOverflowMode.wrap),
@@ -2477,7 +2555,7 @@ class _ConsumptionByDateWidgetState extends State<_ConsumptionByDateWidget> {
       filtered =
           filtered.where((c) => c.date.isBefore(end.add(const Duration(days: 1))));
     }
-    final df = DateFormat('yyyy-MM-dd');
+    final df = AppFormatters.dateFormat('yyyy-MM-dd');
     final m = <String, double>{};
     for (final c in filtered) {
       final k = df.format(c.date);
@@ -2493,7 +2571,7 @@ class _ConsumptionByDateWidgetState extends State<_ConsumptionByDateWidget> {
       initialDate: _startDate ?? DateTime.now(),
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
-      locale: const Locale('ar', ''),
+      locale: Localizations.localeOf(context),
     );
     if (d != null) {
       if (!mounted) return;
@@ -2508,7 +2586,7 @@ class _ConsumptionByDateWidgetState extends State<_ConsumptionByDateWidget> {
       initialDate: _endDate ?? DateTime.now(),
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
-      locale: const Locale('ar', ''),
+      locale: Localizations.localeOf(context),
     );
     if (d != null) {
       if (!mounted) return;
@@ -2518,7 +2596,9 @@ class _ConsumptionByDateWidgetState extends State<_ConsumptionByDateWidget> {
   }
 
   List<_ChartData> get _data =>
-      _byDate.entries.map((e) => _ChartData(e.key, e.value)).toList()
+      _byDate.entries
+          .map((e) => _ChartData(_displayChartLabel(e.key), e.value))
+          .toList()
         ..sort((a, b) => a.label.compareTo(b.label));
 
   double get _total => _safeTotal(_data);
@@ -2538,13 +2618,14 @@ class _ConsumptionByDateWidgetState extends State<_ConsumptionByDateWidget> {
     doc.addPage(
       pw.MultiPage(
         pageTheme: _PdfUtils._pageTheme(base, bold),
+        footer: (ctx) => _PdfUtils.footer(ctx, clinic),
         build: (_) => [
           _PdfUtils.header('تقرير الاستهلاك بالتاريخ',
               subtitle: _subtitleRange(_startDate, _endDate),
               logo: logo,
               clinic: clinic),
           pw.SizedBox(height: 6),
-          pw.Text(pdfText('الإجمالي: ${_PdfUtils.formatNumber(_total)}'),
+          pw.Text(_PdfUtils.pdf('الإجمالي: ${_PdfUtils.formatNumber(_total)}'),
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 10),
           ..._PdfUtils.lineChartsFromMap(_byDate,
@@ -2560,12 +2641,12 @@ class _ConsumptionByDateWidgetState extends State<_ConsumptionByDateWidget> {
 
   Future<void> _exportPdf() async {
     final doc = await _buildPdf();
-    await _PdfUtils.shareDoc(doc, 'consumption_by_date');
+    await _PdfUtils.shareDoc(doc, 'تقرير الاستهلاك بالتاريخ');
   }
 
   Future<void> _downloadPdf() async {
     final doc = await _buildPdf();
-    await _PdfUtils.downloadDoc(context, doc, 'consumption_by_date');
+    await _PdfUtils.downloadDoc(context, doc, 'تقرير الاستهلاك بالتاريخ');
   }
 
   @override
@@ -2602,7 +2683,7 @@ class _ConsumptionByDateWidgetState extends State<_ConsumptionByDateWidget> {
               children: [
                 const Icon(Icons.summarize_outlined, color: kPrimaryColor),
                 const SizedBox(width: 8),
-                Text('الإجمالي: ${_total.toStringAsFixed(2)}',
+                LocalizedText('الإجمالي: ${_total.toStringAsFixed(2)}',
                     style: const TextStyle(fontWeight: FontWeight.w800)),
               ],
             ),
@@ -2622,7 +2703,7 @@ class _ConsumptionByDateWidgetState extends State<_ConsumptionByDateWidget> {
                         width: chartWidth,
                         height: 300,
                         child: SfCartesianChart(
-                          title: ChartTitle(text: "الاستهلاك بالتاريخ (Line)"),
+                          title: ChartTitle(text: context.trRaw('الاستهلاك بالتاريخ (خطي)')),
                           enableAxisAnimation: false,
                           plotAreaBorderWidth: 0,
                           primaryXAxis: CategoryAxis(labelRotation: 45),
@@ -2658,7 +2739,7 @@ class _ConsumptionByDateWidgetState extends State<_ConsumptionByDateWidget> {
                         maxScale: 5,
                         panEnabled: true,
                         child: SfCircularChart(
-                          title: ChartTitle(text: "نسبة الاستهلاك (Pie)"),
+                          title: ChartTitle(text: context.trRaw('نسبة الاستهلاك (دائري)')),
                           legend: Legend(
                               isVisible: true,
                               overflowMode: LegendItemOverflowMode.wrap),
@@ -2755,7 +2836,7 @@ class _IncomeByDoctorWidgetState extends State<_IncomeByDoctorWidget> {
       initialDate: _startDate ?? DateTime.now(),
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
-      locale: const Locale('ar', ''),
+      locale: Localizations.localeOf(context),
     );
     if (d != null) {
       if (!mounted) return;
@@ -2770,7 +2851,7 @@ class _IncomeByDoctorWidgetState extends State<_IncomeByDoctorWidget> {
       initialDate: _endDate ?? DateTime.now(),
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
-      locale: const Locale('ar', ''),
+      locale: Localizations.localeOf(context),
     );
     if (d != null) {
       if (!mounted) return;
@@ -2780,7 +2861,9 @@ class _IncomeByDoctorWidgetState extends State<_IncomeByDoctorWidget> {
   }
 
   List<_ChartData> get _data =>
-      _byDoctor.entries.map((e) => _ChartData(e.key, e.value)).toList()
+      _byDoctor.entries
+          .map((e) => _ChartData(_displayChartLabel(e.key), e.value))
+          .toList()
         ..sort((a, b) => b.value.compareTo(a.value));
 
   double get _total => _safeTotal(_data);
@@ -2800,13 +2883,14 @@ class _IncomeByDoctorWidgetState extends State<_IncomeByDoctorWidget> {
     doc.addPage(
       pw.MultiPage(
         pageTheme: _PdfUtils._pageTheme(base, bold),
+        footer: (ctx) => _PdfUtils.footer(ctx, clinic),
         build: (_) => [
           _PdfUtils.header('تقرير الدخل حسب الطبيب',
               subtitle: _subtitleRange(_startDate, _endDate),
               logo: logo,
               clinic: clinic),
           pw.SizedBox(height: 6),
-          pw.Text(pdfText('الإجمالي: ${_PdfUtils.formatNumber(_total)}'),
+          pw.Text(_PdfUtils.pdf('الإجمالي: ${_PdfUtils.formatNumber(_total)}'),
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 10),
           ..._PdfUtils.barChartsFromMap(_byDoctor,
@@ -2821,12 +2905,12 @@ class _IncomeByDoctorWidgetState extends State<_IncomeByDoctorWidget> {
 
   Future<void> _exportPdf() async {
     final doc = await _buildPdf();
-    await _PdfUtils.shareDoc(doc, 'income_by_doctor');
+    await _PdfUtils.shareDoc(doc, 'تقرير الدخل حسب الطبيب');
   }
 
   Future<void> _downloadPdf() async {
     final doc = await _buildPdf();
-    await _PdfUtils.downloadDoc(context, doc, 'income_by_doctor');
+    await _PdfUtils.downloadDoc(context, doc, 'تقرير الدخل حسب الطبيب');
   }
 
   @override
@@ -2863,7 +2947,7 @@ class _IncomeByDoctorWidgetState extends State<_IncomeByDoctorWidget> {
               children: [
                 const Icon(Icons.summarize_outlined, color: kPrimaryColor),
                 const SizedBox(width: 8),
-                Text('الإجمالي: ${_total.toStringAsFixed(2)}',
+                LocalizedText('الإجمالي: ${_total.toStringAsFixed(2)}',
                     style: const TextStyle(fontWeight: FontWeight.w800)),
               ],
             ),
@@ -2883,7 +2967,7 @@ class _IncomeByDoctorWidgetState extends State<_IncomeByDoctorWidget> {
                         width: chartWidth,
                         height: 320,
                         child: SfCartesianChart(
-                          title: ChartTitle(text: "الدخل حسب الطبيب (Bar)"),
+                          title: ChartTitle(text: context.trRaw('الدخل حسب الطبيب (أعمدة)')),
                           enableAxisAnimation: false,
                           plotAreaBorderWidth: 0,
                           primaryXAxis: CategoryAxis(labelRotation: 45),
@@ -2919,7 +3003,7 @@ class _IncomeByDoctorWidgetState extends State<_IncomeByDoctorWidget> {
                         maxScale: 5,
                         panEnabled: true,
                         child: SfCircularChart(
-                          title: ChartTitle(text: "نسبة الدخل (Pie)"),
+                          title: ChartTitle(text: context.trRaw('نسبة الدخل (دائري)')),
                           legend: Legend(
                               isVisible: true,
                               overflowMode: LegendItemOverflowMode.wrap),
@@ -3032,7 +3116,7 @@ class _ConsumptionTypeWidgetState extends State<_ConsumptionTypeWidget> {
       initialDate: _startDate ?? DateTime.now(),
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
-      locale: const Locale('ar', ''),
+      locale: Localizations.localeOf(context),
     );
     if (d != null) {
       if (!mounted) return;
@@ -3047,7 +3131,7 @@ class _ConsumptionTypeWidgetState extends State<_ConsumptionTypeWidget> {
       initialDate: _endDate ?? DateTime.now(),
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
-      locale: const Locale('ar', ''),
+      locale: Localizations.localeOf(context),
     );
     if (d != null) {
       if (!mounted) return;
@@ -3057,7 +3141,9 @@ class _ConsumptionTypeWidgetState extends State<_ConsumptionTypeWidget> {
   }
 
   List<_ChartData> get _data =>
-      _byType.entries.map((e) => _ChartData(e.key, e.value)).toList()
+      _byType.entries
+          .map((e) => _ChartData(_displayChartLabel(e.key), e.value))
+          .toList()
         ..sort((a, b) => b.value.compareTo(a.value));
 
   double get _total => _safeTotal(_data);
@@ -3077,13 +3163,14 @@ class _ConsumptionTypeWidgetState extends State<_ConsumptionTypeWidget> {
     doc.addPage(
       pw.MultiPage(
         pageTheme: _PdfUtils._pageTheme(base, bold),
+        footer: (ctx) => _PdfUtils.footer(ctx, clinic),
         build: (_) => [
           _PdfUtils.header('تقرير نوعية الاستهلاك',
               subtitle: _subtitleRange(_startDate, _endDate),
               logo: logo,
               clinic: clinic),
           pw.SizedBox(height: 6),
-          pw.Text(pdfText('الإجمالي: ${_PdfUtils.formatNumber(_total)}'),
+          pw.Text(_PdfUtils.pdf('الإجمالي: ${_PdfUtils.formatNumber(_total)}'),
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 10),
           ..._PdfUtils.barChartsFromMap(_byType,
@@ -3098,12 +3185,12 @@ class _ConsumptionTypeWidgetState extends State<_ConsumptionTypeWidget> {
 
   Future<void> _exportPdf() async {
     final doc = await _buildPdf();
-    await _PdfUtils.shareDoc(doc, 'consumption_by_type');
+    await _PdfUtils.shareDoc(doc, 'تقرير نوعية الاستهلاك');
   }
 
   Future<void> _downloadPdf() async {
     final doc = await _buildPdf();
-    await _PdfUtils.downloadDoc(context, doc, 'consumption_by_type');
+    await _PdfUtils.downloadDoc(context, doc, 'تقرير نوعية الاستهلاك');
   }
 
   @override
@@ -3141,7 +3228,7 @@ class _ConsumptionTypeWidgetState extends State<_ConsumptionTypeWidget> {
               children: [
                 const Icon(Icons.summarize_outlined, color: kPrimaryColor),
                 const SizedBox(width: 8),
-                Text('الإجمالي: ${_total.toStringAsFixed(2)}',
+                LocalizedText('الإجمالي: ${_total.toStringAsFixed(2)}',
                     style: const TextStyle(fontWeight: FontWeight.w800)),
               ],
             ),
@@ -3161,7 +3248,7 @@ class _ConsumptionTypeWidgetState extends State<_ConsumptionTypeWidget> {
                         width: chartWidth,
                         height: 320,
                         child: SfCartesianChart(
-                          title: ChartTitle(text: "نوعية الاستهلاك (Bar)"),
+                          title: ChartTitle(text: context.trRaw('نوعية الاستهلاك (أعمدة)')),
                           enableAxisAnimation: false,
                           plotAreaBorderWidth: 0,
                           primaryXAxis: CategoryAxis(labelRotation: 45),
@@ -3197,7 +3284,7 @@ class _ConsumptionTypeWidgetState extends State<_ConsumptionTypeWidget> {
                         maxScale: 5,
                         panEnabled: true,
                         child: SfCircularChart(
-                          title: ChartTitle(text: "نسبة الاستهلاك (Pie)"),
+                          title: ChartTitle(text: context.trRaw('نسبة الاستهلاك (دائري)')),
                           legend: Legend(
                               isVisible: true,
                               overflowMode: LegendItemOverflowMode.wrap),
@@ -3294,7 +3381,7 @@ class _DoctorShareByDateWidgetState extends State<_DoctorShareByDateWidget> {
       initialDate: _startDate ?? DateTime.now(),
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
-      locale: const Locale('ar', ''),
+      locale: Localizations.localeOf(context),
     );
     if (d != null) {
       if (!mounted) return;
@@ -3309,7 +3396,7 @@ class _DoctorShareByDateWidgetState extends State<_DoctorShareByDateWidget> {
       initialDate: _endDate ?? DateTime.now(),
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
-      locale: const Locale('ar', ''),
+      locale: Localizations.localeOf(context),
     );
     if (d != null) {
       if (!mounted) return;
@@ -3319,7 +3406,9 @@ class _DoctorShareByDateWidgetState extends State<_DoctorShareByDateWidget> {
   }
 
   List<_ChartData> get _data =>
-      _shareByDate.entries.map((e) => _ChartData(e.key, e.value)).toList()
+      _shareByDate.entries
+          .map((e) => _ChartData(_displayChartLabel(e.key), e.value))
+          .toList()
         ..sort((a, b) => a.label.compareTo(b.label));
 
   double get _total => _safeTotal(_data);
@@ -3339,13 +3428,14 @@ class _DoctorShareByDateWidgetState extends State<_DoctorShareByDateWidget> {
     doc.addPage(
       pw.MultiPage(
         pageTheme: _PdfUtils._pageTheme(base, bold),
+        footer: (ctx) => _PdfUtils.footer(ctx, clinic),
         build: (_) => [
           _PdfUtils.header('تقرير حصة الأطباء بالتاريخ',
               subtitle: _subtitleRange(_startDate, _endDate),
               logo: logo,
               clinic: clinic),
           pw.SizedBox(height: 6),
-          pw.Text(pdfText('الإجمالي: ${_PdfUtils.formatNumber(_total)}'),
+          pw.Text(_PdfUtils.pdf('الإجمالي: ${_PdfUtils.formatNumber(_total)}'),
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 10),
           ..._PdfUtils.lineChartsFromMap(_shareByDate,
@@ -3360,12 +3450,12 @@ class _DoctorShareByDateWidgetState extends State<_DoctorShareByDateWidget> {
 
   Future<void> _exportPdf() async {
     final doc = await _buildPdf();
-    await _PdfUtils.shareDoc(doc, 'doctor_share_by_date');
+    await _PdfUtils.shareDoc(doc, 'تقرير حصة الأطباء بالتاريخ');
   }
 
   Future<void> _downloadPdf() async {
     final doc = await _buildPdf();
-    await _PdfUtils.downloadDoc(context, doc, 'doctor_share_by_date');
+    await _PdfUtils.downloadDoc(context, doc, 'تقرير حصة الأطباء بالتاريخ');
   }
 
   @override
@@ -3403,7 +3493,7 @@ class _DoctorShareByDateWidgetState extends State<_DoctorShareByDateWidget> {
               children: [
                 const Icon(Icons.summarize_outlined, color: kPrimaryColor),
                 const SizedBox(width: 8),
-                Text('الإجمالي: ${_total.toStringAsFixed(2)}',
+                LocalizedText('الإجمالي: ${_total.toStringAsFixed(2)}',
                     style: const TextStyle(fontWeight: FontWeight.w800)),
               ],
             ),
@@ -3420,7 +3510,7 @@ class _DoctorShareByDateWidgetState extends State<_DoctorShareByDateWidget> {
                   width: chartWidth,
                   height: 300,
                   child: SfCartesianChart(
-                    title: ChartTitle(text: "حصة الأطباء بالتاريخ (Line)"),
+                    title: ChartTitle(text: context.trRaw('حصة الأطباء بالتاريخ (خطي)')),
                     enableAxisAnimation: false,
                     plotAreaBorderWidth: 0,
                     primaryXAxis: CategoryAxis(labelRotation: 45),
@@ -3475,8 +3565,8 @@ class _DoctorOutstandingWidgetState extends State<_DoctorOutstandingWidget> {
     'service_doctor_share',
   };
 
-  final DateFormat _dateFmt = DateFormat('yyyy-MM-dd');
-  final NumberFormat _moneyFmt = NumberFormat('#,##0.00');
+  DateFormat get _dateFmt => AppFormatters.dateFormat('yyyy-MM-dd');
+  NumberFormat get _moneyFmt => AppFormatters.numberFormat('#,##0.00');
 
   @override
   void initState() {
@@ -3522,7 +3612,7 @@ class _DoctorOutstandingWidgetState extends State<_DoctorOutstandingWidget> {
       initialDate: _asOf,
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
-      locale: const Locale('ar', ''),
+      locale: Localizations.localeOf(context),
     );
     if (picked != null) {
       if (!mounted) return;
@@ -3568,6 +3658,7 @@ class _DoctorOutstandingWidgetState extends State<_DoctorOutstandingWidget> {
     doc.addPage(
       pw.MultiPage(
         pageTheme: _PdfUtils._pageTheme(base, bold),
+        footer: (ctx) => _PdfUtils.footer(ctx, clinic),
         build: (_) => [
           _PdfUtils.header('تقرير مستحقات الأطباء',
               subtitle: 'حتى تاريخ: ${_dateFmt.format(_asOf)}',
@@ -3575,7 +3666,7 @@ class _DoctorOutstandingWidgetState extends State<_DoctorOutstandingWidget> {
               clinic: clinic),
           pw.SizedBox(height: 6),
           pw.Text(
-            pdfText('الإجمالي: ${_PdfUtils.formatNumber(_totalNet)}'),
+            _PdfUtils.pdf('الإجمالي: ${_PdfUtils.formatNumber(_totalNet)}'),
             style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
           ),
           pw.SizedBox(height: 10),
@@ -3599,12 +3690,12 @@ class _DoctorOutstandingWidgetState extends State<_DoctorOutstandingWidget> {
 
   Future<void> _exportPdf() async {
     final doc = await _buildPdf();
-    await _PdfUtils.shareDoc(doc, 'doctor_outstanding');
+    await _PdfUtils.shareDoc(doc, 'تقرير مستحقات الأطباء');
   }
 
   Future<void> _downloadPdf() async {
     final doc = await _buildPdf();
-    await _PdfUtils.downloadDoc(context, doc, 'doctor_outstanding');
+    await _PdfUtils.downloadDoc(context, doc, 'تقرير مستحقات الأطباء');
   }
 
   @override
@@ -3630,11 +3721,10 @@ class _DoctorOutstandingWidgetState extends State<_DoctorOutstandingWidget> {
                     ),
                     const SizedBox(width: 12),
                     const Expanded(
-                      child: Text(
-                        'مستحقات الأطباء',
+                      child: LocalizedText('مستحقات الأطباء',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.right,
+                        textAlign: TextAlign.start,
                         style:
                             TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
                       ),
@@ -3648,7 +3738,7 @@ class _DoctorOutstandingWidgetState extends State<_DoctorOutstandingWidget> {
                   Expanded(
                     child: TDateButton(
                       icon: Icons.event_rounded,
-                      label: 'حتى ${_dateFmt.format(_asOf)}',
+                      label: 'حتى تاريخ: ${_dateFmt.format(_asOf)}',
                       onTap: _pickAsOf,
                     ),
                   ),
@@ -3679,7 +3769,7 @@ class _DoctorOutstandingWidgetState extends State<_DoctorOutstandingWidget> {
           child: _loading
               ? const Center(child: CircularProgressIndicator())
               : _rows.isEmpty
-                  ? const Center(child: Text('لا توجد بيانات'))
+                  ? const Center(child: LocalizedText('لا توجد بيانات'))
                   : ListView.separated(
                       padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
                       itemBuilder: (ctx, i) {
@@ -3709,8 +3799,7 @@ class _DoctorOutstandingWidgetState extends State<_DoctorOutstandingWidget> {
                               style:
                                   const TextStyle(fontWeight: FontWeight.w800),
                             ),
-                            subtitle: Text(
-                              'الفترة: $period\n'
+                            subtitle: LocalizedText('الفترة: $period\n'
                               'النسب: ${_moneyFmt.format(ratio)}، '
                               'مدخلات: ${_moneyFmt.format(direct)}\n'
                               'سلف: ${_moneyFmt.format(loans)}، '
@@ -3726,8 +3815,7 @@ class _DoctorOutstandingWidgetState extends State<_DoctorOutstandingWidget> {
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-          child: Text(
-            'إجمالي المستحقات: ${_moneyFmt.format(_totalNet)}',
+          child: LocalizedText('إجمالي المستحقات: ${_moneyFmt.format(_totalNet)}',
             style: const TextStyle(fontWeight: FontWeight.w700),
           ),
         ),
@@ -3807,7 +3895,7 @@ class _NetProfitWidgetState extends State<_NetProfitWidget> {
       initialDate: _startDate ?? DateTime.now(),
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
-      locale: const Locale('ar', ''),
+      locale: Localizations.localeOf(context),
     );
     if (d != null) {
       if (!mounted) return;
@@ -3822,7 +3910,7 @@ class _NetProfitWidgetState extends State<_NetProfitWidget> {
       initialDate: _endDate ?? DateTime.now(),
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
-      locale: const Locale('ar', ''),
+      locale: Localizations.localeOf(context),
     );
     if (d != null) {
       if (!mounted) return;
@@ -3832,7 +3920,9 @@ class _NetProfitWidgetState extends State<_NetProfitWidget> {
   }
 
   List<_ChartData> get _data =>
-      _netByDate.entries.map((e) => _ChartData(e.key, e.value)).toList()
+      _netByDate.entries
+          .map((e) => _ChartData(_displayChartLabel(e.key), e.value))
+          .toList()
         ..sort((a, b) => a.label.compareTo(b.label));
 
   double get _total => _safeTotal(_data);
@@ -3852,13 +3942,14 @@ class _NetProfitWidgetState extends State<_NetProfitWidget> {
     doc.addPage(
       pw.MultiPage(
         pageTheme: _PdfUtils._pageTheme(base, bold),
+        footer: (ctx) => _PdfUtils.footer(ctx, clinic),
         build: (_) => [
           _PdfUtils.header('تقرير صافي الأرباح بالتاريخ',
               subtitle: _subtitleRange(_startDate, _endDate),
               logo: logo,
               clinic: clinic),
           pw.SizedBox(height: 6),
-          pw.Text(pdfText('مجموع صافي الأيام: ${_PdfUtils.formatNumber(_total)}'),
+          pw.Text(_PdfUtils.pdf('مجموع صافي الأيام: ${_PdfUtils.formatNumber(_total)}'),
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 10),
           ..._PdfUtils.lineChartsFromMap(_netByDate,
@@ -3874,12 +3965,12 @@ class _NetProfitWidgetState extends State<_NetProfitWidget> {
 
   Future<void> _exportPdf() async {
     final doc = await _buildPdf();
-    await _PdfUtils.shareDoc(doc, 'net_profit_by_date');
+    await _PdfUtils.shareDoc(doc, 'تقرير صافي الأرباح بالتاريخ');
   }
 
   Future<void> _downloadPdf() async {
     final doc = await _buildPdf();
-    await _PdfUtils.downloadDoc(context, doc, 'net_profit_by_date');
+    await _PdfUtils.downloadDoc(context, doc, 'تقرير صافي الأرباح بالتاريخ');
   }
 
   void _reset() {
@@ -3919,7 +4010,7 @@ class _NetProfitWidgetState extends State<_NetProfitWidget> {
               children: [
                 const Icon(Icons.summarize_outlined, color: kPrimaryColor),
                 const SizedBox(width: 8),
-                Text('مجموع الصافي: ${_total.toStringAsFixed(2)}',
+                LocalizedText('مجموع الصافي: ${_total.toStringAsFixed(2)}',
                     style: const TextStyle(fontWeight: FontWeight.w800)),
               ],
             ),
@@ -3936,7 +4027,7 @@ class _NetProfitWidgetState extends State<_NetProfitWidget> {
                   width: chartWidth,
                   height: 300,
                   child: SfCartesianChart(
-                    title: ChartTitle(text: "صافي الأرباح بالتاريخ (Line)"),
+                    title: ChartTitle(text: context.trRaw('صافي الأرباح بالتاريخ (خطي)')),
                     enableAxisAnimation: false,
                     plotAreaBorderWidth: 0,
                     primaryXAxis: CategoryAxis(labelRotation: 45),
@@ -3968,7 +4059,7 @@ class _NetProfitWidgetState extends State<_NetProfitWidget> {
 
 /*──────────────────────── أدوات مساعدة صغيرة ────────────────────────*/
 String _subtitleRange(DateTime? from, DateTime? to) {
-  final df = DateFormat('yyyy-MM-dd');
+  final df = AppFormatters.dateFormat('yyyy-MM-dd');
   final range = _normalizedRange(from, to);
   final start = range.start;
   final end = range.end;

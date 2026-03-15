@@ -47,6 +47,9 @@ import 'package:aelmamclinic/screens/auth/login_screen.dart';
 import 'package:aelmamclinic/screens/chat/chat_admin_inbox_screen.dart'; // ⬅️ شاشة دردشة السوبر أدمن
 import 'package:aelmamclinic/screens/admin/support_ratings_screen.dart';
 import 'package:intl/intl.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
+import 'package:aelmamclinic/widgets/language_switch_button.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
 
 /// شاشة لوحة التحكّم للمشرف العام (super-admin) بتصميم TBIAN.
 /// - تعتمد على Theme.of(context).colorScheme و kPrimaryColor.
@@ -114,7 +117,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   bool _loadingAdminTabs = true;
   String? _tabsError;
   Timer? _pendingPollTimer;
+  final Set<String> _loadedSections = <String>{};
+  final Map<String, Future<void>> _sectionLoaders = <String, Future<void>>{};
+  final Map<String, DateTime> _sectionLoadedAt = <String, DateTime>{};
+  final Map<String, DateTime> _statsSliceLoadedAt = <String, DateTime>{};
   bool _isRootCached = false;
+  bool _appIsResumed = true;
 
   // اشتراكات ودفع وشكاوى
   List<SubscriptionRequest> _subscriptionRequests = [];
@@ -149,8 +157,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   bool _loadingStats = false;
   bool _loadingExtraSeatRevenue = false;
   double _extraSeatRevenue = 0;
-  double _monthlySubRevenue = 0;
   double _annualSubRevenue = 0;
+  int _approvedTrialActivations = 0;
   late final PageController _revenueController =
       PageController(viewportFraction: 0.78, initialPage: 1);
   double _revenuePage = 1.0;
@@ -274,11 +282,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     // حارس وصول: إن لم يكن المستخدم سوبر أدمن، لا يسمح بالبقاء هنا
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final auth = context.read<AuthProvider>();
-      if (!auth.isSuperAdmin) {
+      if (!auth.canEnterRemoteAdminShell) {
         await auth.refreshAndValidateCurrentUser();
       }
       if (!mounted) return;
-      if (!auth.isSuperAdmin) {
+      if (!auth.canEnterRemoteAdminShell) {
         Navigator.of(context).pushReplacementNamed('/');
         return;
       }
@@ -291,40 +299,39 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     _tabController.addListener(() {
       // حدّث القائمة كلما فتحنا تبويب "موظف جديد" أو "إدارة العيادات"
       if (_tabController.index == 1 || _tabController.index == 2) {
-        _fetchClinics();
+        unawaited(_ensureSectionLoaded('clinics'));
       }
     });
-    if (auth.isSuperAdmin) {
-      _loadAdminTabs();
-      _fetchClinics();
-      _fetchSubscriptionRequests();
-      _fetchSeatRequests();
-      _pendingPollTimer = Timer.periodic(const Duration(seconds: 30), (_) async {
-        if (_activeSectionKey != 'subscriptions') return;
-        await _fetchSubscriptionRequests();
-        await _fetchSeatRequests();
-      });
+    if (auth.canEnterRemoteAdminShell) {
+      unawaited(() async {
+        await _loadAdminTabs();
+        await _ensureCurrentSectionLoaded();
+      }());
+      _startSubscriptionsPolling();
     }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      if (_pendingPollTimer == null && mounted) {
-        _pendingPollTimer =
-            Timer.periodic(const Duration(seconds: 30), (_) async {
-          if (_activeSectionKey != 'subscriptions') return;
-          await _fetchSubscriptionRequests();
-          await _fetchSeatRequests();
-        });
+      _appIsResumed = true;
+      if (mounted) {
+        _startRevenueAutoPlay();
+        _startMembersSummaryAutoPlay();
+        _startSubscriptionsPolling();
       }
       return;
     }
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive ||
         state == AppLifecycleState.detached) {
+      _appIsResumed = false;
       _pendingPollTimer?.cancel();
       _pendingPollTimer = null;
+      _revenueAutoTimer?.cancel();
+      _revenueAutoTimer = null;
+      _membersSummaryTimer?.cancel();
+      _membersSummaryTimer = null;
     }
   }
 
@@ -363,7 +370,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
 
   void _snack(String msg) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: LocalizedText(msg)));
   }
 
   void _openDrawer() => _scaffoldKey.currentState?.openDrawer();
@@ -373,36 +380,95 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     return email.toLowerCase().trim() == _rootSuperAdminEmail;
   }
 
+  Duration _sectionTtl(String sectionKey) {
+    switch (sectionKey) {
+      case 'stats':
+        return const Duration(minutes: 2);
+      case 'members':
+        return const Duration(minutes: 1);
+      case 'subscriptions':
+      case 'complaints':
+        return const Duration(seconds: 45);
+      default:
+        return const Duration(minutes: 5);
+    }
+  }
+
+  bool _isSectionFresh(String sectionKey) {
+    final loadedAt = _sectionLoadedAt[sectionKey];
+    if (loadedAt == null) return false;
+    return DateTime.now().difference(loadedAt) < _sectionTtl(sectionKey);
+  }
+
+  bool _isStatsSliceFresh(String sliceKey, Duration ttl) {
+    final loadedAt = _statsSliceLoadedAt[sliceKey];
+    if (loadedAt == null) return false;
+    return DateTime.now().difference(loadedAt) < ttl;
+  }
+
+  void _markStatsSliceLoaded(String sliceKey) {
+    _statsSliceLoadedAt[sliceKey] = DateTime.now();
+  }
+
+  bool get _canAutoAdvanceStatsCards =>
+      mounted && _appIsResumed && _activeSectionKey == 'stats';
+
   void _startRevenueAutoPlay() {
     _revenueAutoTimer?.cancel();
-    _revenueAutoTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      if (!mounted) return;
-      if (!_revenueController.hasClients) return;
-      final current =
-          _revenueController.page?.round() ?? _revenueController.initialPage;
-      final next = (current + 1) % _revenueCardCount;
-      _revenueController.animateToPage(
-        next,
-        duration: const Duration(milliseconds: 650),
-        curve: Curves.easeOutCubic,
-      );
+    if (!_canAutoAdvanceStatsCards) return;
+    _revenueAutoTimer = Timer(const Duration(seconds: 5), () {
+      if (!_canAutoAdvanceStatsCards) return;
+      if (_revenueController.hasClients) {
+        final current =
+            _revenueController.page?.round() ?? _revenueController.initialPage;
+        final next = (current + 1) % _revenueCardCount;
+        _revenueController.animateToPage(
+          next,
+          duration: const Duration(milliseconds: 650),
+          curve: Curves.easeOutCubic,
+        );
+      }
+      _startRevenueAutoPlay();
     });
   }
 
   void _startMembersSummaryAutoPlay() {
     _membersSummaryTimer?.cancel();
-    _membersSummaryTimer = Timer.periodic(const Duration(seconds: 6), (_) {
-      if (!mounted) return;
-      if (!_membersSummaryController.hasClients) return;
-      final current =
-          _membersSummaryController.page?.round() ?? _membersSummaryController.initialPage;
-      final next = (current + 1) % _membersSummaryCardCount;
-      _membersSummaryController.animateToPage(
-        next,
-        duration: const Duration(milliseconds: 600),
-        curve: Curves.easeOutCubic,
-      );
+    if (!_canAutoAdvanceStatsCards) return;
+    _membersSummaryTimer = Timer(const Duration(seconds: 6), () {
+      if (!_canAutoAdvanceStatsCards) return;
+      if (_membersSummaryController.hasClients) {
+        final current = _membersSummaryController.page?.round() ??
+            _membersSummaryController.initialPage;
+        final next = (current + 1) % _membersSummaryCardCount;
+        _membersSummaryController.animateToPage(
+          next,
+          duration: const Duration(milliseconds: 600),
+          curve: Curves.easeOutCubic,
+        );
+      }
+      _startMembersSummaryAutoPlay();
     });
+  }
+
+  void _startSubscriptionsPolling() {
+    _pendingPollTimer?.cancel();
+    if (!_appIsResumed || _activeSectionKey != 'subscriptions') {
+      _pendingPollTimer = null;
+      return;
+    }
+    _pendingPollTimer = Timer(const Duration(seconds: 30), () async {
+      await _pollSubscriptionQueues();
+      _startSubscriptionsPolling();
+    });
+  }
+
+  Future<void> _pollSubscriptionQueues() async {
+    if (!mounted || _activeSectionKey != 'subscriptions') return;
+    await Future.wait([
+      _fetchSubscriptionRequests(),
+      _fetchSeatRequests(),
+    ]);
   }
 
   String get _activeSectionKey {
@@ -411,6 +477,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       return _visibleSectionKeys.first;
     }
     return _visibleSectionKeys[_sectionIndex];
+  }
+
+  void _onSectionChanged() {
+    _startRevenueAutoPlay();
+    _startMembersSummaryAutoPlay();
+    _startSubscriptionsPolling();
   }
 
   void _rebuildVisibleSections() {
@@ -422,8 +494,42 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       keys.addAll(_allowedAdminTabs);
     }
     _visibleSectionKeys = keys;
+    _loadedSections.removeWhere((key) => !_visibleSectionKeys.contains(key));
     if (_sectionIndex >= _visibleSectionKeys.length) {
       _sectionIndex = 0;
+    }
+  }
+
+  Future<void> _ensureCurrentSectionLoaded({bool force = false}) async {
+    await _ensureSectionLoaded(_activeSectionKey, force: force);
+  }
+
+  Future<void> _ensureSectionLoaded(String key, {bool force = false}) async {
+    final sectionKey = key.trim();
+    if (sectionKey.isEmpty) return;
+    if (!force &&
+        _loadedSections.contains(sectionKey) &&
+        _isSectionFresh(sectionKey)) {
+      _onSectionChanged();
+      return;
+    }
+    final existing = _sectionLoaders[sectionKey];
+    if (existing != null) {
+      await existing;
+      if (!force) return;
+    }
+    final future = _refreshSection(sectionKey, force: force);
+    _sectionLoaders[sectionKey] = future;
+    try {
+      await future;
+      if (!mounted) return;
+      _loadedSections.add(sectionKey);
+      _sectionLoadedAt[sectionKey] = DateTime.now();
+      _onSectionChanged();
+    } finally {
+      if (identical(_sectionLoaders[sectionKey], future)) {
+        _sectionLoaders.remove(sectionKey);
+      }
     }
   }
 
@@ -463,6 +569,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       if (!mounted) return;
       _rebuildVisibleSections();
       setState(() => _loadingAdminTabs = false);
+      if (_visibleSectionKeys.isNotEmpty) {
+        unawaited(_ensureCurrentSectionLoaded());
+      }
     }
   }
 
@@ -518,8 +627,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
           ),
           const SizedBox(width: 10),
           const Expanded(
-            child: Text(
-              'لوحة تحكّم المشرف العام',
+            child: LocalizedText('لوحة تحكّم المشرف العام',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(fontWeight: FontWeight.w800),
@@ -538,12 +646,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     final selected = _sectionIndex == index;
     return ListTile(
       leading: icon,
-      title: Text(label),
+      title: LocalizedText(label),
       selected: selected,
       onTap: () async {
         if (_sectionIndex != index) {
           setState(() => _sectionIndex = index);
-          await _refreshCurrentSection();
+          _onSectionChanged();
+          await _ensureCurrentSectionLoaded();
         }
         if (!mounted) return;
         Navigator.of(context).pop();
@@ -576,18 +685,20 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
           children: [
             _buildDrawerHeader(),
             if (_loadingAdminTabs)
-              const ListTile(
+              ListTile(
                 leading: SizedBox(
                   height: 18,
                   width: 18,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
-                title: Text('تحميل التبويبات...'),
+                title: Text(context.tr('admin_tabs_loading')),
               )
             else if (_visibleSectionKeys.isEmpty)
               ListTile(
                 leading: const Icon(Icons.warning_amber_rounded),
-                title: Text(_tabsError ?? 'لا توجد تبويبات متاحة.'),
+                title: _tabsError == null
+                    ? Text(context.tr('admin_tabs_empty'))
+                    : LocalizedText(_tabsError!),
               )
             else
               ..._visibleSectionKeys.asMap().entries.map((entry) {
@@ -611,21 +722,21 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     final result = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(title),
+        title: LocalizedText(title),
         content: TextField(
           controller: ctrl,
-          decoration: const InputDecoration(
-            hintText: 'ملاحظة (اختياري)',
+          decoration: InputDecoration(
+            hintText: context.trRaw('ملاحظة (اختياري)'),
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(null),
-            child: const Text('تخطي'),
+            child: const LocalizedText('تخطي'),
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(ctrl.text.trim()),
-            child: const Text('متابعة'),
+            child: const LocalizedText('متابعة'),
           ),
         ],
       ),
@@ -641,25 +752,25 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     final result = await showDialog<double>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('تحديد سعر المقعد'),
+        title: const LocalizedText('تحديد سعر المقعد'),
         content: TextField(
           controller: ctrl,
           keyboardType: TextInputType.number,
-          decoration: const InputDecoration(
-            labelText: 'السعر بالدولار',
+          decoration: InputDecoration(
+            labelText: context.trRaw('السعر بالدولار'),
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(null),
-            child: const Text('إلغاء'),
+            child: const LocalizedText('إلغاء'),
           ),
           FilledButton(
             onPressed: () {
               final value = double.tryParse(ctrl.text.trim());
               Navigator.of(ctx).pop(value);
             },
-            child: const Text('حفظ'),
+            child: const LocalizedText('حفظ'),
           ),
         ],
       ),
@@ -676,28 +787,28 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     final result = await showDialog<Map<String, String?>>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(title),
+        title: LocalizedText(title),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: replyCtrl,
               maxLines: 4,
-              decoration: const InputDecoration(
-                hintText: 'اكتب رد الإدارة هنا',
+              decoration: InputDecoration(
+                hintText: context.trRaw('اكتب رد الإدارة هنا'),
               ),
             ),
             const SizedBox(height: 10),
             DropdownButtonFormField<String>(
               initialValue: status,
-              decoration: const InputDecoration(
-                labelText: 'تحديث الحالة',
+              decoration: InputDecoration(
+                labelText: context.trRaw('تحديث الحالة'),
               ),
               items: const [
-                DropdownMenuItem(value: 'open', child: Text('مفتوحة')),
+                DropdownMenuItem(value: 'open', child: LocalizedText('مفتوحة')),
                 DropdownMenuItem(
-                    value: 'in_progress', child: Text('قيد المعالجة')),
-                DropdownMenuItem(value: 'closed', child: Text('مغلقة')),
+                    value: 'in_progress', child: LocalizedText('قيد المعالجة')),
+                DropdownMenuItem(value: 'closed', child: LocalizedText('مغلقة')),
               ],
               onChanged: (value) {
                 if (value == null) return;
@@ -709,14 +820,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(null),
-            child: const Text('إلغاء'),
+            child: const LocalizedText('إلغاء'),
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop({
               'reply': replyCtrl.text.trim(),
               'status': status,
             }),
-            child: const Text('إرسال الرد'),
+            child: const LocalizedText('إرسال الرد'),
           ),
         ],
       ),
@@ -822,7 +933,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(title),
+        title: LocalizedText(title),
         content: SizedBox(
           width: 520,
           height: 520,
@@ -836,7 +947,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
               },
               errorBuilder: (context, error, stackTrace) {
                 return const Center(
-                  child: Text('تعذر عرض الصورة.'),
+                  child: LocalizedText('تعذر عرض الصورة.'),
                 );
               },
             ),
@@ -845,7 +956,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('إغلاق'),
+            child: const LocalizedText('إغلاق'),
           ),
           FilledButton(
             onPressed: () async {
@@ -854,7 +965,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                 await launchUrl(uri, mode: LaunchMode.externalApplication);
               }
             },
-            child: const Text('فتح في المتصفح'),
+            child: const LocalizedText('فتح في المتصفح'),
           ),
         ],
       ),
@@ -879,7 +990,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(title),
+        title: LocalizedText(title),
         content: SizedBox(
           width: 520,
           height: 520,
@@ -893,7 +1004,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('إغلاق'),
+            child: const LocalizedText('إغلاق'),
           ),
         ],
       ),
@@ -1005,7 +1116,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     try {
       setState(() => _loadingSeatRequests = true);
       final rows = await _seatService.fetchSeatRequests();
-      await _fetchSeatPrice();
+      if (_seatDefaultPrice == null) {
+        await _fetchSeatPrice();
+      }
       if (!mounted) return;
       final pending =
           rows.where((r) => r.status == 'submitted').length;
@@ -1028,17 +1141,18 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     try {
       setState(() => _loadingExtraSeatRevenue = true);
       final totals = await _billingService.fetchPlanRevenueTotals();
-      final monthly = _pickPlanRevenue(totals, (code) => code.contains('month'));
       final annual = _pickPlanRevenue(
         totals,
         (code) => code.contains('year') || code.contains('annual'),
       );
       final extra = totals['extra_seat'] ?? 0.0;
+      final approvedTrials =
+          await _billingService.fetchApprovedTrialActivationsCount();
       if (!mounted) return;
       setState(() {
-        _monthlySubRevenue = monthly;
         _annualSubRevenue = annual;
         _extraSeatRevenue = extra;
+        _approvedTrialActivations = approvedTrials;
         _loadingExtraSeatRevenue = false;
       });
     } catch (e) {
@@ -1150,6 +1264,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         _paymentDailyStats = bundle.daily;
         _loadingStats = false;
       });
+      _markStatsSliceLoaded('payment_stats');
       await _fetchExtraSeatRevenue();
     } catch (e) {
       if (!mounted) return;
@@ -1168,6 +1283,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         _systemHealth = health;
         _loadingSystemHealth = false;
       });
+      _markStatsSliceLoaded('system_health');
     } catch (e) {
       if (!mounted) return;
       setState(() => _loadingSystemHealth = false);
@@ -1206,6 +1322,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
           _actionLogsHasMore = false;
         }
       });
+      _markStatsSliceLoaded('action_logs');
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -1226,6 +1343,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         _usageMetrics = metrics;
         _loadingUsageMetrics = false;
       });
+      _markStatsSliceLoaded('usage_metrics');
     } catch (e) {
       if (!mounted) return;
       setState(() => _loadingUsageMetrics = false);
@@ -1243,6 +1361,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         _riskAlerts = alerts;
         _loadingRiskAlerts = false;
       });
+      _markStatsSliceLoaded('risk_alerts');
     } catch (e) {
       if (!mounted) return;
       setState(() => _loadingRiskAlerts = false);
@@ -1260,6 +1379,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         _auditDaily = rows;
         _loadingAuditDaily = false;
       });
+      _markStatsSliceLoaded('audit_daily');
     } catch (e) {
       if (!mounted) return;
       setState(() => _loadingAuditDaily = false);
@@ -1277,6 +1397,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         _auditTopActors = rows;
         _loadingAuditTopActors = false;
       });
+      _markStatsSliceLoaded('audit_top_actors');
     } catch (e) {
       if (!mounted) return;
       setState(() => _loadingAuditTopActors = false);
@@ -1294,6 +1415,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         _usageDaily = rows;
         _loadingUsageDaily = false;
       });
+      _markStatsSliceLoaded('usage_daily');
     } catch (e) {
       if (!mounted) return;
       setState(() => _loadingUsageDaily = false);
@@ -1507,17 +1629,17 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       builder: (_) {
         final scheme = Theme.of(context).colorScheme;
         return AlertDialog(
-          title: const Text('تأكيد حذف العيادة'),
-          content: Text('سيتم حذف العيادة "${clinic.name}" وجميع بياناتها!'),
+          title: const LocalizedText('تأكيد حذف العيادة'),
+          content: LocalizedText('سيتم حذف العيادة "${clinic.name}" وجميع بياناتها!'),
           actions: [
             OutlinedButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('إلغاء'),
+              child: const LocalizedText('إلغاء'),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(context, true),
               style: FilledButton.styleFrom(backgroundColor: scheme.error),
-              child: const Text('حذف'),
+              child: const LocalizedText('حذف'),
             ),
           ],
         );
@@ -1562,15 +1684,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final auth = Provider.of<AuthProvider>(context, listen: true);
-    if (!auth.isSuperAdmin) {
+    if (!auth.canEnterRemoteAdminShell) {
       return Scaffold(
         appBar: AppBar(
-          title: const Text('لوحة تحكّم المشرف العام'),
+          title: Text(context.tr('admin_dashboard_title')),
           actions: [
+            const LanguageSwitchButton(),
             TextButton.icon(
               onPressed: _logout,
               icon: const Icon(Icons.logout),
-              label: const Text('تسجيل الخروج'),
+              label: Text(context.tr('common_logout')),
             ),
             const SizedBox(width: 8),
           ],
@@ -1579,7 +1702,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Text(
-              'هذه الشاشة مخصّصة للسوبر أدمن فقط.',
+              context.tr('admin_super_admin_only'),
               textAlign: TextAlign.center,
               style: TextStyle(color: scheme.error),
             ),
@@ -1596,15 +1719,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
           appBar: AppBar(
             centerTitle: true,
             leading: IconButton(
-              tooltip: 'القائمة',
+              tooltip: context.tr('common_menu'),
               onPressed: _openDrawer,
               icon: const Icon(Icons.menu_rounded),
             ),
             title: LayoutBuilder(
               builder: (context, constraints) {
                 if (constraints.maxWidth < 140) {
-                  return const Text(
-                    'لوحة تحكّم المشرف العام',
+                  return Text(
+                    context.tr('admin_dashboard_title'),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   );
@@ -1618,9 +1741,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                       errorBuilder: (_, __, ___) => const SizedBox.shrink(),
                     ),
                     const SizedBox(width: 8),
-                    const Expanded(
+                    Expanded(
                       child: Text(
-                        'لوحة تحكّم المشرف العام',
+                        context.tr('admin_dashboard_title'),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -1631,7 +1754,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             ),
             actions: [
               IconButton(
-                tooltip: 'تحديث',
+                tooltip: context.tr('common_refresh'),
                 onPressed: _refreshCurrentSection,
                 icon: const Icon(Icons.refresh),
               ),
@@ -1639,13 +1762,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                 TextButton.icon(
                   onPressed: _skipToStatistics,
                   icon: const Icon(Icons.skip_next),
-                  label: const Text('تخطي'),
+                  label: Text(context.tr('common_skip')),
                 ),
               const SizedBox(width: 4),
+              const LanguageSwitchButton(),
               TextButton.icon(
                 onPressed: _logout,
                 icon: const Icon(Icons.logout),
-                label: const Text('تسجيل الخروج'),
+                label: Text(context.tr('common_logout')),
               ),
               const SizedBox(width: 8),
             ],
@@ -1680,8 +1804,49 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   }
 
   Future<void> _refreshCurrentSection() async {
-    if (_activeSectionKey.isEmpty) return;
-    switch (_activeSectionKey) {
+    await _ensureCurrentSectionLoaded(force: true);
+  }
+
+  Future<void> _refreshStatsSection({required bool force}) async {
+    final tasks = <Future<void>>[];
+
+    if (force || !_isStatsSliceFresh('payment_stats', const Duration(minutes: 2))) {
+      tasks.add(_fetchPaymentStats());
+    }
+    if (force || !_isStatsSliceFresh('system_health', const Duration(minutes: 2))) {
+      tasks.add(_fetchSystemHealth());
+    }
+    if (force || !_isStatsSliceFresh('usage_metrics', const Duration(minutes: 2))) {
+      tasks.add(_fetchUsageMetrics());
+    }
+    if (force || !_isStatsSliceFresh('risk_alerts', const Duration(minutes: 5))) {
+      tasks.add(_fetchRiskAlerts());
+    }
+    if (force || !_isStatsSliceFresh('audit_daily', const Duration(minutes: 5))) {
+      tasks.add(_fetchAuditDaily());
+    }
+    if (force ||
+        !_isStatsSliceFresh('audit_top_actors', const Duration(minutes: 5))) {
+      tasks.add(_fetchAuditTopActors());
+    }
+    if (force || !_isStatsSliceFresh('usage_daily', const Duration(minutes: 5))) {
+      tasks.add(_fetchUsageDaily());
+    }
+    if (force || !_isStatsSliceFresh('action_logs', const Duration(seconds: 45))) {
+      tasks.add(_fetchActionLogs());
+    }
+
+    if (tasks.isEmpty) {
+      return;
+    }
+
+    await Future.wait(tasks);
+    _sectionLoadedAt['stats'] = DateTime.now();
+  }
+
+  Future<void> _refreshSection(String sectionKey, {bool force = false}) async {
+    if (sectionKey.isEmpty) return;
+    switch (sectionKey) {
       case 'clinics':
         await _fetchClinics();
         break;
@@ -1690,8 +1855,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       case 'support_ratings':
         break;
       case 'subscriptions':
-        await _fetchSubscriptionRequests();
-        await _fetchSeatRequests();
+        await Future.wait([
+          _fetchSubscriptionRequests(),
+          _fetchSeatRequests(),
+        ]);
         break;
       case 'payments':
         await _fetchPaymentMethods();
@@ -1700,19 +1867,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         await _fetchComplaints();
         break;
       case 'stats':
-        await _fetchPaymentStats();
-        await _fetchExtraSeatRevenue();
-        await _fetchSystemHealth();
-        await _fetchActionLogs();
-        await _fetchUsageMetrics();
-        await _fetchRiskAlerts();
-        await _fetchAuditDaily();
-        await _fetchAuditTopActors();
-        await _fetchUsageDaily();
+        await _refreshStatsSection(force: force);
         break;
       case 'members':
-        await _fetchMemberCounts();
-        await _fetchAccountMembers(accountId: _membersAccountId);
+        await Future.wait([
+          _fetchMemberCounts(),
+          _fetchAccountMembers(accountId: _membersAccountId),
+        ]);
         break;
       case 'superadmins':
         await _fetchSuperAdmins();
@@ -1723,12 +1884,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   Widget _buildSectionBody(ColorScheme scheme) {
     if (_activeSectionKey.isEmpty) {
       return Center(
-        child: Text(
+        child: LocalizedText(
           _tabsError ?? 'لا توجد تبويبات متاحة لهذا الحساب.',
           textAlign: TextAlign.center,
           style: TextStyle(color: scheme.error),
         ),
       );
+    }
+    if (_sectionLoaders.containsKey(_activeSectionKey) &&
+        !_loadedSections.contains(_activeSectionKey)) {
+      return const Center(child: CircularProgressIndicator());
     }
     switch (_activeSectionKey) {
       case 'clinics':
@@ -1763,10 +1928,19 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
           unselectedLabelColor: scheme.onSurface.withValues(alpha: .6),
           indicatorColor: kPrimaryColor,
           indicatorWeight: 3,
-          tabs: const [
-            Tab(icon: Icon(Icons.add_business), text: 'عيادة جديدة'),
-            Tab(icon: Icon(Icons.person_add_alt_1), text: 'موظف جديد'),
-            Tab(icon: Icon(Icons.manage_accounts), text: 'إدارة العيادات'),
+          tabs: [
+            Tab(
+              icon: const Icon(Icons.add_business),
+              text: context.trRaw('عيادة جديدة'),
+            ),
+            Tab(
+              icon: const Icon(Icons.person_add_alt_1),
+              text: context.trRaw('موظف جديد'),
+            ),
+            Tab(
+              icon: const Icon(Icons.manage_accounts),
+              text: context.trRaw('إدارة العيادات'),
+            ),
           ],
         ),
         const SizedBox(height: 8),
@@ -1807,8 +1981,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                 const Icon(Icons.workspace_premium_rounded),
                 const SizedBox(width: 8),
                 const Expanded(
-                  child: Text(
-                    'إدارة الاشتراكات',
+                  child: LocalizedText('إدارة الاشتراكات',
                     style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
                   ),
                 ),
@@ -1818,7 +1991,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                     await _fetchSeatRequests();
                   },
                   icon: const Icon(Icons.refresh_rounded),
-                  label: const Text('تحديث'),
+                  label: const LocalizedText('تحديث'),
                 ),
               ],
             ),
@@ -1843,11 +2016,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                 Theme.of(context).colorScheme.onSurface.withValues(alpha: .6),
             indicatorColor: kPrimaryColor,
             indicatorWeight: 3,
-            tabs: const [
+            tabs: [
               Tab(
-                  icon: Icon(Icons.workspace_premium_rounded),
-                  text: 'اشتراكات'),
-              Tab(icon: Icon(Icons.badge_rounded), text: 'طلبات الموظفين'),
+                icon: const Icon(Icons.workspace_premium_rounded),
+                text: context.trRaw('اشتراكات'),
+              ),
+              Tab(
+                icon: const Icon(Icons.badge_rounded),
+                text: context.trRaw('طلبات الموظفين'),
+              ),
             ],
           ),
           const SizedBox(height: 6),
@@ -1867,8 +2044,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   Widget _buildSuperAdminAccountsSection(ColorScheme scheme) {
     if (!_isRootCached) {
       return Center(
-        child: Text(
-          'هذه الشاشة متاحة للحساب الجذري فقط.',
+        child: LocalizedText('هذه الشاشة متاحة للحساب الجذري فقط.',
           style: TextStyle(color: scheme.error),
         ),
       );
@@ -1880,8 +2056,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                'إضافة سوبر أدمن',
+              LocalizedText('إضافة سوبر أدمن',
                 style: TextStyle(
                   fontWeight: FontWeight.w800,
                   color: scheme.onSurface,
@@ -1890,7 +2065,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
               const SizedBox(height: 12),
               NeuField(
                 controller: _superAdminEmailCtrl,
-                labelText: 'البريد الإلكتروني',
+                labelText: context.trRaw('البريد الإلكتروني'),
                 keyboardType: TextInputType.emailAddress,
                 prefix: const Icon(Icons.alternate_email_rounded),
                 onChanged: (_) {},
@@ -1898,7 +2073,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
               const SizedBox(height: 12),
               NeuField(
                 controller: _superAdminPassCtrl,
-                labelText: 'كلمة المرور',
+                labelText: context.trRaw('كلمة المرور'),
                 obscureText: true,
                 prefix: const Icon(Icons.lock_outline_rounded),
                 onChanged: (_) {},
@@ -1908,7 +2083,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                 spacing: 6,
                 runSpacing: 6,
                 children: _newSuperAdminTabs
-                    .map((key) => Chip(label: Text(_tabLabels[key] ?? key)))
+                    .map(
+                      (key) => Chip(
+                        label: LocalizedText(_tabLabels[key] ?? key),
+                      ),
+                    )
                     .toList(),
               ),
               const SizedBox(height: 10),
@@ -1929,7 +2108,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                   const SizedBox(width: 10),
                   Expanded(
                     child: Align(
-                      alignment: Alignment.centerRight,
+                      alignment: AlignmentDirectional.centerStart,
                       child: NeuButton.primary(
                         label: _creatingSuperAdmin ? 'جارٍ الإنشاء...' : 'إنشاء',
                         icon: Icons.person_add_alt_1,
@@ -1953,7 +2132,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       return const Center(child: CircularProgressIndicator());
     }
     if (_superAdminAccounts.isEmpty) {
-      return const Center(child: Text('لا توجد حسابات سوبر أدمن.'));
+      return const Center(child: LocalizedText('لا توجد حسابات سوبر أدمن.'));
     }
     return ListView.builder(
       itemCount: _superAdminAccounts.length,
@@ -1974,7 +2153,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
               Row(
                 children: [
                   Expanded(
-                    child: Text(
+                    child: LocalizedText(
                       account.email.isEmpty
                           ? 'بلا بريد'
                           : account.email,
@@ -1997,16 +2176,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                 runSpacing: 4,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  Text(
-                    'الحالة: $statusText',
+                  LocalizedText('الحالة: $statusText',
                     style: TextStyle(
                       color: statusColor,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
                   if (!account.hasUser)
-                    Text(
-                      'غير مرتبط بحساب بعد',
+                    LocalizedText('غير مرتبط بحساب بعد',
                       style: TextStyle(
                         color: scheme.onSurface.withValues(alpha: .6),
                         fontSize: 12,
@@ -2019,7 +2196,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                 spacing: 6,
                 runSpacing: 6,
                 children: account.allowedTabs
-                    .map((key) => Chip(label: Text(_tabLabels[key] ?? key)))
+                    .map(
+                      (key) => Chip(
+                        label: LocalizedText(_tabLabels[key] ?? key),
+                      ),
+                    )
                     .toList(),
               ),
               const SizedBox(height: 8),
@@ -2080,7 +2261,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
+            LocalizedText(
               '$value',
               style: TextStyle(
                 fontWeight: FontWeight.w800,
@@ -2088,7 +2269,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
               ),
             ),
             const SizedBox(width: 6),
-            Text(
+            LocalizedText(
               label,
               style: TextStyle(
                 color: selected
@@ -2191,8 +2372,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(target ? 'تجميد الحساب؟' : 'تفعيل الحساب؟'),
-        content: Text(
+        title: LocalizedText(target ? 'تجميد الحساب؟' : 'تفعيل الحساب؟'),
+        content: LocalizedText(
           target
               ? 'سيتم تعطيل الحساب: ${account.email}'
               : 'سيتم تفعيل الحساب: ${account.email}',
@@ -2200,11 +2381,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('إلغاء'),
+            child: const LocalizedText('إلغاء'),
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('متابعة'),
+            child: const LocalizedText('متابعة'),
           ),
         ],
       ),
@@ -2230,17 +2411,17 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('حذف حساب سوبر أدمن'),
-        content: Text('هل تريد حذف الحساب: ${account.email} ؟'),
+        title: const LocalizedText('حذف حساب سوبر أدمن'),
+        content: LocalizedText('هل تريد حذف الحساب: ${account.email} ؟'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('إلغاء'),
+            child: const LocalizedText('إلغاء'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('حذف'),
+            child: const LocalizedText('حذف'),
           ),
         ],
       ),
@@ -2289,22 +2470,22 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('تغيير كلمة المرور'),
+        title: const LocalizedText('تغيير كلمة المرور'),
         content: TextField(
           controller: ctrl,
           obscureText: true,
-          decoration: const InputDecoration(
-            labelText: 'كلمة المرور الجديدة',
+          decoration: InputDecoration(
+            labelText: context.trRaw('كلمة المرور الجديدة'),
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('إلغاء'),
+            child: const LocalizedText('إلغاء'),
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('حفظ'),
+            child: const LocalizedText('حفظ'),
           ),
         ],
       ),
@@ -2338,7 +2519,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         return StatefulBuilder(
           builder: (ctx, setState) {
             return AlertDialog(
-              title: Text(title),
+              title: LocalizedText(title),
               content: SizedBox(
                 width: 360,
                 child: ListView(
@@ -2359,7 +2540,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                           }
                         });
                       },
-                      title: Text(label),
+                      title: LocalizedText(label),
                     );
                   }).toList(),
                 ),
@@ -2367,11 +2548,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(ctx).pop(null),
-                  child: const Text('إلغاء'),
+                  child: const LocalizedText('إلغاء'),
                 ),
                 FilledButton(
                   onPressed: () => Navigator.of(ctx).pop(selected.toList()),
-                  child: const Text('حفظ'),
+                  child: const LocalizedText('حفظ'),
                 ),
               ],
             );
@@ -2387,7 +2568,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       return const Center(child: CircularProgressIndicator());
     }
     if (_subscriptionRequests.isEmpty) {
-      return const Center(child: Text('لا توجد طلبات اشتراك حاليًا'));
+      return const Center(child: LocalizedText('لا توجد طلبات اشتراك حاليًا'));
     }
     return ListView.builder(
       controller: _subsScroll,
@@ -2401,7 +2582,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                   ? const CircularProgressIndicator()
                   : TextButton(
                       onPressed: _loadMoreSubscriptionRequests,
-                      child: const Text('تحميل المزيد'),
+                      child: const LocalizedText('تحميل المزيد'),
                     ),
             ),
           );
@@ -2411,6 +2592,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         final sender = (req.senderName ?? '').trim();
         final clinic = (req.clinicName ?? '').trim();
         final amount = req.amount.isFinite ? req.amount : 0.0;
+        final hasProof = (req.proofUrl ?? '').trim().isNotEmpty;
+        final isTrialRequest = req.planCode.toLowerCase() == 'trial_month';
         final planLabel =
             _planLabelFromCode(req.planCode.isNotEmpty ? req.planCode : null);
         final created = req.createdAt == null
@@ -2435,8 +2618,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                         color: scheme.primary.withValues(alpha: 0.2),
                       ),
                     ),
-                    child: Text(
-                      'الخطة: $planLabel',
+                    child: LocalizedText('الخطة: $planLabel',
                       style: TextStyle(
                         color: scheme.onSurface,
                         fontWeight: FontWeight.w700,
@@ -2447,8 +2629,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                   const SizedBox(width: 8),
                   _statusChipSmall(req.status, scheme),
                   const Spacer(),
-                  Text(
-                    '\$${amount.toStringAsFixed(0)}',
+                  LocalizedText(
+                    isTrialRequest ? 'مجاني' : '\$${amount.toStringAsFixed(0)}',
                     style: TextStyle(
                       fontWeight: FontWeight.w800,
                       color: scheme.primary,
@@ -2469,15 +2651,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
               ),
               const SizedBox(height: 10),
               Align(
-                alignment: Alignment.centerLeft,
+                alignment: AlignmentDirectional.centerEnd,
                 child: Wrap(
                   spacing: 8,
                   runSpacing: 8,
                   children: [
                     OutlinedButton.icon(
-                      onPressed: () => _openProof(req),
+                      onPressed: hasProof ? () => _openProof(req) : null,
                       icon: const Icon(Icons.receipt_long_rounded),
-                      label: const Text('الإثبات'),
+                      label:
+                          LocalizedText(isTrialRequest ? 'لا يوجد إثبات' : 'الإثبات'),
                     ),
                     if (req.status == 'pending')
                       FilledButton.icon(
@@ -2498,7 +2681,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                           }
                         },
                         icon: const Icon(Icons.check_circle_rounded),
-                        label: const Text('اعتماد'),
+                        label: const LocalizedText('اعتماد'),
                       ),
                     if (req.status == 'pending')
                       OutlinedButton.icon(
@@ -2517,7 +2700,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                           }
                         },
                         icon: const Icon(Icons.cancel_outlined),
-                        label: const Text('رفض'),
+                        label: const LocalizedText('رفض'),
                       ),
                   ],
                 ),
@@ -2555,7 +2738,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: color.withValues(alpha: 0.35)),
       ),
-      child: Text(
+      child: LocalizedText(
         label,
         style: TextStyle(
           color: color,
@@ -2573,7 +2756,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         color: scheme.surfaceContainerHighest.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Text(
+      child: LocalizedText(
         '$label: $value',
         style: TextStyle(
           color: scheme.onSurface.withValues(alpha: 0.8),
@@ -2647,8 +2830,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             Icon(Icons.receipt_long_rounded, color: Theme.of(context).colorScheme.primary),
             const SizedBox(width: 8),
             Expanded(
-              child: Text(
-                'إجمالي قيمة طلبات المقاعد الإضافية',
+              child: LocalizedText('إجمالي قيمة طلبات المقاعد الإضافية',
                 style: const TextStyle(fontWeight: FontWeight.w700),
               ),
             ),
@@ -2665,7 +2847,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       if (filtered.isEmpty)
         const Padding(
           padding: EdgeInsets.symmetric(vertical: 16),
-          child: Center(child: Text('لا توجد طلبات موظفين إضافيين حاليًا')),
+          child: Center(child: LocalizedText('لا توجد طلبات موظفين إضافيين حاليًا')),
         ),
       ...filtered.map((req) {
         final status = req.status;
@@ -2677,8 +2859,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
           margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
           padding: const EdgeInsets.all(12),
           child: ListTile(
-            title: Text('موظف: ${req.employeeEmail}'),
-            subtitle: Text(
+            title: LocalizedText('موظف: ${req.employeeEmail}'),
+            subtitle: LocalizedText(
               [
                 'المبلغ: $priceLabel',
                 'الحالة: $status',
@@ -2694,7 +2876,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           IconButton(
-                            tooltip: 'عرض الوصل',
+                            tooltip: context.trRaw('عرض الوصل'),
                             icon: const Icon(Icons.receipt_long_rounded),
                             onPressed: hasReceipt
                                 ? () async {
@@ -2719,7 +2901,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                           ),
                           const SizedBox(width: 6),
                           IconButton(
-                            tooltip: 'رفض',
+                            tooltip: context.trRaw('رفض'),
                             icon: const Icon(Icons.cancel_outlined),
                             onPressed: () async {
                               final note = await _askDecisionNote('سبب الرفض');
@@ -2737,7 +2919,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                   )
                 : status == 'awaiting_payment'
                     ? IconButton(
-                        tooltip: 'تحديد السعر',
+                        tooltip: context.trRaw('تحديد السعر'),
                         icon: const Icon(Icons.edit_rounded),
                         onPressed: () async {
                           final next = await _askSeatPrice(req.priceUsd);
@@ -2750,7 +2932,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                         },
                       )
                     : IconButton(
-                        tooltip: 'عرض الوصل',
+                        tooltip: context.trRaw('عرض الوصل'),
                         icon: const Icon(Icons.receipt_long_rounded),
                         onPressed: hasReceipt
                             ? () async {
@@ -2774,9 +2956,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
       padding: const EdgeInsets.all(12),
       child: ListTile(
-        title: const Text('سعر المقعد الإضافي الافتراضي'),
+        title: const LocalizedText('سعر المقعد الإضافي الافتراضي'),
         subtitle:
-            _loadingSeatPrice ? const Text('جاري التحميل...') : Text(label),
+            _loadingSeatPrice ? const LocalizedText('جاري التحميل...') : LocalizedText(label),
         trailing: NeuButton.primary(
           label: 'تعديل السعر',
           onPressed: _loadingSeatPrice
@@ -2797,7 +2979,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     return Column(
       children: [
         Align(
-          alignment: Alignment.centerRight,
+          alignment: AlignmentDirectional.centerStart,
           child: NeuButton.primary(
             label: 'إضافة وسيلة دفع',
             onPressed: _openPaymentMethodDialog,
@@ -2827,7 +3009,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                                     const Icon(Icons.account_balance_rounded),
                               ),
                         title: Text(m.name),
-                        subtitle: Text('الحساب: ${m.bankAccount}'),
+                        subtitle: LocalizedText('الحساب: ${m.bankAccount}'),
                         trailing: PopupMenuButton<String>(
                           onSelected: (v) async {
                             if (v == 'delete') {
@@ -2839,8 +3021,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                             }
                           },
                           itemBuilder: (_) => const [
-                            PopupMenuItem(value: 'edit', child: Text('تعديل')),
-                            PopupMenuItem(value: 'delete', child: Text('حذف')),
+                            PopupMenuItem(value: 'edit', child: LocalizedText('تعديل')),
+                            PopupMenuItem(value: 'delete', child: LocalizedText('حذف')),
                           ],
                         ),
                       ),
@@ -2860,34 +3042,36 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          title: Text(method == null ? 'إضافة وسيلة دفع' : 'تعديل وسيلة دفع'),
+          title: LocalizedText(
+            method == null ? 'إضافة وسيلة دفع' : 'تعديل وسيلة دفع',
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
                 controller: nameCtrl,
-                decoration: const InputDecoration(labelText: 'اسم الخدمة'),
+                decoration: InputDecoration(labelText: context.trRaw('اسم الخدمة')),
               ),
               TextField(
                 controller: bankCtrl,
                 decoration:
-                    const InputDecoration(labelText: 'رقم الحساب البنكي'),
+                    InputDecoration(labelText: context.trRaw('رقم الحساب البنكي')),
               ),
               TextField(
                 controller: logoCtrl,
                 decoration:
-                    const InputDecoration(labelText: 'رابط شعار الشركة'),
+                    InputDecoration(labelText: context.trRaw('رابط شعار الشركة')),
               ),
             ],
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('إلغاء'),
+              child: const LocalizedText('إلغاء'),
             ),
             FilledButton(
               onPressed: () => Navigator.of(ctx).pop(true),
-              child: const Text('حفظ'),
+              child: const LocalizedText('حفظ'),
             ),
           ],
         );
@@ -2920,7 +3104,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       return const Center(child: CircularProgressIndicator());
     }
     if (_complaints.isEmpty) {
-      return const Center(child: Text('لا توجد شكاوى حالياً'));
+      return const Center(child: LocalizedText('لا توجد شكاوى حالياً'));
     }
     return ListView.builder(
       controller: _complaintsScroll,
@@ -2934,7 +3118,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                   ? const CircularProgressIndicator()
                   : TextButton(
                       onPressed: _loadMoreComplaints,
-                      child: const Text('تحميل المزيد'),
+                      child: const LocalizedText('تحميل المزيد'),
                     ),
             ),
           );
@@ -2945,8 +3129,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
           margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
           padding: const EdgeInsets.all(12),
           child: ListTile(
-            title: Text(c.subject ?? 'شكوى'),
-            subtitle: Text(
+            title: LocalizedText(c.subject ?? 'شكوى'),
+            subtitle: LocalizedText(
               reply.isEmpty
                   ? '${c.message}\nالحالة: ${c.status}'
                   : '${c.message}\nالحالة: ${c.status}\nرد الإدارة: $reply',
@@ -2976,12 +3160,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
               itemBuilder: (_) => const [
                 PopupMenuItem(
                   value: 'reply',
-                  child: Text('رد على الشكوى'),
+                  child: LocalizedText('رد على الشكوى'),
                 ),
-                PopupMenuItem(value: 'open', child: Text('مفتوحة')),
+                PopupMenuItem(value: 'open', child: LocalizedText('مفتوحة')),
                 PopupMenuItem(
-                    value: 'in_progress', child: Text('قيد المعالجة')),
-                PopupMenuItem(value: 'closed', child: Text('مغلقة')),
+                    value: 'in_progress', child: LocalizedText('قيد المعالجة')),
+                PopupMenuItem(value: 'closed', child: LocalizedText('مغلقة')),
               ],
             ),
           ),
@@ -3009,8 +3193,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
               const Icon(Icons.groups_rounded),
               const SizedBox(width: 8),
               const Expanded(
-                child: Text(
-                  'إدارة أعضاء الحسابات',
+                child: LocalizedText('إدارة أعضاء الحسابات',
                   style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
                 ),
               ),
@@ -3020,7 +3203,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                   await _fetchAccountMembers(accountId: _membersAccountId);
                 },
                 icon: const Icon(Icons.refresh_rounded),
-                label: const Text('تحديث'),
+                label: const LocalizedText('تحديث'),
               ),
             ],
           ),
@@ -3033,15 +3216,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             children: [
               DropdownButtonFormField<String?>(
                 initialValue: _membersAccountId,
-                decoration: const InputDecoration(
-                  labelText: 'الحساب',
+                decoration: InputDecoration(
+                  labelText: context.trRaw('الحساب'),
                   border: OutlineInputBorder(),
                   isDense: true,
                 ),
                 items: [
                   const DropdownMenuItem<String?>(
                     value: null,
-                    child: Text('جميع الحسابات'),
+                    child: LocalizedText('جميع الحسابات'),
                   ),
                   ..._memberCounts.map(
                     (row) => DropdownMenuItem<String?>(
@@ -3063,7 +3246,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
               const SizedBox(height: 8),
               Row(
                 children: [
-                  const Text('النشط فقط'),
+                  const LocalizedText('النشط فقط'),
                   const SizedBox(width: 8),
                   Switch(
                     value: _membersOnlyActive,
@@ -3074,8 +3257,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                     },
                   ),
                   const Spacer(),
-                  Text(
-                    'الحسابات: $accountsTotal',
+                  LocalizedText('الحسابات: $accountsTotal',
                     style: TextStyle(
                       color: scheme.onSurface.withValues(alpha: .7),
                       fontWeight: FontWeight.w700,
@@ -3117,6 +3299,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         subtitle: 'عدد العيادات المرتبطة',
         amount: accountsTotal.toDouble(),
         icon: Icons.business_rounded,
+        displayAsCurrency: false,
         gradient: [const Color(0xFF0E6A83), const Color(0xFF3CB1AA)],
       ),
       _RevenueCardData(
@@ -3124,6 +3307,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         subtitle: 'عدد الملاك',
         amount: ownersTotal.toDouble(),
         icon: Icons.verified_user_rounded,
+        displayAsCurrency: false,
         gradient: [const Color(0xFF1B4F72), const Color(0xFF2E86C1)],
       ),
       _RevenueCardData(
@@ -3131,6 +3315,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         subtitle: 'عدد المدراء',
         amount: adminsTotal.toDouble(),
         icon: Icons.manage_accounts_rounded,
+        displayAsCurrency: false,
         gradient: [const Color(0xFF6C3483), const Color(0xFF9B59B6)],
       ),
       _RevenueCardData(
@@ -3138,6 +3323,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         subtitle: 'عدد الموظفين',
         amount: employeesTotal.toDouble(),
         icon: Icons.badge_rounded,
+        displayAsCurrency: false,
         gradient: [const Color(0xFF0B5345), const Color(0xFF1ABC9C)],
       ),
       _RevenueCardData(
@@ -3145,6 +3331,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         subtitle: 'جميع الحسابات',
         amount: membersTotal.toDouble(),
         icon: Icons.groups_rounded,
+        displayAsCurrency: false,
         gradient: [const Color(0xFF7D3C98), const Color(0xFFBB8FCE)],
       ),
     ];
@@ -3207,7 +3394,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                                 child: Icon(item.icon, color: Colors.white),
                               ),
                               const Spacer(),
-                              Text(
+                              LocalizedText(
                                 item.amount.toStringAsFixed(0),
                                 style: const TextStyle(
                                   color: Colors.white,
@@ -3218,7 +3405,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                             ],
                           ),
                           const SizedBox(height: 8),
-                          Text(
+                          LocalizedText(
                             item.title,
                             style: const TextStyle(
                               color: Colors.white,
@@ -3227,7 +3414,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                             ),
                           ),
                           const SizedBox(height: 4),
-                          Text(
+                          LocalizedText(
                             item.subtitle,
                             style: TextStyle(
                               color: Colors.white.withValues(alpha: 0.8),
@@ -3270,7 +3457,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       return const Center(child: CircularProgressIndicator());
     }
     if (_memberCounts.isEmpty) {
-      return const Center(child: Text('لا توجد بيانات للحسابات'));
+      return const Center(child: LocalizedText('لا توجد بيانات للحسابات'));
     }
     final muted = scheme.onSurface.withValues(alpha: .6);
     return NeuCard(
@@ -3279,11 +3466,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         scrollDirection: Axis.horizontal,
         child: DataTable(
           columns: const [
-            DataColumn(label: Text('الحساب')),
-            DataColumn(label: Text('مالك')),
-            DataColumn(label: Text('مدير')),
-            DataColumn(label: Text('موظف')),
-            DataColumn(label: Text('الإجمالي')),
+            DataColumn(label: LocalizedText('الحساب')),
+            DataColumn(label: LocalizedText('مالك')),
+            DataColumn(label: LocalizedText('مدير')),
+            DataColumn(label: LocalizedText('موظف')),
+            DataColumn(label: LocalizedText('الإجمالي')),
           ],
           rows: _memberCounts.map((row) {
             return DataRow(
@@ -3322,8 +3509,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'الأعضاء (${_accountMembers.length})',
+          LocalizedText('الأعضاء (${_accountMembers.length})',
             style: TextStyle(
               fontWeight: FontWeight.w700,
               color: scheme.onSurface,
@@ -3333,7 +3519,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
           if (_loadingAccountMembers && _accountMembers.isEmpty)
             const Center(child: CircularProgressIndicator())
           else if (_accountMembers.isEmpty)
-            const Text('لا توجد حسابات مطابقة للفلترة الحالية.')
+            const LocalizedText('لا توجد حسابات مطابقة للفلترة الحالية.')
           else
             ListView.separated(
               shrinkWrap: true,
@@ -3350,7 +3536,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                           ? const CircularProgressIndicator()
                           : TextButton(
                               onPressed: _loadMoreMembers,
-                              child: const Text('تحميل المزيد'),
+                              child: const LocalizedText('تحميل المزيد'),
                             ),
                     ),
                   );
@@ -3368,8 +3554,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                     : ChatCodeUtils.format(codeRaw);
                 return ListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: Text(title),
-                  subtitle: Text(
+                  title: LocalizedText(title),
+                  subtitle: LocalizedText(
                     [
                       if (_membersAccountId == null)
                         'الحساب: ${row.accountName}',
@@ -3398,9 +3584,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     if (!hasAny &&
         !_loadingExtraSeatRevenue &&
         _extraSeatRevenue <= 0 &&
-        _monthlySubRevenue <= 0 &&
-        _annualSubRevenue <= 0) {
-      return const Center(child: Text('لا توجد بيانات مالية بعد'));
+        _annualSubRevenue <= 0 &&
+        _approvedTrialActivations <= 0) {
+      return const Center(child: LocalizedText('لا توجد بيانات مالية بعد'));
     }
 
     final modeLabels = ['وسائل الدفع', 'حسب الباقة', 'شهري', 'يومي'];
@@ -3414,8 +3600,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
             padding: const EdgeInsets.all(12),
             child: ListTile(
-              title: Text(planLabel),
-              subtitle: Text('المدفوعات: ${s.paymentsCount}'),
+              title: LocalizedText(planLabel),
+              subtitle: LocalizedText('المدفوعات: ${s.paymentsCount}'),
               trailing: Text(
                 '\$${s.totalAmount.toStringAsFixed(0)}',
                 style: TextStyle(
@@ -3436,8 +3622,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
             padding: const EdgeInsets.all(12),
             child: ListTile(
-              title: Text(label),
-              subtitle: Text('المدفوعات: ${s.paymentsCount}'),
+              title: LocalizedText(label),
+              subtitle: LocalizedText('المدفوعات: ${s.paymentsCount}'),
               trailing: Text(
                 '\$${s.totalAmount.toStringAsFixed(0)}',
                 style: TextStyle(
@@ -3458,8 +3644,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
             padding: const EdgeInsets.all(12),
             child: ListTile(
-              title: Text(label),
-              subtitle: Text('المدفوعات: ${s.paymentsCount}'),
+              title: LocalizedText(label),
+              subtitle: LocalizedText('المدفوعات: ${s.paymentsCount}'),
               trailing: Text(
                 '\$${s.totalAmount.toStringAsFixed(0)}',
                 style: TextStyle(
@@ -3478,8 +3664,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
             padding: const EdgeInsets.all(12),
             child: ListTile(
-              title: Text(s.paymentMethodName ?? 'غير محدد'),
-              subtitle: Text('المدفوعات: ${s.paymentsCount}'),
+              title: LocalizedText(s.paymentMethodName ?? 'غير محدد'),
+              subtitle: LocalizedText('المدفوعات: ${s.paymentsCount}'),
               trailing: Text(
                 '\$${s.totalAmount.toStringAsFixed(0)}',
                 style: TextStyle(
@@ -3524,7 +3710,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                           horizontal: 10,
                           vertical: 6,
                         ),
-                        child: Text(label),
+                        child: LocalizedText(label),
                       ))
                   .toList(),
             ),
@@ -3546,25 +3732,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
           const Icon(Icons.analytics_rounded),
           const SizedBox(width: 8),
           const Expanded(
-            child: Text(
-              'لوحة الإحصاءات',
+            child: LocalizedText('لوحة الإحصاءات',
               style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
             ),
           ),
           TextButton.icon(
             onPressed: () async {
-              await _fetchPaymentStats();
-              await _fetchExtraSeatRevenue();
-              await _fetchSystemHealth();
-              await _fetchUsageMetrics();
-              await _fetchRiskAlerts();
-              await _fetchAuditDaily();
-              await _fetchAuditTopActors();
-              await _fetchUsageDaily();
-              await _fetchActionLogs(reset: true);
+              await _refreshStatsSection(force: true);
             },
             icon: const Icon(Icons.refresh_rounded),
-            label: const Text('تحديث الكل'),
+            label: const LocalizedText('تحديث الكل'),
           ),
         ],
       ),
@@ -3589,13 +3766,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
           Row(
             children: [
               const Expanded(
-                child: Text(
-                  'صحة النظام',
+                child: LocalizedText('صحة النظام',
                   style: TextStyle(fontWeight: FontWeight.w800),
                 ),
               ),
               IconButton(
-                tooltip: 'تحديث',
+                tooltip: context.trRaw('تحديث'),
                 onPressed: _fetchSystemHealth,
                 icon: const Icon(Icons.refresh_rounded),
               ),
@@ -3613,8 +3789,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             ],
           ),
           const SizedBox(height: 8),
-          Text(
-            'آخر تحديث: ${DateFormat('yyyy-MM-dd HH:mm').format(h.serverTime.toLocal())}',
+          LocalizedText('آخر تحديث: ${DateFormat('yyyy-MM-dd HH:mm').format(h.serverTime.toLocal())}',
             style: TextStyle(
               color: scheme.onSurface.withValues(alpha: .6),
               fontSize: 12,
@@ -3643,17 +3818,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
           Row(
             children: [
               const Expanded(
-                child: Text(
-                  'آخر أوامر السوبر أدمن',
+                child: LocalizedText('آخر أوامر السوبر أدمن',
                   style: TextStyle(fontWeight: FontWeight.w800),
                 ),
               ),
               TextButton(
                 onPressed: _openActionLogsSheet,
-                child: const Text('عرض الكل'),
+                child: const LocalizedText('عرض الكل'),
               ),
               IconButton(
-                tooltip: 'تحديث',
+                tooltip: context.trRaw('تحديث'),
                 onPressed: () => _fetchActionLogs(reset: true),
                 icon: const Icon(Icons.refresh_rounded),
               ),
@@ -3665,7 +3839,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                 .format(log.createdAt.toLocal());
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Text(
+              child: LocalizedText(
                 '• ${log.action} • ${log.entityType} • $when',
                 style: TextStyle(
                   color: scheme.onSurface.withValues(alpha: .75),
@@ -3694,8 +3868,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'تنبيهات المخاطر',
+          const LocalizedText('تنبيهات المخاطر',
             style: TextStyle(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 6),
@@ -3761,13 +3934,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
           Row(
             children: [
               const Expanded(
-                child: Text(
-                  'مؤشرات الاستخدام',
+                child: LocalizedText('مؤشرات الاستخدام',
                   style: TextStyle(fontWeight: FontWeight.w800),
                 ),
               ),
               IconButton(
-                tooltip: 'تحديث',
+                tooltip: context.trRaw('تحديث'),
                 onPressed: _fetchUsageMetrics,
                 icon: const Icon(Icons.refresh_rounded),
               ),
@@ -3788,8 +3960,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             ],
           ),
           const SizedBox(height: 8),
-          Text(
-            'آخر تحديث: ${DateFormat('yyyy-MM-dd HH:mm').format(m.serverTime.toLocal())}',
+          LocalizedText('آخر تحديث: ${DateFormat('yyyy-MM-dd HH:mm').format(m.serverTime.toLocal())}',
             style: TextStyle(
               color: scheme.onSurface.withValues(alpha: .6),
               fontSize: 12,
@@ -3818,15 +3989,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
           Row(
             children: [
               const Expanded(
-                child: Text(
-                  'ملخص التدقيق اليومي',
+                child: LocalizedText('ملخص التدقيق اليومي',
                   style: TextStyle(fontWeight: FontWeight.w800),
                 ),
               ),
               TextButton.icon(
                 onPressed: _exportAuditDaily,
                 icon: const Icon(Icons.download_rounded),
-                label: const Text('تصدير'),
+                label: const LocalizedText('تصدير'),
               ),
             ],
           ),
@@ -3835,7 +4005,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             final day = DateFormat('yyyy-MM-dd').format(row.day.toLocal());
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 3),
-              child: Text(
+              child: LocalizedText(
                 '• $day • ${row.tableName} • ${row.op} • ${row.events}',
                 style: TextStyle(
                   color: scheme.onSurface.withValues(alpha: .75),
@@ -3867,15 +4037,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
           Row(
             children: [
               const Expanded(
-                child: Text(
-                  'أكثر الحسابات نشاطًا (تدقيق)',
+                child: LocalizedText('أكثر الحسابات نشاطًا (تدقيق)',
                   style: TextStyle(fontWeight: FontWeight.w800),
                 ),
               ),
               TextButton.icon(
                 onPressed: _exportAuditTopActors,
                 icon: const Icon(Icons.download_rounded),
-                label: const Text('تصدير'),
+                label: const LocalizedText('تصدير'),
               ),
             ],
           ),
@@ -3887,7 +4056,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                 : DateFormat('yyyy-MM-dd').format(row.lastAt!.toLocal());
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 3),
-              child: Text(
+              child: LocalizedText(
                 '• ${label.isEmpty ? 'غير معروف' : label} • ${row.events} • $when',
                 style: TextStyle(
                   color: scheme.onSurface.withValues(alpha: .75),
@@ -3916,8 +4085,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'حركة الاستخدام اليومية (آخر 30 يوم)',
+          const LocalizedText('حركة الاستخدام اليومية (آخر 30 يوم)',
             style: TextStyle(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 6),
@@ -3925,8 +4093,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             final day = DateFormat('yyyy-MM-dd').format(row.day.toLocal());
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 3),
-              child: Text(
-                '• $day • رسائل ${row.messages} • مرفقات ${row.attachments}',
+              child: LocalizedText('• $day • رسائل ${row.messages} • مرفقات ${row.attachments}',
                 style: TextStyle(
                   color: scheme.onSurface.withValues(alpha: .75),
                   fontWeight: FontWeight.w600,
@@ -3986,15 +4153,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                     children: [
                       const SizedBox(width: 16),
                       const Expanded(
-                        child: Text(
-                          'سجل أوامر السوبر أدمن',
+                        child: LocalizedText('سجل أوامر السوبر أدمن',
                           style: TextStyle(fontWeight: FontWeight.w800),
                         ),
                       ),
                       TextButton.icon(
                         onPressed: _exportActionLogs,
                         icon: const Icon(Icons.download_rounded),
-                        label: const Text('تصدير'),
+                        label: const LocalizedText('تصدير'),
                       ),
                       const SizedBox(width: 8),
                     ],
@@ -4021,7 +4187,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                                 vertical: 8, horizontal: 16),
                             child: ElevatedButton(
                               onPressed: () => _fetchActionLogs(reset: false),
-                              child: const Text('تحميل المزيد'),
+                              child: const LocalizedText('تحميل المزيد'),
                             ),
                           );
                         }
@@ -4043,15 +4209,19 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     final when =
         DateFormat('yyyy-MM-dd HH:mm').format(log.createdAt.toLocal());
     final actor = (log.actorEmail ?? '').trim();
+    final actionLabel = context.trRaw(log.action);
+    final entityTypeLabel = log.entityType.isEmpty
+        ? ''
+        : context.trRaw(log.entityType);
     return ListTile(
       leading: const Icon(Icons.receipt_long_rounded),
       title: Text(
-        log.action,
+        actionLabel,
         style: const TextStyle(fontWeight: FontWeight.w700),
       ),
       subtitle: Text(
         [
-          if (log.entityType.isNotEmpty) log.entityType,
+          if (entityTypeLabel.isNotEmpty) entityTypeLabel,
           if (actor.isNotEmpty) actor,
           when,
         ].join(' • '),
@@ -4083,14 +4253,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          title: const Text('تفاصيل الأمر'),
+          title: const LocalizedText('تفاصيل الأمر'),
           content: SingleChildScrollView(
             child: Text(pretty, textDirection: ui.TextDirection.ltr),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('إغلاق'),
+              child: const LocalizedText('إغلاق'),
             ),
           ],
         );
@@ -4142,7 +4312,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: scheme.primary.withValues(alpha: .2)),
       ),
-      child: Text(
+      child: LocalizedText(
         '$label: $value',
         style: TextStyle(
           color: scheme.onSurface,
@@ -4158,12 +4328,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     switch (code) {
       case 'free':
         return 'مجانية';
+      case 'trial_month':
+        return 'تجريبية شهرية';
       case 'month':
-        return 'شهرية';
+        return 'شهرية قديمة';
       case 'month_plus':
-        return 'شهرية بلس';
+        return 'شهرية بلس قديمة';
       case 'month_pro':
-        return 'شهرية برو';
+        return 'شهرية برو قديمة';
       case 'year':
         return 'سنوية';
       case 'year_plus':
@@ -4184,16 +4356,18 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         subtitle: 'الاشتراكات السنوية',
         amount: _annualSubRevenue,
         icon: Icons.auto_awesome_rounded,
+        displayAsCurrency: true,
         gradient: [
           const Color(0xFF0B6E99),
           const Color(0xFF2BB2A0),
         ],
       ),
       _RevenueCardData(
-        title: 'إجمالي دخل الاشتراكات الشهرية',
-        subtitle: 'الاشتراكات الشهرية',
-        amount: _monthlySubRevenue,
-        icon: Icons.calendar_month_rounded,
+        title: 'إجمالي التفعيلات التجريبية الشهرية',
+        subtitle: 'الخطط التجريبية المعتمدة',
+        amount: _approvedTrialActivations.toDouble(),
+        icon: Icons.science_rounded,
+        displayAsCurrency: false,
         gradient: [
           const Color(0xFF1C4FB6),
           const Color(0xFF6A8CFF),
@@ -4204,6 +4378,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         subtitle: 'رسوم المقاعد الإضافية',
         amount: _extraSeatRevenue,
         icon: Icons.group_add_rounded,
+        displayAsCurrency: true,
         gradient: [
           const Color(0xFF7A3E9D),
           const Color(0xFFB062C7),
@@ -4269,10 +4444,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                                 child: Icon(item.icon, color: Colors.white),
                               ),
                               const Spacer(),
-                              Text(
+                              LocalizedText(
                                 _loadingExtraSeatRevenue
                                     ? '—'
-                                    : '\$${item.amount.toStringAsFixed(0)}',
+                                    : item.displayAsCurrency
+                                        ? '\$${item.amount.toStringAsFixed(0)}'
+                                        : item.amount.toStringAsFixed(0),
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w800,
@@ -4282,7 +4459,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                             ],
                           ),
                           const SizedBox(height: 10),
-                          Text(
+                          LocalizedText(
                             item.title,
                             style: const TextStyle(
                               color: Colors.white,
@@ -4291,7 +4468,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                             ),
                           ),
                           const SizedBox(height: 4),
-                          Text(
+                          LocalizedText(
                             _loadingExtraSeatRevenue
                                 ? 'جاري التحميل...'
                                 : item.subtitle,
@@ -4342,14 +4519,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             children: [
               NeuField(
                 controller: _clinicNameCtrl,
-                labelText: 'اسم العيادة',
+                labelText: context.trRaw('اسم العيادة'),
                 prefix: const Icon(Icons.local_hospital_outlined),
                 onChanged: (_) {},
               ),
               const SizedBox(height: 12),
               NeuField(
                 controller: _ownerEmailCtrl,
-                labelText: 'بريد المالك',
+                labelText: context.trRaw('بريد المالك'),
                 keyboardType: TextInputType.emailAddress,
                 prefix: const Icon(Icons.alternate_email_rounded),
                 onChanged: (_) {},
@@ -4357,14 +4534,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
               const SizedBox(height: 12),
               NeuField(
                 controller: _ownerPassCtrl,
-                labelText: 'كلمة مرور المالك',
+                labelText: context.trRaw('كلمة مرور المالك'),
                 obscureText: true,
                 prefix: const Icon(Icons.lock_outline_rounded),
                 onChanged: (_) {},
               ),
               const SizedBox(height: 18),
               Align(
-                alignment: Alignment.centerRight,
+                alignment: AlignmentDirectional.centerStart,
                 child: NeuButton.primary(
                   label: 'إنشاء العيادة',
                   onPressed: _createClinicAccount,
@@ -4393,12 +4570,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
-                    'اختر العيادة',
+                  const LocalizedText('اختر العيادة',
                     style: TextStyle(fontWeight: FontWeight.w700),
                   ),
                   IconButton(
-                    tooltip: 'تحديث القائمة',
+                    tooltip: context.trRaw('تحديث القائمة'),
                     onPressed: _fetchClinics,
                     icon: const Icon(Icons.refresh),
                   ),
@@ -4429,7 +4605,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                 ),
                 child: DropdownButtonFormField<Clinic>(
                   initialValue: _selectedClinic,
-                  decoration: const InputDecoration(border: InputBorder.none),
+                  decoration: InputDecoration(border: InputBorder.none),
                   isExpanded: true,
                   items: _clinics
                       .map(
@@ -4468,7 +4644,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
               const SizedBox(height: 12),
               NeuField(
                 controller: _staffEmailCtrl,
-                labelText: 'بريد الموظف',
+                labelText: context.trRaw('بريد الموظف'),
                 keyboardType: TextInputType.emailAddress,
                 prefix: const Icon(Icons.alternate_email_rounded),
                 enabled: !planIsFree,
@@ -4476,28 +4652,27 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
               const SizedBox(height: 12),
               NeuField(
                 controller: _staffPassCtrl,
-                labelText: 'كلمة مرور الموظف',
+                labelText: context.trRaw('كلمة مرور الموظف'),
                 obscureText: true,
                 prefix: const Icon(Icons.lock_outline_rounded),
                 enabled: !planIsFree,
               ),
               if (planIsFree) ...[
                 const SizedBox(height: 8),
-                Text(
-                  'خطة العيادة FREE: لا يمكن إضافة موظفين حتى تتم الترقية.',
+                LocalizedText('خطة العيادة FREE: لا يمكن إضافة موظفين حتى تتم الترقية.',
                   style: TextStyle(color: scheme.error),
                 ),
               ],
               if (_createStaffPlanError != null) ...[
                 const SizedBox(height: 8),
-                Text(
+                LocalizedText(
                   _createStaffPlanError!,
                   style: TextStyle(color: scheme.error),
                 ),
               ],
               const SizedBox(height: 18),
               Align(
-                alignment: Alignment.centerRight,
+                alignment: AlignmentDirectional.centerStart,
                 child: NeuButton.primary(
                   label: 'إنشاء الموظف',
                   onPressed: planIsFree ? null : _createStaffAccount,
@@ -4531,8 +4706,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                   horizontal: 18,
                   vertical: 14,
                 ),
-                child: const Text(
-                  'لا توجد عيادات مسجّلة.',
+                child: const LocalizedText('لا توجد عيادات مسجّلة.',
                   textAlign: TextAlign.center,
                 ),
               ),
@@ -4579,7 +4753,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-                subtitle: Text(
+                subtitle: LocalizedText(
                   [
                     'الخطة: $planCode',
                     'الحالة: $planStatus',
@@ -4607,14 +4781,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                   itemBuilder: (_) => [
                     PopupMenuItem<String>(
                       value: 'freeze',
-                      child: Text(
+                      child: LocalizedText(
                         clinic.isFrozen ? 'إلغاء التجميد' : 'تجميد',
                       ),
                     ),
                     const PopupMenuItem<String>(
                       value: 'delete',
-                      child: Text(
-                        'حذف',
+                      child: LocalizedText('حذف',
                         style: TextStyle(color: Colors.red),
                       ),
                     ),
@@ -4634,6 +4807,7 @@ class _RevenueCardData {
   final String subtitle;
   final double amount;
   final IconData icon;
+  final bool displayAsCurrency;
   final List<Color> gradient;
 
   const _RevenueCardData({
@@ -4641,6 +4815,7 @@ class _RevenueCardData {
     required this.subtitle,
     required this.amount,
     required this.icon,
+    required this.displayAsCurrency,
     required this.gradient,
   });
 }

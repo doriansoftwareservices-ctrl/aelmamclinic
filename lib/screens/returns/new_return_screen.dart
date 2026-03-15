@@ -1,7 +1,7 @@
 // lib/screens/returns/new_return_screen.dart
-import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:aelmamclinic/utils/app_formatters.dart';
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/core/tbian_ui.dart';
@@ -11,9 +11,18 @@ import 'package:aelmamclinic/models/patient.dart';
 import 'package:aelmamclinic/models/doctor.dart';
 import 'package:aelmamclinic/services/db_service.dart';
 import 'list_returns_screen.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class NewReturnScreen extends StatefulWidget {
-  const NewReturnScreen({super.key});
+  final Patient? patient;
+  final bool returnToListOnSave;
+
+  const NewReturnScreen({
+    super.key,
+    this.patient,
+    this.returnToListOnSave = true,
+  });
 
   @override
   State<NewReturnScreen> createState() => _NewReturnScreenState();
@@ -31,7 +40,13 @@ class _NewReturnScreenState extends State<NewReturnScreen> {
   final _remainingCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
 
-  final _dateOnly = DateFormat('yyyy-MM-dd');
+  DateFormat get _dateOnly => AppFormatters.dateFormat('yyyy-MM-dd');
+
+  @override
+  void initState() {
+    super.initState();
+    _prefillFromPatient(widget.patient);
+  }
 
   @override
   void dispose() {
@@ -45,6 +60,16 @@ class _NewReturnScreenState extends State<NewReturnScreen> {
     super.dispose();
   }
 
+  void _prefillFromPatient(Patient? patient) {
+    if (patient == null) return;
+    _patientNameCtrl.text = patient.name;
+    _phoneCtrl.text = patient.phoneNumber.trim();
+    _ageCtrl.text = patient.age.toString();
+    _doctorCtrl.text = (patient.doctorName ?? '').trim();
+    _diagnosisCtrl.text = patient.diagnosis.trim();
+    _remainingCtrl.text = patient.remaining.toStringAsFixed(2);
+  }
+
   DateTime _combineDateAndTime(DateTime d, TimeOfDay t) =>
       DateTime(d.year, d.month, d.day, t.hour, t.minute);
 
@@ -55,8 +80,8 @@ class _NewReturnScreenState extends State<NewReturnScreen> {
       initialDate: _selectedDate,
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
-      locale: const Locale('ar'),
-      helpText: 'اختر تاريخ العودة',
+      locale: AppFormatters.localeOf(context),
+      helpText: context.trRaw('اختر تاريخ العودة'),
       builder: (ctx, child) => Theme(
         data: Theme.of(ctx).copyWith(
           colorScheme: scheme.copyWith(primary: kPrimaryColor),
@@ -71,7 +96,7 @@ class _NewReturnScreenState extends State<NewReturnScreen> {
     final t = await showTimePicker(
       context: context,
       initialTime: _selectedTime,
-      helpText: 'اختر وقت العودة',
+      helpText: context.trRaw('اختر وقت العودة'),
     );
     if (t != null) setState(() => _selectedTime = t);
   }
@@ -80,7 +105,7 @@ class _NewReturnScreenState extends State<NewReturnScreen> {
     // منع الحفظ بدون اختيار مريض
     if (_patientNameCtrl.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('الرجاء اختيار مريض أولًا.')),
+        const SnackBar(content: LocalizedText('الرجاء اختيار مريض أولًا.')),
       );
       return;
     }
@@ -101,19 +126,23 @@ class _NewReturnScreenState extends State<NewReturnScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-            content: Text('تم حفظ معلومات العودة بنجاح.'),
+            content: LocalizedText('تم حفظ معلومات العودة بنجاح.'),
             duration: Duration(seconds: 2)),
       );
       await Future.delayed(const Duration(milliseconds: 800));
       if (!mounted) return;
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const ListReturnsScreen()),
-      );
+      if (widget.returnToListOnSave) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const ListReturnsScreen()),
+        );
+      } else {
+        Navigator.pop(context, true);
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('فشل حفظ العودة: $e')),
+        SnackBar(content: LocalizedText('فشل حفظ العودة: $e')),
       );
     }
   }
@@ -122,17 +151,16 @@ class _NewReturnScreenState extends State<NewReturnScreen> {
     final res = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('تأكيد الحفظ'),
-        content: const Text(
-            'التاريخ المحدد هو اليوم أو تاريخ ماضٍ. هل تريد بالفعل حفظ بيانات العودة لهذا التاريخ؟'),
+        title: const LocalizedText('تأكيد الحفظ'),
+        content: const LocalizedText('التاريخ المحدد هو اليوم أو تاريخ ماضٍ. هل تريد بالفعل حفظ بيانات العودة لهذا التاريخ؟'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('إلغاء')),
+              child: const LocalizedText('إلغاء')),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: kPrimaryColor),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('تأكيد', style: TextStyle(color: Colors.white)),
+            child: const LocalizedText('تأكيد', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -197,7 +225,7 @@ class _NewReturnScreenState extends State<NewReturnScreen> {
     final scheme = Theme.of(context).colorScheme;
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -216,7 +244,7 @@ class _NewReturnScreenState extends State<NewReturnScreen> {
           ),
           actions: [
             IconButton(
-              tooltip: 'حفظ',
+              tooltip: context.trRaw('حفظ'),
               icon: const Icon(Icons.check_rounded),
               onPressed: _onSavePressed,
             ),
@@ -269,8 +297,8 @@ class _NewReturnScreenState extends State<NewReturnScreen> {
                               // لماذا AbsorbPointer؟ لمنع تحرير النص مع الإبقاء على شكل الحقل
                               child: NeuField(
                                 controller: _patientNameCtrl,
-                                labelText: 'اسم المريض',
-                                hintText: 'اضغط للاختيار…',
+                                labelText: context.trRaw('اسم المريض'),
+                                hintText: context.trRaw('اضغط للاختيار…'),
                                 // الأيقونة للزينة فقط؛ النقر أصبح على كامل الحقل
                                 suffix: const Icon(Icons.person_search_rounded),
                               ),
@@ -279,13 +307,13 @@ class _NewReturnScreenState extends State<NewReturnScreen> {
                           const SizedBox(height: 10),
                           NeuField(
                             controller: _phoneCtrl,
-                            labelText: 'رقم الهاتف',
+                            labelText: context.trRaw('رقم الهاتف'),
                             enabled: false,
                           ),
                           const SizedBox(height: 10),
                           NeuField(
                             controller: _ageCtrl,
-                            labelText: 'العمر',
+                            labelText: context.trRaw('العمر'),
                             enabled: false,
                           ),
                           const SizedBox(height: 10),
@@ -295,17 +323,20 @@ class _NewReturnScreenState extends State<NewReturnScreen> {
                             child: AbsorbPointer(
                               child: NeuField(
                                 controller: _doctorCtrl,
-                                labelText: 'الطبيب',
-                                hintText: 'اضغط للاختيار…',
-                                suffix:
-                                    const Icon(Icons.chevron_left_rounded),
+                                labelText: context.trRaw('الطبيب'),
+                                hintText: context.trRaw('اضغط للاختيار…'),
+                                suffix: Icon(
+                                  context.isRtl
+                                      ? Icons.chevron_left_rounded
+                                      : Icons.chevron_right_rounded,
+                                ),
                               ),
                             ),
                           ),
                           const SizedBox(height: 10),
                           NeuField(
                             controller: _diagnosisCtrl,
-                            labelText: 'حالة المريض',
+                            labelText: context.trRaw('حالة المريض'),
                             maxLines: 2,
                           ),
                         ],
@@ -320,7 +351,7 @@ class _NewReturnScreenState extends State<NewReturnScreen> {
                         children: [
                           NeuField(
                             controller: _notesCtrl,
-                            labelText: 'ملاحظات',
+                            labelText: context.trRaw('ملاحظات'),
                             maxLines: 3,
                           ),
                         ],
@@ -430,7 +461,7 @@ class _DoctorSearchSheetState extends State<_DoctorSearchSheet> {
     final scheme = Theme.of(context).colorScheme;
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: DraggableScrollableSheet(
         expand: false,
         initialChildSize: 0.7,
@@ -464,7 +495,7 @@ class _DoctorSearchSheetState extends State<_DoctorSearchSheet> {
                   const SizedBox(height: 10),
                   Expanded(
                     child: _filtered.isEmpty
-                        ? const Center(child: Text('لا توجد نتائج'))
+                        ? const Center(child: LocalizedText('لا توجد نتائج'))
                         : ListView.builder(
                             controller: scrollController,
                             itemCount: _filtered.length,
@@ -506,8 +537,11 @@ class _DoctorSearchSheetState extends State<_DoctorSearchSheet> {
                                           color: scheme.onSurface
                                               .withValues(alpha: .75)),
                                     ),
-                                    trailing: const Icon(
-                                        Icons.chevron_left_rounded),
+                                    trailing: Icon(
+                                      context.isRtl
+                                          ? Icons.chevron_left_rounded
+                                          : Icons.chevron_right_rounded,
+                                    ),
                                   ),
                                 ),
                               );
@@ -579,7 +613,7 @@ class _PatientSearchSheetState extends State<_PatientSearchSheet> {
     final scheme = Theme.of(context).colorScheme;
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: DraggableScrollableSheet(
         expand: false,
         initialChildSize: 0.7,
@@ -617,7 +651,7 @@ class _PatientSearchSheetState extends State<_PatientSearchSheet> {
                   // النتائج
                   Expanded(
                     child: _filtered.isEmpty
-                        ? const Center(child: Text('لا توجد نتائج'))
+                        ? const Center(child: LocalizedText('لا توجد نتائج'))
                         : ListView.builder(
                             controller: scrollController,
                             itemCount: _filtered.length,
@@ -649,16 +683,18 @@ class _PatientSearchSheetState extends State<_PatientSearchSheet> {
                                       style: const TextStyle(
                                           fontWeight: FontWeight.w800),
                                     ),
-                                    subtitle: Text(
-                                      'هاتف: ${p.phoneNumber.isEmpty ? '—' : p.phoneNumber}',
+                                    subtitle: LocalizedText('هاتف: ${p.phoneNumber.isEmpty ? '—' : p.phoneNumber}',
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(
                                           color: scheme.onSurface
                                               .withValues(alpha: .75)),
                                     ),
-                                    trailing:
-                                        const Icon(Icons.chevron_left_rounded),
+                                    trailing: Icon(
+                                      context.isRtl
+                                          ? Icons.chevron_left_rounded
+                                          : Icons.chevron_right_rounded,
+                                    ),
                                   ),
                                 ),
                               );

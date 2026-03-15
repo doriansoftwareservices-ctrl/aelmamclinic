@@ -25,6 +25,7 @@ import 'package:aelmamclinic/services/save_file_service.dart';
 import 'package:aelmamclinic/core/active_account_store.dart';
 import 'package:aelmamclinic/models/storage_type.dart';
 import 'package:aelmamclinic/models/attachment.dart';
+import 'package:aelmamclinic/utils/report_localizer.dart';
 
 /*──────────────── Google auth helper ───────────────*/
 class GoogleHttpClient extends http.BaseClient {
@@ -99,10 +100,13 @@ class GoogleDriveService {
         ..mimeType = 'application/vnd.google-apps.folder';
       folderId = (await api.files.create(meta)).id;
     }
+    if (folderId == null || folderId.isEmpty) {
+      throw StateError('Failed to resolve Google Drive backup folder.');
+    }
 
     final driveFile = drive.File()
       ..name = p.basename(backupZip.path)
-      ..parents = [folderId!];
+      ..parents = [folderId];
     final media = drive.Media(backupZip.openRead(), backupZip.lengthSync());
     return api.files.create(driveFile, uploadMedia: media);
   }
@@ -345,6 +349,7 @@ class BackupRestoreService {
 
   /*──────────── Export (HTML) ────────────*/
   static Future<File> exportClinicHtml() async {
+    final i18n = ReportLocalizer();
     final Database db = await DBService.instance.database;
     final fileName = _timestamped('clinic_export', 'html');
     final accountId = await ActiveAccountStore.readAccountId();
@@ -370,11 +375,11 @@ class BackupRestoreService {
 
     final buffer = StringBuffer();
     buffer.writeln('<!doctype html>');
-    buffer.writeln('<html lang="ar" dir="rtl">');
+    buffer.writeln('<html lang="${i18n.htmlLang}" dir="${i18n.htmlDir}">');
     buffer.writeln('<head>');
     buffer.writeln('<meta charset="utf-8" />');
     buffer.writeln('<meta name="viewport" content="width=device-width, initial-scale=1" />');
-    buffer.writeln('<title>تصدير بيانات العيادة</title>');
+    buffer.writeln("<title>${esc(i18n.tr('تصدير بيانات العيادة'))}</title>");
     buffer.writeln('<style>');
     buffer.writeln('body{font-family:Arial,Helvetica,sans-serif;background:#f5f7fb;color:#1b2430;margin:0;padding:24px;}');
     buffer.writeln('.wrap{max-width:1200px;margin:0 auto;}');
@@ -393,47 +398,47 @@ class BackupRestoreService {
     buffer.writeln('</head>');
     buffer.writeln('<body>');
     buffer.writeln('<div class="wrap">');
-    buffer.writeln('<h1>تصدير شامل لبيانات العيادة</h1>');
+    buffer.writeln("<h1>${esc(i18n.tr('تصدير شامل لبيانات العيادة'))}</h1>");
     buffer.writeln(
-      '<div class="meta">تم إنشاء الملف محليًا في ${esc(DateTime.now().toString())}.</div>',
+      "<div class=\"meta\">${esc(i18n.tr('تم إنشاء الملف محليًا في'))} ${esc(i18n.formatDateTime(DateTime.now(), pattern: 'yyyy-MM-dd HH:mm:ss'))}.</div>",
     );
     if (clinicProfile != null) {
       buffer.writeln('<div class="card">');
-      buffer.writeln('<h2>معلومات العيادة</h2>');
-      buffer.writeln('<div class="count">بيانات تعريفية</div>');
+      buffer.writeln("<h2>${esc(i18n.tr('معلومات العيادة'))}</h2>");
+      buffer.writeln("<div class=\"count\">${esc(i18n.tr('بيانات تعريفية'))}</div>");
       buffer.writeln('<div style="overflow:auto;">');
       buffer.writeln('<table>');
       buffer.writeln('<tbody>');
       buffer.writeln(
-          '<tr><th>الاسم (عربي)</th><td>${esc(clinicProfile.nameAr)}</td></tr>');
+          "<tr><th>${esc(i18n.isRtl ? 'الاسم (عربي)' : 'Arabic name')}</th><td>${esc(clinicProfile.nameAr)}</td></tr>");
       buffer.writeln(
-          '<tr><th>الاسم (إنجليزي)</th><td>${esc(clinicProfile.nameEn)}</td></tr>');
+          "<tr><th>${esc(i18n.isRtl ? 'الاسم (إنجليزي)' : 'English name')}</th><td>${esc(clinicProfile.nameEn)}</td></tr>");
       buffer.writeln(
-          '<tr><th>المدينة (عربي)</th><td>${esc(clinicProfile.cityAr)}</td></tr>');
+          "<tr><th>${esc(i18n.isRtl ? 'المدينة (عربي)' : 'Arabic city')}</th><td>${esc(clinicProfile.cityAr)}</td></tr>");
       buffer.writeln(
-          '<tr><th>المدينة (إنجليزي)</th><td>${esc(clinicProfile.cityEn)}</td></tr>');
+          "<tr><th>${esc(i18n.isRtl ? 'المدينة (إنجليزي)' : 'English city')}</th><td>${esc(clinicProfile.cityEn)}</td></tr>");
       buffer.writeln(
-          '<tr><th>الشارع/العنوان (عربي)</th><td>${esc(clinicProfile.streetAr)}</td></tr>');
+          "<tr><th>${esc(i18n.isRtl ? 'الشارع/العنوان (عربي)' : 'Arabic street/address')}</th><td>${esc(clinicProfile.streetAr)}</td></tr>");
       buffer.writeln(
-          '<tr><th>الشارع/العنوان (إنجليزي)</th><td>${esc(clinicProfile.streetEn)}</td></tr>');
+          "<tr><th>${esc(i18n.isRtl ? 'الشارع/العنوان (إنجليزي)' : 'English street/address')}</th><td>${esc(clinicProfile.streetEn)}</td></tr>");
       buffer.writeln(
-          '<tr><th>أقرب معلم (عربي)</th><td>${esc(clinicProfile.nearAr)}</td></tr>');
+          "<tr><th>${esc(i18n.isRtl ? 'أقرب معلم (عربي)' : 'Arabic landmark')}</th><td>${esc(clinicProfile.nearAr)}</td></tr>");
       buffer.writeln(
-          '<tr><th>أقرب معلم (إنجليزي)</th><td>${esc(clinicProfile.nearEn)}</td></tr>');
+          "<tr><th>${esc(i18n.isRtl ? 'أقرب معلم (إنجليزي)' : 'English landmark')}</th><td>${esc(clinicProfile.nearEn)}</td></tr>");
       buffer.writeln(
-          '<tr><th>هاتف</th><td>${esc(clinicProfile.phone)}</td></tr>');
+          "<tr><th>${esc(i18n.isRtl ? 'هاتف' : 'Phone')}</th><td>${esc(clinicProfile.phone)}</td></tr>");
       buffer.writeln(
-          '<tr><th>هاتف إضافي</th><td>${esc(clinicProfile.phone2)}</td></tr>');
+          "<tr><th>${esc(i18n.isRtl ? 'هاتف إضافي' : 'Additional phone')}</th><td>${esc(clinicProfile.phone2)}</td></tr>");
       buffer.writeln('</tbody></table></div></div>');
     }
     buffer.writeln('<div class="card">');
-    buffer.writeln('<h2>تصدير كامل</h2>');
-    buffer.writeln('<div class="count">تصدير كل الجداول دفعة واحدة</div>');
+    buffer.writeln("<h2>${esc(i18n.tr('تصدير كامل'))}</h2>");
+    buffer.writeln("<div class=\"count\">${esc(i18n.tr('تصدير كل الجداول دفعة واحدة'))}</div>");
     buffer.writeln('<div class="actions">');
     buffer.writeln(
-        '<button class="btn" onclick="exportAllXls()">تصدير كل البيانات Excel</button>');
+        "<button class=\"btn\" onclick=\"exportAllXls()\">${esc(i18n.tr('تصدير كل البيانات Excel'))}</button>");
     buffer.writeln(
-        '<button class="btn secondary" onclick="exportAllCsv()">تصدير كل البيانات CSV</button>');
+        "<button class=\"btn secondary\" onclick=\"exportAllCsv()\">${esc(i18n.tr('تصدير كل البيانات CSV'))}</button>");
     buffer.writeln('</div>');
     buffer.writeln('</div>');
 
@@ -479,10 +484,10 @@ class BackupRestoreService {
       final tableId = 'tbl_${table.replaceAll(RegExp(r"[^a-zA-Z0-9_]"), "_")}';
       buffer.writeln('<div class="card">');
       buffer.writeln('<h2>${esc(table)}</h2>');
-      buffer.writeln('<div class="count">عدد السجلات: ${rows.length}</div>');
+      buffer.writeln("<div class=\"count\">${esc(i18n.tr('عدد السجلات'))}: ${esc(i18n.formatNumber(rows.length, decimalDigits: 0))}</div>");
       buffer.writeln('<div class="actions">');
-      buffer.writeln('<button class="btn" onclick="exportTableXls(\'$tableId\', \'$table\')">تصدير Excel</button>');
-      buffer.writeln('<button class="btn secondary" onclick="exportTableCsv(\'$tableId\', \'$table\')">تصدير CSV</button>');
+      buffer.writeln("<button class=\"btn\" onclick=\"exportTableXls('$tableId', '$table')\">${esc(i18n.tr('تصدير Excel'))}</button>");
+      buffer.writeln("<button class=\"btn secondary\" onclick=\"exportTableCsv('$tableId', '$table')\">${esc(i18n.tr('تصدير CSV'))}</button>");
       buffer.writeln('</div>');
       buffer.writeln('<div style="overflow:auto;">');
       buffer.writeln('<table id="$tableId">');
@@ -500,12 +505,14 @@ class BackupRestoreService {
         buffer.writeln('</tr>');
       }
       if (rows.isEmpty) {
-        buffer.writeln('<tr><td colspan="${colNames.length}">لا توجد بيانات</td></tr>');
+        buffer.writeln("<tr><td colspan=\"${colNames.length}\">${esc(i18n.tr('لا توجد بيانات'))}</td></tr>");
       }
       buffer.writeln('</tbody></table></div></div>');
     }
 
-    buffer.writeln('<div class="meta">إجمالي الجداول: ${tables.length} • إجمالي السجلات: $totalRows</div>');
+    buffer.writeln(
+      "<div class=\"meta\">${esc(i18n.tr('إجمالي الجداول'))}: ${esc(i18n.formatNumber(tables.length, decimalDigits: 0))} • ${esc(i18n.tr('إجمالي السجلات'))}: ${esc(i18n.formatNumber(totalRows, decimalDigits: 0))}</div>",
+    );
     buffer.writeln('</div>');
 
     buffer.writeln('<script>');
@@ -561,7 +568,7 @@ class BackupRestoreService {
     final bytes = Uint8List.fromList(utf8.encode(buffer.toString()));
     final savedPath = await saveFileBytesWithPath(bytes, fileName);
     if (savedPath.isEmpty) {
-      throw StateError('تعذّر حفظ الملف في مجلد Downloads');
+      throw StateError(i18n.tr('تعذّر حفظ الملف في مجلد Downloads'));
     }
     return File(savedPath);
   }

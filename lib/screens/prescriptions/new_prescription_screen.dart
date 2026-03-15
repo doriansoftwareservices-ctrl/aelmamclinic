@@ -2,6 +2,7 @@
 import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:aelmamclinic/utils/app_formatters.dart';
 
 import 'package:aelmamclinic/models/doctor.dart';
 import 'package:aelmamclinic/models/drug.dart';
@@ -13,6 +14,8 @@ import 'package:aelmamclinic/screens/patients/patient_picker_screen.dart';
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/core/tbian_ui.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 /// عنصر دواء داخل الوصفة
 class _RxItem {
@@ -64,13 +67,14 @@ class _NewPrescriptionScreenState extends State<NewPrescriptionScreen> {
   bool _loading = true;
   bool _saving = false;
 
-  final _dateFmt = DateFormat('yyyy-MM-dd');
+  DateFormat get _dateFmt => AppFormatters.dateFormat('yyyy-MM-dd');
 
   @override
   void initState() {
     super.initState();
     _patientId = widget.patient?.id;
     _patientName = widget.patient?.name;
+    _recordDate = widget.patient?.registerDate ?? DateTime.now();
     _init();
   }
 
@@ -80,9 +84,53 @@ class _NewPrescriptionScreenState extends State<NewPrescriptionScreen> {
 
     if (widget.prescriptionId != null) {
       await _loadExisting(widget.prescriptionId!);
+    } else if (widget.patient != null) {
+      await _prefillDoctorFromPatient(widget.patient!);
     }
 
     if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _prefillDoctorFromPatient(Patient patient) async {
+    String normalizeDoctor(String? name) {
+      if (name == null) return '';
+      return name
+          .replaceFirst(
+            RegExp(
+              r'^\s*(د\/|د\\|د\.|دكتور|Doctor|Dr\.?)\s*',
+              caseSensitive: false,
+            ),
+            '',
+          )
+          .trim()
+          .toLowerCase();
+    }
+
+    if (patient.doctorId != null && patient.doctorId! > 0) {
+      final doctors = await DBService.instance.getAllDoctors();
+      for (final doctor in doctors) {
+        if (doctor.id == patient.doctorId) {
+          _doctorId = doctor.id;
+          _doctorName = 'د/${doctor.name}';
+          return;
+        }
+      }
+    }
+
+    final rawDoctorName = patient.doctorName?.trim();
+    if (rawDoctorName == null || rawDoctorName.isEmpty) return;
+
+    final doctors = await DBService.instance.getAllDoctors();
+    final target = normalizeDoctor(rawDoctorName);
+    for (final doctor in doctors) {
+      if (normalizeDoctor(doctor.name) == target) {
+        _doctorId = doctor.id;
+        _doctorName = 'د/${doctor.name}';
+        return;
+      }
+    }
+
+    _doctorName = rawDoctorName;
   }
 
   /*──────── تحميل وصفة موجودة ─────────*/
@@ -155,14 +203,14 @@ class _NewPrescriptionScreenState extends State<NewPrescriptionScreen> {
         ),
         child: StatefulBuilder(
           builder: (c2, setDlg) => AlertDialog(
-            title: const Text('اختر الطبيب'),
+            title: const LocalizedText('اختر الطبيب'),
             content: SizedBox(
               width: double.maxFinite,
               height: 320,
               child: Column(
                 children: [
                   NeuField(
-                    labelText: 'بحث...',
+                    labelText: context.trRaw('بحث...'),
                     prefix: const Icon(Icons.search),
                     onChanged: (v) => setDlg(() {
                       showing = list
@@ -174,13 +222,13 @@ class _NewPrescriptionScreenState extends State<NewPrescriptionScreen> {
                   const SizedBox(height: 10),
                   Expanded(
                     child: showing.isEmpty
-                        ? const Center(child: Text('لا يوجد نتائج'))
+                        ? const Center(child: LocalizedText('لا يوجد نتائج'))
                         : ListView.builder(
                             itemCount: showing.length,
                             itemBuilder: (_, i) {
                               final d = showing[i];
                               return ListTile(
-                                title: Text('د/${d.name}'),
+                                title: LocalizedText('د/${d.name}'),
                                 subtitle: Text(d.specialization),
                                 onTap: () => Navigator.pop(ctx, d),
                               );
@@ -193,7 +241,7 @@ class _NewPrescriptionScreenState extends State<NewPrescriptionScreen> {
             actions: [
               TextButton(
                   onPressed: () => Navigator.pop(ctx),
-                  child: const Text('إغلاق')),
+                  child: const LocalizedText('إغلاق')),
             ],
           ),
         ),
@@ -224,7 +272,7 @@ class _NewPrescriptionScreenState extends State<NewPrescriptionScreen> {
         ),
         child: StatefulBuilder(
           builder: (c2, setDlg) => AlertDialog(
-            title: const Text('اختر دواء'),
+            title: const LocalizedText('اختر دواء'),
             content: SizedBox(
               width: double.maxFinite,
               height: 360,
@@ -232,7 +280,7 @@ class _NewPrescriptionScreenState extends State<NewPrescriptionScreen> {
                 children: [
                   NeuField(
                     controller: _drugSearch,
-                    labelText: 'بحث بالاسم',
+                    labelText: context.trRaw('بحث بالاسم'),
                     prefix: const Icon(Icons.search),
                     onChanged: (v) => setDlg(() {
                       _filteredDrugs = _allDrugs
@@ -244,7 +292,7 @@ class _NewPrescriptionScreenState extends State<NewPrescriptionScreen> {
                   const SizedBox(height: 10),
                   Expanded(
                     child: _filteredDrugs.isEmpty
-                        ? const Center(child: Text('لا نتائج'))
+                        ? const Center(child: LocalizedText('لا نتائج'))
                         : ListView.builder(
                             itemCount: _filteredDrugs.length,
                             itemBuilder: (_, i) {
@@ -310,15 +358,15 @@ class _NewPrescriptionScreenState extends State<NewPrescriptionScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => Directionality(
-        textDirection: ui.TextDirection.rtl,
+        textDirection: Directionality.of(context),
         child: AlertDialog(
-          title: Text(title),
+          title: LocalizedText(title),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               NeuField(
                 controller: daysCtrl,
-                labelText: 'عدد أيام الاستخدام',
+                labelText: context.trRaw('عدد أيام الاستخدام'),
                 keyboardType: const TextInputType.numberWithOptions(
                     signed: false, decimal: false),
                 textDirection: ui.TextDirection.ltr,
@@ -328,7 +376,7 @@ class _NewPrescriptionScreenState extends State<NewPrescriptionScreen> {
               const SizedBox(height: 10),
               NeuField(
                 controller: timesCtrl,
-                labelText: 'مرات الاستخدام في اليوم',
+                labelText: context.trRaw('مرات الاستخدام في اليوم'),
                 keyboardType: const TextInputType.numberWithOptions(
                     signed: false, decimal: false),
                 textDirection: ui.TextDirection.ltr,
@@ -340,10 +388,10 @@ class _NewPrescriptionScreenState extends State<NewPrescriptionScreen> {
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('إلغاء')),
+                child: const LocalizedText('إلغاء')),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('حفظ'),
+              child: const LocalizedText('حفظ'),
             ),
           ],
         ),
@@ -355,7 +403,7 @@ class _NewPrescriptionScreenState extends State<NewPrescriptionScreen> {
       final t = int.tryParse(timesCtrl.text) ?? 0;
       if (d <= 0 || t <= 0) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('الرجاء إدخال قيم صحيحة (> 0)')),
+          const SnackBar(content: LocalizedText('الرجاء إدخال قيم صحيحة (> 0)')),
         );
         return;
       }
@@ -368,7 +416,7 @@ class _NewPrescriptionScreenState extends State<NewPrescriptionScreen> {
     if (_patientId == null || _items.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-            content: Text('اختر المريض وأضف دواءً واحداً على الأقل')),
+            content: LocalizedText('اختر المريض وأضف دواءً واحداً على الأقل')),
       );
       return;
     }
@@ -376,6 +424,7 @@ class _NewPrescriptionScreenState extends State<NewPrescriptionScreen> {
 
     final db = await DBService.instance.database;
     final nowIso = DateTime.now().toIso8601String();
+    int? savedPrescriptionId;
 
     if (widget.prescriptionId == null) {
       await db.transaction((txn) async {
@@ -385,6 +434,7 @@ class _NewPrescriptionScreenState extends State<NewPrescriptionScreen> {
           'recordDate': _recordDate.toIso8601String(),
           'createdAt': nowIso,
         });
+        savedPrescriptionId = headId;
 
         final batch = txn.batch();
         for (final it in _items) {
@@ -398,6 +448,7 @@ class _NewPrescriptionScreenState extends State<NewPrescriptionScreen> {
         await batch.commit(noResult: true);
       });
     } else {
+      savedPrescriptionId = widget.prescriptionId;
       await db.transaction((txn) async {
         await txn.update(
           'prescriptions',
@@ -437,7 +488,7 @@ class _NewPrescriptionScreenState extends State<NewPrescriptionScreen> {
     await DBService.instance.notifyTableChanged('prescription_items');
 
     setState(() => _saving = false);
-    if (mounted) Navigator.pop(context);
+    if (mounted) Navigator.pop(context, savedPrescriptionId);
   }
 
   int get _totalDoses =>
@@ -453,7 +504,7 @@ class _NewPrescriptionScreenState extends State<NewPrescriptionScreen> {
     }
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -596,8 +647,7 @@ class _NewPrescriptionScreenState extends State<NewPrescriptionScreen> {
                           (it) => InputChip(
                             backgroundColor:
                                 kPrimaryColor.withValues(alpha: .08),
-                            label: Text(
-                                '${it.drugName} • ${it.days} يوم × ${it.timesPerDay}'),
+                            label: LocalizedText('${it.drugName} • ${it.days} يوم × ${it.timesPerDay}'),
                             onDeleted: () => setState(() => _items.remove(it)),
                             onPressed: () => _editItem(it),
                           ),
@@ -630,7 +680,7 @@ class _NewPrescriptionScreenState extends State<NewPrescriptionScreen> {
                     width: double.infinity,
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.save),
-                      label: const Text('حفظ'),
+                      label: const LocalizedText('حفظ'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: scheme.primary,
                         foregroundColor: scheme.onPrimary,

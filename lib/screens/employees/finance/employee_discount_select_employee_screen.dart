@@ -10,6 +10,8 @@ import 'package:aelmamclinic/services/db_service.dart';
 import 'employee_discount_create_screen.dart';
 import 'employee_discounts_of_employee_screen.dart';
 import 'finance_access_guard.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class EmployeeDiscountSelectEmployeeScreen extends StatefulWidget {
   /// true = إنشاء خصم جديد, false = استعراض الخصومات
@@ -152,7 +154,7 @@ class _EmployeeDiscountSelectEmployeeScreenState
 
     return FinanceAccessGuard(
       child: Directionality(
-        textDirection: TextDirection.rtl,
+        textDirection: Directionality.of(context),
         child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -161,12 +163,12 @@ class _EmployeeDiscountSelectEmployeeScreenState
             children: [
               const Icon(Icons.badge_rounded),
               const SizedBox(width: 8),
-              Text(_screenTitle),
+              LocalizedText(_screenTitle),
             ],
           ),
           actions: [
             IconButton(
-              tooltip: 'مسح البحث',
+              tooltip: context.trRaw('مسح البحث'),
               onPressed: () {
                 if (_searchController.text.isEmpty) return;
                 _searchController.clear();
@@ -176,7 +178,7 @@ class _EmployeeDiscountSelectEmployeeScreenState
               icon: const Icon(Icons.clear_all_rounded),
             ),
             IconButton(
-              tooltip: 'تحديث',
+              tooltip: context.trRaw('تحديث'),
               onPressed: _loadEmployees,
               icon: const Icon(Icons.refresh_rounded),
             ),
@@ -208,7 +210,7 @@ class _EmployeeDiscountSelectEmployeeScreenState
                       ),
                       const SizedBox(width: 10),
                       Expanded(
-                        child: Text(
+                        child: LocalizedText(
                           widget.isCreateMode
                               ? 'اختر الموظف لإنشاء خصم جديد'
                               : 'اختر الموظف لاستعراض الخصومات',
@@ -226,12 +228,12 @@ class _EmployeeDiscountSelectEmployeeScreenState
                 // حقل البحث (نيومورفيزم) مع زر مسح سريع
                 NeuField(
                   controller: _searchController,
-                  hintText: 'ابحث بالاسم/الهاتف/الصفة…',
+                  hintText: context.trRaw('ابحث بالاسم/الهاتف/الصفة…'),
                   prefix: const Icon(Icons.search_rounded),
                   suffix: _searchController.text.isEmpty
                       ? null
                       : IconButton(
-                          tooltip: 'مسح',
+                          tooltip: context.trRaw('مسح'),
                           icon: const Icon(Icons.clear_rounded),
                           onPressed: () {
                             _searchController.clear();
@@ -244,8 +246,8 @@ class _EmployeeDiscountSelectEmployeeScreenState
 
                 // عداد نتائج
                 Align(
-                  alignment: Alignment.centerRight,
-                  child: Text(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: LocalizedText(
                     _loading
                         ? 'جاري التحميل…'
                         : (_loadError != null
@@ -336,8 +338,7 @@ class _EmployeeDiscountSelectEmployeeScreenState
                                                           BorderRadius.circular(
                                                               100),
                                                     ),
-                                                    child: const Text(
-                                                      'طبيب',
+                                                    child: const LocalizedText('طبيب',
                                                       style: TextStyle(
                                                         fontSize: 11.5,
                                                         fontWeight:
@@ -358,8 +359,10 @@ class _EmployeeDiscountSelectEmployeeScreenState
                                                 fontWeight: FontWeight.w600,
                                               ),
                                             ),
-                                            trailing: const Icon(
-                                              Icons.chevron_left_rounded,
+                                            trailing: Icon(
+                                              context.isRtl
+                                                  ? Icons.chevron_left_rounded
+                                                  : Icons.chevron_right_rounded,
                                             ),
                                             onTap: () =>
                                                 _onEmployeeSelected(empId),
@@ -404,8 +407,7 @@ class _EmptyView extends StatelessWidget {
         ),
         const SizedBox(height: 10),
         Center(
-          child: Text(
-            'لا توجد نتائج',
+          child: LocalizedText('لا توجد نتائج',
             style: TextStyle(
               color: cs.onSurface.withValues(alpha: .6),
               fontWeight: FontWeight.w600,
@@ -417,7 +419,7 @@ class _EmptyView extends StatelessWidget {
           child: TextButton.icon(
             onPressed: onRefreshTap,
             icon: const Icon(Icons.refresh_rounded),
-            label: const Text('تحديث'),
+            label: const LocalizedText('تحديث'),
           ),
         ),
       ],
@@ -444,8 +446,7 @@ class _ErrorView extends StatelessWidget {
             children: [
               Icon(Icons.error_outline_rounded, size: 40, color: cs.error),
               const SizedBox(height: 8),
-              Text(
-                'حدث خطأ',
+              LocalizedText('حدث خطأ',
                 style: TextStyle(
                   color: cs.onSurface,
                   fontWeight: FontWeight.w900,
@@ -465,7 +466,7 @@ class _ErrorView extends StatelessWidget {
               FilledButton.icon(
                 onPressed: onRetry,
                 icon: const Icon(Icons.refresh_rounded),
-                label: const Text('حاول مجدداً'),
+                label: const LocalizedText('حاول مجدداً'),
               ),
             ],
           ),

@@ -1,5 +1,4 @@
 // lib/screens/repository/statistics/repository_statistics_screen.dart
-import 'dart:ui' as ui show TextDirection;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -15,6 +14,8 @@ import 'package:aelmamclinic/providers/repository_provider.dart';
 import 'package:aelmamclinic/services/repository_service.dart';
 import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/utils/excel_export_helper.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
 
 class RepositoryStatisticsScreen extends StatefulWidget {
   const RepositoryStatisticsScreen({super.key});
@@ -99,12 +100,12 @@ class _RepositoryStatisticsScreenState
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تمّ حفظ الملف في:\n$path')),
+        SnackBar(content: LocalizedText('تمّ حفظ الملف في:\n$path')),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('فشل التصدير: $e')),
+        SnackBar(content: LocalizedText('فشل التصدير: $e')),
       );
     }
   }
@@ -127,8 +128,7 @@ class _RepositoryStatisticsScreenState
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.amber.withValues(alpha: .4)),
       ),
-      child: const Text(
-        'تنبيه: بعض البيانات قد تكون مخفية حسب صلاحيات الحساب.',
+      child: const LocalizedText('تنبيه: بعض البيانات قد تكون مخفية حسب صلاحيات الحساب.',
         style: TextStyle(fontWeight: FontWeight.w700),
       ),
     );
@@ -145,7 +145,7 @@ class _RepositoryStatisticsScreenState
     final statsFuture = _loadStatsMap(allItems);
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -165,7 +165,7 @@ class _RepositoryStatisticsScreenState
         ),
         body: SafeArea(
           child: (repo.types.isEmpty && repo.orphanItems.isEmpty)
-              ? const Center(child: Text('لا توجد بيانات بعد.'))
+              ? const Center(child: LocalizedText('لا توجد بيانات بعد.'))
               : RefreshIndicator(
                   color: scheme.primary,
                   onRefresh: () async {
@@ -261,7 +261,7 @@ class _RepositoryStatisticsScreenState
                                             fontWeight: FontWeight.w800,
                                             fontSize: 16),
                                       ),
-                                      subtitle: Text(
+                                      subtitle: LocalizedText(
                                         items.isEmpty
                                             ? '— لا أصناف —'
                                             : 'عدد الأصناف: ${items.length}',
@@ -281,8 +281,9 @@ class _RepositoryStatisticsScreenState
                                           ),
                                           const SizedBox(width: 8),
                                           IconButton(
-                                            tooltip:
-                                                isExpanded ? 'طيّ' : 'توسيع',
+                                            tooltip: isExpanded
+                                                ? context.trRaw('طيّ')
+                                                : context.trRaw('توسيع'),
                                             icon: Icon(isExpanded
                                                 ? Icons.expand_less
                                                 : Icons.expand_more),
@@ -320,8 +321,7 @@ class _RepositoryStatisticsScreenState
                                                         const EdgeInsets
                                                             .fromLTRB(
                                                                 6, 0, 6, 6),
-                                                    child: Text(
-                                                      '— لا أصناف —',
+                                                    child: LocalizedText('— لا أصناف —',
                                                       style: TextStyle(
                                                           color: scheme
                                                               .onSurface
@@ -377,16 +377,14 @@ class _RepositoryStatisticsScreenState
                                     size: 20,
                                   ),
                                 ),
-                                title: const Text(
-                                  'أصناف بدون نوع',
+                                title: const LocalizedText('أصناف بدون نوع',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
                                       fontWeight: FontWeight.w800,
                                       fontSize: 16),
                                 ),
-                                subtitle: Text(
-                                  'عدد الأصناف: ${repo.orphanItems.length}',
+                                subtitle: LocalizedText('عدد الأصناف: ${repo.orphanItems.length}',
                                   style: TextStyle(
                                       color: scheme.onSurface
                                           .withValues(alpha: .75)),
@@ -452,8 +450,7 @@ class _ItemStatsTile extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
         style: const TextStyle(fontWeight: FontWeight.w800),
       ),
-      subtitle: Text(
-        'المستخدم: $used  •  المتبقي: $remaining  •  تكلفة المشتريات: ${totalCost.toStringAsFixed(2)}',
+      subtitle: LocalizedText('المستخدم: $used  •  المتبقي: $remaining  •  تكلفة المشتريات: ${totalCost.toStringAsFixed(2)}',
         style: TextStyle(
           color: scheme.onSurface.withValues(alpha: .80),
           fontWeight: FontWeight.w600,
@@ -502,14 +499,16 @@ class _InfoBadge extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: scheme.onSurface.withValues(alpha: .85),
-                        fontWeight: FontWeight.w800,
-                        fontSize: 14.5,
-                      )),
+                  LocalizedText(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: scheme.onSurface.withValues(alpha: .85),
+                      fontWeight: FontWeight.w800,
+                      fontSize: 14.5,
+                    ),
+                  ),
                   const SizedBox(height: 4),
                   Text(
                     value,

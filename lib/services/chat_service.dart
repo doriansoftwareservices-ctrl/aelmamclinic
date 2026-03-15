@@ -48,6 +48,9 @@ import 'package:aelmamclinic/services/nhost_graphql_service.dart';
 import 'package:aelmamclinic/services/nhost_storage_service.dart';
 import 'package:aelmamclinic/utils/device_id.dart';
 import 'package:aelmamclinic/utils/local_seq.dart';
+import 'package:aelmamclinic/l10n/raw_string_localizer.dart';
+
+String _trChatService(String raw) => RawStringLocalizer.translateWithCurrentLocale(raw);
 
 class ChatAttachmentUploadException implements Exception {
   final String message;
@@ -141,16 +144,30 @@ class ChatService {
         msg.contains('Cannot query field \'$field\'');
   }
 
+  bool _hasMissingMutationField(OperationException error, String field) {
+    final msg = _formatGqlError(error);
+    return msg.contains("field '$field'") ||
+        msg.contains('field "$field"') ||
+        msg.contains('Cannot query field "$field"') ||
+        msg.contains('Cannot query field \'$field\'') ||
+        (msg.contains(field) &&
+            (msg.contains('mutation_root') ||
+                msg.contains('schema') ||
+                msg.contains('not found') ||
+                msg.contains('does not exist')));
+  }
+
   Future<Map<String, dynamic>> _runQuery(
     String doc,
     Map<String, dynamic> variables,
   ) async {
+    final safeVariables = Map<String, dynamic>.from(variables);
     var attempt = 0;
     while (true) {
       final result = await _gql.query(
         QueryOptions(
           document: gql(doc),
-          variables: variables,
+          variables: safeVariables,
           fetchPolicy: FetchPolicy.noCache,
         ),
       );
@@ -171,12 +188,13 @@ class ChatService {
     String doc,
     Map<String, dynamic> variables,
   ) async {
+    final safeVariables = Map<String, dynamic>.from(variables);
     var attempt = 0;
     while (true) {
       final result = await _gql.mutate(
         MutationOptions(
           document: gql(doc),
-          variables: variables,
+          variables: safeVariables,
           fetchPolicy: FetchPolicy.noCache,
         ),
       );
@@ -283,29 +301,58 @@ class ChatService {
     final name = row['display_name']?.toString().trim();
     return {
       'user_uid': uid,
-      'display_name': (name == null || name.isEmpty) ? 'خدمة العملاء' : name,
+      'display_name': (name == null || name.isEmpty) ? _trChatService('خدمة العملاء') : name,
     };
+  }
+
+  Future<ChatConversation> startSupportConversation() async {
+    const mutation = r'''
+      mutation StartSupport {
+        chat_start_support {
+          id
+        }
+      }
+    ''';
+    final data = await _runMutation(mutation, const {});
+    final rows = data['chat_start_support'] as List?;
+    final id = rows != null && rows.isNotEmpty
+        ? (rows.first as Map)['id']?.toString()
+        : null;
+    if (id == null || id.isEmpty) {
+      throw _trChatService('تعذّر إنشاء محادثة الدعم. حاول لاحقًا.');
+    }
+    final conv = await fetchConversationById(id);
+    if (conv == null) {
+      throw _trChatService('تعذّر تحميل محادثة الدعم.');
+    }
+    return conv;
   }
 
   Future<ChatConversation> startDMWithUid(String otherUid) async {
     final uid = currentUserId;
     if (uid == null || uid.isEmpty) {
-      throw 'لا يوجد مستخدم مسجّل الدخول.';
+      throw _trChatService('لا يوجد مستخدم مسجّل الدخول.');
     }
     if (otherUid.isEmpty) {
-      throw 'لا يوجد مستخدم هدف.';
+      throw _trChatService('لا يوجد مستخدم هدف.');
     }
     if (otherUid == uid) {
-      throw 'لا يمكنك مراسلة نفسك.';
+      throw _trChatService('لا يمكنك مراسلة نفسك.');
     }
 
-    final existing = await findExistingDMByUids(uidA: uid, uidB: otherUid);
+    final me = await _myAccountRow();
+    final myAcc = (me.accountId ?? '').trim();
+    final existing = await findExistingDMByUids(
+      uidA: uid,
+      uidB: otherUid,
+      preferredAccountId: myAcc.isEmpty ? null : myAcc,
+    );
     if (existing != null) return existing;
 
     final rpcConv = await _tryStartDmRpc(otherUid);
     if (rpcConv != null) return rpcConv;
 
-    throw 'تعذّر إنشاء محادثة الدعم. حاول لاحقًا.';
+    throw _trChatService('تعذّر إنشاء المحادثة. تحقّق من الصلاحيات ثم أعد المحاولة.');
   }
 
   Stream<QueryResult> _runSubscription(
@@ -601,7 +648,7 @@ class ChatService {
       final id = res['id']?.toString();
       if (id == null || id.isEmpty) {
         throw ChatAttachmentUploadException(
-            'لم يتم استلام معرّف الملف من التخزين.');
+            _trChatService('لم يتم استلام معرّف الملف من التخزين.'));
       }
       return id;
     }
@@ -629,10 +676,10 @@ class ChatService {
           await NhostManager.client.auth.signInWithStoredCredentials();
           return await doUpload();
         } catch (e2) {
-          throw ChatAttachmentUploadException('فشل رفع المرفقات: $e2', cause: e2);
+          throw ChatAttachmentUploadException(_trChatService('فشل رفع المرفقات: $e2'), cause: e2);
         }
       }
-      throw ChatAttachmentUploadException('فشل رفع المرفقات: $e', cause: e);
+      throw ChatAttachmentUploadException(_trChatService('فشل رفع المرفقات: $e'), cause: e);
     }
   }
 
@@ -738,6 +785,20 @@ class ChatService {
     } catch (_) {
       return null;
     }
+  }
+
+  String? _accountIdForMessageInsert({
+    required String? conversationAccountId,
+    required String? myAccountId,
+  }) {
+    final conv = (conversationAccountId ?? '').trim();
+    final mine = (myAccountId ?? '').trim();
+
+    if (conv.isNotEmpty) {
+      return (mine.isNotEmpty && mine == conv) ? conv : null;
+    }
+
+    return mine.isNotEmpty ? mine : null;
   }
 
   /// يضمن لنا تحديد بريد المرسل.
@@ -894,7 +955,7 @@ class ChatService {
       '.heif',
     };
     if (!allowed.contains(ext)) {
-      throw 'المرفقات المدعومة فقط صور (JPG/PNG/WEBP/GIF).';
+      throw _trChatService('المرفقات المدعومة فقط صور (JPG/PNG/WEBP/GIF).');
     }
     if (ext != '.heic' && ext != '.heif') return file;
     try {
@@ -910,11 +971,11 @@ class ChatService {
         quality: 85,
       );
       if (converted == null) {
-        throw 'صيغة HEIC غير مدعومة. رجاءً اختر صورة بصيغة JPG.';
+        throw _trChatService('صيغة HEIC غير مدعومة. رجاءً اختر صورة بصيغة JPG.');
       }
       return File(converted.path);
     } catch (_) {
-      throw 'صيغة HEIC غير مدعومة. رجاءً اختر صورة بصيغة JPG.';
+      throw _trChatService('صيغة HEIC غير مدعومة. رجاءً اختر صورة بصيغة JPG.');
     }
   }
 
@@ -998,29 +1059,29 @@ class ChatService {
   String _buildSnippet({required ChatMessageKind kind, String? body}) {
     if (kind == ChatMessageKind.text) {
       final s = (body ?? '').trim();
-      if (s.isEmpty) return 'رسالة';
+      if (s.isEmpty) return _trChatService('رسالة');
       return s.length > 64 ? '${s.substring(0, 64)}…' : s;
     }
-    if (kind == ChatMessageKind.image) return '📷 صورة';
-    if (kind == ChatMessageKind.file) return '📎 ملف';
+    if (kind == ChatMessageKind.image) return _trChatService('📷 صورة');
+    if (kind == ChatMessageKind.file) return _trChatService('📎 ملف');
     if (kind == ChatMessageKind.system) {
       final s = (body ?? '').trim();
-      if (s.isEmpty) return 'رسالة نظام';
+      if (s.isEmpty) return _trChatService('رسالة نظام');
       try {
         final decoded = jsonDecode(s);
         if (decoded is Map) {
           final type = decoded['type']?.toString();
           if (type == 'support_rating_request') {
-            return 'استمارة تقييم خدمة العملاء';
+            return _trChatService('استمارة تقييم خدمة العملاء');
           }
           if (type == 'support_rating_response') {
-            return 'تم تقييم خدمة العملاء';
+            return _trChatService('تم تقييم خدمة العملاء');
           }
         }
       } catch (_) {}
-      return 'رسالة نظام';
+      return _trChatService('رسالة نظام');
     }
-    return 'رسالة';
+    return _trChatService('رسالة');
   }
 
   Future<Map<String, dynamic>?> _findMessageByTriplet({
@@ -1140,6 +1201,7 @@ class ChatService {
   Future<ChatConversation?> findExistingDMByUids({
     required String uidA,
     required String uidB,
+    String? preferredAccountId,
   }) async {
     final query = '''
       query FindDM(\$uidA: uuid!, \$uidB: uuid!) {
@@ -1151,7 +1213,8 @@ class ChatService {
               {$_tblParts: {user_uid: {_eq: \$uidB}}}
             ]
           },
-          limit: 1
+          order_by: [{updated_at: desc_nulls_last}, {created_at: desc}],
+          limit: 10
         ) {
           id
           is_group
@@ -1167,21 +1230,46 @@ class ChatService {
     final data = await _runQuery(query, {'uidA': uidA, 'uidB': uidB});
     final rows = (data[_tblConvs] as List?) ?? const [];
     if (rows.isEmpty) return null;
-    return ChatConversation.fromMap(
-        Map<String, dynamic>.from(rows.first as Map));
+    final normalizedRows = rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
+    if (normalizedRows.isEmpty) return null;
+    final normalizedAccountId = preferredAccountId?.trim() ?? '';
+    Map<String, dynamic> chosen = normalizedRows.first;
+    if (normalizedAccountId.isNotEmpty) {
+      for (final row in normalizedRows) {
+        if ((row['account_id']?.toString() ?? '').trim() ==
+            normalizedAccountId) {
+          chosen = row;
+          break;
+        }
+      }
+      if ((chosen['account_id']?.toString() ?? '').trim() !=
+          normalizedAccountId) {
+        for (final row in normalizedRows) {
+          final accountId = (row['account_id']?.toString() ?? '').trim();
+          if (accountId.isEmpty) {
+            chosen = row;
+            break;
+          }
+        }
+      }
+    }
+    return ChatConversation.fromMap(chosen);
   }
 
   Future<ChatConversation> startDMWithEmail(String emailOrCode) async {
     final uid = currentUserId;
     if (uid == null) {
-      throw 'لا يوجد مستخدم مسجّل الدخول.';
+      throw _trChatService('لا يوجد مستخدم مسجّل الدخول.');
     }
     final me = await _myAccountRow();
     final myRole = (me.role?.toLowerCase() ?? '');
 
     final lookup = emailOrCode.trim().toLowerCase();
     if (lookup.isEmpty) {
-      throw 'الرجاء إدخال البريد أو الرقم.';
+      throw _trChatService('الرجاء إدخال البريد أو الرقم.');
     }
     final isCode = RegExp(r'^555[0-9]{4}$').hasMatch(lookup);
 
@@ -1200,15 +1288,15 @@ class ChatService {
     final rows = (data['chat_resolve_user_for_dm'] as List?) ?? const [];
     if (rows.isEmpty) {
       throw isCode
-          ? 'لا يوجد مستخدم بالرقم: $lookup'
-          : 'لا يوجد مستخدم بالبريد: $lookup';
+          ? _trChatService('لا يوجد مستخدم بالرقم: $lookup')
+          : _trChatService('لا يوجد مستخدم بالبريد: $lookup');
     }
     final targetRow = Map<String, dynamic>.from(rows.first as Map);
     final resolvedChatCode = (targetRow['chat_code']?.toString() ?? '').trim();
 
     final otherUid = targetRow['user_uid']?.toString() ?? '';
     if (otherUid.isEmpty) {
-      throw 'حدث خلل أثناء جلب المستخدم الهدف.';
+      throw _trChatService('حدث خلل أثناء جلب المستخدم الهدف.');
     }
 
 
@@ -1218,10 +1306,10 @@ class ChatService {
 
     if (myRole == 'employee') {
       if (myAcc.isEmpty) {
-        throw 'تعذّر تحديد حسابك. يرجى إعادة تسجيل الدخول.';
+        throw _trChatService('تعذّر تحديد حسابك. يرجى إعادة تسجيل الدخول.');
       }
       if (targetAcc.isEmpty || targetAcc != myAcc) {
-        throw 'غير مسموح للموظف بمراسلة حساب خارج عيادته.';
+        throw _trChatService('غير مسموح للموظف بمراسلة حساب خارج عيادته.');
       }
     }
 
@@ -1230,17 +1318,21 @@ class ChatService {
         targetAcc.isNotEmpty &&
         myAcc.isNotEmpty &&
         targetAcc != myAcc) {
-      throw 'غير مسموح بمراسلة موظف في عيادة أخرى.';
+      throw _trChatService('غير مسموح بمراسلة موظف في عيادة أخرى.');
     }
 
     if (targetRole == 'superadmin' &&
         myRole != 'superadmin' &&
         myRole != 'owner') {
-      throw 'غير مسموح للموظفين مراسلة السوبر أدمن مباشرة.';
+      throw _trChatService('غير مسموح للموظفين مراسلة السوبر أدمن مباشرة.');
     }
     if (otherUid == uid) throw 'لا يمكنك مراسلة نفسك.';
 
-    final existing = await findExistingDMByUids(uidA: uid, uidB: otherUid);
+    final existing = await findExistingDMByUids(
+      uidA: uid,
+      uidB: otherUid,
+      preferredAccountId: myAcc.isEmpty ? null : myAcc,
+    );
     if (existing != null) {
       if (!existing.isGroup &&
           (existing.title == null || existing.title!.trim().isEmpty) &&
@@ -1260,13 +1352,13 @@ class ChatService {
       return rpcConv;
     }
 
-    throw 'تعذّر إنشاء المحادثة. تحقّق من الصلاحيات ثم أعد المحاولة.';
+    throw _trChatService('تعذّر إنشاء المحادثة. تحقّق من الصلاحيات ثم أعد المحاولة.');
   }
 
   void _ensureGroupsEnabled() {
     if (!AppConstants.chatAllowGroups) {
       throw ChatInvitationException(
-        'تم إيقاف المحادثات الجماعية في هذا الإصدار.',
+        _trChatService('تم إيقاف المحادثات الجماعية في هذا الإصدار.'),
       );
     }
   }
@@ -1277,13 +1369,13 @@ class ChatService {
   }) async {
     _ensureGroupsEnabled();
     final uid = currentUserId;
-    if (uid == null) throw 'لا يوجد مستخدم مسجّل الدخول.';
-    if (title.trim().isEmpty) throw 'اكتب اسم المجموعة.';
-    if (memberEmails.isEmpty) throw 'أضِف عضوًا واحدًا على الأقل.';
+    if (uid == null) throw _trChatService('لا يوجد مستخدم مسجّل الدخول.');
+    if (title.trim().isEmpty) throw _trChatService('اكتب اسم المجموعة.');
+    if (memberEmails.isEmpty) throw _trChatService('أضِف عضوًا واحدًا على الأقل.');
 
     final me = await _myAccountRow();
     final myAcc = (me.accountId ?? '').trim();
-    if (myAcc.isEmpty) throw 'تعذّر تحديد الحساب الحالي.';
+    if (myAcc.isEmpty) throw _trChatService('تعذّر تحديد الحساب الحالي.');
 
     final members = <({String uid, String email, String accountId})>[];
     for (final e in memberEmails) {
@@ -1303,7 +1395,7 @@ class ChatService {
       ''';
       final data = await _runQuery(query, {'email': e.toLowerCase()});
       final rows = (data[_tblAccUsers] as List?) ?? const [];
-      if (rows.isEmpty) throw 'لا يوجد مستخدم بالبريد: $e';
+      if (rows.isEmpty) throw _trChatService('لا يوجد مستخدم بالبريد: $e');
       final row = Map<String, dynamic>.from(rows.first as Map);
       final memberUid = row['user_uid'].toString();
       if (memberUid == uid) continue;
@@ -1318,12 +1410,12 @@ class ChatService {
     }
 
     if (members.isEmpty) {
-      throw 'أضِف عضوًا واحدًا على الأقل.';
+      throw _trChatService('أضِف عضوًا واحدًا على الأقل.');
     }
 
     final totalMembers = members.length + 1;
     if (totalMembers > 100) {
-      throw 'الحد الأقصى للمجموعة 100 حساب.';
+      throw _trChatService('الحد الأقصى للمجموعة 100 حساب.');
     }
 
     bool allSameAccount = myAcc.isNotEmpty;
@@ -1647,7 +1739,7 @@ class ChatService {
       final unread = map['unread_count'];
       final displayTitle = (convo.title ?? '').trim().isNotEmpty
           ? convo.title!.trim()
-          : (convo.isGroup ? 'مجموعة' : 'محادثة');
+          : (convo.isGroup ? _trChatService('مجموعة') : _trChatService('محادثة'));
       items.add(
         ConversationListItem(
           conversation: convo,
@@ -1793,7 +1885,7 @@ class ChatService {
       final cid = convo.id;
       final displayTitle = (convo.title ?? '').trim().isNotEmpty
           ? convo.title!.trim()
-          : (convo.isGroup ? 'مجموعة' : 'محادثة');
+          : (convo.isGroup ? _trChatService('مجموعة') : _trChatService('محادثة'));
       items.add(
         ConversationListItem(
           conversation: convo,
@@ -1922,7 +2014,7 @@ class ChatService {
       ''';
       final data = await _runMutation(mutation, {'id': invitationId});
       final res = data['chat_accept_invitation'];
-      _ensureInvitationRpcOk(res, 'تعذر قبول الدعوة.');
+      _ensureInvitationRpcOk(res, _trChatService('تعذر قبول الدعوة.'));
     } on OperationException catch (e) {
       throw ChatInvitationException(_formatGqlError(e));
     }
@@ -1948,7 +2040,7 @@ class ChatService {
         'note': note,
       });
       final res = data['chat_decline_invitation'];
-      _ensureInvitationRpcOk(res, 'تعذر رفض الدعوة.');
+      _ensureInvitationRpcOk(res, _trChatService('تعذر رفض الدعوة.'));
     } on OperationException catch (e) {
       throw ChatInvitationException(_formatGqlError(e));
     }
@@ -1993,47 +2085,43 @@ class ChatService {
       await removeAlias(targetUid);
       return;
     }
-    try {
-      final mutation = '''
-        mutation UpsertAlias(\$objects: [chat_aliases_insert_input!]!) {
-          insert_chat_aliases(
-            objects: \$objects,
-            on_conflict: {
-              constraint: chat_aliases_pkey,
-              update_columns: [alias]
-            }
-          ) {
-            affected_rows
+    final mutation = '''
+      mutation UpsertAlias(\$objects: [chat_aliases_insert_input!]!) {
+        insert_chat_aliases(
+          objects: \$objects,
+          on_conflict: {
+            constraint: chat_aliases_pkey,
+            update_columns: [alias]
           }
+        ) {
+          affected_rows
         }
-      ''';
-      await _runMutation(mutation, {
-        'objects': [
-          {
-            'owner_uid': uid,
-            'target_uid': targetUid,
-            'alias': trimmed,
-          }
-        ],
-      });
-    } catch (_) {}
+      }
+    ''';
+    await _runMutation(mutation, {
+      'objects': [
+        {
+          'owner_uid': uid,
+          'target_uid': targetUid,
+          'alias': trimmed,
+        }
+      ],
+    });
   }
 
   Future<void> removeAlias(String targetUid) async {
     final uid = currentUserId;
     if (uid == null || targetUid.isEmpty) return;
-    try {
-      final mutation = '''
-        mutation DeleteAlias(\$owner: uuid!, \$target: uuid!) {
-          delete_chat_aliases(
-            where: {owner_uid: {_eq: \$owner}, target_uid: {_eq: \$target}}
-          ) {
-            affected_rows
-          }
+    final mutation = '''
+      mutation DeleteAlias(\$owner: uuid!, \$target: uuid!) {
+        delete_chat_aliases(
+          where: {owner_uid: {_eq: \$owner}, target_uid: {_eq: \$target}}
+        ) {
+          affected_rows
         }
-      ''';
-      await _runMutation(mutation, {'owner': uid, 'target': targetUid});
-    } catch (_) {}
+      }
+    ''';
+    await _runMutation(mutation, {'owner': uid, 'target': targetUid});
   }
 
   // --------------------------------------------------------------
@@ -2231,11 +2319,11 @@ class ChatService {
     List<String>? mentionsEmails,
   }) async {
     final uid = currentUserId;
-    if (uid == null) throw 'لا يوجد مستخدم مسجّل الدخول.';
+    if (uid == null) throw _trChatService('لا يوجد مستخدم مسجّل الدخول.');
     final me = await _myAccountRow();
     final senderEmail = _bestSenderEmail(me.email);
     if (senderEmail == null || senderEmail.isEmpty) {
-      throw 'لا أستطيع تحديد بريد المرسل.';
+      throw _trChatService('لا أستطيع تحديد بريد المرسل.');
     }
     final deviceId = await _determineDeviceId(me.deviceId);
     final now = DateTime.now().toUtc();
@@ -2246,8 +2334,11 @@ class ChatService {
         DateTime.now().microsecondsSinceEpoch;
 
     // ✅ account_id من المحادثة أولًا
-    final convAcc =
-        (await _conversationAccountId(conversationId)) ?? (me.accountId ?? '');
+    final convAcc = await _conversationAccountId(conversationId);
+    final insertAcc = _accountIdForMessageInsert(
+      conversationAccountId: convAcc,
+      myAccountId: me.accountId,
+    );
 
     final payload = <String, dynamic>{
       'conversation_id': conversationId,
@@ -2261,7 +2352,7 @@ class ChatService {
       'local_id': seq,
       if (clientMsgId != null && clientMsgId.isNotEmpty)
         'client_msg_id': clientMsgId,
-      if (convAcc.isNotEmpty) 'account_id': convAcc,
+      if (insertAcc != null && insertAcc.isNotEmpty) 'account_id': insertAcc,
       if (replyToMessageId != null) 'reply_to_message_id': replyToMessageId,
       if (replyToSnippet != null && replyToSnippet.trim().isNotEmpty)
         'reply_to_snippet': replyToSnippet.trim(),
@@ -2296,13 +2387,13 @@ class ChatService {
         conversationId: conversationId,
         deviceId: deviceId,
         localId: seq,
-        accountId: convAcc.isNotEmpty ? convAcc : null,
+        accountId: insertAcc != null && insertAcc.isNotEmpty ? insertAcc : null,
       );
       row = existing;
     }
 
     if (row == null) {
-      throw 'تعذر حفظ الرسالة.';
+      throw _trChatService('تعذر حفظ الرسالة.');
     }
 
     await _updateConversationLastSummary(
@@ -2326,7 +2417,7 @@ class ChatService {
     String? clientMsgId,
   }) async {
     final uid = currentUserId;
-    if (uid == null) throw 'لا يوجد مستخدم مسجّل الدخول.';
+    if (uid == null) throw _trChatService('لا يوجد مستخدم مسجّل الدخول.');
     final me = await _myAccountRow();
     final senderEmail = _bestSenderEmail(me.email) ?? '';
     final deviceId = await _determineDeviceId(me.deviceId);
@@ -2336,8 +2427,11 @@ class ChatService {
         (await _nextSeqForMe()) ??
         DateTime.now().microsecondsSinceEpoch;
 
-    final convAcc =
-        (await _conversationAccountId(conversationId)) ?? (me.accountId ?? '');
+    final convAcc = await _conversationAccountId(conversationId);
+    final insertAcc = _accountIdForMessageInsert(
+      conversationAccountId: convAcc,
+      myAccountId: me.accountId,
+    );
 
     final payload = <String, dynamic>{
       'conversation_id': conversationId,
@@ -2351,7 +2445,7 @@ class ChatService {
       'local_id': seq,
       if (clientMsgId != null && clientMsgId.isNotEmpty)
         'client_msg_id': clientMsgId,
-      if (convAcc.isNotEmpty) 'account_id': convAcc,
+      if (insertAcc != null && insertAcc.isNotEmpty) 'account_id': insertAcc,
     };
 
     Map<String, dynamic>? row;
@@ -2376,7 +2470,7 @@ class ChatService {
       row = Map<String, dynamic>.from(ret.first as Map);
     }
     if (row == null) {
-      throw 'تعذّر إرسال رسالة النظام.';
+      throw _trChatService('تعذّر إرسال رسالة النظام.');
     }
 
     await _updateConversationLastSummary(
@@ -2512,19 +2606,19 @@ class ChatService {
     bool combineTextWithImages = true,
   }) async {
     if (!AppConstants.chatAllowAttachments) {
-      throw ChatAttachmentUploadException('المرفقات معطّلة في هذا الإصدار.');
+      throw ChatAttachmentUploadException(_trChatService('المرفقات معطّلة في هذا الإصدار.'));
     }
     final uid = currentUserId;
-    if (uid == null) throw 'لا يوجد مستخدم مسجّل الدخول.';
+    if (uid == null) throw _trChatService('لا يوجد مستخدم مسجّل الدخول.');
     if (files.isEmpty &&
         (optionalText == null || optionalText.trim().isEmpty)) {
-      throw 'لا يوجد شيء لإرساله.';
+      throw _trChatService('لا يوجد شيء لإرساله.');
     }
 
     final me = await _myAccountRow();
     final senderEmail = _bestSenderEmail(me.email);
     if (senderEmail == null || senderEmail.isEmpty) {
-      throw 'لا أستطيع تحديد بريد المرسل.';
+      throw _trChatService('لا أستطيع تحديد بريد المرسل.');
     }
     final deviceId = await _determineDeviceId(me.deviceId);
 
@@ -2571,14 +2665,14 @@ class ChatService {
       if (maxTotal != null && totalBytes > maxTotal) {
         final kb = (totalBytes / 1024).toStringAsFixed(1);
         final mbCap = (maxTotal / (1024 * 1024)).toStringAsFixed(1);
-        throw 'حجم المرفقات الحالي ($kb KB) يتجاوز الحد الأقصى ($mbCap MB).';
+        throw _trChatService('حجم المرفقات الحالي ($kb KB) يتجاوز الحد الأقصى ($mbCap MB).');
       }
       if (oversized.isNotEmpty) {
         final joined = oversized.join(', ');
         final cap = maxSingle == null
             ? ''
-            : ' (${(maxSingle / (1024 * 1024)).toStringAsFixed(1)} MB لكل ملف)';
-        throw 'الملفات التالية كبيرة جداً: $joined$cap';
+            : _trChatService(' (${(maxSingle / (1024 * 1024)).toStringAsFixed(1)} MB لكل ملف)');
+        throw _trChatService('الملفات التالية كبيرة جداً: $joined$cap');
       }
 
       final now = DateTime.now().toUtc();
@@ -2588,8 +2682,11 @@ class ChatService {
           (await _nextSeqForMe()) ??
           DateTime.now().microsecondsSinceEpoch;
 
-      final convAcc = (await _conversationAccountId(conversationId)) ??
-          (me.accountId ?? '');
+      final convAcc = await _conversationAccountId(conversationId);
+      final insertAcc = _accountIdForMessageInsert(
+        conversationAccountId: convAcc,
+        myAccountId: me.accountId,
+      );
 
       final caption = (optionalText ?? '').trim();
       final payload = <String, dynamic>{
@@ -2604,7 +2701,7 @@ class ChatService {
         'local_id': seq,
         if (clientMsgId != null && clientMsgId.isNotEmpty)
           'client_msg_id': clientMsgId,
-        if (convAcc.isNotEmpty) 'account_id': convAcc,
+        if (insertAcc != null && insertAcc.isNotEmpty) 'account_id': insertAcc,
         if (replyToMessageId != null) 'reply_to_message_id': replyToMessageId,
         if (replyToSnippet != null && replyToSnippet.trim().isNotEmpty)
           'reply_to_snippet': replyToSnippet.trim(),
@@ -2639,11 +2736,12 @@ class ChatService {
           conversationId: conversationId,
           deviceId: deviceId,
           localId: seq,
-          accountId: convAcc.isNotEmpty ? convAcc : null,
+          accountId:
+              insertAcc != null && insertAcc.isNotEmpty ? insertAcc : null,
         );
         row = existing;
       }
-      if (row == null) throw 'تعذر إرسال الرسالة.';
+      if (row == null) throw _trChatService('تعذر إرسال الرسالة.');
 
       var msg = await _messageFromRow(row);
       if (msg.senderUid == uid) {
@@ -2658,7 +2756,8 @@ class ChatService {
             conversationId: conversationId,
             messageId: msg.id,
             file: f,
-            accountId: convAcc.isNotEmpty ? convAcc : null,
+            accountId:
+                insertAcc != null && insertAcc.isNotEmpty ? insertAcc : null,
           );
           uploadedRows.add(att);
         }
@@ -2745,19 +2844,19 @@ class ChatService {
     List<String>? mentionsEmails,
   }) async {
     if (!AppConstants.chatAllowAttachments) {
-      throw ChatAttachmentUploadException('المرفقات معطّلة في هذا الإصدار.');
+      throw ChatAttachmentUploadException(_trChatService('المرفقات معطّلة في هذا الإصدار.'));
     }
     final uid = currentUserId;
-    if (uid == null) throw 'لا يوجد مستخدم مسجّل الدخول.';
+    if (uid == null) throw _trChatService('لا يوجد مستخدم مسجّل الدخول.');
     if (files.isEmpty &&
         (optionalText == null || optionalText.trim().isEmpty)) {
-      throw 'لا يوجد شيء لإرساله.';
+      throw _trChatService('لا يوجد شيء لإرساله.');
     }
 
     final me = await _myAccountRow();
     final senderEmail = _bestSenderEmail(me.email);
     if (senderEmail == null || senderEmail.isEmpty) {
-      throw 'لا أستطيع تحديد بريد المرسل.';
+      throw _trChatService('لا أستطيع تحديد بريد المرسل.');
     }
     final deviceId = await _determineDeviceId(me.deviceId);
 
@@ -2798,14 +2897,14 @@ class ChatService {
       if (maxTotal != null && totalBytes > maxTotal) {
         final kb = (totalBytes / 1024).toStringAsFixed(1);
         final mbCap = (maxTotal / (1024 * 1024)).toStringAsFixed(1);
-        throw 'حجم المرفقات الحالي ($kb KB) يتجاوز الحد الأقصى ($mbCap MB).';
+        throw _trChatService('حجم المرفقات الحالي ($kb KB) يتجاوز الحد الأقصى ($mbCap MB).');
       }
       if (oversized.isNotEmpty) {
         final joined = oversized.join(', ');
         final cap = maxSingle == null
             ? ''
-            : ' (${(maxSingle / (1024 * 1024)).toStringAsFixed(1)} MB لكل ملف)';
-        throw 'الملفات التالية كبيرة جداً: $joined$cap';
+            : _trChatService(' (${(maxSingle / (1024 * 1024)).toStringAsFixed(1)} MB لكل ملف)');
+        throw _trChatService('الملفات التالية كبيرة جداً: $joined$cap');
       }
 
       final now = DateTime.now().toUtc();
@@ -2813,8 +2912,11 @@ class ChatService {
           (await _nextSeqForMe()) ??
           DateTime.now().microsecondsSinceEpoch;
 
-      final convAcc = (await _conversationAccountId(conversationId)) ??
-          (me.accountId ?? '');
+      final convAcc = await _conversationAccountId(conversationId);
+      final insertAcc = _accountIdForMessageInsert(
+        conversationAccountId: convAcc,
+        myAccountId: me.accountId,
+      );
 
       final payload = <String, dynamic>{
         'conversation_id': conversationId,
@@ -2828,7 +2930,7 @@ class ChatService {
         'local_id': seq,
         if (clientMsgId != null && clientMsgId.isNotEmpty)
           'client_msg_id': clientMsgId,
-        if (convAcc.isNotEmpty) 'account_id': convAcc,
+        if (insertAcc != null && insertAcc.isNotEmpty) 'account_id': insertAcc,
         if (replyToMessageId != null) 'reply_to_message_id': replyToMessageId,
         if (replyToSnippet != null && replyToSnippet.trim().isNotEmpty)
           'reply_to_snippet': replyToSnippet.trim(),
@@ -2863,11 +2965,12 @@ class ChatService {
           conversationId: conversationId,
           deviceId: deviceId,
           localId: seq,
-          accountId: convAcc.isNotEmpty ? convAcc : null,
+          accountId:
+              insertAcc != null && insertAcc.isNotEmpty ? insertAcc : null,
         );
         row = existing;
       }
-      if (row == null) throw 'تعذر إرسال الرسالة.';
+      if (row == null) throw _trChatService('تعذر إرسال الرسالة.');
 
       var msg = await _messageFromRow(row);
       if (msg.senderUid == uid) {
@@ -2882,7 +2985,8 @@ class ChatService {
             conversationId: conversationId,
             messageId: msg.id,
             file: f,
-            accountId: convAcc.isNotEmpty ? convAcc : null,
+            accountId:
+                insertAcc != null && insertAcc.isNotEmpty ? insertAcc : null,
           );
           uploadedRows.add(att);
         }
@@ -2962,7 +3066,7 @@ class ChatService {
     required String newBody,
   }) async {
     final uid = currentUserId;
-    if (uid == null) throw 'لا يوجد مستخدم.';
+    if (uid == null) throw _trChatService('لا يوجد مستخدم.');
     final query = '''
       query MessageMeta(\$id: uuid!) {
         ${_tblMsgs}_by_pk(id: \$id) {
@@ -2975,12 +3079,12 @@ class ChatService {
     ''';
     final data = await _runQuery(query, {'id': messageId});
     final row = _rowFromData(data, '${_tblMsgs}_by_pk');
-    if (row == null) throw 'الرسالة غير موجودة.';
+    if (row == null) throw _trChatService('الرسالة غير موجودة.');
     if (row['sender_uid']?.toString() != uid) {
-      throw 'لا يمكنك تعديل رسالة ليست لك.';
+      throw _trChatService('لا يمكنك تعديل رسالة ليست لك.');
     }
     if ((row['kind']?.toString() ?? '') != ChatMessageKind.text.dbValue) {
-      throw 'لا يمكن تعديل هذا النوع من الرسائل.';
+      throw _trChatService('لا يمكن تعديل هذا النوع من الرسائل.');
     }
 
     final mutation = '''
@@ -3005,7 +3109,7 @@ class ChatService {
   /// حذف الرسالة (بدون حذف مرفقاتها من التخزين)
   Future<void> deleteMessage(String messageId) async {
     final uid = currentUserId;
-    if (uid == null) throw 'لا يوجد مستخدم.';
+    if (uid == null) throw _trChatService('لا يوجد مستخدم.');
     final query = '''
       query MessageMeta(\$id: uuid!) {
         ${_tblMsgs}_by_pk(id: \$id) {
@@ -3017,9 +3121,9 @@ class ChatService {
     ''';
     final data = await _runQuery(query, {'id': messageId});
     final row = _rowFromData(data, '${_tblMsgs}_by_pk');
-    if (row == null) throw 'الرسالة غير موجودة.';
+    if (row == null) throw _trChatService('الرسالة غير موجودة.');
     if (row['sender_uid']?.toString() != uid) {
-      throw 'لا يمكنك حذف رسالة ليست لك.';
+      throw _trChatService('لا يمكنك حذف رسالة ليست لك.');
     }
 
     final mutation = '''
@@ -3114,11 +3218,18 @@ class ChatService {
         chat_register_device(args: {p_device_id: $deviceId, p_platform: $platform, p_app_version: $appVersion})
       }
     ''';
-    await _runMutation(mutation, {
-      'deviceId': dev,
-      'platform': platform,
-      'appVersion': appVersion,
-    });
+    try {
+      await _runMutation(mutation, {
+        'deviceId': dev,
+        'platform': platform,
+        'appVersion': appVersion,
+      });
+    } on OperationException catch (e) {
+      if (_hasMissingMutationField(e, 'chat_register_device')) {
+        return;
+      }
+      rethrow;
+    }
   }
 
   Future<void> markAttachmentDownloaded({
@@ -3133,7 +3244,14 @@ class ChatService {
         chat_mark_attachment_downloaded(args: {p_attachment_id: $id, p_device_id: $deviceId})
       }
     ''';
-    await _runMutation(mutation, {'id': att, 'deviceId': dev});
+    try {
+      await _runMutation(mutation, {'id': att, 'deviceId': dev});
+    } on OperationException catch (e) {
+      if (_hasMissingMutationField(e, 'chat_mark_attachment_downloaded')) {
+        return;
+      }
+      rethrow;
+    }
   }
 
   Future<void> markAttachmentOpened({
@@ -3148,7 +3266,14 @@ class ChatService {
         chat_mark_attachment_opened(args: {p_attachment_id: $id, p_device_id: $deviceId})
       }
     ''';
-    await _runMutation(mutation, {'id': att, 'deviceId': dev});
+    try {
+      await _runMutation(mutation, {'id': att, 'deviceId': dev});
+    } on OperationException catch (e) {
+      if (_hasMissingMutationField(e, 'chat_mark_attachment_opened')) {
+        return;
+      }
+      rethrow;
+    }
   }
 
   Future<int> purgeDueAttachments({int limit = 200}) async {
@@ -3157,7 +3282,15 @@ class ChatService {
         chat_purge_due_attachments(args: {p_limit: $limit})
       }
     ''';
-    final data = await _runMutation(mutation, {'limit': limit});
+    final Map<String, dynamic> data;
+    try {
+      data = await _runMutation(mutation, {'limit': limit});
+    } on OperationException catch (e) {
+      if (_hasMissingMutationField(e, 'chat_purge_due_attachments')) {
+        return 0;
+      }
+      rethrow;
+    }
     final v = data['chat_purge_due_attachments'];
     if (v is num) return v.toInt();
     if (v is String) return int.tryParse(v) ?? 0;
@@ -3509,23 +3642,21 @@ class ChatService {
   }) async {
     final uid = currentUserId;
     if (uid == null) return;
-    try {
-      final mutation = '''
-        mutation AddReaction(\$object: ${_tblReacts}_insert_input!) {
-          insert_${_tblReacts}_one(object: \$object) {
-            message_id
-          }
+    final mutation = '''
+      mutation AddReaction(\$object: ${_tblReacts}_insert_input!) {
+        insert_${_tblReacts}_one(object: \$object) {
+          message_id
         }
-      ''';
-      await _runMutation(mutation, {
-        'object': {
-          'message_id': messageId,
-          'user_uid': uid,
-          'emoji': emoji,
-          'created_at': DateTime.now().toUtc().toIso8601String(),
-        }
-      });
-    } catch (_) {}
+      }
+    ''';
+    await _runMutation(mutation, {
+      'object': {
+        'message_id': messageId,
+        'user_uid': uid,
+        'emoji': emoji,
+        'created_at': DateTime.now().toUtc().toIso8601String(),
+      }
+    });
   }
 
   Future<void> removeReaction({
@@ -3534,26 +3665,24 @@ class ChatService {
   }) async {
     final uid = currentUserId;
     if (uid == null) return;
-    try {
-      final mutation = '''
-        mutation DeleteReaction(\$mid: uuid!, \$uid: uuid!, \$emoji: String!) {
-          delete_${_tblReacts}(
-            where: {
-              message_id: {_eq: \$mid},
-              user_uid: {_eq: \$uid},
-              emoji: {_eq: \$emoji}
-            }
-          ) {
-            affected_rows
+    final mutation = '''
+      mutation DeleteReaction(\$mid: uuid!, \$uid: uuid!, \$emoji: String!) {
+        delete_${_tblReacts}(
+          where: {
+            message_id: {_eq: \$mid},
+            user_uid: {_eq: \$uid},
+            emoji: {_eq: \$emoji}
           }
+        ) {
+          affected_rows
         }
-      ''';
-      await _runMutation(mutation, {
-        'mid': messageId,
-        'uid': uid,
-        'emoji': emoji,
-      });
-    } catch (_) {}
+      }
+    ''';
+    await _runMutation(mutation, {
+      'mid': messageId,
+      'uid': uid,
+      'emoji': emoji,
+    });
   }
 
   Future<void> toggleReaction({
@@ -3562,33 +3691,31 @@ class ChatService {
   }) async {
     final uid = currentUserId;
     if (uid == null) return;
-    try {
-      final query = '''
-        query HasReaction(\$mid: uuid!, \$uid: uuid!, \$emoji: String!) {
-          $_tblReacts(
-            where: {
-              message_id: {_eq: \$mid},
-              user_uid: {_eq: \$uid},
-              emoji: {_eq: \$emoji}
-            },
-            limit: 1
-          ) {
-            message_id
-          }
+    final query = '''
+      query HasReaction(\$mid: uuid!, \$uid: uuid!, \$emoji: String!) {
+        $_tblReacts(
+          where: {
+            message_id: {_eq: \$mid},
+            user_uid: {_eq: \$uid},
+            emoji: {_eq: \$emoji}
+          },
+          limit: 1
+        ) {
+          message_id
         }
-      ''';
-      final data = await _runQuery(query, {
-        'mid': messageId,
-        'uid': uid,
-        'emoji': emoji,
-      });
-      final rows = _rowsFromData(data, _tblReacts);
-      if (rows.isNotEmpty) {
-        await removeReaction(messageId: messageId, emoji: emoji);
-      } else {
-        await addReaction(messageId: messageId, emoji: emoji);
       }
-    } catch (_) {}
+    ''';
+    final data = await _runQuery(query, {
+      'mid': messageId,
+      'uid': uid,
+      'emoji': emoji,
+    });
+    final rows = _rowsFromData(data, _tblReacts);
+    if (rows.isNotEmpty) {
+      await removeReaction(messageId: messageId, emoji: emoji);
+    } else {
+      await addReaction(messageId: messageId, emoji: emoji);
+    }
   }
 
   @Deprecated('Use watchReactions(messageId) consolidated bus instead.')

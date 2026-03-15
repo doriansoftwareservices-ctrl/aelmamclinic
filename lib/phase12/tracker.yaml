@@ -1,0 +1,85 @@
+phase: 12
+name: final_remaining_closure
+status: completed
+started_at: "2026-03-09"
+completed_at: "2026-03-09"
+scope:
+  - lib
+  - functions
+  - nhost
+  - scripts
+  - test
+  - docs
+deliverables:
+  - id: P7-D1
+    name: post_runapp_startup_bootstrap_and_ready_gate
+    status: completed
+    paths:
+      - lib/main.dart
+      - lib/providers/activation_provider.dart
+      - lib/providers/auth_provider.dart
+  - id: P8-D1
+    name: statistics_sql_aggregate_rollups
+    status: completed
+    paths:
+      - lib/providers/statistics_provider.dart
+      - lib/services/db_service.dart
+      - lib/phase8/statistics_redesign.dart
+      - test/services/statistics_redesign_test.dart
+  - id: P9-D1
+    name: admin_dashboard_ttl_cache_and_non_periodic_runtime
+    status: completed
+    paths:
+      - lib/screens/admin/admin_dashboard_screen.dart
+  - id: P10-D1
+    name: repository_snapshot_refresh_and_on_demand_repair
+    status: completed
+    paths:
+      - lib/providers/repository_provider.dart
+      - lib/services/repository_service.dart
+  - id: P11-D1
+    name: managed_push_background_strategy_and_atomic_token_rotation
+    status: completed
+    paths:
+      - lib/main.dart
+      - lib/services/push_notifications_service.dart
+      - lib/phase11/background_runtime_strategy.dart
+      - test/services/background_runtime_strategy_test.dart
+      - functions/_shared/notify_utils.js
+  - id: P12-D1
+    name: nhost_metadata_authority_and_final_verification
+    status: completed
+    paths:
+      - nhost/README.md
+      - nhost/metadata_snapshots/2026-03-09/metadata.json
+      - scripts/final_remaining_verify.sh
+      - docs/phase12/closure_report_2026-03-09.md
+      - docs/phase12/reports/20260309_230500/summary.md
+gates:
+  - id: REM-001
+    name: startup_blockers_removed_before_runapp
+    status: passed
+  - id: REM-002
+    name: statistics_full_scans_removed
+    status: passed
+  - id: REM-003
+    name: admin_periodic_polling_removed
+    status: passed
+  - id: REM-004
+    name: repository_busy_loop_and_boot_repair_removed
+    status: passed
+  - id: REM-005
+    name: push_runtime_hardened_and_legacy_fcm_removed
+    status: passed
+  - id: REM-006
+    name: nhost_metadata_authority_enforced
+    status: passed
+  - id: G1
+    name: quality_gate_regression_check
+    status: local_pass_with_deferred_warnings
+    reason: final_remaining_verify.sh and node syntax check passed, but local dart/flutter analyze-test-format remain blocked by the workstation toolchain gap (missing local Dart SDK under FVM)
+next_phase_readiness:
+  final_state: complete
+  notes:
+    - remaining roadmap items P7 through P12 were closed in a consolidated remediation pass
+    - runtime startup, analytics, admin, repository, push, and nhost release authority now use deterministic non-legacy paths

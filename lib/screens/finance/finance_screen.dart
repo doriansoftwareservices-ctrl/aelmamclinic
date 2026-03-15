@@ -1,9 +1,9 @@
 //C:\Users\zidan\AndroidStudioProjects\aelmamclinic\lib\screens\finance\finance_screen.dart
-import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../services/db_service.dart';
 import '../../../services/logging_service.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
 
 /// ── ثوابت الألوان الموحدة ──
 const Color accentColor = Color(0xFF004A61);
@@ -37,11 +37,11 @@ class _EmployeesFinanceSummaryScreenState
   Widget build(BuildContext context) {
     final dateFmt = DateFormat('yyyy-MM-dd');
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
-          title: const Text('الخلاصة المالية',
+          title: const LocalizedText('الخلاصة المالية',
               style: TextStyle(fontWeight: FontWeight.bold)),
           flexibleSpace: Container(
             decoration: const BoxDecoration(
@@ -76,12 +76,15 @@ class _EmployeesFinanceSummaryScreenState
                             borderRadius: BorderRadius.circular(8)),
                       ),
                       onPressed: _pickStartDate,
-                      child: Text(
-                        _startDate == null
-                            ? 'من تاريخ'
-                            : dateFmt.format(_startDate!),
-                        style: const TextStyle(color: Colors.black87),
-                      ),
+                      child: _startDate == null
+                          ? const LocalizedText(
+                              'من تاريخ',
+                              style: TextStyle(color: Colors.black87),
+                            )
+                          : Text(
+                              dateFmt.format(_startDate!),
+                              style: const TextStyle(color: Colors.black87),
+                            ),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -93,12 +96,15 @@ class _EmployeesFinanceSummaryScreenState
                             borderRadius: BorderRadius.circular(8)),
                       ),
                       onPressed: _pickEndDate,
-                      child: Text(
-                        _endDate == null
-                            ? 'إلى تاريخ'
-                            : dateFmt.format(_endDate!),
-                        style: const TextStyle(color: Colors.black87),
-                      ),
+                      child: _endDate == null
+                          ? const LocalizedText(
+                              'إلى تاريخ',
+                              style: TextStyle(color: Colors.black87),
+                            )
+                          : Text(
+                              dateFmt.format(_endDate!),
+                              style: const TextStyle(color: Colors.black87),
+                            ),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -111,7 +117,7 @@ class _EmployeesFinanceSummaryScreenState
                           horizontal: 16, vertical: 14),
                     ),
                     onPressed: _calculate,
-                    child: const Text('عرض',
+                    child: const LocalizedText('عرض',
                         style: TextStyle(color: Colors.white)),
                   ),
                 ],
@@ -143,7 +149,7 @@ class _EmployeesFinanceSummaryScreenState
       child: ListTile(
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+        title: LocalizedText(title, style: const TextStyle(fontWeight: FontWeight.bold)),
         subtitle: Text(value.toStringAsFixed(2)),
       ),
     );
@@ -172,7 +178,7 @@ class _EmployeesFinanceSummaryScreenState
   Future<void> _calculate() async {
     if (_startDate == null || _endDate == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('اختر الفترة الزمنية أولاً')),
+        const SnackBar(content: LocalizedText('اختر الفترة الزمنية أولاً')),
       );
       return;
     }

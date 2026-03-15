@@ -5,6 +5,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:path/path.dart' as p;
 
 import 'package:aelmamclinic/utils/app_paths.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
 
 /// Global error reporter that shows errors even in release builds.
 class AppErrorReporter {
@@ -20,7 +21,7 @@ class AppErrorReporter {
     void show() {
       state.showSnackBar(
         SnackBar(
-          content: Text(message),
+          content: LocalizedText(message),
           backgroundColor: Colors.red.shade700,
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 6),
@@ -43,7 +44,7 @@ class AppErrorReporter {
     void show() {
       state.showSnackBar(
         SnackBar(
-          content: Text(message),
+          content: LocalizedText(message),
           backgroundColor: Colors.green.shade700,
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 4),

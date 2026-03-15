@@ -14,6 +14,8 @@ import 'package:aelmamclinic/models/clinic_profile.dart';
 import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:aelmamclinic/services/clinic_profile_service.dart';
 import 'package:aelmamclinic/services/db_service.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class ClinicProfileScreen extends StatefulWidget {
   const ClinicProfileScreen({super.key});
@@ -97,7 +99,7 @@ class _ClinicProfileScreenState extends State<ClinicProfileScreen> {
   }
 
   String? _req(String? v) =>
-      v == null || v.trim().isEmpty ? 'هذا الحقل مطلوب' : null;
+      v == null || v.trim().isEmpty ? context.trRaw('هذا الحقل مطلوب') : null;
 
   Future<void> _save(AuthProvider auth) async {
     if (_saving) return;
@@ -122,7 +124,7 @@ class _ClinicProfileScreenState extends State<ClinicProfileScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
+          content: LocalizedText(
             cached ? 'تم حفظ بيانات المرفق الصحي.' : 'تم الحفظ، تحقق من البيانات.',
           ),
         ),
@@ -130,7 +132,7 @@ class _ClinicProfileScreenState extends State<ClinicProfileScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذّر الحفظ: $e')),
+        SnackBar(content: LocalizedText('تعذّر الحفظ: $e')),
       );
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -162,7 +164,7 @@ class _ClinicProfileScreenState extends State<ClinicProfileScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('تعذّر حفظ الشعار: $e')));
+          .showSnackBar(SnackBar(content: LocalizedText('تعذّر حفظ الشعار: $e')));
     } finally {
       if (mounted) setState(() => _logoBusy = false);
     }
@@ -180,7 +182,7 @@ class _ClinicProfileScreenState extends State<ClinicProfileScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('تعذّر حذف الشعار: $e')));
+          .showSnackBar(SnackBar(content: LocalizedText('تعذّر حذف الشعار: $e')));
     } finally {
       if (mounted) setState(() => _logoBusy = false);
     }
@@ -192,35 +194,31 @@ class _ClinicProfileScreenState extends State<ClinicProfileScreen> {
     final canAccess =
         auth.isSuperAdmin || auth.featureAllowed(FeatureKeys.clinicProfile);
     if (!canAccess) {
-      return Directionality(
-        textDirection: ui.TextDirection.rtl,
-        child: Scaffold(
-          appBar: AppBar(
-            centerTitle: true,
-            title: const Text('بيانات المرفق الصحي'),
-          ),
-          body: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: NeuCard(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.block_rounded,
-                      color: Theme.of(context).colorScheme.error,
-                      size: 34,
-                    ),
-                    const SizedBox(height: 10),
-                    const Text(
-                      'ليست لديك صلاحية لعرض بيانات المرفق الصحي',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ],
-                ),
+      return Scaffold(
+        appBar: AppBar(
+          centerTitle: true,
+          title: const LocalizedText('بيانات المرفق الصحي'),
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: NeuCard(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.block_rounded,
+                    color: Theme.of(context).colorScheme.error,
+                    size: 34,
+                  ),
+                  const SizedBox(height: 10),
+                  const LocalizedText(
+                    'ليست لديك صلاحية لعرض بيانات المرفق الصحي',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ],
               ),
             ),
           ),
@@ -229,9 +227,7 @@ class _ClinicProfileScreenState extends State<ClinicProfileScreen> {
     }
     final canEdit = auth.isSuperAdmin ? false : auth.isOwnerOrAdmin;
     final isPaid = auth.isPro;
-    return Directionality(
-      textDirection: ui.TextDirection.rtl,
-      child: Scaffold(
+    return Scaffold(
         appBar: AppBar(
           centerTitle: true,
           title: Row(
@@ -244,7 +240,7 @@ class _ClinicProfileScreenState extends State<ClinicProfileScreen> {
                 errorBuilder: (_, __, ___) => const SizedBox.shrink(),
               ),
               const SizedBox(width: 8),
-              const Text('بيانات المرفق الصحي'),
+              const LocalizedText('بيانات المرفق الصحي'),
             ],
           ),
         ),
@@ -259,8 +255,7 @@ class _ClinicProfileScreenState extends State<ClinicProfileScreen> {
                       children: [
                         NeuCard(
                           padding: const EdgeInsets.all(14),
-                          child: const Text(
-                            'حدّث بيانات المرفق الصحي لتظهر في كل تقارير PDF.',
+                          child: const LocalizedText('حدّث بيانات المرفق الصحي لتظهر في كل تقارير PDF.',
                             style: TextStyle(fontWeight: FontWeight.w700),
                           ),
                         ),
@@ -270,8 +265,7 @@ class _ClinicProfileScreenState extends State<ClinicProfileScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
-                                'شعار المرفق الصحي',
+                              const LocalizedText('شعار المرفق الصحي',
                                 style: TextStyle(fontWeight: FontWeight.w800),
                               ),
                               const SizedBox(height: 8),
@@ -311,17 +305,26 @@ class _ClinicProfileScreenState extends State<ClinicProfileScreen> {
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
                                       children: [
-                                        Text(
-                                          _logoPath == null
-                                              ? 'لا يوجد شعار مخصص بعد.'
-                                              : p.basename(_logoPath!),
-                                          style: const TextStyle(
-                                              fontWeight: FontWeight.w700),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
+                                        if (_logoPath == null)
+                                          const LocalizedText(
+                                            'لا يوجد شعار مخصص بعد.',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          )
+                                        else
+                                          Text(
+                                            p.basename(_logoPath!),
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
                                         const SizedBox(height: 6),
-                                        Text(
+                                        LocalizedText(
                                           isPaid
                                               ? 'يظهر هذا الشعار في جميع تقارير PDF.'
                                               : 'يظهر الشعار فقط للخطط المدفوعة.',
@@ -349,7 +352,7 @@ class _ClinicProfileScreenState extends State<ClinicProfileScreen> {
                                                         strokeWidth: 2,
                                                       ),
                                                     )
-                                                  : const Text('اختيار شعار'),
+                                                  : const LocalizedText('اختيار شعار'),
                                             ),
                                             const SizedBox(width: 8),
                                             TextButton(
@@ -358,7 +361,7 @@ class _ClinicProfileScreenState extends State<ClinicProfileScreen> {
                                                       !_logoBusy
                                                   ? () => _clearLogo(auth)
                                                   : null,
-                                              child: const Text('إزالة'),
+                                              child: const LocalizedText('إزالة'),
                                             ),
                                           ],
                                         ),
@@ -375,33 +378,33 @@ class _ClinicProfileScreenState extends State<ClinicProfileScreen> {
                         const SizedBox(height: 8),
                         NeuField(
                           controller: _nameArCtrl,
-                          labelText: 'اسم المرفق الصحي',
+                          labelText: context.trRaw('اسم المرفق الصحي'),
                           validator: _req,
                           enabled: canEdit,
                         ),
                         const SizedBox(height: 8),
                         NeuField(
                           controller: _cityArCtrl,
-                          labelText: 'المدينة',
+                          labelText: context.trRaw('المدينة'),
                           validator: _req,
                           enabled: canEdit,
                         ),
                         const SizedBox(height: 8),
                         NeuField(
                           controller: _streetArCtrl,
-                          labelText: 'الشارع',
+                          labelText: context.trRaw('الشارع'),
                           validator: _req,
                           enabled: canEdit,
                         ),
                         const SizedBox(height: 8),
                         NeuField(
                           controller: _nearArCtrl,
-                          labelText: 'بجوار',
+                          labelText: context.trRaw('بجوار'),
                           validator: _req,
                           enabled: canEdit,
                         ),
                         const SizedBox(height: 16),
-                        _sectionTitle('English Details'),
+                        _sectionTitle('التفاصيل الإنجليزية'),
                         const SizedBox(height: 8),
                         NeuField(
                           controller: _nameEnCtrl,
@@ -439,22 +442,23 @@ class _ClinicProfileScreenState extends State<ClinicProfileScreen> {
                         const SizedBox(height: 8),
                         NeuField(
                           controller: _phoneCtrl,
-                          labelText: 'رقم الهاتف',
+                          labelText: context.trRaw('رقم الهاتف'),
                           validator: _req,
                           keyboardType: TextInputType.phone,
+                          textDirection: ui.TextDirection.ltr,
                           enabled: canEdit,
                         ),
                         const SizedBox(height: 8),
                         NeuField(
                           controller: _phone2Ctrl,
-                          labelText: 'رقم هاتف إضافي (اختياري)',
+                          labelText: context.trRaw('رقم هاتف إضافي (اختياري)'),
                           keyboardType: TextInputType.phone,
+                          textDirection: ui.TextDirection.ltr,
                           enabled: canEdit,
                         ),
                         const SizedBox(height: 16),
                         if (!canEdit)
-                          const Text(
-                            'التعديل متاح للمالك أو المدير فقط.',
+                          const LocalizedText('التعديل متاح للمالك أو المدير فقط.',
                             style: TextStyle(color: Colors.redAccent),
                           ),
                         const SizedBox(height: 8),
@@ -468,15 +472,14 @@ class _ClinicProfileScreenState extends State<ClinicProfileScreen> {
                       ],
                     ),
                   ),
-          ),
-        ),
-      ),
+                ),
+              ),
     );
   }
 
   Widget _sectionTitle(String title) => Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4),
-        child: Text(
+        child: LocalizedText(
           title,
           style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14.5),
         ),

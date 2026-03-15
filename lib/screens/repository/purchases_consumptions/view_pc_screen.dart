@@ -1,5 +1,4 @@
 // lib/screens/repository/purchases_consumptions/view_pc_screen.dart
-import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
@@ -12,6 +11,8 @@ import 'package:aelmamclinic/providers/repository_provider.dart';
 import 'package:aelmamclinic/services/repository_service.dart';
 import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/core/theme.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class ViewPCScreen extends StatelessWidget {
   const ViewPCScreen({super.key});
@@ -24,11 +25,11 @@ class ViewPCScreen extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
-          title: const Text('المشتريات والاستهلاكات',
+          title: const LocalizedText('المشتريات والاستهلاكات',
               style: TextStyle(fontWeight: FontWeight.bold)),
           flexibleSpace: DecoratedBox(
             decoration: BoxDecoration(
@@ -53,7 +54,7 @@ class ViewPCScreen extends StatelessWidget {
             ),
           ),
           child: (repo.types.isEmpty && repo.orphanItems.isEmpty)
-              ? const Center(child: Text('لا بيانات بعد.'))
+              ? const Center(child: LocalizedText('لا بيانات بعد.'))
               : ListView(
                   padding: kScreenPadding,
                   children: [
@@ -96,8 +97,7 @@ class ViewPCScreen extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: scheme.tertiary.withValues(alpha: .4)),
       ),
-      child: const Text(
-        'تنبيه: بعض البيانات قد تكون مخفية حسب صلاحيات الحساب.',
+      child: const LocalizedText('تنبيه: بعض البيانات قد تكون مخفية حسب صلاحيات الحساب.',
         style: TextStyle(fontWeight: FontWeight.w700),
       ),
     );
@@ -121,7 +121,7 @@ class _TypeSection extends StatelessWidget {
       childrenPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       children: items.isEmpty
           ? const [
-              Padding(padding: EdgeInsets.all(8), child: Text('— لا أصناف —'))
+              Padding(padding: EdgeInsets.all(8), child: LocalizedText('— لا أصناف —'))
             ]
           : items.map((it) => _ItemTile(item: it)).toList(),
     );
@@ -161,14 +161,13 @@ class _ItemTile extends StatelessWidget {
       builder: (ctx, snap) {
         Widget subtitle;
         if (snap.connectionState != ConnectionState.done) {
-          subtitle = const Text('جارٍ التحقق من آخر استهلاك…');
+          subtitle = const LocalizedText('جارٍ التحقق من آخر استهلاك…');
         } else if (snap.data == null) {
-          subtitle = const Text('لم يُستخدم بعد');
+          subtitle = const LocalizedText('لم يُستخدم بعد');
         } else {
           final q = (snap.data!['quantity'] as num).toInt();
           final dt = DateTime.parse(snap.data!['date'] as String);
-          subtitle = Text(
-            'آخر استهلاك: ${DateFormat('yyyy-MM-dd – HH:mm').format(dt)}  •  الكمية: $q',
+          subtitle = LocalizedText('آخر استهلاك: ${DateFormat('yyyy-MM-dd – HH:mm').format(dt)}  •  الكمية: $q',
           );
         }
 
@@ -181,7 +180,10 @@ class _ItemTile extends StatelessWidget {
             title: Text(item.name,
                 style: const TextStyle(fontWeight: FontWeight.bold)),
             subtitle: subtitle,
-            trailing: Icon(Icons.chevron_right, color: scheme.primary),
+            trailing: Icon(
+              context.isRtl ? Icons.chevron_left : Icons.chevron_right,
+              color: scheme.primary,
+            ),
             onTap: () => Navigator.push(
               ctx,
               MaterialPageRoute(
@@ -204,12 +206,12 @@ class _OrphanSection extends StatelessWidget {
     return ExpansionTile(
       tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       leading: Icon(Icons.report_gmailerrorred, color: scheme.error),
-      title: const Text('أصناف بدون نوع',
+      title: const LocalizedText('أصناف بدون نوع',
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
       childrenPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       children: items.isEmpty
           ? const [
-              Padding(padding: EdgeInsets.all(8), child: Text('— لا أصناف —'))
+              Padding(padding: EdgeInsets.all(8), child: LocalizedText('— لا أصناف —'))
             ]
           : items.map((it) => _ItemTile(item: it)).toList(),
     );
@@ -265,24 +267,24 @@ class _ItemConsumptionsPageState extends State<_ItemConsumptionsPage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => Directionality(
-        textDirection: ui.TextDirection.rtl,
+        textDirection: Directionality.of(context),
         child: AlertDialog(
-          title: const Text('تعديل الكمية'),
+          title: const LocalizedText('تعديل الكمية'),
           content: TextField(
             controller: ctrl,
-            decoration: const InputDecoration(labelText: 'الكمية الجديدة'),
+            decoration: InputDecoration(labelText: context.trRaw('الكمية الجديدة')),
             keyboardType: const TextInputType.numberWithOptions(decimal: false),
           ),
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('إلغاء')),
+                child: const LocalizedText('إلغاء')),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: Theme.of(context).colorScheme.primary,
               ),
               onPressed: () => Navigator.pop(ctx, true),
-              child: Text('حفظ',
+              child: LocalizedText('حفظ',
                   style: TextStyle(
                       color: Theme.of(context).colorScheme.onPrimary)),
             ),
@@ -338,7 +340,7 @@ class _ItemConsumptionsPageState extends State<_ItemConsumptionsPage> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذّر التعديل: $e')),
+        SnackBar(content: LocalizedText('تعذّر التعديل: $e')),
       );
       return;
     }
@@ -350,7 +352,7 @@ class _ItemConsumptionsPageState extends State<_ItemConsumptionsPage> {
     setState(() => _future = _load());
     context.read<RepositoryProvider>().bootstrap();
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('تم تحديث الكمية بنجاح')),
+      const SnackBar(content: LocalizedText('تم تحديث الكمية بنجاح')),
     );
   }
 
@@ -358,7 +360,7 @@ class _ItemConsumptionsPageState extends State<_ItemConsumptionsPage> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -395,7 +397,7 @@ class _ItemConsumptionsPageState extends State<_ItemConsumptionsPage> {
               final list = snap.data ?? [];
               if (list.isEmpty) {
                 return const Center(
-                    child: Text('لا استهلاكات مسجلة لهذا الصنف.'));
+                    child: LocalizedText('لا استهلاكات مسجلة لهذا الصنف.'));
               }
               return ListView.builder(
                 padding: const EdgeInsets.all(16),
@@ -411,7 +413,7 @@ class _ItemConsumptionsPageState extends State<_ItemConsumptionsPage> {
                     child: ListTile(
                       leading: Icon(Icons.medical_services_outlined,
                           color: scheme.primary),
-                      title: Text('الكمية: ${d.quantity}',
+                      title: LocalizedText('الكمية: ${d.quantity}',
                           style: const TextStyle(fontWeight: FontWeight.bold)),
                       subtitle: Text(
                         '${DateFormat('yyyy-MM-dd – HH:mm').format(d.consumedAt)}  •  ${d.patientName}',

@@ -184,7 +184,3 @@ CREATE TABLE $_table(
     _db = null;
   }
 }
-
-extension _FirstOrNull<T> on List<T> {
-  T? get firstOrNull => isEmpty ? null : first;
-}

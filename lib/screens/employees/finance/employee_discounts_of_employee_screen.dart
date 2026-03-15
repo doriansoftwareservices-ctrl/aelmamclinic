@@ -1,13 +1,15 @@
 // lib/screens/employees/finance/employee_discounts_of_employee_screen.dart
-import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:aelmamclinic/utils/app_formatters.dart';
 
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/core/tbian_ui.dart'; // TDateButton, TOutlinedButton
 import 'package:aelmamclinic/services/db_service.dart';
 import 'finance_access_guard.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class EmployeeDiscountsOfEmployeeScreen extends StatefulWidget {
   final int empId;
@@ -20,8 +22,8 @@ class EmployeeDiscountsOfEmployeeScreen extends StatefulWidget {
 
 class _EmployeeDiscountsOfEmployeeScreenState
     extends State<EmployeeDiscountsOfEmployeeScreen> {
-  final DateFormat _dateOnly = DateFormat('yyyy-MM-dd');
-  final DateFormat _dateTime = DateFormat('yyyy-MM-dd HH:mm');
+  DateFormat get _dateOnly => AppFormatters.dateFormat('yyyy-MM-dd');
+  DateFormat get _dateTime => AppFormatters.dateFormat('yyyy-MM-dd HH:mm');
 
   String _employeeName = '';
   List<Map<String, dynamic>> _all = [];
@@ -59,7 +61,7 @@ class _EmployeeDiscountsOfEmployeeScreenState
     if (emp == null) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('الموظف غير موجود')),
+        const SnackBar(content: LocalizedText('الموظف غير موجود')),
       );
       Navigator.pop(context);
       return;
@@ -153,18 +155,18 @@ class _EmployeeDiscountsOfEmployeeScreenState
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => Directionality(
-        textDirection: ui.TextDirection.rtl,
+        textDirection: Directionality.of(context),
         child: AlertDialog(
-          title: const Text('تأكيد الحذف'),
-          content: const Text('سيتم حذف الخصم نهائيًا. هل تريد المتابعة؟'),
+          title: const LocalizedText('تأكيد الحذف'),
+          content: const LocalizedText('سيتم حذف الخصم نهائيًا. هل تريد المتابعة؟'),
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('إلغاء')),
+                child: const LocalizedText('إلغاء')),
             FilledButton.icon(
               onPressed: () => Navigator.pop(ctx, true),
               icon: const Icon(Icons.delete_rounded),
-              label: const Text('حذف'),
+              label: const LocalizedText('حذف'),
             ),
           ],
         ),
@@ -175,7 +177,7 @@ class _EmployeeDiscountsOfEmployeeScreenState
     await DBService.instance.deleteEmployeeDiscount(id);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('تم حذف الخصم بنجاح')),
+      const SnackBar(content: LocalizedText('تم حذف الخصم بنجاح')),
     );
     await _loadData();
   }
@@ -186,7 +188,7 @@ class _EmployeeDiscountsOfEmployeeScreenState
 
     return FinanceAccessGuard(
       child: Directionality(
-        textDirection: ui.TextDirection.rtl,
+        textDirection: Directionality.of(context),
         child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -195,12 +197,12 @@ class _EmployeeDiscountsOfEmployeeScreenState
             children: [
               const Icon(Icons.receipt_long_rounded),
               const SizedBox(width: 8),
-              Text('خصومات $_employeeName'),
+              LocalizedText('خصومات $_employeeName'),
             ],
           ),
           actions: [
             IconButton(
-              tooltip: 'تحديث',
+              tooltip: context.trRaw('تحديث'),
               icon: const Icon(Icons.refresh_rounded),
               onPressed: _loadData,
             ),
@@ -229,7 +231,7 @@ class _EmployeeDiscountsOfEmployeeScreenState
                       Expanded(
                         child: Text(
                           _employeeName.isEmpty ? '—' : _employeeName,
-                          textAlign: TextAlign.right,
+                          textAlign: TextAlign.start,
                           style: const TextStyle(
                               fontSize: 18, fontWeight: FontWeight.w900),
                         ),
@@ -312,8 +314,7 @@ class _EmployeeDiscountsOfEmployeeScreenState
                                             .withValues(alpha: .35)),
                                     const SizedBox(height: 10),
                                     Center(
-                                      child: Text(
-                                        'لا توجد خصومات',
+                                      child: LocalizedText('لا توجد خصومات',
                                         style: TextStyle(
                                           color: cs.onSurface
                                               .withValues(alpha: .6),
@@ -368,8 +369,7 @@ class _EmployeeDiscountsOfEmployeeScreenState
                                                 Row(
                                                   children: [
                                                     Expanded(
-                                                      child: Text(
-                                                        'خصم: ${amount.toStringAsFixed(2)}',
+                                                      child: LocalizedText('خصم: ${amount.toStringAsFixed(2)}',
                                                         maxLines: 1,
                                                         overflow: TextOverflow
                                                             .ellipsis,
@@ -418,7 +418,7 @@ class _EmployeeDiscountsOfEmployeeScreenState
                                           ),
                                           const SizedBox(width: 8),
                                           IconButton(
-                                            tooltip: 'حذف',
+                                            tooltip: context.trRaw('حذف'),
                                             icon: const Icon(
                                                 Icons.delete_rounded,
                                                 color: Colors.red),

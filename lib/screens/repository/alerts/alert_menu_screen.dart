@@ -1,10 +1,10 @@
 // lib/screens/repository/alerts/alert_menu_screen.dart
-import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 
 /*── تصميم TBIAN ─*/
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/widgets/feature_hub.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 /// القائمة الفرعيّة لتنبيهات «قرب النفاد» بتصميم موحّد مع شاشات TBIAN.
 class AlertMenuScreen extends StatelessWidget {
@@ -15,7 +15,7 @@ class AlertMenuScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -33,7 +33,7 @@ class AlertMenuScreen extends StatelessWidget {
             ],
           ),
           leading: IconButton(
-            tooltip: 'رجوع',
+            tooltip: context.trRaw('رجوع'),
             onPressed: () => Navigator.pop(context),
             icon: const Icon(Icons.arrow_back_rounded),
           ),

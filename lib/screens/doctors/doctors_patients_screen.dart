@@ -8,6 +8,8 @@ import 'patients_by_doctor_screen.dart';
 // تصميم TBIAN
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class DoctorsPatientsScreen extends StatefulWidget {
   const DoctorsPatientsScreen({super.key});
@@ -78,7 +80,7 @@ class _DoctorsPatientsScreenState extends State<DoctorsPatientsScreen> {
               errorBuilder: (_, __, ___) => const SizedBox.shrink(),
             ),
             const SizedBox(width: 8),
-            const Text('مرضى الأطباء'),
+            const LocalizedText('مرضى الأطباء'),
           ],
         ),
       ),
@@ -90,7 +92,7 @@ class _DoctorsPatientsScreenState extends State<DoctorsPatientsScreen> {
               // حقل البحث (نيومورفيزم)
               NeuField(
                 controller: _searchController,
-                hintText: 'ابحث عن طبيب بالاسم/التخصص/الهاتف...',
+                hintText: context.trRaw('ابحث عن طبيب بالاسم/التخصص/الهاتف...'),
                 prefix: const Icon(Icons.search_rounded),
               ),
               const SizedBox(height: 12),
@@ -102,8 +104,7 @@ class _DoctorsPatientsScreenState extends State<DoctorsPatientsScreen> {
                         child: NeuCard(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 18, vertical: 16),
-                          child: Text(
-                            'لا توجد نتائج',
+                          child: LocalizedText('لا توجد نتائج',
                             style: TextStyle(
                               color: scheme.onSurface.withValues(alpha: .7),
                               fontWeight: FontWeight.w700,
@@ -143,8 +144,7 @@ class _DoctorsPatientsScreenState extends State<DoctorsPatientsScreen> {
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      Text(
-                                        'د/ ${d.name}',
+                                      LocalizedText('د/ ${d.name}',
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(

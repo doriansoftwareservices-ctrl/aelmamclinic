@@ -13,6 +13,8 @@ import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/services/export_service.dart';
 import 'package:aelmamclinic/screens/doctors/edit_doctor_screen.dart';
 import 'package:aelmamclinic/screens/doctors/view_doctor_screen.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class ListDoctorsScreen extends StatefulWidget {
   const ListDoctorsScreen({super.key});
@@ -78,7 +80,7 @@ class _ListDoctorsScreenState extends State<ListDoctorsScreen> {
     } else {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('لا يمكن إجراء المكالمة')),
+        const SnackBar(content: LocalizedText('لا يمكن إجراء المكالمة')),
       );
     }
   }
@@ -87,7 +89,7 @@ class _ListDoctorsScreenState extends State<ListDoctorsScreen> {
     if (_filteredDoctors.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('لا توجد بيانات للمشاركة')),
+        const SnackBar(content: LocalizedText('لا توجد بيانات للمشاركة')),
       );
       return;
     }
@@ -105,7 +107,7 @@ class _ListDoctorsScreenState extends State<ListDoctorsScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('حدث خطأ أثناء المشاركة: $e')),
+        SnackBar(content: LocalizedText('حدث خطأ أثناء المشاركة: $e')),
       );
     }
   }
@@ -114,7 +116,7 @@ class _ListDoctorsScreenState extends State<ListDoctorsScreen> {
     if (_filteredDoctors.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('لا توجد بيانات للتنزيل')),
+        const SnackBar(content: LocalizedText('لا توجد بيانات للتنزيل')),
       );
       return;
     }
@@ -125,12 +127,12 @@ class _ListDoctorsScreenState extends State<ListDoctorsScreen> {
       await File(path).writeAsBytes(bytes);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تم التنزيل إلى: $path')),
+        SnackBar(content: LocalizedText('تم التنزيل إلى: $path')),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('حدث خطأ أثناء التنزيل: $e')),
+        SnackBar(content: LocalizedText('حدث خطأ أثناء التنزيل: $e')),
       );
     }
   }
@@ -142,7 +144,7 @@ class _ListDoctorsScreenState extends State<ListDoctorsScreen> {
     final hasMore = _visibleCount < _filteredDoctors.length;
 
     return Directionality(
-      textDirection: TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -156,17 +158,17 @@ class _ListDoctorsScreenState extends State<ListDoctorsScreen> {
                 errorBuilder: (_, __, ___) => const SizedBox.shrink(),
               ),
               const SizedBox(width: 8),
-              const Text('قائمة الأطباء'),
+              const LocalizedText('قائمة الأطباء'),
             ],
           ),
           actions: [
             IconButton(
-              tooltip: 'مشاركة',
+              tooltip: context.trRaw('مشاركة'),
               onPressed: _shareDoctorsFile,
               icon: const Icon(Icons.ios_share_rounded),
             ),
             IconButton(
-              tooltip: 'تنزيل',
+              tooltip: context.trRaw('تنزيل'),
               onPressed: _downloadDoctorsFile,
               icon: const Icon(Icons.download_rounded),
             ),
@@ -179,7 +181,7 @@ class _ListDoctorsScreenState extends State<ListDoctorsScreen> {
               // شريط البحث بنمط TBIAN
               NeuField(
                 controller: _searchController,
-                hintText: 'ابحث عن طبيب…',
+                hintText: context.trRaw('ابحث عن طبيب…'),
                 prefix: const Icon(Icons.search_rounded),
               ),
               const SizedBox(height: 12),
@@ -187,8 +189,7 @@ class _ListDoctorsScreenState extends State<ListDoctorsScreen> {
               Expanded(
                 child: _filteredDoctors.isEmpty
                     ? Center(
-                        child: Text(
-                          'لا توجد نتائج',
+                        child: LocalizedText('لا توجد نتائج',
                           style: TextStyle(
                             color: scheme.onSurface.withValues(alpha: .6),
                             fontWeight: FontWeight.w700,
@@ -203,8 +204,7 @@ class _ListDoctorsScreenState extends State<ListDoctorsScreen> {
                             return Center(
                               child: OutlinedButton.icon(
                                 icon: const Icon(Icons.expand_more_rounded),
-                                label: Text(
-                                  'تحميل المزيد (${_visibleCount}/${_filteredDoctors.length})',
+                                label: LocalizedText('تحميل المزيد (${_visibleCount}/${_filteredDoctors.length})',
                                 ),
                                 onPressed: () {
                                   setState(() {
@@ -249,8 +249,7 @@ class _ListDoctorsScreenState extends State<ListDoctorsScreen> {
                                   color: kPrimaryColor,
                                 ),
                               ),
-                              title: Text(
-                                'د/ ${d.name}',
+                              title: LocalizedText('د/ ${d.name}',
                                 style: const TextStyle(
                                   fontWeight: FontWeight.w900,
                                 ),
@@ -265,7 +264,7 @@ class _ListDoctorsScreenState extends State<ListDoctorsScreen> {
                                 ),
                               ),
                               trailing: PopupMenuButton<String>(
-                                tooltip: 'خيارات',
+                                tooltip: context.trRaw('خيارات'),
                                 itemBuilder: (ctx) => [
                                   PopupMenuItem(
                                     value: 'call',
@@ -273,7 +272,7 @@ class _ListDoctorsScreenState extends State<ListDoctorsScreen> {
                                       children: const [
                                         Icon(Icons.phone_rounded, size: 20),
                                         SizedBox(width: 8),
-                                        Text('اتصال'),
+                                        LocalizedText('اتصال'),
                                       ],
                                     ),
                                   ),
@@ -283,7 +282,7 @@ class _ListDoctorsScreenState extends State<ListDoctorsScreen> {
                                       children: const [
                                         Icon(Icons.edit_rounded, size: 20),
                                         SizedBox(width: 8),
-                                        Text('تعديل'),
+                                        LocalizedText('تعديل'),
                                       ],
                                     ),
                                   ),
@@ -297,7 +296,7 @@ class _ListDoctorsScreenState extends State<ListDoctorsScreen> {
                                           color: Colors.red,
                                         ),
                                         SizedBox(width: 8),
-                                        Text('حذف'),
+                                        LocalizedText('حذف'),
                                       ],
                                     ),
                                   ),
@@ -311,7 +310,7 @@ class _ListDoctorsScreenState extends State<ListDoctorsScreen> {
                                         ScaffoldMessenger.of(context)
                                             .showSnackBar(
                                           const SnackBar(
-                                            content: Text('لا يوجد رقم هاتف'),
+                                            content: LocalizedText('لا يوجد رقم هاتف'),
                                           ),
                                         );
                                       }

@@ -1,5 +1,4 @@
 // lib/screens/employees/finance/non_doctor_salary_detail_screen.dart
-import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 
 /*── TBIAN ─*/
@@ -8,6 +7,8 @@ import 'package:aelmamclinic/core/neumorphism.dart';
 /*── الخدمات ─*/
 import 'package:aelmamclinic/services/db_service.dart';
 import 'finance_access_guard.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
 
 /// ── ثوابت الألوان الموحدة ──
 const Color accentColor = Color(0xFF004A61);
@@ -65,7 +66,7 @@ class _NonDoctorSalaryDetailScreenState
       if (emp == null) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('الموظف غير موجود')),
+          const SnackBar(content: LocalizedText('الموظف غير موجود')),
         );
         Navigator.pop(context);
         return;
@@ -92,7 +93,7 @@ class _NonDoctorSalaryDetailScreenState
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
               content:
-                  Text('تم صرف راتب أحدث من هذه الفترة، اختر شهرًا أحدث.')),
+                  LocalizedText('تم صرف راتب أحدث من هذه الفترة، اختر شهرًا أحدث.')),
         );
         return;
       }
@@ -109,7 +110,7 @@ class _NonDoctorSalaryDetailScreenState
           _periodEnd = null;
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('لا توجد فترة صالحة لهذا الشهر بعد')),
+          const SnackBar(content: LocalizedText('لا توجد فترة صالحة لهذا الشهر بعد')),
         );
         return;
       }
@@ -140,7 +141,7 @@ class _NonDoctorSalaryDetailScreenState
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('حدث خطأ: $e')),
+        SnackBar(content: LocalizedText('حدث خطأ: $e')),
       );
       Navigator.pop(context);
     }
@@ -150,7 +151,7 @@ class _NonDoctorSalaryDetailScreenState
     if (_periodStart == null || _periodEnd == null) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('الفترة غير صالحة لصرف الراتب')),
+        const SnackBar(content: LocalizedText('الفترة غير صالحة لصرف الراتب')),
       );
       return;
     }
@@ -158,11 +159,10 @@ class _NonDoctorSalaryDetailScreenState
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => Directionality(
-        textDirection: ui.TextDirection.rtl,
+        textDirection: Directionality.of(context),
         child: AlertDialog(
-          title: const Text('تأكيد صرف الراتب'),
-          content: Text(
-            'سيتم صرف راتب $_employeeName لشهر ${widget.month}/${widget.year} '
+          title: const LocalizedText('تأكيد صرف الراتب'),
+          content: LocalizedText('سيتم صرف راتب $_employeeName لشهر ${widget.month}/${widget.year} '
             'بمبلغ صافي ${_fmt(_netPay)}.\n'
             'الفترة الفعلية: '
             '${_periodStart!.toLocal().toIso8601String().substring(0, 10)}'
@@ -173,11 +173,11 @@ class _NonDoctorSalaryDetailScreenState
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('إلغاء')),
+                child: const LocalizedText('إلغاء')),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: accentColor),
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('تأكيد', style: TextStyle(color: Colors.white)),
+              child: const LocalizedText('تأكيد', style: TextStyle(color: Colors.white)),
             ),
           ],
         ),
@@ -258,13 +258,13 @@ class _NonDoctorSalaryDetailScreenState
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم صرف الراتب بنجاح')),
+        const SnackBar(content: LocalizedText('تم صرف الراتب بنجاح')),
       );
       Navigator.pop(context);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('فشل صرف الراتب: $e')),
+        SnackBar(content: LocalizedText('فشل صرف الراتب: $e')),
       );
     }
   }
@@ -275,12 +275,11 @@ class _NonDoctorSalaryDetailScreenState
 
     return FinanceAccessGuard(
       child: Directionality(
-        textDirection: ui.TextDirection.rtl,
+        textDirection: Directionality.of(context),
         child: Scaffold(
           appBar: AppBar(
             centerTitle: true,
-            title: const Text(
-              'تفاصيل صرف الراتب (غير الأطباء)',
+            title: const LocalizedText('تفاصيل صرف الراتب (غير الأطباء)',
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
             flexibleSpace: Container(
@@ -309,11 +308,11 @@ class _NonDoctorSalaryDetailScreenState
                     padding: const EdgeInsets.all(16),
                     children: [
                       // العنوان
-                      Text('دفع راتب: $_employeeName',
+                      LocalizedText('دفع راتب: $_employeeName',
                           style: const TextStyle(
                               fontSize: 18, fontWeight: FontWeight.bold)),
                       const SizedBox(height: 6),
-                      Text(subTitle),
+                      LocalizedText(subTitle),
 
                       const SizedBox(height: 16),
 
@@ -356,7 +355,7 @@ class _NonDoctorSalaryDetailScreenState
                             padding: const EdgeInsets.symmetric(vertical: 14),
                           ),
                           onPressed: _confirmSalaryPayment,
-                          child: const Text('تأكيد صرف الراتب',
+                          child: const LocalizedText('تأكيد صرف الراتب',
                               style: TextStyle(color: Colors.white)),
                         ),
                       ),
@@ -373,7 +372,7 @@ class _NonDoctorSalaryDetailScreenState
       initialValue: value,
       readOnly: true,
       decoration: InputDecoration(
-        labelText: label,
+        labelText: context.trRaw(label),
         filled: true,
         fillColor: Colors.white,
         contentPadding:
@@ -401,7 +400,7 @@ class _NonDoctorSalaryDetailScreenState
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
+          LocalizedText(
             '$label: ',
             style: TextStyle(
                 color: Colors.black87.withValues(alpha: .7),

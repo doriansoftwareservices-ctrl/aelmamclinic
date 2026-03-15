@@ -1,15 +1,17 @@
 // lib/screens/reminders/reminder_screen.dart
-import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:aelmamclinic/utils/toast_utils.dart';
 import 'package:intl/intl.dart';
+import 'package:aelmamclinic/utils/app_formatters.dart';
 
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
 
 import 'package:aelmamclinic/models/return_entry.dart';
 import 'package:aelmamclinic/services/db_service.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class ReminderScreen extends StatefulWidget {
   const ReminderScreen({super.key});
@@ -20,8 +22,8 @@ class ReminderScreen extends StatefulWidget {
 
 class _ReminderScreenState extends State<ReminderScreen> {
   final _searchCtrl = TextEditingController();
-  final _dateTime = DateFormat('yyyy-MM-dd HH:mm');
-  final _dateOnly = DateFormat('yyyy-MM-dd');
+  DateFormat get _dateTime => AppFormatters.dateFormat('yyyy-MM-dd HH:mm');
+  DateFormat get _dateOnly => AppFormatters.dateFormat('yyyy-MM-dd');
 
   List<ReturnEntry> _todayReturns = [];
   List<ReturnEntry> _filtered = [];
@@ -123,7 +125,7 @@ class _ReminderScreenState extends State<ReminderScreen> {
     final todayStr = _dateOnly.format(DateTime.now());
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -137,12 +139,12 @@ class _ReminderScreenState extends State<ReminderScreen> {
                 errorBuilder: (_, __, ___) => const SizedBox.shrink(),
               ),
               const SizedBox(width: 8),
-              const Text('تذكيرات اليوم'),
+              const LocalizedText('تذكيرات اليوم'),
             ],
           ),
           actions: [
             IconButton(
-              tooltip: 'تحديث',
+              tooltip: context.trRaw('تحديث'),
               icon: const Icon(Icons.refresh_rounded),
               onPressed: _refresh,
             ),
@@ -157,7 +159,7 @@ class _ReminderScreenState extends State<ReminderScreen> {
                   child: ListTile(
                     dense: true,
                     leading: Icon(Icons.check_circle),
-                    title: Text('تحديد الكل كـ حضر'),
+                    title: LocalizedText('تحديد الكل كـ حضر'),
                   ),
                 ),
                 PopupMenuItem(
@@ -165,7 +167,7 @@ class _ReminderScreenState extends State<ReminderScreen> {
                   child: ListTile(
                     dense: true,
                     leading: Icon(Icons.radio_button_unchecked),
-                    title: Text('إلغاء تحديد الكل'),
+                    title: LocalizedText('إلغاء تحديد الكل'),
                   ),
                 ),
               ],
@@ -196,8 +198,7 @@ class _ReminderScreenState extends State<ReminderScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
-                            Text(
-                              'تاريخ اليوم: $todayStr',
+                            LocalizedText('تاريخ اليوم: $todayStr',
                               style: TextStyle(
                                 color: scheme.onSurface,
                                 fontWeight: FontWeight.w900,
@@ -205,8 +206,7 @@ class _ReminderScreenState extends State<ReminderScreen> {
                               ),
                             ),
                             const SizedBox(height: 4),
-                            Text(
-                              'الإجمالي: ${_filtered.length} • غير مُشاهَد: ${_filtered.where((e) => !e.isAttended).length}',
+                            LocalizedText('الإجمالي: ${_filtered.length} • غير مُشاهَد: ${_filtered.where((e) => !e.isAttended).length}',
                               style: TextStyle(
                                 color: scheme.onSurface.withValues(alpha: .7),
                                 fontWeight: FontWeight.w700,
@@ -227,15 +227,14 @@ class _ReminderScreenState extends State<ReminderScreen> {
                       Expanded(
                         child: NeuField(
                           controller: _searchCtrl,
-                          labelText: 'بحث بالاسم / الهاتف / الحالة',
+                          labelText: context.trRaw('بحث بالاسم / الهاتف / الحالة'),
                           prefix: const Icon(Icons.search_rounded),
                         ),
                       ),
                       const SizedBox(width: 10),
                       Column(
                         children: [
-                          Text(
-                            'غير مُشاهَد',
+                          LocalizedText('غير مُشاهَد',
                             style: TextStyle(
                               fontSize: 11.5,
                               fontWeight: FontWeight.w800,
@@ -261,8 +260,7 @@ class _ReminderScreenState extends State<ReminderScreen> {
                       ? const Center(child: CircularProgressIndicator())
                       : _filtered.isEmpty
                           ? Center(
-                              child: Text(
-                                'لا توجد تذكيرات لليوم',
+                              child: LocalizedText('لا توجد تذكيرات لليوم',
                                 style: TextStyle(
                                   color:
                                       scheme.onSurface.withValues(alpha: .6),
@@ -346,8 +344,7 @@ class _ReminderCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  'موعد العَود: $dateStr',
+                LocalizedText('موعد العَود: $dateStr',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -357,8 +354,7 @@ class _ReminderCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  'الحالة: ${entry.diagnosis.isEmpty ? '—' : entry.diagnosis}',
+                LocalizedText('الحالة: ${entry.diagnosis.isEmpty ? '—' : entry.diagnosis}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -374,7 +370,7 @@ class _ReminderCard extends StatelessWidget {
           Column(
             children: [
               IconButton(
-                tooltip: 'اتصال',
+                tooltip: context.trRaw('اتصال'),
                 icon: const Icon(Icons.phone),
                 color: kPrimaryColor,
                 onPressed: onCall,

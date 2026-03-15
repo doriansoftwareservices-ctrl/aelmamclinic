@@ -11,6 +11,20 @@ import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/utils/notifications_helper.dart';
 import 'package:aelmamclinic/models/inventory_health_report.dart';
 
+class RepositorySnapshot {
+  const RepositorySnapshot({
+    required this.types,
+    required this.items,
+    required this.lowStockItems,
+    required this.hasLowStockAlerts,
+  });
+
+  final List<ItemType> types;
+  final List<Item> items;
+  final List<Item> lowStockItems;
+  final bool hasLowStockAlerts;
+}
+
 /// طبقة الأعمال للمستودع.
 /// تعتمد على DBService للوصول إلى SQLite، وعلى NotificationsHelper
 /// لإرسال تنبيهات النظام عند انخفاض المخزون.
@@ -40,6 +54,36 @@ class RepositoryService {
 
   Future<List<Item>> fetchAllItems() async {
     return _db.getAllItems();
+  }
+
+  Future<RepositorySnapshot> fetchSnapshot({
+    bool includeTypes = true,
+    bool includeItems = true,
+    bool includeAlerts = true,
+  }) async {
+    final typesFuture = includeTypes ? fetchItemTypes() : Future.value(<ItemType>[]);
+    final itemsFuture = includeItems ? fetchAllItems() : Future.value(<Item>[]);
+    final alertsFuture = includeAlerts
+        ? anyLowStockAlert()
+        : Future.value(false);
+
+    final results = await Future.wait<Object>([
+      typesFuture,
+      itemsFuture,
+      alertsFuture,
+    ]);
+
+    final hasLowStockAlerts = results[2] as bool;
+    final lowStockItems = includeAlerts && hasLowStockAlerts
+        ? await fetchLowStockItems()
+        : <Item>[];
+
+    return RepositorySnapshot(
+      types: List<ItemType>.from(results[0] as List<ItemType>),
+      items: List<Item>.from(results[1] as List<Item>),
+      lowStockItems: lowStockItems,
+      hasLowStockAlerts: hasLowStockAlerts,
+    );
   }
 
   Future<Item?> fetchItem(int id) async {

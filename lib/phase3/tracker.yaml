@@ -1,0 +1,57 @@
+phase: 3
+name: auth_session_architecture_hardening
+status: completed
+started_at: "2026-03-09"
+completed_at: "2026-03-09"
+scope:
+  - lib
+deliverables:
+  - id: P3-D1
+    name: explicit_session_topology_contracts
+    status: completed
+    paths:
+      - lib/providers/auth_provider.dart
+  - id: P3-D2
+    name: non_blocking_app_initializer
+    status: completed
+    paths:
+      - lib/main.dart
+  - id: P3-D3
+    name: authenticated_recovery_portal
+    status: completed
+    paths:
+      - lib/screens/auth/login_screen.dart
+      - lib/widgets/auth_guard_listener.dart
+  - id: P3-D4
+    name: phase3_verification_tooling
+    status: completed
+    paths:
+      - lib/phase3/check_auth_session_baseline.sh
+      - scripts/phase3_verify.sh
+  - id: P3-D5
+    name: verification_report
+    status: completed
+    paths:
+      - docs/phase3/reports/20260309_180038/summary.md
+gates:
+  - id: AUTH-001
+    name: local_remote_account_topology_split
+    status: passed
+  - id: AUTH-002
+    name: blocking_restore_removed_from_main
+    status: passed
+  - id: AUTH-003
+    name: authenticated_recovery_without_forced_signout
+    status: passed
+  - id: AUTH-004
+    name: remote_bound_services_gated_on_remote_session
+    status: passed
+  - id: G1
+    name: quality_gate_regression_check
+    status: local_pass_with_deferred_warnings
+    reason: local WSL sandbox deferred analyze and test, and the build bundle fallback stalled after Java fallback despite timeout wrapper
+next_phase_readiness:
+  phase_4_allowed: true
+  notes:
+    - Local clinic shell can open from persisted state while remote session restores in the background.
+    - Super admin remains remote-bound, but recovery now preserves session and retries instead of forcing relogin.

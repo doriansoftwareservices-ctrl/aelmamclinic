@@ -14,6 +14,8 @@ import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/services/patient_questions_service.dart';
 import 'package:aelmamclinic/screens/patient_questions/complaint_questions_screen.dart';
 import 'package:aelmamclinic/screens/patient_questions/complaint_templates_screen.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class PatientDetailsQuestionsSection extends StatefulWidget {
   final Patient patient;
@@ -218,7 +220,7 @@ class _PatientDetailsQuestionsSectionState
       builder: (ctx) {
         final scheme = Theme.of(ctx).colorScheme;
         return AlertDialog(
-          title: const Text('اختر الشكوى'),
+          title: const LocalizedText('اختر الشكوى'),
           backgroundColor: scheme.surface,
           shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(kRadius)),
@@ -232,7 +234,7 @@ class _PatientDetailsQuestionsSectionState
                     ))
                 .toList(),
             onChanged: (v) => selected = v,
-            decoration: const InputDecoration(labelText: 'الشكوى'),
+            decoration: InputDecoration(labelText: context.trRaw('الشكوى')),
           ),
           actions: [
             if (canManageTemplates)
@@ -247,14 +249,14 @@ class _PatientDetailsQuestionsSectionState
                   ).then((_) => _load());
                 },
                 icon: const Icon(Icons.add),
-                label: const Text('إضافة شكوى جديدة'),
+                label: const LocalizedText('إضافة شكوى جديدة'),
               ),
             TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('إلغاء')),
+                child: const LocalizedText('إلغاء')),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('إضافة'),
+              child: const LocalizedText('إضافة'),
             ),
           ],
         );
@@ -276,7 +278,7 @@ class _PatientDetailsQuestionsSectionState
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('تعذر الإضافة: $e')));
+          .showSnackBar(SnackBar(content: LocalizedText('تعذر الإضافة: $e')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -317,7 +319,7 @@ class _PatientDetailsQuestionsSectionState
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('تعذر الحفظ: $e')));
+          .showSnackBar(SnackBar(content: LocalizedText('تعذر الحفظ: $e')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -329,18 +331,18 @@ class _PatientDetailsQuestionsSectionState
       builder: (ctx) {
         final scheme = Theme.of(ctx).colorScheme;
         return AlertDialog(
-          title: const Text('إزالة الشكوى؟'),
+          title: const LocalizedText('إزالة الشكوى؟'),
           backgroundColor: scheme.surface,
           shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(kRadius)),
-          content: const Text('سيتم إخفاؤها من هذا المريض دون حذف البيانات.'),
+          content: const LocalizedText('سيتم إخفاؤها من هذا المريض دون حذف البيانات.'),
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('إلغاء')),
+                child: const LocalizedText('إلغاء')),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('إزالة'),
+              child: const LocalizedText('إزالة'),
             ),
           ],
         );
@@ -359,7 +361,7 @@ class _PatientDetailsQuestionsSectionState
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('تعذر الإزالة: $e')));
+          .showSnackBar(SnackBar(content: LocalizedText('تعذر الإزالة: $e')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -399,19 +401,19 @@ class _PatientDetailsQuestionsSectionState
             children: const [
               Padding(
                   padding: EdgeInsets.symmetric(horizontal: 12),
-                  child: Text('نعم')),
+                  child: LocalizedText('نعم')),
               Padding(
                   padding: EdgeInsets.symmetric(horizontal: 12),
-                  child: Text('لا')),
+                  child: LocalizedText('لا')),
               Padding(
                   padding: EdgeInsets.symmetric(horizontal: 12),
-                  child: Text('غير مجاب')),
+                  child: LocalizedText('غير مجاب')),
             ],
           ),
           const SizedBox(height: 6),
           NeuField(
             controller: draft.noteController,
-            labelText: 'ملاحظة (اختياري)',
+            labelText: context.trRaw('ملاحظة (اختياري)'),
             maxLines: 2,
             prefix: const Icon(Icons.note_alt_outlined),
           ),
@@ -450,7 +452,7 @@ class _PatientDetailsQuestionsSectionState
             FilledButton.icon(
               onPressed: _load,
               icon: const Icon(Icons.refresh),
-              label: const Text('إعادة المحاولة'),
+              label: const LocalizedText('إعادة المحاولة'),
             ),
           ],
         ),
@@ -468,12 +470,12 @@ class _PatientDetailsQuestionsSectionState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('لا توجد شكاوى مرتبطة بهذا المريض بعد.'),
+                const LocalizedText('لا توجد شكاوى مرتبطة بهذا المريض بعد.'),
                 const SizedBox(height: 10),
                 FilledButton.icon(
                   onPressed: _saving ? null : _addComplaint,
                   icon: const Icon(Icons.add),
-                  label: const Text('إضافة شكوى'),
+                  label: const LocalizedText('إضافة شكوى'),
                 ),
               ],
             ),
@@ -502,7 +504,7 @@ class _PatientDetailsQuestionsSectionState
                           ),
                         ),
                         IconButton(
-                          tooltip: 'إزالة الشكوى',
+                          tooltip: context.trRaw('إزالة الشكوى'),
                           onPressed: _saving
                               ? null
                               : () => _deactivateComplaint(block),
@@ -513,8 +515,7 @@ class _PatientDetailsQuestionsSectionState
                     if (block.template == null || block.questions.isEmpty)
                       Padding(
                         padding: const EdgeInsets.only(top: 8),
-                        child: Text(
-                          'لا توجد أسئلة مرتبطة بهذه الشكوى بعد.',
+                        child: LocalizedText('لا توجد أسئلة مرتبطة بهذه الشكوى بعد.',
                           style: TextStyle(
                               color:
                                   scheme.onSurface.withValues(alpha: .7)),
@@ -522,7 +523,7 @@ class _PatientDetailsQuestionsSectionState
                       ),
                     if (block.template != null && canManageTemplates)
                       Align(
-                        alignment: Alignment.centerRight,
+                        alignment: AlignmentDirectional.centerStart,
                         child: TextButton.icon(
                           onPressed: () {
                             Navigator.push(
@@ -535,7 +536,7 @@ class _PatientDetailsQuestionsSectionState
                             ).then((_) => _load());
                           },
                           icon: const Icon(Icons.quiz_outlined),
-                          label: const Text('إدارة الأسئلة'),
+                          label: const LocalizedText('إدارة الأسئلة'),
                         ),
                       ),
                     const Divider(height: 18),
@@ -552,13 +553,12 @@ class _PatientDetailsQuestionsSectionState
                             onPressed:
                                 _saving ? null : () => _saveBlock(block),
                             icon: const Icon(Icons.save),
-                            label: const Text('حفظ الإجابات'),
+                            label: const LocalizedText('حفظ الإجابات'),
                           ),
                         ),
                         const SizedBox(width: 12),
                         if (block.lastSaved != null)
-                          Text(
-                            'آخر حفظ: ${block.lastSaved!.toLocal().toString().substring(0, 16)}',
+                          LocalizedText('آخر حفظ: ${block.lastSaved!.toLocal().toString().substring(0, 16)}',
                             style: TextStyle(
                               fontSize: 12,
                               color: scheme.onSurface.withValues(alpha: .6),
@@ -575,7 +575,7 @@ class _PatientDetailsQuestionsSectionState
         FilledButton.icon(
           onPressed: _saving ? null : _addComplaint,
           icon: const Icon(Icons.add),
-          label: const Text('إضافة شكوى'),
+          label: const LocalizedText('إضافة شكوى'),
         ),
       ],
     );

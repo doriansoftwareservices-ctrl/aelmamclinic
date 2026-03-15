@@ -1,0 +1,66 @@
+phase: 2
+name: observability_foundation
+status: completed
+started_at: "2026-03-09"
+completed_at: "2026-03-09"
+scope:
+  - lib
+deliverables:
+  - id: P2-D1
+    name: observability_runtime_core
+    status: completed
+    paths:
+      - lib/utils/app_observability.dart
+  - id: P2-D2
+    name: global_error_capture_hooks
+    status: completed
+    paths:
+      - lib/main.dart
+  - id: P2-D3
+    name: critical_path_instrumentation
+    status: completed
+    paths:
+      - lib/providers/auth_provider.dart
+      - lib/providers/chat_provider.dart
+      - lib/services/push_notifications_service.dart
+      - lib/services/sync_service.dart
+      - lib/services/db_service.dart
+  - id: P2-D4
+    name: observability_inventory_and_summary
+    status: completed
+    paths:
+      - lib/phase2/check_observability_baseline.sh
+      - lib/phase2/summarize_runtime_events.sh
+      - scripts/phase2_verify.sh
+  - id: P2-D5
+    name: verification_report
+    status: completed
+    paths:
+      - docs/phase2/reports/20260309_171817/summary.md
+gates:
+  - id: OBS-001
+    name: critical_path_inventory
+    status: passed
+    notes:
+      - critical_silent_catches=140
+      - remaining inventory is concentrated in chat_provider, db_service, and sync_service deep domain flows
+  - id: OBS-002
+    name: error_taxonomy_and_codes
+    status: passed
+  - id: OBS-003
+    name: structured_logging_and_flow_ids
+    status: passed
+  - id: OBS-004
+    name: runtime_summary_tooling
+    status: passed_with_no_log_file
+    notes:
+      - runtime summary tooling is ready; no runtime event log existed yet during verification
+  - id: G1
+    name: quality_gate_regression_check
+    status: local_pass_with_deferred_warnings
+    reason: local WSL sandbox still blocks full analyze/test/build completion; CI strict gate remains canonical
+next_phase_readiness:
+  phase_3_allowed: true
+  notes:
+    - auth session refactors can now rely on stable error codes and flow IDs.
+    - remaining silent catch inventory is explicit and mapped to later chat/sync/db-focused phases.

@@ -3,6 +3,7 @@
 // شاشة "دليل الاستخدام" — شرح مرتب لمسارات التطبيق.
 
 import 'package:flutter/material.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
 
 class UserGuideScreen extends StatelessWidget {
   const UserGuideScreen({super.key});
@@ -13,10 +14,10 @@ class UserGuideScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Directionality(
-      textDirection: TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('دليل الاستخدام'),
+          title: const LocalizedText('دليل الاستخدام'),
         ),
         body: ListView(
           padding: const EdgeInsets.all(16),
@@ -166,13 +167,11 @@ class _HeaderCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'مرحبًا بك في دليل الاستخدام',
+            LocalizedText('مرحبًا بك في دليل الاستخدام',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             SizedBox(height: 6),
-            Text(
-              'اتبع الخطوات التالية بالترتيب لضمان تشغيل سلس وآمن.',
+            LocalizedText('اتبع الخطوات التالية بالترتيب لضمان تشغيل سلس وآمن.',
             ),
           ],
         ),
@@ -196,14 +195,13 @@ class _FooterCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'ملاحظات مهمة',
+            LocalizedText('ملاحظات مهمة',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             SizedBox(height: 6),
-            Text('• كلمة المرور يجب أن تكون 9 أحرف أو أكثر.'),
-            Text('• الحسابات المجمّدة/المعطّلة لن تتمكن من الدخول.'),
-            Text('• إذا لم يظهر حسابك بعد التسجيل، أكمل إنشاء العيادة أولًا.'),
+            LocalizedText('• كلمة المرور يجب أن تكون 9 أحرف أو أكثر.'),
+            LocalizedText('• الحسابات المجمّدة/المعطّلة لن تتمكن من الدخول.'),
+            LocalizedText('• إذا لم يظهر حسابك بعد التسجيل، أكمل إنشاء العيادة أولًا.'),
           ],
         ),
       ),
@@ -227,7 +225,7 @@ class _Section extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
+            LocalizedText(
               title,
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
@@ -239,7 +237,7 @@ class _Section extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text('• '),
-                    Expanded(child: Text(item)),
+                    Expanded(child: LocalizedText(item)),
                   ],
                 ),
               ),

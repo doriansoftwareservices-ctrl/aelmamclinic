@@ -9,27 +9,29 @@ import 'package:aelmamclinic/models/doctor.dart';
 import 'package:aelmamclinic/models/admin_action_log.dart';
 import 'package:aelmamclinic/models/admin_audit_activity.dart';
 import 'package:aelmamclinic/models/admin_audit_actor.dart';
+import 'package:aelmamclinic/utils/report_localizer.dart';
 
 class ExportService {
   // تصدير المرضى مع إضافة بيانات الطبيب وبيانات البرج الطبي (Tower Share)
   static Future<Uint8List> exportPatientsToExcel(List<Patient> patients) async {
+    final i18n = ReportLocalizer();
     final excel = Excel.createExcel();
-    final sheet = excel['Patients'];
+    final sheet = excel[i18n.isRtl ? 'المرضى' : 'Patients'];
 
     sheet.appendRow([
       'ID',
-      'Name',
-      'Age',
-      'Phone',
-      'Diagnosis',
-      'Doctor Name',
-      'Doctor Specialization',
-      'Paid',
-      'Remaining',
-      'Collateral',
-      'Tower Share',
-      'RegisterDate',
-      'Notes'
+      i18n.isRtl ? 'الاسم' : 'Name',
+      i18n.isRtl ? 'العمر' : 'Age',
+      i18n.isRtl ? 'رقم الهاتف' : 'Phone',
+      i18n.isRtl ? 'التشخيص' : 'Diagnosis',
+      i18n.isRtl ? 'اسم الطبيب' : 'Doctor name',
+      i18n.isRtl ? 'تخصص الطبيب' : 'Doctor specialization',
+      i18n.isRtl ? 'المدفوع' : 'Paid',
+      i18n.isRtl ? 'المتبقي' : 'Remaining',
+      i18n.isRtl ? 'الرهن' : 'Collateral',
+      i18n.isRtl ? 'حصة البرج الطبي' : 'Tower share',
+      i18n.isRtl ? 'تاريخ التسجيل' : 'Register date',
+      i18n.isRtl ? 'ملاحظات' : 'Notes',
     ]);
 
     for (var p in patients) {
@@ -57,10 +59,16 @@ class ExportService {
   // تصدير الاستهلاك إلى ملف Excel
   static Future<Uint8List> exportConsumptionToExcel(
       List<Consumption> items) async {
+    final i18n = ReportLocalizer();
     final excel = Excel.createExcel();
-    final sheet = excel['Consumption'];
+    final sheet = excel[i18n.isRtl ? 'الاستهلاك' : 'Consumption'];
 
-    sheet.appendRow(['ID', 'Date', 'Amount', 'Note']);
+    sheet.appendRow([
+      'ID',
+      i18n.isRtl ? 'التاريخ' : 'Date',
+      i18n.isRtl ? 'المبلغ' : 'Amount',
+      i18n.isRtl ? 'ملاحظة' : 'Note',
+    ]);
 
     for (var c in items) {
       sheet.appendRow([
@@ -77,19 +85,20 @@ class ExportService {
   // تصدير العودات إلى ملف Excel
   static Future<Uint8List> exportReturnsToExcel(
       List<ReturnEntry> returns) async {
+    final i18n = ReportLocalizer();
     final excel = Excel.createExcel();
-    final sheet = excel['Returns'];
+    final sheet = excel[i18n.isRtl ? 'العودات' : 'Returns'];
 
     sheet.appendRow([
       'ID',
-      'Patient Name',
-      'Phone Number',
-      'Age',
-      'Doctor',
-      'Diagnosis',
-      'Date',
-      'Remaining',
-      'Notes',
+      i18n.isRtl ? 'اسم المريض' : 'Patient name',
+      i18n.isRtl ? 'رقم الهاتف' : 'Phone number',
+      i18n.isRtl ? 'العمر' : 'Age',
+      i18n.isRtl ? 'الطبيب' : 'Doctor',
+      i18n.isRtl ? 'التشخيص' : 'Diagnosis',
+      i18n.isRtl ? 'التاريخ' : 'Date',
+      i18n.isRtl ? 'المتبقي' : 'Remaining',
+      i18n.isRtl ? 'ملاحظات' : 'Notes',
     ]);
 
     for (var r in returns) {
@@ -112,16 +121,17 @@ class ExportService {
 
   // تصدير بيانات الأطباء إلى ملف Excel
   static Future<Uint8List> exportDoctorsToExcel(List<Doctor> doctors) async {
+    final i18n = ReportLocalizer();
     final excel = Excel.createExcel();
-    final sheet = excel['Doctors'];
+    final sheet = excel[i18n.isRtl ? 'الأطباء' : 'Doctors'];
 
     sheet.appendRow([
       'ID',
-      'Doctor Name',
-      'Specialization',
-      'Phone Number',
-      'Start Time',
-      'End Time'
+      i18n.isRtl ? 'اسم الطبيب' : 'Doctor name',
+      i18n.isRtl ? 'التخصص' : 'Specialization',
+      i18n.isRtl ? 'رقم الهاتف' : 'Phone number',
+      i18n.isRtl ? 'وقت البداية' : 'Start time',
+      i18n.isRtl ? 'وقت النهاية' : 'End time',
     ]);
 
     for (var d in doctors) {
@@ -142,19 +152,20 @@ class ExportService {
   // تصدير بيانات الموظفين إلى ملف Excel
   static Future<Uint8List> exportEmployeesToExcel(
       List<Map<String, dynamic>> employees) async {
+    final i18n = ReportLocalizer();
     final excel = Excel.createExcel();
-    final sheet = excel['Employees'];
+    final sheet = excel[i18n.isRtl ? 'الموظفون' : 'Employees'];
 
     sheet.appendRow([
       'ID',
-      'Name',
-      'Identity',
-      'Phone',
-      'Job Title',
-      'Address',
-      'Marital Status',
-      'Basic Salary',
-      'Final Salary',
+      i18n.isRtl ? 'الاسم' : 'Name',
+      i18n.isRtl ? 'رقم الهوية' : 'Identity',
+      i18n.isRtl ? 'رقم الهاتف' : 'Phone',
+      i18n.isRtl ? 'المسمى الوظيفي' : 'Job title',
+      i18n.isRtl ? 'العنوان' : 'Address',
+      i18n.isRtl ? 'الحالة الاجتماعية' : 'Marital status',
+      i18n.isRtl ? 'الراتب الأساسي' : 'Basic salary',
+      i18n.isRtl ? 'الراتب النهائي' : 'Final salary',
     ]);
 
     for (var emp in employees) {
@@ -178,18 +189,19 @@ class ExportService {
   // تصدير سجلات أوامر السوبر أدمن إلى ملف Excel
   static Future<Uint8List> exportAdminActionLogsToExcel(
       List<AdminActionLog> logs) async {
+    final i18n = ReportLocalizer();
     final excel = Excel.createExcel();
-    final sheet = excel['AdminActions'];
+    final sheet = excel[i18n.isRtl ? 'أوامر الإدارة' : 'AdminActions'];
 
     sheet.appendRow([
       'ID',
-      'Actor UID',
-      'Actor Email',
-      'Action',
-      'Entity Type',
-      'Entity ID',
-      'Created At',
-      'Details',
+      i18n.isRtl ? 'معرف المنفذ' : 'Actor UID',
+      i18n.isRtl ? 'بريد المنفذ' : 'Actor email',
+      i18n.isRtl ? 'الإجراء' : 'Action',
+      i18n.isRtl ? 'نوع الكيان' : 'Entity type',
+      i18n.isRtl ? 'معرف الكيان' : 'Entity ID',
+      i18n.isRtl ? 'وقت الإنشاء' : 'Created at',
+      i18n.isRtl ? 'التفاصيل' : 'Details',
     ]);
 
     for (final log in logs) {
@@ -210,9 +222,15 @@ class ExportService {
 
   static Future<Uint8List> exportAdminAuditActivityDailyToExcel(
       List<AdminAuditActivity> rows) async {
+    final i18n = ReportLocalizer();
     final excel = Excel.createExcel();
-    final sheet = excel['AuditDaily'];
-    sheet.appendRow(['Day', 'Table', 'Op', 'Events']);
+    final sheet = excel[i18n.isRtl ? 'التدقيق اليومي' : 'AuditDaily'];
+    sheet.appendRow([
+      i18n.isRtl ? 'اليوم' : 'Day',
+      i18n.isRtl ? 'الجدول' : 'Table',
+      i18n.isRtl ? 'العملية' : 'Op',
+      i18n.isRtl ? 'الأحداث' : 'Events',
+    ]);
     for (final r in rows) {
       sheet.appendRow([
         r.day.toIso8601String(),
@@ -226,9 +244,15 @@ class ExportService {
 
   static Future<Uint8List> exportAdminAuditTopActorsToExcel(
       List<AdminAuditActor> rows) async {
+    final i18n = ReportLocalizer();
     final excel = Excel.createExcel();
-    final sheet = excel['AuditTopActors'];
-    sheet.appendRow(['Actor UID', 'Actor Email', 'Events', 'Last At']);
+    final sheet = excel[i18n.isRtl ? 'أكثر المنفذين نشاطًا' : 'AuditTopActors'];
+    sheet.appendRow([
+      i18n.isRtl ? 'معرف المنفذ' : 'Actor UID',
+      i18n.isRtl ? 'بريد المنفذ' : 'Actor email',
+      i18n.isRtl ? 'الأحداث' : 'Events',
+      i18n.isRtl ? 'آخر وقت' : 'Last at',
+    ]);
     for (final r in rows) {
       sheet.appendRow([
         r.actorUid ?? '',

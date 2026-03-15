@@ -1,11 +1,12 @@
 // lib/screens/repository/low_stock/low_stock_screen.dart
-import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'package:aelmamclinic/models/item.dart';
 import 'package:aelmamclinic/providers/repository_provider.dart';
 import 'package:aelmamclinic/screens/repository/purchases_consumptions/new_purchase_screen.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 /*──────── لوحة ألوان TBIAN الموحدة ────────*/
 const Color accentColor = Color(0xFF004A61);
@@ -67,12 +68,12 @@ class _LowStockScreenState extends State<LowStockScreen> {
     final filtered = _applyFilters(lowItems);
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           elevation: 4,
           centerTitle: true,
-          title: const Text('الأصناف منخفضة المخزون',
+          title: const LocalizedText('الأصناف منخفضة المخزون',
               style: TextStyle(fontWeight: FontWeight.bold)),
           flexibleSpace: const DecoratedBox(
             decoration: BoxDecoration(
@@ -104,7 +105,7 @@ class _LowStockScreenState extends State<LowStockScreen> {
                   controller: _searchCtrl,
                   onChanged: (_) => setState(() {}),
                   decoration: InputDecoration(
-                    hintText: 'ابحث باسم الصنف…',
+                    hintText: context.trRaw('ابحث باسم الصنف…'),
                     prefixIcon: const Icon(Icons.search),
                     suffixIcon: _searchCtrl.text.isEmpty
                         ? null
@@ -139,7 +140,7 @@ class _LowStockScreenState extends State<LowStockScreen> {
                   runSpacing: 8,
                   children: [
                     FilterChip(
-                      label: const Text('الحرِجة فقط'),
+                      label: const LocalizedText('الحرِجة فقط'),
                       selected: _criticalOnly,
                       onSelected: (v) => setState(() => _criticalOnly = v),
                       selectedColor: Colors.red.withValues(alpha: .12),
@@ -154,9 +155,9 @@ class _LowStockScreenState extends State<LowStockScreen> {
                 const SizedBox(height: 8),
 
                 if (lowItems.isEmpty)
-                  _EmptyCard(message: 'لا أصناف منخفضة حاليًا.')
+                  _EmptyCard(message: context.trRaw('لا أصناف منخفضة حاليًا.'))
                 else if (filtered.isEmpty)
-                  _EmptyCard(message: 'لا نتائج مطابقة لمرشّحاتك.')
+                  _EmptyCard(message: context.trRaw('لا نتائج مطابقة لمرشّحاتك.'))
                 else
                   ...filtered.map((it) => _ItemCard(item: it)),
               ],
@@ -246,8 +247,10 @@ class _StatPill extends StatelessWidget {
           children: [
             Icon(icon, size: 18, color: c),
             const SizedBox(width: 6),
-            Text('$label: ',
-                style: TextStyle(color: c, fontWeight: FontWeight.w800)),
+            LocalizedText(
+              '$label: ',
+              style: TextStyle(color: c, fontWeight: FontWeight.w800),
+            ),
             Text(value,
                 style: TextStyle(color: c, fontWeight: FontWeight.w900)),
           ],
@@ -277,10 +280,10 @@ class _SortDropdown extends StatelessWidget {
         underline: const SizedBox.shrink(),
         icon: const Icon(Icons.keyboard_arrow_down_rounded),
         items: const [
-          DropdownMenuItem(value: 'stock_asc', child: Text('المخزون (تصاعدي)')),
+          DropdownMenuItem(value: 'stock_asc', child: LocalizedText('المخزون (تصاعدي)')),
           DropdownMenuItem(
-              value: 'stock_desc', child: Text('المخزون (تنازلي)')),
-          DropdownMenuItem(value: 'name_asc', child: Text('الاسم (أ-ي)')),
+              value: 'stock_desc', child: LocalizedText('المخزون (تنازلي)')),
+          DropdownMenuItem(value: 'name_asc', child: LocalizedText('الاسم (أ-ي)')),
         ],
         onChanged: (v) {
           if (v != null) onChanged(v);
@@ -304,7 +307,10 @@ class _EmptyCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: lightAccentColor.withValues(alpha: .35)),
       ),
-      child: Text(message, style: const TextStyle(fontWeight: FontWeight.w700)),
+      child: LocalizedText(
+        message,
+        style: const TextStyle(fontWeight: FontWeight.w700),
+      ),
     );
   }
 }
@@ -347,8 +353,7 @@ class _ItemCard extends StatelessWidget {
             style: const TextStyle(fontWeight: FontWeight.w800)),
         subtitle: Padding(
           padding: const EdgeInsets.only(top: 4),
-          child: Text(
-            'المتبقي: ${item.stock}',
+          child: LocalizedText('المتبقي: ${item.stock}',
             style: TextStyle(
               color: critical ? Colors.red.shade700 : Colors.grey.shade800,
               fontWeight: FontWeight.w700,
@@ -364,7 +369,7 @@ class _ItemCard extends StatelessWidget {
           ),
           icon: const Icon(Icons.add_shopping_cart_outlined,
               color: Colors.white, size: 18),
-          label: const Text('شراء', style: TextStyle(color: Colors.white)),
+          label: const LocalizedText('شراء', style: TextStyle(color: Colors.white)),
           onPressed: () {
             Navigator.pushNamed(
               context,

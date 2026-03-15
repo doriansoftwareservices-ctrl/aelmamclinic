@@ -28,6 +28,8 @@ import 'package:path_provider/path_provider.dart';
 
 import 'package:aelmamclinic/services/save_file_service.dart';
 import 'package:aelmamclinic/core/nhost_manager.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class ImageViewerItem {
   /// يمكن أن يكون رابط HTTP(S) أو مسار ملف محلي أو file://URI
@@ -339,7 +341,7 @@ class _ImageViewerScreenState extends State<ImageViewerScreen>
     final items = _items;
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         backgroundColor: Colors.black.withValues(alpha: _bgOpacity),
         body: Stack(
@@ -496,7 +498,7 @@ class _ImageViewerScreenState extends State<ImageViewerScreen>
       ),
       builder: (_) {
         return Directionality(
-          textDirection: ui.TextDirection.rtl,
+          textDirection: Directionality.of(context),
           child: SafeArea(
             top: false,
             child: Column(
@@ -511,7 +513,7 @@ class _ImageViewerScreenState extends State<ImageViewerScreen>
                       if (mounted) Navigator.pop(context);
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('تم نسخ الرابط.')),
+                          const SnackBar(content: LocalizedText('تم نسخ الرابط.')),
                         );
                       }
                     },
@@ -547,7 +549,7 @@ class _ImageViewerScreenState extends State<ImageViewerScreen>
                         if (!mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                              content: Text('تعذر الوصول للملف المحلي.')),
+                              content: LocalizedText('تعذر الوصول للملف المحلي.')),
                         );
                         return;
                       }
@@ -599,7 +601,7 @@ class _ImageViewerScreenState extends State<ImageViewerScreen>
       Navigator.of(context).pop(); // إغلاق حوار التقدم
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
+          content: LocalizedText(
             savedPath.isEmpty
                 ? 'تم حفظ الملف بنجاح.'
                 : 'تم الحفظ في: $savedPath',
@@ -610,7 +612,7 @@ class _ImageViewerScreenState extends State<ImageViewerScreen>
       if (!mounted) return;
       Navigator.of(context).maybePop();
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('تعذّر الحفظ: $e')));
+          .showSnackBar(SnackBar(content: LocalizedText('تعذّر الحفظ: $e')));
     }
   }
 
@@ -627,7 +629,7 @@ class _ImageViewerScreenState extends State<ImageViewerScreen>
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
+          content: LocalizedText(
             savedPath.isEmpty
                 ? 'تم حفظ الملف بنجاح.'
                 : 'تم الحفظ في: $savedPath',
@@ -638,7 +640,7 @@ class _ImageViewerScreenState extends State<ImageViewerScreen>
       if (!mounted) return;
       Navigator.of(context).maybePop();
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('تعذّر النسخ: $e')));
+          .showSnackBar(SnackBar(content: LocalizedText('تعذّر النسخ: $e')));
     }
   }
 
@@ -705,7 +707,7 @@ class _ImageViewerScreenState extends State<ImageViewerScreen>
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('تعذّرت المشاركة: $e')));
+          .showSnackBar(SnackBar(content: LocalizedText('تعذّرت المشاركة: $e')));
     }
   }
 
@@ -788,13 +790,13 @@ class _TopBar extends StatelessWidget {
           if (isZoomed)
             IconButton(
               onPressed: onResetZoom,
-              tooltip: 'إعادة الضبط',
+              tooltip: context.trRaw('إعادة الضبط'),
               icon: const Icon(Icons.center_focus_strong_rounded,
                   color: Colors.white),
             ),
           IconButton(
             onPressed: onMenu,
-            tooltip: 'خيارات',
+            tooltip: context.trRaw('خيارات'),
             icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
           ),
         ],

@@ -1,5 +1,4 @@
 // lib/screens/employees/edit_employee_screen.dart
-import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -17,6 +16,8 @@ import 'package:aelmamclinic/services/nhost_graphql_service.dart';
 import 'package:aelmamclinic/widgets/user_account_picker_dialog.dart';
 import 'package:gql/language.dart' as gql_lang;
 import 'package:graphql_flutter/graphql_flutter.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class EditEmployeeScreen extends StatefulWidget {
   final int empId;
@@ -78,7 +79,7 @@ class _EditEmployeeScreenState extends State<EditEmployeeScreen> {
       if (!mounted) return;
       if (emp == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('الموظف غير موجود')),
+          const SnackBar(content: LocalizedText('الموظف غير موجود')),
         );
         Navigator.pop(context);
         return;
@@ -100,7 +101,7 @@ class _EditEmployeeScreenState extends State<EditEmployeeScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذّر تحميل البيانات: $e')),
+        SnackBar(content: LocalizedText('تعذّر تحميل البيانات: $e')),
       );
       Navigator.pop(context);
       return;
@@ -199,7 +200,7 @@ class _EditEmployeeScreenState extends State<EditEmployeeScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذّر تحميل حسابات الموظفين: $e')),
+        SnackBar(content: LocalizedText('تعذّر تحميل حسابات الموظفين: $e')),
       );
     } finally {
       if (mounted) setState(() => _loadingAccounts = false);
@@ -211,7 +212,7 @@ class _EditEmployeeScreenState extends State<EditEmployeeScreen> {
     if (_availableAccounts.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-            content: Text('لا يوجد حسابات متاحة غير مرتبطة بموظفين.')),
+            content: LocalizedText('لا يوجد حسابات متاحة غير مرتبطة بموظفين.')),
       );
       return;
     }
@@ -221,13 +222,13 @@ class _EditEmployeeScreenState extends State<EditEmployeeScreen> {
       builder: (ctx) {
         final scheme = Theme.of(ctx).colorScheme;
         return Directionality(
-          textDirection: ui.TextDirection.rtl,
+          textDirection: Directionality.of(context),
           child: SafeArea(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 ListTile(
-                  title: const Text('اختر حساب الموظف',
+                  title: const LocalizedText('اختر حساب الموظف',
                       style: TextStyle(fontWeight: FontWeight.w800)),
                   trailing: IconButton(
                     icon: const Icon(Icons.refresh_rounded),
@@ -255,7 +256,11 @@ class _EditEmployeeScreenState extends State<EditEmployeeScreen> {
                             : Text(acc.userUid,
                                 style:
                                     TextStyle(color: scheme.onSurfaceVariant)),
-                        trailing: const Icon(Icons.chevron_left_rounded),
+                        trailing: Icon(
+                          context.isRtl
+                              ? Icons.chevron_left_rounded
+                              : Icons.chevron_right_rounded,
+                        ),
                         onTap: () => Navigator.pop(ctx, acc),
                       );
                     },
@@ -396,14 +401,14 @@ class _EditEmployeeScreenState extends State<EditEmployeeScreen> {
 
     if (_linkAccount && _selectedAccount == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('يرجى اختيار حساب الموظف أولًا.')),
+        const SnackBar(content: LocalizedText('يرجى اختيار حساب الموظف أولًا.')),
       );
       if (mounted) setState(() => _saving = false);
       return;
     }
     if (_selectedAccountDisabled) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('هذا الحساب مجمّد حالياً.')),
+        const SnackBar(content: LocalizedText('هذا الحساب مجمّد حالياً.')),
       );
       if (mounted) setState(() => _saving = false);
       return;
@@ -448,13 +453,13 @@ class _EditEmployeeScreenState extends State<EditEmployeeScreen> {
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم تحديث بيانات الموظف بنجاح')),
+        const SnackBar(content: LocalizedText('تم تحديث بيانات الموظف بنجاح')),
       );
       Navigator.pop(context);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('حدث خطأ أثناء التحديث: $e')),
+        SnackBar(content: LocalizedText('حدث خطأ أثناء التحديث: $e')),
       );
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -466,7 +471,7 @@ class _EditEmployeeScreenState extends State<EditEmployeeScreen> {
     final cs = Theme.of(context).colorScheme;
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -485,7 +490,7 @@ class _EditEmployeeScreenState extends State<EditEmployeeScreen> {
           ),
           actions: [
             IconButton(
-              tooltip: 'حفظ',
+              tooltip: context.trRaw('حفظ'),
               icon: const Icon(Icons.save_rounded),
               onPressed: (_loading || _saving) ? null : _saveChanges,
             ),
@@ -559,7 +564,7 @@ class _EditEmployeeScreenState extends State<EditEmployeeScreen> {
                             NeuField(
                               enabled: !_saving,
                               controller: _nameCtrl,
-                              hintText: 'اسم الموظف',
+                              hintText: context.trRaw('اسم الموظف'),
                               prefix: const Icon(Icons.person_rounded),
                               validator: (v) => Validators.required(v,
                                   fieldName: 'اسم الموظف'),
@@ -569,7 +574,7 @@ class _EditEmployeeScreenState extends State<EditEmployeeScreen> {
                             NeuField(
                               enabled: !_saving,
                               controller: _identityCtrl,
-                              hintText: 'رقم الهوية (اختياري)',
+                              hintText: context.trRaw('رقم الهوية (اختياري)'),
                               prefix: const Icon(Icons.credit_card_rounded),
                               validator: (v) => Validators.nationalId(v,
                                   fieldName: 'رقم الهوية'),
@@ -580,7 +585,7 @@ class _EditEmployeeScreenState extends State<EditEmployeeScreen> {
                             NeuField(
                               enabled: !_saving,
                               controller: _phoneCtrl,
-                              hintText: 'رقم الهاتف',
+                              hintText: context.trRaw('رقم الهاتف'),
                               keyboardType: TextInputType.phone,
                               prefix: const Icon(Icons.call_rounded),
                               validator: (v) => Validators.phone(v),
@@ -590,7 +595,7 @@ class _EditEmployeeScreenState extends State<EditEmployeeScreen> {
                             NeuField(
                               enabled: !_saving,
                               controller: _jobTitleCtrl,
-                              hintText: 'المسمى الوظيفي / الصفة',
+                              hintText: context.trRaw('المسمى الوظيفي / الصفة'),
                               prefix: const Icon(Icons.work_outline_rounded),
                             ),
                             const SizedBox(height: 12),
@@ -598,7 +603,7 @@ class _EditEmployeeScreenState extends State<EditEmployeeScreen> {
                             NeuField(
                               enabled: !_saving,
                               controller: _addressCtrl,
-                              hintText: 'العنوان / السكن',
+                              hintText: context.trRaw('العنوان / السكن'),
                               prefix: const Icon(Icons.home_work_outlined),
                             ),
                             const SizedBox(height: 12),
@@ -606,7 +611,7 @@ class _EditEmployeeScreenState extends State<EditEmployeeScreen> {
                             NeuField(
                               enabled: !_saving,
                               controller: _maritalStatusCtrl,
-                              hintText: 'الحالة الاجتماعية',
+                              hintText: context.trRaw('الحالة الاجتماعية'),
                               prefix: const Icon(Icons.family_restroom_rounded),
                             ),
                             const SizedBox(height: 12),
@@ -618,13 +623,11 @@ class _EditEmployeeScreenState extends State<EditEmployeeScreen> {
                                 children: [
                                   SwitchListTile.adaptive(
                                     contentPadding: EdgeInsets.zero,
-                                    title: const Text(
-                                      'ربط الموظف بحساب دخول',
+                                    title: const LocalizedText('ربط الموظف بحساب دخول',
                                       style:
                                           TextStyle(fontWeight: FontWeight.w700),
                                     ),
-                                    subtitle: const Text(
-                                      'يمكن تركه بدون حساب عند الحاجة.',
+                                    subtitle: const LocalizedText('يمكن تركه بدون حساب عند الحاجة.',
                                     ),
                                     value: _linkAccount,
                                     onChanged: _saving
@@ -706,7 +709,7 @@ class _EditEmployeeScreenState extends State<EditEmployeeScreen> {
                                                   });
                                                 },
                                           icon: const Icon(Icons.person_rounded),
-                                          label: const Text('ربط حسابي'),
+                                          label: const LocalizedText('ربط حسابي'),
                                         ),
                                       ),
                                     if (_loadingAccounts)
@@ -767,7 +770,11 @@ class _EditEmployeeScreenState extends State<EditEmployeeScreen> {
                                           child: CircularProgressIndicator(
                                               strokeWidth: 2),
                                         )
-                                      : const Icon(Icons.chevron_left_rounded),
+                                      : Icon(
+                                          context.isRtl
+                                              ? Icons.chevron_left_rounded
+                                              : Icons.chevron_right_rounded,
+                                        ),
                                 ),
                               ),
                               const SizedBox(height: 12),
@@ -782,7 +789,7 @@ class _EditEmployeeScreenState extends State<EditEmployeeScreen> {
                                       Icon(Icons.attach_money_rounded,
                                           color: kPrimaryColor),
                                       SizedBox(width: 8),
-                                      Text('الرواتب',
+                                      LocalizedText('الرواتب',
                                           style: TextStyle(
                                               fontWeight: FontWeight.w900)),
                                     ],
@@ -791,7 +798,7 @@ class _EditEmployeeScreenState extends State<EditEmployeeScreen> {
                                   NeuField(
                                     enabled: !_saving,
                                     controller: _basicSalaryCtrl,
-                                    hintText: 'الراتب الأساسي',
+                                    hintText: context.trRaw('الراتب الأساسي'),
                                     keyboardType:
                                         const TextInputType.numberWithOptions(
                                             decimal: true),
@@ -812,7 +819,7 @@ class _EditEmployeeScreenState extends State<EditEmployeeScreen> {
                                   NeuField(
                                     enabled: !_saving,
                                     controller: _finalSalaryCtrl,
-                                    hintText: 'الراتب النهائي مع البدل',
+                                    hintText: context.trRaw('الراتب النهائي مع البدل'),
                                     keyboardType:
                                         const TextInputType.numberWithOptions(
                                             decimal: true),
@@ -830,8 +837,7 @@ class _EditEmployeeScreenState extends State<EditEmployeeScreen> {
                                   horizontal: 10, vertical: 6),
                               child: SwitchListTile.adaptive(
                                 contentPadding: EdgeInsets.zero,
-                                title: const Text(
-                                  'هل الموظف طبيب؟',
+                                title: const LocalizedText('هل الموظف طبيب؟',
                                   style: TextStyle(fontWeight: FontWeight.w700),
                                 ),
                                 value: _isDoctor,
@@ -866,7 +872,7 @@ class _EditEmployeeScreenState extends State<EditEmployeeScreen> {
                                         ? null
                                         : () => Navigator.pop(context),
                                     icon: const Icon(Icons.arrow_back_rounded),
-                                    label: const Text('رجوع'),
+                                    label: const LocalizedText('رجوع'),
                                   ),
                                 ),
                               ],

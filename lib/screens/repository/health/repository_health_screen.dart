@@ -1,9 +1,9 @@
-import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'package:aelmamclinic/models/inventory_health_report.dart';
 import 'package:aelmamclinic/providers/repository_provider.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
 
 const Color accentColor = Color(0xFF004A61);
 const Color lightAccentColor = Color(0xFF9ED9E6);
@@ -40,11 +40,11 @@ class _RepositoryHealthScreenState extends State<RepositoryHealthScreen> {
   @override
   Widget build(BuildContext context) {
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
-          title: const Text('تشخيص صحة المستودع',
+          title: const LocalizedText('تشخيص صحة المستودع',
               style: TextStyle(fontWeight: FontWeight.bold)),
           flexibleSpace: const DecoratedBox(
             decoration: BoxDecoration(
@@ -112,7 +112,7 @@ class _RepositoryHealthScreenState extends State<RepositoryHealthScreen> {
                   ElevatedButton.icon(
                     onPressed: _repair,
                     icon: const Icon(Icons.build_circle_outlined),
-                    label: const Text('إصلاح تلقائي'),
+                    label: const LocalizedText('إصلاح تلقائي'),
                   ),
                 ],
               );
@@ -145,7 +145,7 @@ class _InfoCard extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: ListTile(
         leading: Icon(icon, color: color),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+        title: LocalizedText(title, style: const TextStyle(fontWeight: FontWeight.w700)),
         trailing: Text(
           '$value',
           style: TextStyle(

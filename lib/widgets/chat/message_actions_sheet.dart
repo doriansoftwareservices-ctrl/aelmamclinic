@@ -23,6 +23,8 @@ import 'package:flutter/services.dart';
 import 'package:aelmamclinic/models/chat_models.dart';
 import 'package:aelmamclinic/utils/text_direction.dart' as bidi;
 import 'package:aelmamclinic/utils/time.dart' as time;
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 const List<String> _kCommonReactions = <String>[
   '👍',
@@ -342,7 +344,7 @@ class _MessageActionsSheet extends StatelessWidget {
               await Clipboard.setData(ClipboardData(text: txt));
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('تم النسخ')),
+                  const SnackBar(content: LocalizedText('تم النسخ')),
                 );
               }
             }
@@ -481,7 +483,7 @@ class _ActionTile extends StatelessWidget {
       minLeadingWidth: 24,
       leading: Icon(icon, color: color),
       title: Text(
-        label,
+        context.trRaw(label),
         style: TextStyle(
           color: danger ? cs.error : cs.onSurface,
           fontWeight: FontWeight.w600,

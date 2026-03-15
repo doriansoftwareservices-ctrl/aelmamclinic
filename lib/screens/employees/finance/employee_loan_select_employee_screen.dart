@@ -1,15 +1,16 @@
 // lib/screens/employees/finance/employee_loan_select_employee_screen.dart
-
 import 'package:flutter/material.dart';
 // لاستخراج أول محرف (grapheme)
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/core/tbian_ui.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 import 'package:aelmamclinic/services/db_service.dart';
 import 'employee_loan_create_screen.dart';
 import 'employee_loans_of_employee_screen.dart';
 import 'finance_access_guard.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
 
 class EmployeeLoanSelectEmployeeScreen extends StatefulWidget {
   final bool isCreateMode;
@@ -60,7 +61,7 @@ class _EmployeeLoanSelectEmployeeScreenState
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذّر جلب الموظفين: $e')),
+        SnackBar(content: LocalizedText('تعذّر جلب الموظفين: $e')),
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -103,7 +104,7 @@ class _EmployeeLoanSelectEmployeeScreenState
 
     return FinanceAccessGuard(
       child: Directionality(
-        textDirection: TextDirection.rtl,
+        textDirection: Directionality.of(context),
         child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -145,9 +146,9 @@ class _EmployeeLoanSelectEmployeeScreenState
                       ),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: Text(
+                        child: LocalizedText(
                           _screenTitle,
-                          textAlign: TextAlign.right,
+                          textAlign: TextAlign.start,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -184,8 +185,7 @@ class _EmployeeLoanSelectEmployeeScreenState
                     ? const Center(child: CircularProgressIndicator())
                     : _filteredEmployees.isEmpty
                         ? Center(
-                            child: Text(
-                              'لا توجد نتائج',
+                            child: LocalizedText('لا توجد نتائج',
                               style: TextStyle(
                                 color: scheme.onSurface.withValues(alpha: .6),
                                 fontSize: 15.5,
@@ -247,8 +247,11 @@ class _EmployeeLoanSelectEmployeeScreenState
                                           fontWeight: FontWeight.w600,
                                         ),
                                       ),
-                                      trailing: const Icon(
-                                          Icons.chevron_left_rounded),
+                                      trailing: Icon(
+                                        context.isRtl
+                                            ? Icons.chevron_left_rounded
+                                            : Icons.chevron_right_rounded,
+                                      ),
                                       onTap: () => _onEmployeeSelected(empId),
                                     ),
                                   ),

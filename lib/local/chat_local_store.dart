@@ -23,7 +23,7 @@ class ChatLocalStore {
   static final ChatLocalStore instance = ChatLocalStore._();
 
   static const _dbName = 'chat_cache.db';
-  static const _dbVersion = 7; // v7: support_status for conversations
+  static const _dbVersion = 8; // v8: session scope + account-scoped outbox
   static const _table = 'messages';
   static const _tableMeta = 'conv_meta';
   static const _tableConvs = 'conversations';
@@ -31,6 +31,8 @@ class ChatLocalStore {
   static const _tableReads = 'read_states';
   static const _tableOutbox = 'outbox';
   static const _tableAttCleanup = 'attachment_cleanup';
+  static const _tableSessionMeta = 'session_meta';
+  static const _sessionScopeSlot = 'active_scope';
 
   /// الحد الأعلى للرسائل المحتفظ بها لكل محادثة.
   /// 0 = بدون حد (تخزين كامل).
@@ -52,11 +54,14 @@ class ChatLocalStore {
           await db.execute('PRAGMA journal_mode=WAL;');
           await db.execute('PRAGMA foreign_keys=ON;');
         } catch (_) {}
+        await _ensureCurrentSchema(db);
       },
       onCreate: (db, v) async {
         await _createV2Tables(db);
         await _createV3Tables(db);
         await _createV4Tables(db);
+        await _createV6Tables(db);
+        await _createV8Tables(db);
       },
       onUpgrade: (db, oldV, newV) async {
         if (oldV < 2) {
@@ -84,6 +89,10 @@ class ChatLocalStore {
         }
         if (oldV < 7) {
           await _tryAddColumn(db, _tableConvs, 'support_status', 'TEXT');
+        }
+        if (oldV < 8) {
+          await _tryAddColumn(db, _tableOutbox, 'account_id', 'TEXT');
+          await _createV8Tables(db);
         }
       },
     );
@@ -197,6 +206,7 @@ CREATE TABLE IF NOT EXISTS $_tableReads(
 CREATE TABLE IF NOT EXISTS $_tableOutbox(
   local_id TEXT PRIMARY KEY,
   conversation_id TEXT NOT NULL,
+  account_id TEXT,
   kind TEXT,
   body TEXT,
   created_at TEXT,
@@ -225,6 +235,57 @@ CREATE TABLE IF NOT EXISTS $_tableAttCleanup(
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_att_cleanup_due ON $_tableAttCleanup(done, scheduled_at)',
     );
+  }
+
+  Future<void> _createV8Tables(Database db) async {
+    await db.execute('''
+CREATE TABLE IF NOT EXISTS $_tableSessionMeta(
+  slot TEXT PRIMARY KEY,
+  value TEXT,
+  updated_at TEXT
+);
+''');
+  }
+
+  Future<void> _ensureCurrentSchema(Database db) async {
+    await db.execute('''
+CREATE TABLE IF NOT EXISTS $_table(
+  id TEXT PRIMARY KEY,
+  conversation_id TEXT NOT NULL,
+  sender_uid TEXT,
+  sender_email TEXT,
+  kind TEXT,
+  body TEXT,
+  edited INTEGER,
+  deleted INTEGER,
+  created_at TEXT,
+  edited_at TEXT,
+  deleted_at TEXT,
+  status TEXT,
+  local_id_client TEXT,
+  account_id TEXT,
+  device_id TEXT,
+  local_seq INTEGER,
+  attachments_json TEXT,
+  reply_to_message_id TEXT,
+  reply_to_snippet TEXT,
+  mentions_json TEXT
+);
+''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_messages_conv_created ON $_table(conversation_id, created_at DESC)',
+    );
+    await _createV3Tables(db);
+    await _createV4Tables(db);
+    await _createV6Tables(db);
+    await _createV8Tables(db);
+    await _tryAddColumn(db, _table, 'reply_to_message_id', 'TEXT');
+    await _tryAddColumn(db, _table, 'reply_to_snippet', 'TEXT');
+    await _tryAddColumn(db, _table, 'mentions_json', 'TEXT');
+    await _tryAddColumn(db, _tableParts, 'display_name', 'TEXT');
+    await _tryAddColumn(db, _tableParts, 'chat_code', 'TEXT');
+    await _tryAddColumn(db, _tableConvs, 'support_status', 'TEXT');
+    await _tryAddColumn(db, _tableOutbox, 'account_id', 'TEXT');
   }
 
   static Future<void> _tryAddColumn(
@@ -317,6 +378,7 @@ CREATE TABLE IF NOT EXISTS $_tableAttCleanup(
   // ---------------------------------------------------------------------------
   Future<List<ChatMessage>> getMessages(
     String conversationId, {
+    String? accountId,
     String? beforeIso,
     int limit = 30,
     bool includeDeleted = false,
@@ -324,6 +386,12 @@ CREATE TABLE IF NOT EXISTS $_tableAttCleanup(
     final db = await _open();
     final where = StringBuffer('conversation_id = ?');
     final args = <Object?>[conversationId];
+    final normalizedAccountId = accountId?.trim();
+
+    if (normalizedAccountId != null && normalizedAccountId.isNotEmpty) {
+      where.write(' AND account_id = ?');
+      args.add(normalizedAccountId);
+    }
 
     if (!includeDeleted) {
       where.write(' AND (deleted IS NULL OR deleted = 0)');
@@ -461,11 +529,16 @@ CREATE TABLE IF NOT EXISTS $_tableAttCleanup(
     await db.delete(_table, where: 'id = ?', whereArgs: [messageId]);
   }
 
-  Future<bool> hasMessage(String messageId) async {
+  Future<bool> hasMessage(String messageId, {String? accountId}) async {
     final db = await _open();
+    final normalizedAccountId = accountId?.trim();
     final rows = await db.rawQuery(
-      'SELECT 1 FROM $_table WHERE id = ? LIMIT 1',
-      [messageId],
+      normalizedAccountId != null && normalizedAccountId.isNotEmpty
+          ? 'SELECT 1 FROM $_table WHERE id = ? AND account_id = ? LIMIT 1'
+          : 'SELECT 1 FROM $_table WHERE id = ? LIMIT 1',
+      normalizedAccountId != null && normalizedAccountId.isNotEmpty
+          ? [messageId, normalizedAccountId]
+          : [messageId],
     );
     return rows.isNotEmpty;
   }
@@ -497,8 +570,51 @@ CREATE TABLE IF NOT EXISTS $_tableAttCleanup(
       batch.delete(_tableParts);
       batch.delete(_tableReads);
       batch.delete(_tableOutbox);
+      batch.delete(_tableAttCleanup);
+      batch.delete(_tableSessionMeta);
       await batch.commit(noResult: true);
     });
+  }
+
+  Future<bool> ensureSessionScope(String scopeKey) async {
+    final normalized = scopeKey.trim();
+    if (normalized.isEmpty) return false;
+    final db = await _open();
+    var resetPerformed = false;
+    await db.transaction((txn) async {
+      final rows = await txn.query(
+        _tableSessionMeta,
+        columns: const ['value'],
+        where: 'slot = ?',
+        whereArgs: const [_sessionScopeSlot],
+        limit: 1,
+      );
+      final previous =
+          rows.isEmpty ? null : rows.first['value']?.toString().trim();
+      if (previous != null && previous.isNotEmpty && previous != normalized) {
+        resetPerformed = true;
+        final batch = txn.batch();
+        batch.delete(_table);
+        batch.delete(_tableMeta);
+        batch.delete(_tableConvs);
+        batch.delete(_tableParts);
+        batch.delete(_tableReads);
+        batch.delete(_tableOutbox);
+        batch.delete(_tableAttCleanup);
+        batch.delete(_tableSessionMeta);
+        await batch.commit(noResult: true);
+      }
+      await txn.insert(
+        _tableSessionMeta,
+        {
+          'slot': _sessionScopeSlot,
+          'value': normalized,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    });
+    return resetPerformed;
   }
 
   // ---------------------------------------------------------------------------
@@ -629,10 +745,17 @@ CREATE TABLE IF NOT EXISTS $_tableAttCleanup(
     });
   }
 
-  Future<List<ChatConversation>> getConversations() async {
+  Future<List<ChatConversation>> getConversations({String? accountId}) async {
     final db = await _open();
+    final normalizedAccountId = accountId?.trim();
     final rows = await db.query(
       _tableConvs,
+      where: normalizedAccountId != null && normalizedAccountId.isNotEmpty
+          ? 'account_id = ?'
+          : null,
+      whereArgs: normalizedAccountId != null && normalizedAccountId.isNotEmpty
+          ? [normalizedAccountId]
+          : null,
       orderBy: 'last_msg_at DESC',
     );
     return rows
@@ -640,7 +763,8 @@ CREATE TABLE IF NOT EXISTS $_tableAttCleanup(
         .toList();
   }
 
-  Future<void> upsertParticipants(List<Map<String, dynamic>> participants) async {
+  Future<void> upsertParticipants(
+      List<Map<String, dynamic>> participants) async {
     if (participants.isEmpty) return;
     final db = await _open();
     await db.transaction((txn) async {
@@ -653,10 +777,10 @@ CREATE TABLE IF NOT EXISTS $_tableAttCleanup(
             'user_uid': p['user_uid']?.toString(),
             'email': p['email']?.toString(),
             'nickname': p['nickname']?.toString(),
-            'display_name': p['display_name']?.toString() ??
-                p['displayName']?.toString(),
-            'chat_code': p['chat_code']?.toString() ??
-                p['chatCode']?.toString(),
+            'display_name':
+                p['display_name']?.toString() ?? p['displayName']?.toString(),
+            'chat_code':
+                p['chat_code']?.toString() ?? p['chatCode']?.toString(),
             'joined_at': p['joined_at']?.toString(),
             'role': p['role']?.toString(),
             'archived': _b((p['archived'] == true) || p['archived'] == 1),
@@ -672,7 +796,8 @@ CREATE TABLE IF NOT EXISTS $_tableAttCleanup(
     });
   }
 
-  Future<List<Map<String, dynamic>>> getParticipants(String conversationId) async {
+  Future<List<Map<String, dynamic>>> getParticipants(
+      String conversationId) async {
     final db = await _open();
     final rows = await db.query(
       _tableParts,
@@ -744,10 +869,37 @@ CREATE TABLE IF NOT EXISTS $_tableAttCleanup(
         conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
-  Future<List<Map<String, dynamic>>> getOutbox({int limit = 200}) async {
+  Future<void> updateOutboxMessageState({
+    required String localId,
+    required String status,
+    String? error,
+  }) async {
     final db = await _open();
+    await db.update(
+      _tableOutbox,
+      {
+        'status': status,
+        'error': error,
+      },
+      where: 'local_id = ?',
+      whereArgs: [localId],
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getOutbox({
+    String? accountId,
+    int limit = 200,
+  }) async {
+    final db = await _open();
+    final normalizedAccountId = accountId?.trim();
     final rows = await db.query(
       _tableOutbox,
+      where: normalizedAccountId != null && normalizedAccountId.isNotEmpty
+          ? 'account_id = ?'
+          : null,
+      whereArgs: normalizedAccountId != null && normalizedAccountId.isNotEmpty
+          ? [normalizedAccountId]
+          : null,
       orderBy: 'created_at ASC',
       limit: limit,
     );
@@ -813,8 +965,4 @@ LIMIT 1 OFFSET ?
     }
     _db = null;
   }
-}
-
-extension _FirstOrNull<T> on List<T> {
-  T? get firstOrNull => isEmpty ? null : first;
 }

@@ -1,7 +1,7 @@
 // lib/screens/employees/finance/employee_loan_create_screen.dart
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'dart:ui' as ui show TextDirection;
+import 'package:aelmamclinic/utils/app_formatters.dart';
 
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
@@ -10,6 +10,8 @@ import 'package:aelmamclinic/core/formatters.dart';
 import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/models/doctor.dart';
 import 'finance_access_guard.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class EmployeeLoanCreateScreen extends StatefulWidget {
   final int empId;
@@ -41,7 +43,7 @@ class _EmployeeLoanCreateScreenState extends State<EmployeeLoanCreateScreen> {
   // إدخال
   final TextEditingController _loanCtrl = TextEditingController();
 
-  final DateFormat _dateFmt = DateFormat('yyyy-MM-dd');
+  DateFormat get _dateFmt => AppFormatters.dateFormat('yyyy-MM-dd');
 
   @override
   void initState() {
@@ -62,7 +64,7 @@ class _EmployeeLoanCreateScreenState extends State<EmployeeLoanCreateScreen> {
     if (emp == null) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('لم يتم العثور على الموظف')),
+        const SnackBar(content: LocalizedText('لم يتم العثور على الموظف')),
       );
       Navigator.pop(context, false);
       return;
@@ -82,7 +84,7 @@ class _EmployeeLoanCreateScreenState extends State<EmployeeLoanCreateScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
                 content:
-                    Text('هذا الموظف محدد كطبيب لكن لا يوجد سجل طبيب مرتبط')),
+                    LocalizedText('هذا الموظف محدد كطبيب لكن لا يوجد سجل طبيب مرتبط')),
           );
         }
       } else {
@@ -223,15 +225,14 @@ class _EmployeeLoanCreateScreenState extends State<EmployeeLoanCreateScreen> {
     final loan = _parseAmount(_loanCtrl.text);
     if (loan <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('أدخل مبلغ سلفة أكبر من صفر')),
+        const SnackBar(content: LocalizedText('أدخل مبلغ سلفة أكبر من صفر')),
       );
       return;
     }
     if (loan > _total + 1e-6) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text(
-                'لا يمكن أن تتجاوز السلفة الإجمالي (${_total.toStringAsFixed(2)})')),
+            content: LocalizedText('لا يمكن أن تتجاوز السلفة الإجمالي (${_total.toStringAsFixed(2)})')),
       );
       return;
     }
@@ -273,13 +274,13 @@ class _EmployeeLoanCreateScreenState extends State<EmployeeLoanCreateScreen> {
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم إنشاء السلفة بنجاح')),
+        const SnackBar(content: LocalizedText('تم إنشاء السلفة بنجاح')),
       );
       Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('فشل إنشاء السلفة: $e')),
+        SnackBar(content: LocalizedText('فشل إنشاء السلفة: $e')),
       );
     }
   }
@@ -316,7 +317,7 @@ class _EmployeeLoanCreateScreenState extends State<EmployeeLoanCreateScreen> {
 
     return FinanceAccessGuard(
       child: Directionality(
-        textDirection: ui.TextDirection.rtl,
+        textDirection: Directionality.of(context),
         child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -325,7 +326,7 @@ class _EmployeeLoanCreateScreenState extends State<EmployeeLoanCreateScreen> {
             children: const [
               Icon(Icons.request_quote_rounded),
               SizedBox(width: 8),
-              Text('إنشاء سلفة'),
+              LocalizedText('إنشاء سلفة'),
             ],
           ),
         ),
@@ -366,8 +367,7 @@ class _EmployeeLoanCreateScreenState extends State<EmployeeLoanCreateScreen> {
                                     ),
                                   ),
                                   const SizedBox(height: 2),
-                                  Text(
-                                    'الرصيد النظري الحالي: ${_total.toStringAsFixed(2)}',
+                                  LocalizedText('الرصيد النظري الحالي: ${_total.toStringAsFixed(2)}',
                                     style: TextStyle(
                                       color: cs.onSurface.withValues(alpha: .7),
                                       fontWeight: FontWeight.w600,
@@ -397,8 +397,7 @@ class _EmployeeLoanCreateScreenState extends State<EmployeeLoanCreateScreen> {
                             child: const Icon(Icons.calendar_today_rounded,
                                 color: kPrimaryColor),
                           ),
-                          title: const Text(
-                            'تاريخ ووقت السلفة',
+                          title: const LocalizedText('تاريخ ووقت السلفة',
                             style: TextStyle(fontWeight: FontWeight.w800),
                           ),
                           subtitle: Text(
@@ -458,7 +457,7 @@ class _EmployeeLoanCreateScreenState extends State<EmployeeLoanCreateScreen> {
                       // إدخال مبلغ السلفة
                       NeuField(
                         controller: _loanCtrl,
-                        hintText: 'مبلغ السلفة',
+                        hintText: context.trRaw('مبلغ السلفة'),
                         keyboardType: const TextInputType.numberWithOptions(
                             decimal: true),
                         prefix: const Icon(Icons.request_quote_rounded),
@@ -480,7 +479,7 @@ class _EmployeeLoanCreateScreenState extends State<EmployeeLoanCreateScreen> {
                         child: FilledButton.icon(
                           onPressed: _saveLoan,
                           icon: const Icon(Icons.save_rounded),
-                          label: const Text('حفظ'),
+                          label: const LocalizedText('حفظ'),
                         ),
                       ),
                     ],

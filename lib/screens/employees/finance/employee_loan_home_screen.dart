@@ -19,7 +19,7 @@ class EmployeeLoanHomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return FinanceAccessGuard(
       child: Directionality(
-        textDirection: TextDirection.rtl,
+        textDirection: Directionality.of(context),
         child: Scaffold(
         appBar: AppBar(
           centerTitle: true,

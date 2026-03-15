@@ -27,6 +27,7 @@ import 'package:aelmamclinic/services/nhost_storage_service.dart';
 import 'package:aelmamclinic/models/chat_models.dart';
 import 'package:aelmamclinic/core/constants.dart';
 import 'package:aelmamclinic/utils/text_direction.dart' as bidi;
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class ReplyPreview extends StatelessWidget {
   const ReplyPreview({
@@ -158,7 +159,7 @@ class ReplyPreview extends StatelessWidget {
 
     final cancelBtn = IconButton(
       icon: const Icon(Icons.close_rounded),
-      tooltip: 'إغلاق',
+      tooltip: context.trRaw('إغلاق'),
       onPressed: onCancel,
       constraints: const BoxConstraints.tightFor(width: 40, height: 40),
       splashRadius: 18,
@@ -179,8 +180,10 @@ class ReplyPreview extends StatelessWidget {
     ];
 
     return Semantics(
-      label: 'معاينة الرد',
-      onTapHint: onTapOriginal != null ? 'الانتقال للرسالة الأصلية' : null,
+      label: context.trRaw('معاينة الرد'),
+      onTapHint: onTapOriginal != null
+          ? context.trRaw('الانتقال للرسالة الأصلية')
+          : null,
       child: Container(
         margin: margin ??
             const EdgeInsets.symmetric(horizontal: 8).copyWith(top: 6),

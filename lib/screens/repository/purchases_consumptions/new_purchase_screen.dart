@@ -1,5 +1,4 @@
 // lib/screens/repository/purchases_consumptions/new_purchase_screen.dart
-import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -7,6 +6,8 @@ import 'package:aelmamclinic/models/item.dart';
 import 'package:aelmamclinic/models/item_type.dart';
 import 'package:aelmamclinic/providers/repository_provider.dart';
 import 'package:aelmamclinic/core/theme.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
 
 class NewPurchaseScreen extends StatefulWidget {
   const NewPurchaseScreen({super.key});
@@ -79,7 +80,7 @@ class _NewPurchaseScreenState extends State<NewPurchaseScreen> {
   InputDecoration _dec(BuildContext context, String label) {
     final scheme = Theme.of(context).colorScheme;
     return InputDecoration(
-      labelText: label,
+      labelText: context.trRaw(label),
       filled: true,
       fillColor: scheme.surface,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -106,13 +107,13 @@ class _NewPurchaseScreenState extends State<NewPurchaseScreen> {
           );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم حفظ عملية الشراء بنجاح')),
+        const SnackBar(content: LocalizedText('تم حفظ عملية الشراء بنجاح')),
       );
       Navigator.pop(context);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('فشل الحفظ: $e')),
+        SnackBar(content: LocalizedText('فشل الحفظ: $e')),
       );
     } finally {
       if (mounted) setState(() => _isSaving = false);
@@ -161,10 +162,10 @@ class _NewPurchaseScreenState extends State<NewPurchaseScreen> {
     final scheme = Theme.of(context).colorScheme;
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('إنشاء مشتريات جديدة'),
+          title: const LocalizedText('إنشاء مشتريات جديدة'),
           centerTitle: true,
           elevation: 4,
           flexibleSpace: DecoratedBox(
@@ -241,7 +242,7 @@ class _NewPurchaseScreenState extends State<NewPurchaseScreen> {
                             Icon(Icons.inventory_2_outlined,
                                 size: 18, color: scheme.primary),
                             const SizedBox(width: 6),
-                            Text('المخزون الحالي: $_currentStock',
+                            LocalizedText('المخزون الحالي: $_currentStock',
                                 style: const TextStyle(
                                     fontWeight: FontWeight.w700)),
                           ],
@@ -260,7 +261,7 @@ class _NewPurchaseScreenState extends State<NewPurchaseScreen> {
                             Icon(Icons.trending_up,
                                 size: 18, color: scheme.tertiary),
                             const SizedBox(width: 6),
-                            Text('بعد الشراء: $predictedStock',
+                            LocalizedText('بعد الشراء: $predictedStock',
                                 style: const TextStyle(
                                     fontWeight: FontWeight.w700)),
                           ],
@@ -357,7 +358,7 @@ class _NewPurchaseScreenState extends State<NewPurchaseScreen> {
                         )
                       : Icon(Icons.save_outlined, color: scheme.onPrimary),
                   label:
-                      Text('حفظ', style: TextStyle(color: scheme.onPrimary)),
+                      LocalizedText('حفظ', style: TextStyle(color: scheme.onPrimary)),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: scheme.primary,
                     shape: RoundedRectangleBorder(
@@ -425,7 +426,7 @@ class _TotalCostCard extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          const Text('إجمالي التكلفة',
+          const LocalizedText('إجمالي التكلفة',
               style: TextStyle(fontWeight: FontWeight.w800)),
           Text(
             total.toStringAsFixed(2),

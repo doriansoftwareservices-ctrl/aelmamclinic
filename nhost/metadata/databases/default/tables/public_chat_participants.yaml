@@ -170,13 +170,16 @@ select_permissions:
               _eq: X-Hasura-User-Id
           - _exists:
               _table:
-                name: account_users
+                name: chat_participants
                 schema: public
               _where:
-                account_id:
-                  _ceq: account_id
-                disabled:
-                  _eq: false
+                conversation_id:
+                  _ceq: conversation_id
+                _or:
+                  - is_deleted:
+                      _eq: false
+                  - is_deleted:
+                      _is_null: true
                 user_uid:
                   _eq: X-Hasura-User-Id
   - role: me
@@ -188,13 +191,16 @@ select_permissions:
               _eq: X-Hasura-User-Id
           - _exists:
               _table:
-                name: account_users
+                name: chat_participants
                 schema: public
               _where:
-                account_id:
-                  _ceq: account_id
-                disabled:
-                  _eq: false
+                conversation_id:
+                  _ceq: conversation_id
+                _or:
+                  - is_deleted:
+                      _eq: false
+                  - is_deleted:
+                      _is_null: true
                 user_uid:
                   _eq: X-Hasura-User-Id
   - role: owner
@@ -206,13 +212,16 @@ select_permissions:
               _eq: X-Hasura-User-Id
           - _exists:
               _table:
-                name: account_users
+                name: chat_participants
                 schema: public
               _where:
-                account_id:
-                  _ceq: account_id
-                disabled:
-                  _eq: false
+                conversation_id:
+                  _ceq: conversation_id
+                _or:
+                  - is_deleted:
+                      _eq: false
+                  - is_deleted:
+                      _is_null: true
                 user_uid:
                   _eq: X-Hasura-User-Id
   - role: superadmin
@@ -228,13 +237,16 @@ select_permissions:
               _eq: X-Hasura-User-Id
           - _exists:
               _table:
-                name: account_users
+                name: chat_participants
                 schema: public
               _where:
-                account_id:
-                  _ceq: account_id
-                disabled:
-                  _eq: false
+                conversation_id:
+                  _ceq: conversation_id
+                _or:
+                  - is_deleted:
+                      _eq: false
+                  - is_deleted:
+                      _is_null: true
                 user_uid:
                   _eq: X-Hasura-User-Id
   - role: user
@@ -246,13 +258,16 @@ select_permissions:
               _eq: X-Hasura-User-Id
           - _exists:
               _table:
-                name: account_users
+                name: chat_participants
                 schema: public
               _where:
-                account_id:
-                  _ceq: account_id
-                disabled:
-                  _eq: false
+                conversation_id:
+                  _ceq: conversation_id
+                _or:
+                  - is_deleted:
+                      _eq: false
+                  - is_deleted:
+                      _is_null: true
                 user_uid:
                   _eq: X-Hasura-User-Id
 update_permissions:

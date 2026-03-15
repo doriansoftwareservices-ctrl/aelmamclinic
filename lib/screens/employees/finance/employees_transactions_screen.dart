@@ -1,7 +1,7 @@
 // lib/screens/employees/finance/employees_transactions_screen.dart
-import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:aelmamclinic/utils/app_formatters.dart';
 
 /*── TBIAN ─*/
 import 'package:aelmamclinic/core/theme.dart';
@@ -11,6 +11,7 @@ import 'package:aelmamclinic/core/tbian_ui.dart';
 /*── خدمات ─*/
 import 'package:aelmamclinic/services/db_service.dart';
 import 'finance_access_guard.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
 
 class EmployeesTransactionsScreen extends StatefulWidget {
   const EmployeesTransactionsScreen({super.key});
@@ -46,9 +47,9 @@ class _EmployeesTransactionsScreenState
 
   bool _busy = false;
 
-  final DateFormat _dateFmt = DateFormat('yyyy-MM-dd');
-  final DateFormat _dateTimeFmt = DateFormat('yyyy-MM-dd HH:mm');
-  final NumberFormat _moneyFmt = NumberFormat('#,##0.00');
+  DateFormat get _dateFmt => AppFormatters.dateFormat('yyyy-MM-dd');
+  DateFormat get _dateTimeFmt => AppFormatters.dateFormat('yyyy-MM-dd HH:mm');
+  NumberFormat get _moneyFmt => AppFormatters.numberFormat('#,##0.00');
 
   double _asDouble(dynamic v) =>
       (v is num) ? v.toDouble() : double.tryParse('${v ?? 0}') ?? 0.0;
@@ -96,7 +97,7 @@ class _EmployeesTransactionsScreenState
       initialDate: (isStart ? _startDate : _endDate) ?? DateTime.now(),
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
-      locale: const Locale('ar', ''),
+      locale: AppFormatters.localeOf(context),
       builder: (ctx, child) => Theme(
         data: Theme.of(ctx).copyWith(
           colorScheme: ColorScheme.light(
@@ -173,7 +174,7 @@ class _EmployeesTransactionsScreenState
   Widget build(BuildContext context) {
     return FinanceAccessGuard(
       child: Directionality(
-        textDirection: ui.TextDirection.rtl,
+        textDirection: Directionality.of(context),
         child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -289,7 +290,7 @@ class _EmployeesTransactionsScreenState
                       const Padding(
                         padding: EdgeInsets.all(16),
                         child: Center(
-                          child: Text('لا توجد عناصر لعرضها',
+                          child: LocalizedText('لا توجد عناصر لعرضها',
                               style: TextStyle(color: Colors.grey)),
                         ),
                       ),
@@ -339,7 +340,7 @@ class _EmployeesTransactionsScreenState
     if (items.isEmpty) {
       return Padding(
         padding: const EdgeInsets.all(12.0),
-        child: Text('لا توجد عناصر في $title',
+        child: LocalizedText('لا توجد عناصر في $title',
             style: const TextStyle(color: Colors.grey)),
       );
     }
@@ -430,10 +431,9 @@ class _EmployeesTransactionsScreenState
           padding: const EdgeInsets.all(8),
           child: const Icon(Icons.request_quote_rounded, color: kPrimaryColor),
         ),
-        title: Text('سلفة: ${_moneyFmt.format(amount)}',
+        title: LocalizedText('سلفة: ${_moneyFmt.format(amount)}',
             style: const TextStyle(fontWeight: FontWeight.w800)),
-        subtitle: Text(
-          'الموظف: $name\n'
+        subtitle: LocalizedText('الموظف: $name\n'
           'التاريخ: ${dt != null ? _dateTimeFmt.format(dt) : '—'}\n'
           'المتبقي: ${_moneyFmt.format(leftover)}',
           style: TextStyle(color: scheme.onSurface.withValues(alpha: .8)),
@@ -461,10 +461,9 @@ class _EmployeesTransactionsScreenState
           padding: const EdgeInsets.all(8),
           child: const Icon(Icons.percent_rounded, color: kPrimaryColor),
         ),
-        title: Text('خصم: ${_moneyFmt.format(amount)}',
+        title: LocalizedText('خصم: ${_moneyFmt.format(amount)}',
             style: const TextStyle(fontWeight: FontWeight.w800)),
-        subtitle: Text(
-          'الموظف: $name\n'
+        subtitle: LocalizedText('الموظف: $name\n'
           'التاريخ: ${dt != null ? _dateTimeFmt.format(dt) : '—'}\n'
           'ملاحظات: $notes',
           style: TextStyle(color: scheme.onSurface.withValues(alpha: .8)),
@@ -503,10 +502,9 @@ class _EmployeesTransactionsScreenState
           padding: const EdgeInsets.all(8),
           child: const Icon(Icons.payments_rounded, color: kPrimaryColor),
         ),
-        title: Text('الموظف: $name',
+        title: LocalizedText('الموظف: $name',
             style: const TextStyle(fontWeight: FontWeight.w800)),
-        subtitle: Text(
-          'الشهر/السنة: $month/$year\n'
+        subtitle: LocalizedText('الشهر/السنة: $month/$year\n'
           'تاريخ الصرف: ${dt != null ? _dateTimeFmt.format(dt) : '—'}\n'
           '${periodText != null ? 'الفترة الفعلية: $periodText\n' : ''}'
           'الراتب: ${_moneyFmt.format(finalSalary)}, '

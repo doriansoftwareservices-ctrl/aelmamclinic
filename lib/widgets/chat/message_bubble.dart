@@ -36,6 +36,8 @@ import 'package:aelmamclinic/services/attachment_cache.dart'; // ✅ جديد
 import 'package:aelmamclinic/services/nhost_storage_service.dart';
 import 'package:intl/intl.dart';
 import 'package:aelmamclinic/utils/text_direction.dart' as bidi;
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 /// حالة واجهة مبسّطة لعرض أيقونة الحالة
 enum _UiStatus { sending, sent, delivered, read, failed }
@@ -112,10 +114,11 @@ class MessageBubble extends StatelessWidget {
     final maxW = screenW >= 900 ? screenW * 0.55 : screenW * 0.70;
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Align(
-        alignment:
-            isMine ? Alignment.centerLeft : Alignment.centerRight,
+        alignment: isMine
+            ? AlignmentDirectional.centerEnd
+            : AlignmentDirectional.centerStart,
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
           child: Column(
@@ -143,8 +146,8 @@ class MessageBubble extends StatelessWidget {
 
               // الفقاعة
               Semantics(
-                label: 'رسالة',
-                onLongPressHint: 'إجراءات الرسالة',
+                label: context.trRaw('رسالة'),
+                onLongPressHint: context.trRaw('إجراءات الرسالة'),
                 child: GestureDetector(
                   onLongPress: onLongPress,
                   child: IntrinsicWidth(
@@ -501,8 +504,7 @@ class _TextBody extends StatelessWidget {
           if (edited)
             Padding(
               padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                '(معدل)',
+              child: LocalizedText('(معدل)',
                 style: TextStyle(
                   color: (isMine ? Colors.white : scheme.onSurface)
                       .withValues(alpha: .65),
@@ -515,10 +517,10 @@ class _TextBody extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(top: 8),
               child: Align(
-                alignment: Alignment.centerLeft,
+                alignment: AlignmentDirectional.centerEnd,
                 child: OutlinedButton.icon(
                   icon: const Icon(Icons.refresh_rounded, size: 18),
-                  label: const Text('إعادة المحاولة'),
+                  label: const LocalizedText('إعادة المحاولة'),
                   onPressed: onRetry,
                 ),
               ),
@@ -663,8 +665,7 @@ class _ImageBody extends StatelessWidget {
                   if (edited)
                     Padding(
                       padding: const EdgeInsets.only(top: 4),
-                      child: Text(
-                        '(معدل)',
+                      child: LocalizedText('(معدل)',
                         style: TextStyle(
                           color: scheme.onSurface.withValues(alpha: .55),
                           fontWeight: FontWeight.w700,
@@ -681,10 +682,10 @@ class _ImageBody extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
               child: Align(
-                alignment: Alignment.centerLeft,
+                alignment: AlignmentDirectional.centerEnd,
                 child: OutlinedButton.icon(
                   icon: const Icon(Icons.refresh_rounded, size: 18),
-                  label: const Text('إعادة المحاولة'),
+                  label: const LocalizedText('إعادة المحاولة'),
                   onPressed: onRetry,
                 ),
               ),
@@ -793,7 +794,7 @@ class _FileBodyState extends State<_FileBody> {
       if (!widget.allowRemoteDownload) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('الملف لم يكتمل تنزيله بعد')),
+            const SnackBar(content: LocalizedText('الملف لم يكتمل تنزيله بعد')),
           );
         }
         return;
@@ -812,7 +813,7 @@ class _FileBodyState extends State<_FileBody> {
         if (!widget.allowRemoteDownload) {
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('الملف لم يكتمل تنزيله بعد')),
+              const SnackBar(content: LocalizedText('الملف لم يكتمل تنزيله بعد')),
             );
           }
           return;
@@ -862,7 +863,7 @@ class _FileBodyState extends State<_FileBody> {
           if (!widget.allowRemoteDownload) {
             if (context.mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('الملف لم يكتمل تنزيله بعد')),
+                const SnackBar(content: LocalizedText('الملف لم يكتمل تنزيله بعد')),
               );
             }
             return;
@@ -969,7 +970,7 @@ class _FileBodyState extends State<_FileBody> {
                   ),
                   if (_opening)
                     const Padding(
-                      padding: EdgeInsets.only(left: 6),
+                      padding: EdgeInsetsDirectional.only(start: 6),
                       child: SizedBox(
                         width: 16,
                         height: 16,
@@ -978,7 +979,7 @@ class _FileBodyState extends State<_FileBody> {
                     ),
                   if (_saving)
                     const Padding(
-                      padding: EdgeInsets.only(left: 6),
+                      padding: EdgeInsetsDirectional.only(start: 6),
                       child: SizedBox(
                         width: 16,
                         height: 16,
@@ -995,10 +996,10 @@ class _FileBodyState extends State<_FileBody> {
             Padding(
               padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
               child: Align(
-                alignment: Alignment.centerLeft,
+                alignment: AlignmentDirectional.centerEnd,
                 child: OutlinedButton.icon(
                   icon: const Icon(Icons.refresh_rounded, size: 18),
-                  label: const Text('إعادة المحاولة'),
+                  label: const LocalizedText('إعادة المحاولة'),
                   onPressed: widget.onRetry,
                 ),
               ),
@@ -1146,8 +1147,7 @@ class _DeletedBody extends StatelessWidget {
           Icon(Icons.delete_outline_rounded,
               color: scheme.onSurface.withValues(alpha: .55), size: 18),
           const SizedBox(width: 6),
-          Text(
-            'تم حذف هذه الرسالة',
+          LocalizedText('تم حذف هذه الرسالة',
             style: TextStyle(
               color: scheme.onSurface.withValues(alpha: .6),
               fontStyle: FontStyle.italic,
@@ -1353,15 +1353,22 @@ class _ReactionsBar extends StatelessWidget {
                     emoji: emoji,
                   );
                 }
-              } catch (_) {
-                // تجاهل
+              } catch (e) {
+                final messenger = ScaffoldMessenger.maybeOf(context);
+                messenger?.showSnackBar(
+                  SnackBar(
+                    content: LocalizedText('تعذّر تحديث التفاعل: $e'),
+                  ),
+                );
               }
             },
           ));
         });
 
         return Align(
-          alignment: alignStart ? Alignment.centerRight : Alignment.centerLeft,
+          alignment: alignStart
+              ? AlignmentDirectional.centerStart
+              : AlignmentDirectional.centerEnd,
           child: Wrap(
             spacing: 6,
             runSpacing: 4,

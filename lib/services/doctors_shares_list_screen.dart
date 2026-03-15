@@ -1,5 +1,4 @@
 // lib/services/doctors_shares_list_screen.dart
-import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 
 /*── تصميم TBIAN ─*/
@@ -10,6 +9,8 @@ import 'package:aelmamclinic/core/tbian_ui.dart';
 /*── البيانات ─*/
 import 'package:aelmamclinic/models/doctor.dart';
 import 'db_service.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class DoctorsSharesListScreen extends StatefulWidget {
   const DoctorsSharesListScreen({super.key});
@@ -85,27 +86,27 @@ class _DoctorsSharesListScreenState extends State<DoctorsSharesListScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: scheme.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text('النِّسَب للطبيب: د/${doc.name}',
+        title: LocalizedText('النِّسَب للطبيب: د/${doc.name}',
             style: const TextStyle(fontWeight: FontWeight.w800)),
-        content: const Text('اختر نوع الخدمات المراد عرضها:'),
+        content: const LocalizedText('اختر نوع الخدمات المراد عرضها:'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('إغلاق'),
+            child: const LocalizedText('إغلاق'),
           ),
           FilledButton(
             onPressed: () {
               Navigator.pop(ctx);
               _showDoctorSharesBottomSheet(doc, 'radiology');
             },
-            child: const Text('الأشعة'),
+            child: const LocalizedText('الأشعة'),
           ),
           FilledButton(
             onPressed: () {
               Navigator.pop(ctx);
               _showDoctorSharesBottomSheet(doc, 'lab');
             },
-            child: const Text('المختبر'),
+            child: const LocalizedText('المختبر'),
           ),
         ],
       ),
@@ -144,8 +145,7 @@ class _DoctorsSharesListScreenState extends State<DoctorsSharesListScreen> {
     return [
       Padding(
         padding: const EdgeInsetsDirectional.only(start: 6, bottom: 8),
-        child: Text(
-          'الأطباء: ${_filteredDoctors.length}',
+        child: LocalizedText('الأطباء: ${_filteredDoctors.length}',
           style: TextStyle(
             color: scheme.onSurface.withValues(alpha: .6),
             fontWeight: FontWeight.w800,
@@ -153,7 +153,7 @@ class _DoctorsSharesListScreenState extends State<DoctorsSharesListScreen> {
         ),
       ),
       if (_filteredDoctors.isEmpty)
-        const Center(child: Text('لا توجد نتائج'))
+        const Center(child: LocalizedText('لا توجد نتائج'))
       else
         Wrap(
           spacing: 12,
@@ -181,8 +181,7 @@ class _DoctorsSharesListScreenState extends State<DoctorsSharesListScreen> {
                       ),
                     ),
                   ),
-                  title: Text(
-                    'د/ ${doctor.name}',
+                  title: LocalizedText('د/ ${doctor.name}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontWeight: FontWeight.w900),
@@ -210,7 +209,7 @@ class _DoctorsSharesListScreenState extends State<DoctorsSharesListScreen> {
     final scheme = Theme.of(context).colorScheme;
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -229,7 +228,7 @@ class _DoctorsSharesListScreenState extends State<DoctorsSharesListScreen> {
           ),
           actions: [
             IconButton(
-              tooltip: 'تحديث',
+              tooltip: context.trRaw('تحديث'),
               icon: const Icon(Icons.refresh_rounded),
               onPressed: _loadDoctors,
             ),
@@ -260,8 +259,7 @@ class _DoctorsSharesListScreenState extends State<DoctorsSharesListScreen> {
                       ),
                       const SizedBox(width: 10),
                       const Expanded(
-                        child: Text(
-                          'النِّسَب الخاصة بالأطباء',
+                        child: LocalizedText('النِّسَب الخاصة بالأطباء',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -383,8 +381,8 @@ class _DoctorSharesByTypeWidgetState extends State<DoctorSharesByTypeWidget> {
           content: NeuField(
             controller: controller,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            labelText: 'النسبة (%)',
-            hintText: 'مثال: 10 يعني 10%',
+            labelText: context.trRaw('النسبة (%)'),
+            hintText: context.trRaw('مثال: 10 يعني 10%'),
             prefix: const Icon(Icons.percent_rounded),
             textDirection: TextDirection.ltr,
             textAlign: TextAlign.center,
@@ -392,7 +390,7 @@ class _DoctorSharesByTypeWidgetState extends State<DoctorSharesByTypeWidget> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('إلغاء'),
+              child: const LocalizedText('إلغاء'),
             ),
             FilledButton(
               onPressed: () async {
@@ -400,7 +398,7 @@ class _DoctorSharesByTypeWidgetState extends State<DoctorSharesByTypeWidget> {
                 if (val <= 0) {
                   if (!mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('الرجاء إدخال نسبة صحيحة')),
+                    const SnackBar(content: LocalizedText('الرجاء إدخال نسبة صحيحة')),
                   );
                   return;
                 }
@@ -420,7 +418,7 @@ class _DoctorSharesByTypeWidgetState extends State<DoctorSharesByTypeWidget> {
                 Navigator.pop(ctx);
                 await _loadServices();
               },
-              child: const Text('حفظ'),
+              child: const LocalizedText('حفظ'),
             ),
           ],
         );
@@ -437,16 +435,16 @@ class _DoctorSharesByTypeWidgetState extends State<DoctorSharesByTypeWidget> {
           backgroundColor: scheme.surface,
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('تأكيد الحذف'),
-          content: const Text('هل تريد حذف هذه النسبة؟'),
+          title: const LocalizedText('تأكيد الحذف'),
+          content: const LocalizedText('هل تريد حذف هذه النسبة؟'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('إلغاء'),
+              child: const LocalizedText('إلغاء'),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('حذف'),
+              child: const LocalizedText('حذف'),
             ),
           ],
         );
@@ -464,7 +462,7 @@ class _DoctorSharesByTypeWidgetState extends State<DoctorSharesByTypeWidget> {
     final height = MediaQuery.of(context).size.height * 0.85;
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: SizedBox(
         height: height,
         child: Column(
@@ -490,10 +488,10 @@ class _DoctorSharesByTypeWidgetState extends State<DoctorSharesByTypeWidget> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('د/${widget.doctor.name}',
+                          LocalizedText('د/${widget.doctor.name}',
                               style:
                                   const TextStyle(fontWeight: FontWeight.w900)),
-                          Text('الخدمات ($_typeLabel)',
+                          LocalizedText('الخدمات ($_typeLabel)',
                               style: TextStyle(
                                   color:
                                       scheme.onSurface.withValues(alpha: .75))),
@@ -501,7 +499,7 @@ class _DoctorSharesByTypeWidgetState extends State<DoctorSharesByTypeWidget> {
                       ),
                     ),
                     IconButton(
-                      tooltip: 'إغلاق',
+                      tooltip: context.trRaw('إغلاق'),
                       icon: const Icon(Icons.close),
                       onPressed: () => Navigator.pop(context),
                     ),
@@ -526,7 +524,7 @@ class _DoctorSharesByTypeWidgetState extends State<DoctorSharesByTypeWidget> {
             else if (_servicesWithShare.isEmpty)
               Expanded(
                 child: Center(
-                  child: Text('لا توجد خدمات ($_typeLabel) بعد',
+                  child: LocalizedText('لا توجد خدمات ($_typeLabel) بعد',
                       style: TextStyle(
                           color: scheme.onSurface.withValues(alpha: .65))),
                 ),
@@ -649,7 +647,7 @@ class _ErrorCard extends StatelessWidget {
           ElevatedButton.icon(
             onPressed: onRetry,
             icon: const Icon(Icons.refresh, color: Colors.white, size: 18),
-            label: const Text('إعادة المحاولة',
+            label: const LocalizedText('إعادة المحاولة',
                 style: TextStyle(color: Colors.white)),
             style: ElevatedButton.styleFrom(
               backgroundColor: scheme.error,

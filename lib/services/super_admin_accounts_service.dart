@@ -70,6 +70,13 @@ class SuperAdminAccountsService {
       ),
     );
     if (res.hasException) {
+      final fallback = await _fetchMyAllowedTabsFromView();
+      if (fallback.isNotEmpty ||
+          _isMissingFieldException(res.exception, const [
+            'admin_get_super_admin_tabs',
+          ])) {
+        return fallback;
+      }
       throw res.exception!;
     }
     final rows =
@@ -80,6 +87,56 @@ class SuperAdminAccountsService {
       return _parseTabsValue(row['allowed_tabs']);
     }
     return const [];
+  }
+
+  Future<List<String>> _fetchMyAllowedTabsFromView() async {
+    const query = r'''
+      query MySuperAdminTabsFallback {
+        v_super_admin_tabs(limit: 1) {
+          allowed_tabs
+        }
+      }
+    ''';
+    final res = await _gql.query(
+      QueryOptions(
+        document: gql(query),
+        fetchPolicy: FetchPolicy.noCache,
+        context: _superAdminContext(),
+      ),
+    );
+    if (res.hasException) {
+      if (_isMissingFieldException(res.exception, const [
+        'v_super_admin_tabs',
+        'admin_get_super_admin_tabs',
+      ])) {
+        return const [];
+      }
+      throw res.exception!;
+    }
+    final rows = (res.data?['v_super_admin_tabs'] as List?) ?? const [];
+    if (rows.isEmpty) return const [];
+    final row = rows.first;
+    if (row is Map<String, dynamic>) {
+      return _parseTabsValue(row['allowed_tabs']);
+    }
+    return const [];
+  }
+
+  bool _isMissingFieldException(
+    OperationException? exception,
+    List<String> fieldNames,
+  ) {
+    if (exception == null) return false;
+    final message = exception.graphqlErrors.isEmpty
+        ? exception.toString()
+        : exception.graphqlErrors.map((e) => e.message).join(' | ');
+    final lower = message.toLowerCase();
+    final mentionsField =
+        fieldNames.any((field) => lower.contains(field.toLowerCase()));
+    return mentionsField &&
+        (lower.contains('not found in type') ||
+            lower.contains('validation-failed') ||
+            lower.contains('field') && lower.contains('not found'));
   }
 
   Future<void> setAllowedTabs({

@@ -5,10 +5,12 @@ import 'package:http/http.dart' as http;
 
 import '../core/nhost_config.dart';
 import '../core/nhost_manager.dart';
+import 'nhost_dns_http_client.dart';
 
 /// Thin HTTP helper that injects Nhost auth headers for REST endpoints.
 class NhostApiClient {
-  NhostApiClient({http.Client? client}) : _client = client ?? http.Client();
+  NhostApiClient({http.Client? client})
+      : _client = client ?? NhostDnsHttpClient.createClient();
 
   final http.Client _client;
 

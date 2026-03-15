@@ -1,7 +1,7 @@
 // lib/screens/employees/finance/employee_loans_of_employee_screen.dart
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'dart:ui' as ui show TextDirection;
+import 'package:aelmamclinic/utils/app_formatters.dart';
 /*── تصميم TBIAN ─*/
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
@@ -9,6 +9,8 @@ import 'package:aelmamclinic/core/tbian_ui.dart';
 import 'package:aelmamclinic/services/db_service.dart';
 import 'employee_loan_create_screen.dart';
 import 'finance_access_guard.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class EmployeeLoansOfEmployeeScreen extends StatefulWidget {
   final int empId;
@@ -27,8 +29,8 @@ class _EmployeeLoansOfEmployeeScreenState
   DateTime? _startDate;
   DateTime? _endDate;
 
-  final DateFormat _dateFmt = DateFormat('yyyy-MM-dd');
-  final DateFormat _dateTimeFmt = DateFormat('yyyy-MM-dd HH:mm');
+  DateFormat get _dateFmt => AppFormatters.dateFormat('yyyy-MM-dd');
+  DateFormat get _dateTimeFmt => AppFormatters.dateFormat('yyyy-MM-dd HH:mm');
 
   String _employeeName = '';
   bool _loading = false;
@@ -67,7 +69,7 @@ class _EmployeeLoansOfEmployeeScreenState
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذّرت قراءة السلف: $e')),
+        SnackBar(content: LocalizedText('تعذّرت قراءة السلف: $e')),
       );
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -91,7 +93,7 @@ class _EmployeeLoansOfEmployeeScreenState
         ),
         child: child!,
       ),
-      locale: const Locale('ar', ''),
+      locale: AppFormatters.localeOf(context),
     );
     if (picked != null) {
       setState(() {
@@ -141,16 +143,16 @@ class _EmployeeLoansOfEmployeeScreenState
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('تأكيد الحذف'),
-        content: const Text('هل تريد حذف السلفة؟'),
+        title: const LocalizedText('تأكيد الحذف'),
+        content: const LocalizedText('هل تريد حذف السلفة؟'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('إلغاء'),
+            child: const LocalizedText('إلغاء'),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('حذف'),
+            child: const LocalizedText('حذف'),
           ),
         ],
       ),
@@ -182,13 +184,13 @@ class _EmployeeLoansOfEmployeeScreenState
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم حذف السلفة بنجاح')),
+        const SnackBar(content: LocalizedText('تم حذف السلفة بنجاح')),
       );
       _loadLoans();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('فشل حذف السلفة: $e')),
+        SnackBar(content: LocalizedText('فشل حذف السلفة: $e')),
       );
     }
   }
@@ -210,7 +212,7 @@ class _EmployeeLoansOfEmployeeScreenState
 
     return FinanceAccessGuard(
       child: Directionality(
-        textDirection: ui.TextDirection.rtl,
+        textDirection: Directionality.of(context),
         child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -224,13 +226,13 @@ class _EmployeeLoansOfEmployeeScreenState
                 errorBuilder: (_, __, ___) => const SizedBox.shrink(),
               ),
               const SizedBox(width: 8),
-              Text(title),
+              LocalizedText(title),
             ],
           ),
         ),
         floatingActionButton: FloatingActionButton.extended(
           icon: const Icon(Icons.add),
-          label: const Text('سلفة جديدة'),
+          label: const LocalizedText('سلفة جديدة'),
           onPressed: () async {
             await Navigator.push(
               context,
@@ -267,9 +269,8 @@ class _EmployeeLoansOfEmployeeScreenState
                             ),
                             const SizedBox(width: 12),
                             Expanded(
-                              child: Text(
-                                'السلف الخاصة بالموظف',
-                                textAlign: TextAlign.right,
+                              child: LocalizedText('السلف الخاصة بالموظف',
+                                textAlign: TextAlign.start,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
@@ -354,8 +355,7 @@ class _EmployeeLoansOfEmployeeScreenState
                     Expanded(
                       child: _filteredLoans.isEmpty
                           ? Center(
-                              child: Text(
-                                'لا توجد سلف لهذا الموظف',
+                              child: LocalizedText('لا توجد سلف لهذا الموظف',
                                 style: TextStyle(
                                   color: scheme.onSurface.withValues(alpha: .6),
                                   fontSize: 15.5,
@@ -396,16 +396,14 @@ class _EmployeeLoansOfEmployeeScreenState
                                         contentPadding:
                                             const EdgeInsets.symmetric(
                                                 horizontal: 6, vertical: 8),
-                                        title: Text(
-                                          'سلفة: ${amt.toStringAsFixed(2)}',
+                                        title: LocalizedText('سلفة: ${amt.toStringAsFixed(2)}',
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: const TextStyle(
                                             fontWeight: FontWeight.w800,
                                           ),
                                         ),
-                                        subtitle: Text(
-                                          'التاريخ: ${_dateTimeFmt.format(dt)} • المتبقي: ${left.toStringAsFixed(2)}',
+                                        subtitle: LocalizedText('التاريخ: ${_dateTimeFmt.format(dt)} • المتبقي: ${left.toStringAsFixed(2)}',
                                           maxLines: 2,
                                           overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
@@ -415,7 +413,7 @@ class _EmployeeLoansOfEmployeeScreenState
                                           ),
                                         ),
                                         trailing: IconButton(
-                                          tooltip: 'حذف',
+                                          tooltip: context.trRaw('حذف'),
                                           icon: const Icon(Icons.delete_outline,
                                               color: Colors.red),
                                           onPressed: id == null
@@ -457,7 +455,7 @@ class _StatChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
+          LocalizedText(
             '$label: ',
             style: TextStyle(
               color: scheme.onSurface.withValues(alpha: .75),

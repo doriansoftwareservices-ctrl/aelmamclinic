@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:aelmamclinic/services/nhost_admin_service.dart';
 import 'package:aelmamclinic/models/account_user_summary.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
 
 /// شاشة إدارة حسابات الموظفين.
 /// مسار القراءة الموصى به:
@@ -90,7 +91,7 @@ class _UsersScreenState extends State<UsersScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-            content: Text('هذه العملية مخصّصة للمالك/المدير أو السوبر أدمن فقط.')),
+            content: LocalizedText('هذه العملية مخصّصة للمالك/المدير أو السوبر أدمن فقط.')),
       );
       return;
     }
@@ -107,13 +108,13 @@ class _UsersScreenState extends State<UsersScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text(disabled ? 'تم تجميد الحساب' : 'تم تفعيل الحساب')),
+            content: LocalizedText(disabled ? 'تم تجميد الحساب' : 'تم تفعيل الحساب')),
       );
       await _refresh();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذّر تغيير الحالة: $e')),
+        SnackBar(content: LocalizedText('تعذّر تغيير الحالة: $e')),
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -126,7 +127,7 @@ class _UsersScreenState extends State<UsersScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-            content: Text('هذه العملية مخصّصة للمالك/المدير أو السوبر أدمن فقط.')),
+            content: LocalizedText('هذه العملية مخصّصة للمالك/المدير أو السوبر أدمن فقط.')),
       );
       return;
     }
@@ -134,15 +135,15 @@ class _UsersScreenState extends State<UsersScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('تأكيد حذف الحساب'),
-        content: const Text('سيتم حذف حساب الموظف بشكل نهائي. هل أنت متأكد؟'),
+        title: const LocalizedText('تأكيد حذف الحساب'),
+        content: const LocalizedText('سيتم حذف حساب الموظف بشكل نهائي. هل أنت متأكد؟'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('إلغاء')),
+              child: const LocalizedText('إلغاء')),
           FilledButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('حذف')),
+              child: const LocalizedText('حذف')),
         ],
       ),
     );
@@ -158,13 +159,13 @@ class _UsersScreenState extends State<UsersScreen> {
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم حذف الحساب')),
+        const SnackBar(content: LocalizedText('تم حذف الحساب')),
       );
       await _refresh();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذّر الحذف: $e')),
+        SnackBar(content: LocalizedText('تعذّر الحذف: $e')),
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -182,7 +183,7 @@ class _UsersScreenState extends State<UsersScreen> {
       children: [
         Scaffold(
           appBar: AppBar(
-            title: const Text('إدارة حسابات الموظفين'),
+            title: const LocalizedText('إدارة حسابات الموظفين'),
             actions: [
               if (busy)
                 const Padding(
@@ -210,8 +211,7 @@ class _UsersScreenState extends State<UsersScreen> {
                     children: const [
                       SizedBox(height: 48),
                       Center(
-                        child: Text(
-                          'هذه الشاشة مخصّصة للمالك/المدير أو السوبر أدمن فقط.',
+                        child: LocalizedText('هذه الشاشة مخصّصة للمالك/المدير أو السوبر أدمن فقط.',
                           textAlign: TextAlign.center,
                         ),
                       ),
@@ -237,8 +237,7 @@ class _UsersScreenState extends State<UsersScreen> {
                       Center(
                         child: Padding(
                           padding: const EdgeInsets.all(16),
-                          child: Text(
-                            'تعذّر تحميل الموظفين:\n${snapshot.error}',
+                          child: LocalizedText('تعذّر تحميل الموظفين:\n${snapshot.error}',
                             textAlign: TextAlign.center,
                             style: const TextStyle(color: Colors.red),
                           ),
@@ -253,7 +252,7 @@ class _UsersScreenState extends State<UsersScreen> {
                     physics: physics,
                     children: const [
                       SizedBox(height: 48),
-                      Center(child: Text('لا يوجد حساب محدّد لعرض الموظفين.')),
+                      Center(child: LocalizedText('لا يوجد حساب محدّد لعرض الموظفين.')),
                     ],
                   );
                 }
@@ -265,7 +264,7 @@ class _UsersScreenState extends State<UsersScreen> {
                     children: const [
                       SizedBox(height: 48),
                       Center(
-                          child: Text('لا يوجد موظفون مسجّلون لهذه العيادة.')),
+                          child: LocalizedText('لا يوجد موظفون مسجّلون لهذه العيادة.')),
                     ],
                   );
                 }
@@ -306,11 +305,11 @@ class _UsersScreenState extends State<UsersScreen> {
                         itemBuilder: (_) => const [
                           PopupMenuItem(
                             value: 'toggle',
-                            child: Text('تجميد/إلغاء التجميد'),
+                            child: LocalizedText('تجميد/إلغاء التجميد'),
                           ),
                           PopupMenuItem(
                             value: 'delete',
-                            child: Text('حذف الحساب'),
+                            child: LocalizedText('حذف الحساب'),
                           ),
                         ],
                       ),

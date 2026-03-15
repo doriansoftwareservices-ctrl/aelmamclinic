@@ -9,6 +9,8 @@ import 'package:aelmamclinic/models/patient_complaint_template.dart';
 import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/services/patient_questions_service.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class ComplaintQuestionsScreen extends StatefulWidget {
   final PatientComplaintTemplate template;
@@ -63,7 +65,7 @@ class _ComplaintQuestionsScreenState extends State<ComplaintQuestionsScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('تعذر تحميل الأسئلة: $e')));
+          .showSnackBar(SnackBar(content: LocalizedText('تعذر تحميل الأسئلة: $e')));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -99,7 +101,7 @@ class _ComplaintQuestionsScreenState extends State<ComplaintQuestionsScreen> {
       builder: (ctx) {
         final scheme = Theme.of(ctx).colorScheme;
         return AlertDialog(
-          title: const Text('إضافة سؤال'),
+          title: const LocalizedText('إضافة سؤال'),
           backgroundColor: scheme.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(kRadius),
@@ -108,7 +110,7 @@ class _ComplaintQuestionsScreenState extends State<ComplaintQuestionsScreen> {
             key: formKey,
             child: NeuField(
               controller: ctrl,
-              labelText: 'نص السؤال',
+              labelText: context.trRaw('نص السؤال'),
               maxLines: 3,
               prefix: const Icon(Icons.help_outline),
               validator: (v) => (v == null || v.trim().isEmpty)
@@ -119,14 +121,14 @@ class _ComplaintQuestionsScreenState extends State<ComplaintQuestionsScreen> {
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('إلغاء')),
+                child: const LocalizedText('إلغاء')),
             FilledButton(
               onPressed: () {
                 if (formKey.currentState?.validate() ?? false) {
                   Navigator.pop(ctx, true);
                 }
               },
-              child: const Text('حفظ'),
+              child: const LocalizedText('حفظ'),
             ),
           ],
         );
@@ -168,7 +170,7 @@ class _ComplaintQuestionsScreenState extends State<ComplaintQuestionsScreen> {
       if (!mounted) return;
       final msg = _isPermissionError(e) ? _permissionMessage(auth) : '$e';
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('فشل الحفظ: $msg')));
+          .showSnackBar(SnackBar(content: LocalizedText('فشل الحفظ: $msg')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -185,7 +187,7 @@ class _ComplaintQuestionsScreenState extends State<ComplaintQuestionsScreen> {
       builder: (ctx) {
         final scheme = Theme.of(ctx).colorScheme;
         return AlertDialog(
-          title: const Text('تعديل السؤال'),
+          title: const LocalizedText('تعديل السؤال'),
           backgroundColor: scheme.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(kRadius),
@@ -194,7 +196,7 @@ class _ComplaintQuestionsScreenState extends State<ComplaintQuestionsScreen> {
             key: formKey,
             child: NeuField(
               controller: ctrl,
-              labelText: 'نص السؤال',
+              labelText: context.trRaw('نص السؤال'),
               maxLines: 3,
               prefix: const Icon(Icons.help_outline),
               validator: (v) => (v == null || v.trim().isEmpty)
@@ -205,14 +207,14 @@ class _ComplaintQuestionsScreenState extends State<ComplaintQuestionsScreen> {
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('إلغاء')),
+                child: const LocalizedText('إلغاء')),
             FilledButton(
               onPressed: () {
                 if (formKey.currentState?.validate() ?? false) {
                   Navigator.pop(ctx, true);
                 }
               },
-              child: const Text('حفظ'),
+              child: const LocalizedText('حفظ'),
             ),
           ],
         );
@@ -231,7 +233,7 @@ class _ComplaintQuestionsScreenState extends State<ComplaintQuestionsScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('تعذر التحديث: $e')));
+          .showSnackBar(SnackBar(content: LocalizedText('تعذر التحديث: $e')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -251,7 +253,7 @@ class _ComplaintQuestionsScreenState extends State<ComplaintQuestionsScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('تعذر التحديث: $e')));
+          .showSnackBar(SnackBar(content: LocalizedText('تعذر التحديث: $e')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -276,7 +278,7 @@ class _ComplaintQuestionsScreenState extends State<ComplaintQuestionsScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('تعذر إعادة الترتيب: $e')));
+          .showSnackBar(SnackBar(content: LocalizedText('تعذر إعادة الترتيب: $e')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -289,13 +291,13 @@ class _ComplaintQuestionsScreenState extends State<ComplaintQuestionsScreen> {
     final canManage = _canManage(auth);
 
     return Directionality(
-      textDirection: TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
-          title: Text('أسئلة: ${widget.template.title}'),
+          title: LocalizedText('أسئلة: ${widget.template.title}'),
           actions: [
             IconButton(
-              tooltip: 'تحديث',
+              tooltip: context.trRaw('تحديث'),
               onPressed: _load,
               icon: const Icon(Icons.refresh),
             ),
@@ -309,8 +311,7 @@ class _ComplaintQuestionsScreenState extends State<ComplaintQuestionsScreen> {
                 Row(
                   children: [
                     Expanded(
-                      child: Text(
-                        'إدارة الأسئلة الخاصة بالشكوى',
+                      child: LocalizedText('إدارة الأسئلة الخاصة بالشكوى',
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           color: scheme.onSurface,
@@ -324,7 +325,7 @@ class _ComplaintQuestionsScreenState extends State<ComplaintQuestionsScreen> {
                         _load();
                       },
                     ),
-                    const Text('إظهار المعطّل'),
+                    const LocalizedText('إظهار المعطّل'),
                   ],
                 ),
                 const SizedBox(height: 10),
@@ -333,10 +334,10 @@ class _ComplaintQuestionsScreenState extends State<ComplaintQuestionsScreen> {
                       ? const Center(child: CircularProgressIndicator())
                       : (!_isDoctor && !auth.isSuperAdmin)
                           ? const Center(
-                              child: Text('هذه الميزة متاحة للأطباء فقط.'),
+                              child: LocalizedText('هذه الميزة متاحة للأطباء فقط.'),
                             )
                           : _questions.isEmpty
-                              ? const Center(child: Text('لا توجد أسئلة بعد'))
+                              ? const Center(child: LocalizedText('لا توجد أسئلة بعد'))
                               : ReorderableListView.builder(
                               itemCount: _questions.length,
                               onReorder: _reorder,
@@ -395,13 +396,13 @@ class _ComplaintQuestionsScreenState extends State<ComplaintQuestionsScreen> {
                                               OutlinedButton.icon(
                                                 onPressed: () => _editQuestion(q),
                                                 icon: const Icon(Icons.edit),
-                                                label: const Text('تعديل'),
+                                                label: const LocalizedText('تعديل'),
                                               ),
                                             if (canManage)
                                               OutlinedButton.icon(
                                                 onPressed: () => _toggleActive(q, false),
                                                 icon: const Icon(Icons.block),
-                                                label: const Text('تعطيل'),
+                                                label: const LocalizedText('تعطيل'),
                                               ),
                                           ],
                                         )
@@ -419,7 +420,7 @@ class _ComplaintQuestionsScreenState extends State<ComplaintQuestionsScreen> {
                     child: FilledButton.icon(
                       onPressed: _saving ? null : _openCreateDialog,
                       icon: const Icon(Icons.add),
-                      label: const Text('إضافة سؤال'),
+                      label: const LocalizedText('إضافة سؤال'),
                     ),
                   ),
                 ],

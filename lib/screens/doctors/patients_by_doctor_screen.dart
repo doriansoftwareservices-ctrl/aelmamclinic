@@ -1,7 +1,6 @@
 // lib/screens/doctors/patients_by_doctor_screen.dart
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'dart:ui' as ui show TextDirection;
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
@@ -15,6 +14,8 @@ import 'package:aelmamclinic/services/export_service.dart';
 import 'package:aelmamclinic/screens/patients/view_patient_screen.dart';
 import 'package:aelmamclinic/screens/patients/edit_patient_screen.dart';
 import 'package:aelmamclinic/screens/patients/duplicate_patients_screen.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class PatientsByDoctorScreen extends StatefulWidget {
   final Doctor doctor;
@@ -118,7 +119,7 @@ class _PatientsByDoctorScreenState extends State<PatientsByDoctorScreen> {
     } else {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('لا يمكن إجراء المكالمة')),
+        const SnackBar(content: LocalizedText('لا يمكن إجراء المكالمة')),
       );
     }
   }
@@ -127,7 +128,7 @@ class _PatientsByDoctorScreenState extends State<PatientsByDoctorScreen> {
     if (_filteredPatients.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('لا توجد بيانات للمشاركة')),
+        const SnackBar(content: LocalizedText('لا توجد بيانات للمشاركة')),
       );
       return;
     }
@@ -146,7 +147,7 @@ class _PatientsByDoctorScreenState extends State<PatientsByDoctorScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('حدث خطأ أثناء المشاركة: $e')),
+        SnackBar(content: LocalizedText('حدث خطأ أثناء المشاركة: $e')),
       );
     }
   }
@@ -155,7 +156,7 @@ class _PatientsByDoctorScreenState extends State<PatientsByDoctorScreen> {
     if (_filteredPatients.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('لا توجد بيانات للتنزيل')),
+        const SnackBar(content: LocalizedText('لا توجد بيانات للتنزيل')),
       );
       return;
     }
@@ -168,12 +169,12 @@ class _PatientsByDoctorScreenState extends State<PatientsByDoctorScreen> {
       await file.writeAsBytes(bytes);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تم التنزيل إلى: $path')),
+        SnackBar(content: LocalizedText('تم التنزيل إلى: $path')),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('حدث خطأ أثناء التنزيل: $e')),
+        SnackBar(content: LocalizedText('حدث خطأ أثناء التنزيل: $e')),
       );
     }
   }
@@ -199,7 +200,7 @@ class _PatientsByDoctorScreenState extends State<PatientsByDoctorScreen> {
         .toStringAsFixed(2);
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -208,18 +209,18 @@ class _PatientsByDoctorScreenState extends State<PatientsByDoctorScreen> {
             children: [
               const Icon(Icons.groups_rounded),
               const SizedBox(width: 8),
-              Text('مرضى د/ ${widget.doctor.name}'),
+              LocalizedText('مرضى د/ ${widget.doctor.name}'),
             ],
           ),
           actions: [
             IconButton(
               icon: const Icon(Icons.share_rounded),
-              tooltip: 'مشاركة Excel',
+              tooltip: context.trRaw('مشاركة Excel'),
               onPressed: _shareExcelFile,
             ),
             IconButton(
               icon: const Icon(Icons.download_rounded),
-              tooltip: 'تنزيل Excel',
+              tooltip: context.trRaw('تنزيل Excel'),
               onPressed: _downloadExcelFile,
             ),
           ],
@@ -232,7 +233,7 @@ class _PatientsByDoctorScreenState extends State<PatientsByDoctorScreen> {
                 // بحث
                 NeuField(
                   controller: _searchController,
-                  hintText: 'ابحث عن المريض أو رقم الهاتف',
+                  hintText: context.trRaw('ابحث عن المريض أو رقم الهاتف'),
                   prefix: const Icon(Icons.search_rounded),
                 ),
                 const SizedBox(height: 12),
@@ -265,7 +266,7 @@ class _PatientsByDoctorScreenState extends State<PatientsByDoctorScreen> {
                       OutlinedButton.icon(
                         onPressed: _resetFilterDates,
                         icon: const Icon(Icons.refresh_rounded),
-                        label: const Text('تفريغ'),
+                        label: const LocalizedText('تفريغ'),
                       ),
                     ],
                   ),
@@ -295,8 +296,7 @@ class _PatientsByDoctorScreenState extends State<PatientsByDoctorScreen> {
                 Expanded(
                   child: groups.isEmpty
                       ? Center(
-                          child: Text(
-                            'لا توجد نتائج',
+                          child: LocalizedText('لا توجد نتائج',
                             style: TextStyle(
                               color: Theme.of(context)
                                   .colorScheme
@@ -382,7 +382,7 @@ class _PatientsByDoctorScreenState extends State<PatientsByDoctorScreen> {
                                           ScaffoldMessenger.of(context)
                                               .showSnackBar(
                                             const SnackBar(
-                                              content: Text('لا يوجد رقم هاتف'),
+                                              content: LocalizedText('لا يوجد رقم هاتف'),
                                             ),
                                           );
                                         }
@@ -419,7 +419,7 @@ class _PatientsByDoctorScreenState extends State<PatientsByDoctorScreen> {
                                                   .primary,
                                             ),
                                             const SizedBox(width: 8),
-                                            const Text('اتصال'),
+                                            const LocalizedText('اتصال'),
                                           ],
                                         ),
                                       ),
@@ -436,7 +436,7 @@ class _PatientsByDoctorScreenState extends State<PatientsByDoctorScreen> {
                                                     .primary,
                                               ),
                                               const SizedBox(width: 8),
-                                              const Text('تعديل'),
+                                              const LocalizedText('تعديل'),
                                             ],
                                           ),
                                         ),
@@ -450,7 +450,7 @@ class _PatientsByDoctorScreenState extends State<PatientsByDoctorScreen> {
                                               color: Colors.red,
                                             ),
                                             SizedBox(width: 8),
-                                            Text('حذف'),
+                                            LocalizedText('حذف'),
                                           ],
                                         ),
                                       ),

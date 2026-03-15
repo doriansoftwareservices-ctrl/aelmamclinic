@@ -1,5 +1,4 @@
 // lib/screens/settings/theme_settings_screen.dart
-import 'dart:ui' as ui show TextDirection;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -10,6 +9,8 @@ import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/core/tbian_ui.dart';
 
 import 'package:aelmamclinic/providers/theme_provider.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class ThemeSettingsScreen extends StatelessWidget {
   const ThemeSettingsScreen({super.key});
@@ -24,7 +25,7 @@ class ThemeSettingsScreen extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -68,12 +69,10 @@ class ThemeSettingsScreen extends StatelessWidget {
                       size: 22,
                     ),
                   ),
-                  title: const Text(
-                    'الوضع الداكن',
+                  title: const LocalizedText('الوضع الداكن',
                     style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
                   ),
-                  subtitle: Text(
-                    'فعِّل لاستخدام الثيم الداكن • التعـديـل فـوري',
+                  subtitle: LocalizedText('فعِّل لاستخدام الثيم الداكن • التعـديـل فـوري',
                     style: TextStyle(
                         color: scheme.onSurface.withValues(alpha: .75)),
                   ),
@@ -165,7 +164,7 @@ class _ColorBadge extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(label,
+                  LocalizedText(label,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -242,7 +241,7 @@ class _PreviewAreaState extends State<_PreviewArea> {
     if (!mounted) return;
     setState(() => _busy = false);
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('تم تنفيذ العملية التجريبية.')),
+      const SnackBar(content: LocalizedText('تم تنفيذ العملية التجريبية.')),
     );
   }
 
@@ -254,7 +253,7 @@ class _PreviewAreaState extends State<_PreviewArea> {
         children: [
           NeuField(
             controller: _textCtrl,
-            labelText: 'حقل إدخال (معاينة)',
+            labelText: context.trRaw('حقل إدخال (معاينة)'),
           ),
           const SizedBox(height: 10),
           Row(

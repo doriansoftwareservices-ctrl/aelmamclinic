@@ -1,3 +1,8 @@
+const {
+  extractBearer,
+  resolveUserIdFromToken,
+} = require('../_shared/storage_utils');
+
 const readBody = (req) =>
   new Promise((resolve) => {
     if (req.body && typeof req.body === 'object') {
@@ -194,36 +199,6 @@ async function deleteUser(userId) {
     if (res.status !== 404) break;
   }
 }
-
-const decodeJwtPayload = (authHeader) => {
-  if (!authHeader) return null;
-  const raw = authHeader.startsWith('Bearer ')
-    ? authHeader.slice('Bearer '.length).trim()
-    : authHeader.trim();
-  const parts = raw.split('.');
-  if (parts.length < 2) return null;
-  const payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-  const pad = payload.length % 4 ? '='.repeat(4 - (payload.length % 4)) : '';
-  try {
-    return JSON.parse(Buffer.from(payload + pad, 'base64').toString('utf8'));
-  } catch (_) {
-    return null;
-  }
-};
-
-const extractUserIdFromAuth = (authHeader) => {
-  const payload = decodeJwtPayload(authHeader) || {};
-  const claims =
-    payload['https://hasura.io/jwt/claims'] ||
-    payload['https://hasura.io/jwt/claims'.toString()] ||
-    {};
-  return (
-    claims['x-hasura-user-id'] ||
-    payload['x-hasura-user-id'] ||
-    payload.sub ||
-    ''
-  );
-};
 
 async function callAdminCreateEmployee(
   accountId,
@@ -422,10 +397,15 @@ module.exports = async function handler(req, res) {
     const accountId = `${body.account_id ?? ''}`.trim();
     const email = `${body.email ?? ''}`.trim().toLowerCase();
     const password = `${body.password ?? ''}`;
-    const superUserId = extractUserIdFromAuth(authHeader);
+    const token = extractBearer(req);
+    const superUserId = token ? await resolveUserIdFromToken(token) : '';
 
     if (!accountId || !email || !password) {
       res.status(400).json({ ok: false, error: 'Missing fields' });
+      return;
+    }
+    if (!superUserId) {
+      res.status(401).json({ ok: false, error: 'Invalid token' });
       return;
     }
 

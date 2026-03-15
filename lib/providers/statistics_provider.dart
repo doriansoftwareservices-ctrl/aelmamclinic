@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:aelmamclinic/utils/app_formatters.dart';
 
 import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/core/active_account_store.dart';
@@ -11,8 +12,8 @@ import 'package:aelmamclinic/services/support_ratings_service.dart';
 import 'package:aelmamclinic/core/auth_role_state.dart';
 import 'package:aelmamclinic/models/alert_setting.dart';
 import 'package:aelmamclinic/models/item.dart';
-import 'package:aelmamclinic/models/patient.dart';
-import 'package:aelmamclinic/models/consumption.dart';
+import 'package:aelmamclinic/phase8/statistics_redesign.dart';
+import 'package:aelmamclinic/utils/app_observability.dart';
 
 /// يجمع إحصاءات حيّة لتعبئة بطاقات Hero في لوحة الإحصاءات.
 class StatisticsProvider extends ChangeNotifier {
@@ -26,7 +27,7 @@ class StatisticsProvider extends ChangeNotifier {
     refresh();
   }
 
-  Timer? _pollTimer;
+  Timer? _dirtyCheckTimer;
   Timer? _refreshDebounce;
   Timer? _chartsDebounce;
   StreamSubscription<String>? _dbChangesSub;
@@ -64,15 +65,7 @@ class StatisticsProvider extends ChangeNotifier {
       }
     });
 
-    // فحص احتياطي بطيء لتحديث الإحصاءات في حال عدم وصول تغييرات.
-    _pollTimer ??= Timer.periodic(const Duration(seconds: 60), (_) async {
-      if (_disposed) return;
-      final db = DBService.instance;
-      if (await db.isStatisticsDirty()) {
-        await refresh();
-        await db.clearStatisticsDirty();
-      }
-    });
+    _scheduleDirtyCheck();
   }
 
   void _scheduleRefresh() {
@@ -89,10 +82,39 @@ class StatisticsProvider extends ChangeNotifier {
     });
   }
 
+  void _scheduleDirtyCheck({
+    Duration delay = const Duration(seconds: 60),
+  }) {
+    _dirtyCheckTimer?.cancel();
+    _dirtyCheckTimer = Timer(delay, () async {
+      if (_disposed) return;
+      final db = DBService.instance;
+      try {
+        if (await db.isStatisticsDirty()) {
+          await refresh();
+          await db.clearStatisticsDirty();
+        }
+      } catch (e, st) {
+        AppObservability.warn(
+          scope: 'STATS',
+          code: ObsCode.statsDirtyCheckFailed,
+          message: 'statistics dirty-check refresh failed',
+          flowId: AppObservability.newFlowId('stats_dirty_check'),
+          error: e,
+          stackTrace: st,
+        );
+      } finally {
+        if (!_disposed) {
+          _scheduleDirtyCheck();
+        }
+      }
+    });
+  }
+
   @override
   void dispose() {
     _disposed = true;
-    _pollTimer?.cancel();
+    _dirtyCheckTimer?.cancel();
     _refreshDebounce?.cancel();
     _chartsDebounce?.cancel();
     _dbChangesSub?.cancel();
@@ -256,21 +278,30 @@ class StatisticsProvider extends ChangeNotifier {
   Map<String, double> get supportMonthlyAvg => _supportMonthlyAvg;
   Map<String, int> get supportMonthlyCount => _supportMonthlyCount;
 
-  final _currency =
-      NumberFormat.currency(locale: 'ar', symbol: '', decimalDigits: 0);
-  String get fmtRevenue => _currency.format(_monthlyRevenue);
-  String get fmtExpense => _currency.format(_monthlyExpense);
-  String get fmtDoctorRatios => _currency.format(_monthlyDoctorRatios);
-  String get fmtDoctorInputs => _currency.format(_monthlyDoctorInputs);
-  String get fmtTowerShare => _currency.format(_monthlyTowerShare);
-  String get fmtLoansPaid => _currency.format(_monthlyLoansPaid);
-  String get fmtDiscounts => _currency.format(_monthlyDiscounts);
-  String get fmtSalariesPaid => _currency.format(_monthlySalariesPaid);
+  String get fmtRevenue =>
+      AppFormatters.formatCurrency(_monthlyRevenue, decimalDigits: 0);
+  String get fmtExpense =>
+      AppFormatters.formatCurrency(_monthlyExpense, decimalDigits: 0);
+  String get fmtDoctorRatios =>
+      AppFormatters.formatCurrency(_monthlyDoctorRatios, decimalDigits: 0);
+  String get fmtDoctorInputs =>
+      AppFormatters.formatCurrency(_monthlyDoctorInputs, decimalDigits: 0);
+  String get fmtTowerShare =>
+      AppFormatters.formatCurrency(_monthlyTowerShare, decimalDigits: 0);
+  String get fmtLoansPaid =>
+      AppFormatters.formatCurrency(_monthlyLoansPaid, decimalDigits: 0);
+  String get fmtDiscounts =>
+      AppFormatters.formatCurrency(_monthlyDiscounts, decimalDigits: 0);
+  String get fmtSalariesPaid =>
+      AppFormatters.formatCurrency(_monthlySalariesPaid, decimalDigits: 0);
   String get fmtFacilityConsumptions =>
-      _currency.format(_monthlyFacilityConsumptions);
-  String get fmtNetProfit => _currency.format(_monthlyNetProfit);
-  String get fmtPatientsRemaining => _currency.format(_monthlyPatientsRemaining);
-  String get fmtPendingLoans => _currency.format(_pendingLoans);
+      AppFormatters.formatCurrency(_monthlyFacilityConsumptions, decimalDigits: 0);
+  String get fmtNetProfit =>
+      AppFormatters.formatCurrency(_monthlyNetProfit, decimalDigits: 0);
+  String get fmtPatientsRemaining =>
+      AppFormatters.formatCurrency(_monthlyPatientsRemaining, decimalDigits: 0);
+  String get fmtPendingLoans =>
+      AppFormatters.formatCurrency(_pendingLoans, decimalDigits: 0);
 
   /// تحميل / تحديث جميع الإحصاءات
   Future<void> refresh() async {
@@ -427,9 +458,6 @@ class StatisticsProvider extends ChangeNotifier {
 
   DateTime _monthStart(DateTime d) => DateTime(d.year, d.month, 1);
 
-  DateTime _monthEnd(DateTime d) =>
-      DateTime(d.year, d.month + 1, 0, 23, 59, 59);
-
   List<DateTime> _monthBuckets(DateTime from, DateTime to) {
     final start = _monthStart(from);
     final end = _monthStart(to);
@@ -440,10 +468,6 @@ class StatisticsProvider extends ChangeNotifier {
       cursor = DateTime(cursor.year, cursor.month + 1, 1);
     }
     return buckets;
-  }
-
-  List<String> _monthLabels() {
-    return List<String>.generate(12, (i) => (i + 1).toString().padLeft(2, '0'));
   }
 
   Map<String, double> _linearForecast(
@@ -503,58 +527,36 @@ class StatisticsProvider extends ChangeNotifier {
       final range = _normalizedRange(_chartsFrom, _chartsTo);
       final start = range.start;
       final end = range.end;
-
-      final List<Patient> patients = await db.getAllPatients();
-      Iterable<Patient> patientsFiltered = patients;
-      if (start != null) {
-        patientsFiltered = patientsFiltered.where((p) =>
-            p.registerDate.isAfter(start.subtract(const Duration(days: 1))));
-      }
-      if (end != null) {
-        patientsFiltered = patientsFiltered.where((p) =>
-            p.registerDate.isBefore(end.add(const Duration(days: 1))));
-      }
-
-      final df = DateFormat('yyyy-MM-dd');
-      final incomeByDate = <String, double>{};
-      final incomeByDoctor = <String, double>{};
-      for (final p in patientsFiltered) {
-        final k = df.format(p.registerDate);
-        incomeByDate[k] = (incomeByDate[k] ?? 0) + _safeNumber(p.paidAmount);
-
-        final nameRaw = p.doctorName;
-        final doc = (nameRaw == null || nameRaw.trim().isEmpty)
-            ? 'الأشعة/المختبر'
-            : nameRaw.trim();
-        incomeByDoctor[doc] =
-            (incomeByDoctor[doc] ?? 0) + _safeNumber(p.paidAmount);
-      }
-
-      final List<Consumption> consumptions = await db.getAllConsumption();
-      Iterable<Consumption> consFiltered = consumptions;
-      if (start != null) {
-        consFiltered = consFiltered.where((c) =>
-            c.date.isAfter(start.subtract(const Duration(days: 1))));
-      }
-      if (end != null) {
-        consFiltered = consFiltered.where((c) =>
-            c.date.isBefore(end.add(const Duration(days: 1))));
-      }
-
-      final consByDate = <String, double>{};
-      final consByType = <String, double>{};
-      for (final c in consFiltered) {
-        final k = df.format(c.date);
-        consByDate[k] = (consByDate[k] ?? 0) + _safeNumber(c.amount);
-        final noteRaw = (c.note ?? '').trim();
-        final type = noteRaw.isEmpty ? 'غير محدد' : noteRaw;
-        consByType[type] = (consByType[type] ?? 0) + _safeNumber(c.amount);
-      }
-
       final from = start ?? DateTime(2000);
       final to = end ?? DateTime(2100);
-      final shareByDate = await db.getDoctorShareByDateBetween(from, to);
-      final netByDate = await db.getNetProfitByDateBetween(from, to);
+
+      final results = await Future.wait<Object>([
+        db.getIncomeByDateBetween(from, to),
+        db.getPatientPaymentsByDoctorBetween(from, to),
+        db.getConsumptionByDateBetween(from, to),
+        db.getConsumptionByTypeBetween(from, to),
+        db.getDoctorShareByDateBetween(from, to),
+        db.getNetProfitByDateBetween(from, to),
+      ]);
+
+      final incomeByDate = Map<String, double>.from(
+        results[0] as Map<String, double>,
+      );
+      final incomeByDoctor = Map<String, double>.from(
+        results[1] as Map<String, double>,
+      );
+      final consByDate = Map<String, double>.from(
+        results[2] as Map<String, double>,
+      );
+      final consByType = Map<String, double>.from(
+        results[3] as Map<String, double>,
+      );
+      final shareByDate = Map<String, double>.from(
+        results[4] as Map<String, double>,
+      );
+      final netByDate = Map<String, double>.from(
+        results[5] as Map<String, double>,
+      );
       final outstanding =
           await db.getDoctorOutstandingBalances(asOf: _doctorOutstandingAsOf);
 
@@ -569,93 +571,51 @@ class StatisticsProvider extends ChangeNotifier {
         monthlyTo = _monthStart(now);
         monthlyFrom = DateTime(now.year, now.month - 5, 1);
       }
-      final buckets = _monthBuckets(monthlyFrom, monthlyTo);
-      final monthFmt = DateFormat('yyyy-MM');
-      final incomeByMonth = <String, double>{};
-      final consumptionByMonth = <String, double>{};
-      final netByMonth = <String, double>{};
-
-      for (final m in buckets) {
-        final label = monthFmt.format(m);
-        incomeByMonth[label] = 0.0;
-        consumptionByMonth[label] = 0.0;
-        netByMonth[label] = 0.0;
-      }
-
-      for (final p in patients) {
-        final key = monthFmt.format(_monthStart(p.registerDate));
-        if (incomeByMonth.containsKey(key)) {
-          incomeByMonth[key] =
-              (incomeByMonth[key] ?? 0) + _safeNumber(p.paidAmount);
-        }
-      }
-
-      for (final c in consumptions) {
-        final key = monthFmt.format(_monthStart(c.date));
-        if (consumptionByMonth.containsKey(key)) {
-          consumptionByMonth[key] =
-              (consumptionByMonth[key] ?? 0) + _safeNumber(c.amount);
-        }
-      }
-
-      for (final m in buckets) {
-        final label = monthFmt.format(m);
-        final monthStart = _monthStart(m);
-        final monthEnd = _monthEnd(m);
-        final map = await db.getNetProfitByDateBetween(monthStart, monthEnd);
-        final sum = map.values.fold<double>(
-          0.0,
-          (s, v) => s + _safeNumber(v),
-        );
-        netByMonth[label] = sum;
-      }
+      final incomeByMonth = rollupDailySeriesToMonthly(
+        incomeByDate,
+        from: monthlyFrom,
+        to: monthlyTo,
+      );
+      final consumptionByMonth = rollupDailySeriesToMonthly(
+        consByDate,
+        from: monthlyFrom,
+        to: monthlyTo,
+      );
+      final netByMonth = rollupDailySeriesToMonthly(
+        netByDate,
+        from: monthlyFrom,
+        to: monthlyTo,
+      );
 
       // مقارنة سنوية (عامين)
-      final months = _monthLabels();
-      final incomeYearA = <String, double>{};
-      final incomeYearB = <String, double>{};
-      final netYearA = <String, double>{};
-      final netYearB = <String, double>{};
+      final yearStartA = DateTime(_compareYearA, 1, 1);
+      final yearEndA = DateTime(_compareYearA, 12, 31, 23, 59, 59);
+      final yearStartB = DateTime(_compareYearB, 1, 1);
+      final yearEndB = DateTime(_compareYearB, 12, 31, 23, 59, 59);
 
-      for (final m in months) {
-        incomeYearA[m] = 0.0;
-        incomeYearB[m] = 0.0;
-        netYearA[m] = 0.0;
-        netYearB[m] = 0.0;
-      }
+      final yearResults = await Future.wait<Object>([
+        db.getIncomeByDateBetween(yearStartA, yearEndA),
+        db.getIncomeByDateBetween(yearStartB, yearEndB),
+        db.getNetProfitByDateBetween(yearStartA, yearEndA),
+        db.getNetProfitByDateBetween(yearStartB, yearEndB),
+      ]);
 
-      for (final p in patients) {
-        final y = p.registerDate.year;
-        final m = p.registerDate.month.toString().padLeft(2, '0');
-        if (y == _compareYearA && incomeYearA.containsKey(m)) {
-          incomeYearA[m] =
-              (incomeYearA[m] ?? 0) + _safeNumber(p.paidAmount);
-        }
-        if (y == _compareYearB && incomeYearB.containsKey(m)) {
-          incomeYearB[m] =
-              (incomeYearB[m] ?? 0) + _safeNumber(p.paidAmount);
-        }
-      }
-
-      for (final month in months) {
-        final m = int.parse(month);
-        final startA = DateTime(_compareYearA, m, 1);
-        final endA = _monthEnd(startA);
-        final startB = DateTime(_compareYearB, m, 1);
-        final endB = _monthEnd(startB);
-        final mapA = await db.getNetProfitByDateBetween(startA, endA);
-        final mapB = await db.getNetProfitByDateBetween(startB, endB);
-        final sumA = mapA.values.fold<double>(
-          0.0,
-          (s, v) => s + _safeNumber(v),
-        );
-        final sumB = mapB.values.fold<double>(
-          0.0,
-          (s, v) => s + _safeNumber(v),
-        );
-        netYearA[month] = sumA;
-        netYearB[month] = sumB;
-      }
+      final incomeYearA = buildYearMonthlySeries(
+        Map<String, double>.from(yearResults[0] as Map<String, double>),
+        year: _compareYearA,
+      );
+      final incomeYearB = buildYearMonthlySeries(
+        Map<String, double>.from(yearResults[1] as Map<String, double>),
+        year: _compareYearB,
+      );
+      final netYearA = buildYearMonthlySeries(
+        Map<String, double>.from(yearResults[2] as Map<String, double>),
+        year: _compareYearA,
+      );
+      final netYearB = buildYearMonthlySeries(
+        Map<String, double>.from(yearResults[3] as Map<String, double>),
+        year: _compareYearB,
+      );
 
       // تحليل النمو والانخفاض
       final currentFrom = start ?? DateTime.now().subtract(const Duration(days: 30));
@@ -664,24 +624,15 @@ class StatisticsProvider extends ChangeNotifier {
       final prevTo = currentFrom.subtract(const Duration(days: 1));
       final prevFrom = prevTo.subtract(Duration(days: periodDays));
 
-      final currentIncome = incomeByDate.values.fold<double>(
-        0.0,
-        (s, v) => s + _safeNumber(v),
-      );
+      final currentIncome = sumSeries(incomeByDate);
       final prevIncome =
           _safeNumber(await db.getSumPatientsBetween(prevFrom, prevTo));
 
-      final currentConsumption = consByDate.values.fold<double>(
-        0.0,
-        (s, v) => s + _safeNumber(v),
-      );
+      final currentConsumption = sumSeries(consByDate);
       final prevConsumption =
           _safeNumber(await db.getSumConsumptionsBetween(prevFrom, prevTo));
 
-      final currentNet = netByDate.values.fold<double>(
-        0.0,
-        (s, v) => s + _safeNumber(v),
-      );
+      final currentNet = sumSeries(netByDate);
       final prevNet =
           _safeNumber(await db.getNetProfitTotalBetween(prevFrom, prevTo));
 
@@ -714,8 +665,15 @@ class StatisticsProvider extends ChangeNotifier {
       _netForecast = _linearForecast(netByMonth);
 
       await _refreshSupportRatings(range.start, range.end);
-    } catch (_) {
-      // Keep previous data on error
+    } catch (e, st) {
+      AppObservability.warn(
+        scope: 'STATS',
+        code: ObsCode.statsChartsRefreshFailed,
+        message: 'statistics charts refresh failed',
+        flowId: AppObservability.newFlowId('stats_refresh_charts'),
+        error: e,
+        stackTrace: st,
+      );
     } finally {
       _chartsBusy = false;
       if (!_disposed) {
@@ -773,7 +731,7 @@ class StatisticsProvider extends ChangeNotifier {
         DateTime(from.year, from.month, 1),
         DateTime(to.year, to.month, 1),
       );
-      final monthFmt = DateFormat('yyyy-MM');
+      final monthFmt = AppFormatters.dateFormat('yyyy-MM');
       final monthlySum = <String, double>{};
       final monthlyCount = <String, int>{};
       for (final m in buckets) {

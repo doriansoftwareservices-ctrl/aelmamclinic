@@ -18,7 +18,6 @@
 
 import 'dart:async';
 import 'dart:io' show File;
-import 'dart:ui' as ui show TextDirection;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -31,6 +30,8 @@ import 'package:aelmamclinic/providers/chat_provider.dart';
 import 'package:aelmamclinic/services/chat_service.dart';
 import 'package:aelmamclinic/utils/text_direction.dart' as bidi;
 import 'attachment_chip.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class ChatComposer extends StatefulWidget {
   const ChatComposer({
@@ -143,7 +144,7 @@ class _ChatComposerState extends State<ChatComposer> {
         !widget.enableImages ||
         widget.pickImages == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('اختيار الصور غير مُفعَّل في هذه الشاشة')),
+        const SnackBar(content: LocalizedText('اختيار الصور غير مُفعَّل في هذه الشاشة')),
       );
       return;
     }
@@ -155,7 +156,7 @@ class _ChatComposerState extends State<ChatComposer> {
       });
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذّر اختيار الصور: $e')),
+        SnackBar(content: LocalizedText('تعذّر اختيار الصور: $e')),
       );
     }
   }
@@ -216,7 +217,7 @@ class _ChatComposerState extends State<ChatComposer> {
       _focus.requestFocus();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذّر الإرسال: $e')),
+        SnackBar(content: LocalizedText('تعذّر الإرسال: $e')),
       );
     } finally {
       if (mounted) setState(() => _sending = false);
@@ -235,7 +236,7 @@ class _ChatComposerState extends State<ChatComposer> {
     final showSend = _sending ? true : canSendNow;
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: SafeArea(
         top: false,
         child: Shortcuts(
@@ -293,7 +294,7 @@ class _ChatComposerState extends State<ChatComposer> {
                           ),
                           const SizedBox(width: 8),
                           IconButton(
-                            tooltip: 'إلغاء الرد',
+                            tooltip: context.trRaw('إلغاء الرد'),
                             onPressed: widget.onCancelReply,
                             icon: const Icon(Icons.close_rounded),
                           ),
@@ -342,7 +343,7 @@ class _ChatComposerState extends State<ChatComposer> {
                           // Attach
                           if (allowAttachments)
                             IconButton(
-                              tooltip: 'إرفاق صورة',
+                              tooltip: context.trRaw('إرفاق صورة'),
                               onPressed: (_sending || !widget.enableImages)
                                   ? null
                                   : _pickImages,

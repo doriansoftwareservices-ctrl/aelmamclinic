@@ -24,7 +24,6 @@
 // - utils/time.dart
 // - utils/text_direction.dart
 
-import 'dart:ui' as ui show TextDirection;
 
 import 'package:flutter/material.dart';
 import 'package:aelmamclinic/core/constants.dart';
@@ -33,6 +32,7 @@ import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/models/chat_models.dart';
 import 'package:aelmamclinic/utils/time.dart' as tutils;
 import 'package:aelmamclinic/utils/text_direction.dart' as bidi;
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class ConversationTile extends StatelessWidget {
   final ChatConversation conversation;
@@ -128,17 +128,20 @@ class ConversationTile extends StatelessWidget {
     final hasUnread = resolvedUnread > 0;
 
     // دلالات وصول
+    final unreadSemantics = hasUnread
+        ? context.trRaw('لديك $resolvedUnread رسائل غير مقروءة')
+        : context.trRaw('لا توجد رسائل غير مقروءة');
     final semanticsLabel = StringBuffer()
       ..write(titleText)
       ..write(', ')
-      ..write(hasUnread
-          ? 'لديك $resolvedUnread رسائل غير مقروءة'
-          : 'لا توجد رسائل غير مقروءة')
-      ..write(', آخر تحديث ')
+      ..write(unreadSemantics)
+      ..write(', ')
+      ..write(context.trRaw('آخر تحديث'))
+      ..write(' ')
       ..write(timeText);
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Semantics(
         label: semanticsLabel.toString(),
         button: true,
@@ -211,7 +214,7 @@ class ConversationTile extends StatelessWidget {
                         Icons.notifications_off_rounded,
                         size: 14,
                         color: scheme.onSurface.withValues(alpha: .45),
-                        semanticLabel: 'مكتومة',
+                        semanticLabel: context.trRaw('مكتومة'),
                       ),
                     ],
                   ],

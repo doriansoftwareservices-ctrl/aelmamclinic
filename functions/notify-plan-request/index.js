@@ -5,6 +5,12 @@ const {
   groupTokensByLocale,
   mergeSendResults,
   normalizeLanguageCode,
+  makeRequestContext,
+  assertWebhookSecret,
+  logInfo,
+  logWarn,
+  logError,
+  toErrorString,
 } = require('../_shared/notify_utils');
 
 const buildPlanPayload = ({
@@ -13,6 +19,8 @@ const buildPlanPayload = ({
   planCode,
   employeeEmail,
   isSeatRequest,
+  accountId,
+  requestId,
 }) => {
   const locale = normalizeLanguageCode(languageCode);
   const planLabel = planCode ? ` (${planCode})` : '';
@@ -36,6 +44,19 @@ const buildPlanPayload = ({
           : 'تم إرسال طلب إضافة موظف إضافي');
     type = 'seat_request';
     payload = 'admin:seat_request';
+  } else if (`${planCode}`.toLowerCase() === 'trial_month') {
+    title = locale === 'en'
+      ? 'Monthly trial activation request'
+      : 'طلب تفعيل الخطة التجريبية الشهرية';
+    body = clinicName
+      ? (locale === 'en'
+          ? `A free monthly trial request was received from ${clinicName}`
+          : `تم استلام طلب تفعيل تجريبي شهري مجاني من ${clinicName}`)
+      : (locale === 'en'
+          ? 'A free monthly trial activation request was received'
+          : 'تم استلام طلب تفعيل تجريبي شهري مجاني');
+    type = 'trial_plan_request';
+    payload = 'admin:trial_plan_request';
   } else if (clinicName) {
     body = locale === 'en'
       ? `An upgrade request was received from ${clinicName}${planLabel}`
@@ -49,25 +70,45 @@ const buildPlanPayload = ({
       title,
       body,
       payload,
+      account_id: accountId ? String(accountId) : '',
+      request_id: requestId ? String(requestId) : '',
     },
   };
 };
 
 module.exports = async (req, res) => {
+  const ctx = makeRequestContext(req, 'notify-plan-request');
   try {
+    if (req.method !== 'POST') {
+      res.status(405).json({ ok: false, error: 'method_not_allowed' });
+      return;
+    }
+
+    assertWebhookSecret(req);
+
     const payload = await readBody(req);
     const row = payload?.event?.data?.new || payload?.data?.new || {};
+    const requestId = row.id || null;
+    const accountId = row.account_id || null;
     const planCode = row.plan_code || row.planCode || '';
     const clinicName = row.clinic_name || row.clinicName || '';
     const seatKind = row.seat_kind || row.seatKind || '';
     const seatStatus = row.status || '';
     const employeeEmail = row.employee_email || row.employeeEmail || '';
+    logInfo('PLAN_NOTIFY_REQUEST_RECEIVED', ctx, {
+      request_id: requestId || '',
+      account_id: accountId || '',
+      plan_code: planCode || '',
+      seat_kind: seatKind || '',
+      status: seatStatus || '',
+    });
 
     const admins = await gqlRequest(`query { super_admins { user_uid } }`, {});
     const uids = (admins?.super_admins || [])
       .map((entry) => entry.user_uid)
       .filter(Boolean);
     if (uids.length === 0) {
+      logInfo('PLAN_NOTIFY_SKIPPED', ctx, { reason: 'no_admins' });
       res.status(200).json({ ok: true, skipped: 'no_admins' });
       return;
     }
@@ -84,6 +125,10 @@ module.exports = async (req, res) => {
       );
       tokenRows = tokensData?.push_device_tokens || [];
     } catch (error) {
+      logWarn('PLAN_NOTIFY_LOCALE_FALLBACK', ctx, {
+        reason: 'tokens_query_locale_missing',
+        error: toErrorString(error),
+      });
       if (!`${error}`.includes('locale_code')) throw error;
       const legacyTokens = await gqlRequest(
         `query TokensLegacy($uids: [uuid!]!) {
@@ -100,12 +145,14 @@ module.exports = async (req, res) => {
     }
     const tokens = tokenRows.map((entry) => entry.token).filter(Boolean);
     if (tokens.length === 0) {
+      logInfo('PLAN_NOTIFY_SKIPPED', ctx, { reason: 'no_tokens' });
       res.status(200).json({ ok: true, skipped: 'no_tokens' });
       return;
     }
 
     if (seatKind && `${seatKind}`.toLowerCase() === 'extra') {
       if (`${seatStatus}`.toLowerCase() !== 'submitted') {
+        logInfo('PLAN_NOTIFY_SKIPPED', ctx, { reason: 'seat_not_submitted' });
         res.status(200).json({ ok: true, skipped: 'seat_not_submitted' });
         return;
       }
@@ -122,6 +169,8 @@ module.exports = async (req, res) => {
         planCode,
         employeeEmail,
         isSeatRequest,
+        accountId,
+        requestId,
       })));
     }
     if (byLocale.en.length > 0) {
@@ -131,12 +180,27 @@ module.exports = async (req, res) => {
         planCode,
         employeeEmail,
         isSeatRequest,
+        accountId,
+        requestId,
       })));
     }
     const result = mergeSendResults(results);
+    logInfo('PLAN_NOTIFY_SENT', ctx, {
+      request_id: requestId || '',
+      account_id: accountId || '',
+      tokens: tokens.length,
+      sent: Number(result.sent || 0),
+      failed: Number(result.failed || 0),
+      deactivated: Number(result.deactivated || 0),
+    });
 
     res.status(200).json({ ok: true, ...result });
   } catch (error) {
-    res.status(200).json({ ok: false, error: `${error}` });
+    const statusCode = Number(error?.statusCode || 500);
+    const logFn = statusCode >= 500 ? logError : logWarn;
+    logFn(statusCode >= 500 ? 'PLAN_NOTIFY_UNHANDLED' : 'PLAN_NOTIFY_REJECTED', ctx, {
+      error: toErrorString(error),
+    });
+    res.status(statusCode).json({ ok: false, error: error?.message || 'internal_error' });
   }
 };

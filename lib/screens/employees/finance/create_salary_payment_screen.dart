@@ -1,5 +1,4 @@
 // lib/screens/employees/finance/create_salary_payment_screen.dart
-import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 
 import 'package:aelmamclinic/core/theme.dart';
@@ -11,6 +10,8 @@ import 'package:aelmamclinic/models/doctor.dart';
 import 'employee_salary_detail_screen.dart';
 import 'non_doctor_salary_detail_screen.dart';
 import 'finance_access_guard.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class CreateSalaryPaymentScreen extends StatefulWidget {
   const CreateSalaryPaymentScreen({super.key});
@@ -72,7 +73,7 @@ class _CreateSalaryPaymentScreenState extends State<CreateSalaryPaymentScreen> {
 
     return FinanceAccessGuard(
       child: Directionality(
-        textDirection: ui.TextDirection.rtl,
+        textDirection: Directionality.of(context),
         child: Scaffold(
           appBar: AppBar(
             centerTitle: true,
@@ -103,15 +104,17 @@ class _CreateSalaryPaymentScreenState extends State<CreateSalaryPaymentScreen> {
                       children: [
                         NeuButton.flat(
                           label: 'السابق',
-                          icon: Icons.chevron_right_rounded,
+                          icon: context.isRtl
+                              ? Icons.chevron_right_rounded
+                              : Icons.chevron_left_rounded,
                           onPressed: _isLoading ? null : () => _shiftMonth(-1),
                         ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: DropdownButtonFormField<int>(
                             initialValue: _selectedYear,
-                            decoration: const InputDecoration(
-                              labelText: 'العام',
+                            decoration: InputDecoration(
+                              labelText: context.trRaw('العام'),
                               border: InputBorder.none,
                             ),
                             items: _years
@@ -127,8 +130,8 @@ class _CreateSalaryPaymentScreenState extends State<CreateSalaryPaymentScreen> {
                         Expanded(
                           child: DropdownButtonFormField<int>(
                             initialValue: _selectedMonth,
-                            decoration: const InputDecoration(
-                              labelText: 'الشهر',
+                            decoration: InputDecoration(
+                              labelText: context.trRaw('الشهر'),
                               border: InputBorder.none,
                             ),
                             items: _months
@@ -143,7 +146,9 @@ class _CreateSalaryPaymentScreenState extends State<CreateSalaryPaymentScreen> {
                         const SizedBox(width: 8),
                         NeuButton.flat(
                           label: 'التالي',
-                          icon: Icons.chevron_left_rounded,
+                          icon: context.isRtl
+                              ? Icons.chevron_left_rounded
+                              : Icons.chevron_right_rounded,
                           onPressed: _isLoading ? null : () => _shiftMonth(1),
                         ),
                         const SizedBox(width: 12),
@@ -209,8 +214,7 @@ class _CreateSalaryPaymentScreenState extends State<CreateSalaryPaymentScreen> {
                                     children: [
                                       const SizedBox(height: 120),
                                       Center(
-                                        child: Text(
-                                          'لا توجد نتائج',
+                                        child: LocalizedText('لا توجد نتائج',
                                           style: TextStyle(
                                             color: cs.onSurface
                                                 .withValues(alpha: .6),
@@ -274,7 +278,7 @@ class _CreateSalaryPaymentScreenState extends State<CreateSalaryPaymentScreen> {
             child: Icon(icon, color: kPrimaryColor, size: 18),
           ),
           const SizedBox(width: 8),
-          Text(
+          LocalizedText(
             '$label: ',
             style: const TextStyle(fontWeight: FontWeight.w800),
           ),
@@ -304,7 +308,7 @@ class _CreateSalaryPaymentScreenState extends State<CreateSalaryPaymentScreen> {
             child: const Icon(Icons.group_rounded, color: kPrimaryColor),
           ),
           const SizedBox(width: 10),
-          Text(
+          LocalizedText(
             title,
             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
           ),
@@ -341,7 +345,7 @@ class _CreateSalaryPaymentScreenState extends State<CreateSalaryPaymentScreen> {
           name.isEmpty ? '—' : name,
           style: const TextStyle(fontWeight: FontWeight.w800),
         ),
-        subtitle: Text(
+        subtitle: LocalizedText(
           isPaid
               ? 'تم صرف الراتب لـ ${_fmtYearMonth()}'
               : 'لم يتم صرف الراتب لـ ${_fmtYearMonth()}',
@@ -366,7 +370,7 @@ class _CreateSalaryPaymentScreenState extends State<CreateSalaryPaymentScreen> {
   Future<void> _loadDataForSalary() async {
     if (_selectedYear == null || _selectedMonth == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('الرجاء اختيار العام والشهر أولاً')),
+        const SnackBar(content: LocalizedText('الرجاء اختيار العام والشهر أولاً')),
       );
       return;
     }
@@ -416,7 +420,7 @@ class _CreateSalaryPaymentScreenState extends State<CreateSalaryPaymentScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذّر تحميل البيانات: $e')),
+        SnackBar(content: LocalizedText('تعذّر تحميل البيانات: $e')),
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -427,13 +431,13 @@ class _CreateSalaryPaymentScreenState extends State<CreateSalaryPaymentScreen> {
       int empId, bool isPaid, Map<String, dynamic> emp) async {
     if (isPaid) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم صرف الراتب مسبقاً')),
+        const SnackBar(content: LocalizedText('تم صرف الراتب مسبقاً')),
       );
       return;
     }
     if (_selectedYear == null || _selectedMonth == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('الرجاء اختيار العام والشهر')),
+        const SnackBar(content: LocalizedText('الرجاء اختيار العام والشهر')),
       );
       return;
     }
@@ -447,7 +451,7 @@ class _CreateSalaryPaymentScreenState extends State<CreateSalaryPaymentScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
               content:
-                  Text('هذا الموظف محدد كطبيب، لكن لا يوجد سجل طبيب مرتبط')),
+                  LocalizedText('هذا الموظف محدد كطبيب، لكن لا يوجد سجل طبيب مرتبط')),
         );
         return;
       }

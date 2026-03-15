@@ -5,6 +5,8 @@ import 'package:aelmamclinic/services/db_service.dart';
 // تصميم TBIAN
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class EmployeeSearchDialog extends StatefulWidget {
   const EmployeeSearchDialog({super.key});
@@ -57,7 +59,7 @@ class _EmployeeSearchDialogState extends State<EmployeeSearchDialog> {
     final scheme = Theme.of(context).colorScheme;
 
     return Directionality(
-      textDirection: TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Dialog(
         backgroundColor: scheme.surface,
         insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
@@ -79,8 +81,7 @@ class _EmployeeSearchDialogState extends State<EmployeeSearchDialog> {
                       errorBuilder: (_, __, ___) => const SizedBox.shrink(),
                     ),
                     const SizedBox(width: 10),
-                    Text(
-                      'اختيار موظف',
+                    LocalizedText('اختيار موظف',
                       style: TextStyle(
                         color: scheme.onSurface,
                         fontSize: 18,
@@ -89,7 +90,7 @@ class _EmployeeSearchDialogState extends State<EmployeeSearchDialog> {
                     ),
                     const Spacer(),
                     IconButton(
-                      tooltip: 'إغلاق',
+                      tooltip: context.trRaw('إغلاق'),
                       onPressed: () => Navigator.pop(context),
                       icon: const Icon(Icons.close_rounded),
                     )
@@ -100,7 +101,7 @@ class _EmployeeSearchDialogState extends State<EmployeeSearchDialog> {
                 // حقل البحث (نيومورفيزم)
                 NeuField(
                   controller: _searchController,
-                  hintText: 'ابحث عن اسم أو تخصص',
+                  hintText: context.trRaw('ابحث عن اسم أو تخصص'),
                   prefix: const Icon(Icons.search_rounded),
                 ),
 
@@ -110,8 +111,7 @@ class _EmployeeSearchDialogState extends State<EmployeeSearchDialog> {
                 Expanded(
                   child: _filteredEmployees.isEmpty
                       ? Center(
-                          child: Text(
-                            'لا يوجد بيانات',
+                          child: LocalizedText('لا يوجد بيانات',
                             style: TextStyle(
                               color: scheme.onSurface.withValues(alpha: .6),
                               fontWeight: FontWeight.w700,

@@ -1,5 +1,6 @@
 // lib/core/neumorphism.dart
 import 'package:flutter/material.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 import 'theme.dart';
 
 /// أدوات نيومورفيزم: ظلّان (فاتح/داكن) + حواف ناعمة.
@@ -163,6 +164,7 @@ class NeuButton extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final bg = filled ? kPrimaryColor : scheme.surface;
     final txt = filled ? Colors.white : scheme.onSurface;
+    final translatedLabel = context.trRaw(label);
 
     return _NeuPressable(
       radius: radius,
@@ -196,7 +198,7 @@ class NeuButton extends StatelessWidget {
                 child: Row(
                   mainAxisAlignment: mainAxisAlignment,
                   mainAxisSize: mainAxisSize,
-                  textDirection: TextDirection.ltr,
+                  textDirection: context.appTextDirection,
                   children: [
                     if (leading != null) ...[
                       leading!,
@@ -207,7 +209,7 @@ class NeuButton extends StatelessWidget {
                     ],
                     Flexible(
                       child: Text(
-                        label,
+                        translatedLabel,
                         textAlign: TextAlign.center,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -239,8 +241,8 @@ class NeuField extends StatefulWidget {
   final String? hintText;
   final String? labelText;
   final TextInputType? keyboardType;
-  final TextDirection textDirection;
-  final TextAlign textAlign;
+  final TextDirection? textDirection;
+  final TextAlign? textAlign;
   final bool obscureText;
   final Widget? prefix;
   final Widget? suffix;
@@ -263,8 +265,8 @@ class NeuField extends StatefulWidget {
     this.hintText,
     this.labelText,
     this.keyboardType,
-    this.textDirection = TextDirection.rtl,
-    this.textAlign = TextAlign.right,
+    this.textDirection,
+    this.textAlign,
     this.obscureText = false,
     this.prefix,
     this.suffix,
@@ -292,6 +294,11 @@ class _NeuFieldState extends State<NeuField> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final bg = scheme.surfaceContainerHigh;
+    final resolvedDirection = widget.textDirection ?? Directionality.of(context);
+    final resolvedTextAlign = widget.textAlign ??
+        (resolvedDirection == TextDirection.rtl
+            ? TextAlign.right
+            : TextAlign.left);
 
     final shadows = [
       _lightShadow(context, _focused ? widget.depth * .5 : widget.depth),
@@ -317,7 +324,7 @@ class _NeuFieldState extends State<NeuField> {
         child: Padding(
           padding: widget.contentPadding,
           child: Directionality(
-            textDirection: widget.textDirection,
+            textDirection: resolvedDirection,
             child: TextFormField(
               enabled: widget.enabled,
               controller: widget.controller,
@@ -327,7 +334,7 @@ class _NeuFieldState extends State<NeuField> {
               maxLines: widget.maxLines,
               validator: widget.validator,
               onChanged: widget.onChanged,
-              textAlign: widget.textAlign,
+              textAlign: resolvedTextAlign,
               textInputAction: widget.textInputAction,
               onFieldSubmitted: widget.onSubmitted,
               style: TextStyle(
@@ -338,8 +345,12 @@ class _NeuFieldState extends State<NeuField> {
               decoration: InputDecoration(
                 isDense: true,
                 border: InputBorder.none,
-                hintText: widget.hintText,
-                labelText: widget.labelText,
+                hintText: widget.hintText == null
+                    ? null
+                    : context.trRaw(widget.hintText!),
+                labelText: widget.labelText == null
+                    ? null
+                    : context.trRaw(widget.labelText!),
                 labelStyle: TextStyle(
                   color: scheme.onSurface.withValues(alpha: .7),
                   fontWeight: FontWeight.w600,

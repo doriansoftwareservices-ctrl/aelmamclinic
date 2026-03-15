@@ -1,5 +1,4 @@
 // lib/screens/employees/finance/employee_salary_detail_screen.dart
-import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 
 import 'package:aelmamclinic/core/theme.dart';
@@ -7,6 +6,7 @@ import 'package:aelmamclinic/core/neumorphism.dart';
 
 import 'package:aelmamclinic/services/db_service.dart';
 import 'finance_access_guard.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
 
 class EmployeeSalaryDetailScreen extends StatefulWidget {
   final int empId;
@@ -62,7 +62,7 @@ class _EmployeeSalaryDetailScreenState
       if (emp == null) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('الموظف غير موجود')),
+          const SnackBar(content: LocalizedText('الموظف غير موجود')),
         );
         Navigator.pop(context);
         return;
@@ -89,7 +89,7 @@ class _EmployeeSalaryDetailScreenState
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
               content:
-                  Text('تم صرف راتب أحدث من هذه الفترة، اختر شهرًا أحدث.')),
+                  LocalizedText('تم صرف راتب أحدث من هذه الفترة، اختر شهرًا أحدث.')),
         );
         return;
       }
@@ -106,7 +106,7 @@ class _EmployeeSalaryDetailScreenState
           _periodEnd = null;
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('لا توجد فترة صالحة لهذا الشهر بعد')),
+          const SnackBar(content: LocalizedText('لا توجد فترة صالحة لهذا الشهر بعد')),
         );
         return;
       }
@@ -150,7 +150,7 @@ class _EmployeeSalaryDetailScreenState
       if (!mounted) return;
       setState(() => _loading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('فشل تحميل البيانات: $e')),
+        SnackBar(content: LocalizedText('فشل تحميل البيانات: $e')),
       );
     }
   }
@@ -159,18 +159,17 @@ class _EmployeeSalaryDetailScreenState
     if (_periodStart == null || _periodEnd == null) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('الفترة غير صالحة لصرف الراتب')),
+        const SnackBar(content: LocalizedText('الفترة غير صالحة لصرف الراتب')),
       );
       return;
     }
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => Directionality(
-        textDirection: ui.TextDirection.rtl,
+        textDirection: Directionality.of(context),
         child: AlertDialog(
-          title: const Text('تأكيد صرف الراتب'),
-          content: Text(
-            'سيتم صرف راتب $_employeeName لشهر ${widget.month}/${widget.year} '
+          title: const LocalizedText('تأكيد صرف الراتب'),
+          content: LocalizedText('سيتم صرف راتب $_employeeName لشهر ${widget.month}/${widget.year} '
             'بمبلغ صافي ${_fmt(_netPay)}.\n'
             'الفترة الفعلية: '
             '${_periodStart!.toLocal().toIso8601String().substring(0, 10)}'
@@ -181,10 +180,10 @@ class _EmployeeSalaryDetailScreenState
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('إلغاء')),
+                child: const LocalizedText('إلغاء')),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('تأكيد'),
+              child: const LocalizedText('تأكيد'),
             ),
           ],
         ),
@@ -264,13 +263,13 @@ class _EmployeeSalaryDetailScreenState
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم صرف الراتب بنجاح')),
+        const SnackBar(content: LocalizedText('تم صرف الراتب بنجاح')),
       );
       Navigator.pop(context);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('فشل صرف الراتب: $e')),
+        SnackBar(content: LocalizedText('فشل صرف الراتب: $e')),
       );
     }
   }
@@ -282,7 +281,7 @@ class _EmployeeSalaryDetailScreenState
 
     return FinanceAccessGuard(
       child: Directionality(
-        textDirection: ui.TextDirection.rtl,
+        textDirection: Directionality.of(context),
         child: Scaffold(
           appBar: AppBar(
             centerTitle: true,
@@ -291,7 +290,7 @@ class _EmployeeSalaryDetailScreenState
               children: const [
                 Icon(Icons.account_balance_wallet_rounded),
                 SizedBox(width: 8),
-                Text('تفاصيل صرف الراتب'),
+                LocalizedText('تفاصيل صرف الراتب'),
               ],
             ),
           ),
@@ -442,7 +441,7 @@ class _EmployeeSalaryDetailScreenState
                           child: FilledButton.icon(
                             onPressed: _confirmSalaryPayment,
                             icon: const Icon(Icons.check_circle_rounded),
-                            label: const Text('تأكيد صرف الراتب'),
+                            label: const LocalizedText('تأكيد صرف الراتب'),
                           ),
                         ),
                       ],

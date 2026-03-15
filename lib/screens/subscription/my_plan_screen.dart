@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -11,6 +10,9 @@ import 'package:aelmamclinic/models/subscription_plan.dart';
 import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:aelmamclinic/services/billing_service.dart';
 import 'package:aelmamclinic/screens/subscription/payment_request_screen.dart';
+import 'package:aelmamclinic/utils/app_formatters.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
 
 class MyPlanScreen extends StatefulWidget {
   const MyPlanScreen({super.key});
@@ -22,17 +24,21 @@ class MyPlanScreen extends StatefulWidget {
 class _MyPlanScreenState extends State<MyPlanScreen> {
   final BillingService _billing = BillingService();
   final ScrollController _annualCtrl = ScrollController();
-  final ScrollController _monthlyCtrl = ScrollController();
   double _annualScroll = 0;
-  double _monthlyScroll = 0;
 
   bool _loading = true;
   List<SubscriptionPlan> _plans = const [];
   String _currentPlan = 'free';
   DateTime? _planEndAt;
+  TrialPlanStatus _trialStatus = const TrialPlanStatus(
+    hasPending: false,
+    hasUsed: false,
+    hasBlockingPending: false,
+  );
   String? _error;
 
-  final _currency = NumberFormat.currency(symbol: '\$', decimalDigits: 0);
+  NumberFormat get _currency =>
+      AppFormatters.currency(symbol: '\$', decimalDigits: 0);
 
   // ✅ مزايا الخطط المدفوعة (بدون الأشعة/المختبرات)
   static const List<String> _paidBaseFeatures = [
@@ -100,6 +106,7 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
       case 'month_pro':
       case 'year_pro':
         return 20;
+      case 'trial_month':
       case 'month':
       case 'year':
       default:
@@ -112,18 +119,20 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
     switch (c) {
       case 'free':
         return 'المجانية';
+      case 'trial_month':
+        return 'التجريبية الشهرية';
       case 'month':
-        return 'الشهرية';
+        return 'الشهرية القديمة';
       case 'month_plus':
-        return 'الشهرية بلس';
+        return 'الشهرية بلس القديمة';
       case 'month_pro':
-        return 'الشهرية برو';
+        return 'الشهرية برو القديمة';
       case 'year':
-        return 'السنوية';
+        return 'YEAR';
       case 'year_plus':
-        return 'السنوية بلس';
+        return 'YEAR PLUS';
       case 'year_pro':
-        return 'السنوية برو';
+        return 'YEAR PRO';
       default:
         return fallback;
     }
@@ -139,12 +148,6 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
       final next = max <= 0 ? 0.0 : (_annualCtrl.offset / max).clamp(0.0, 1.0);
       if (next != _annualScroll) setState(() => _annualScroll = next);
     });
-    _monthlyCtrl.addListener(() {
-      if (!mounted || !_monthlyCtrl.hasClients) return;
-      final max = _monthlyCtrl.position.maxScrollExtent;
-      final next = max <= 0 ? 0.0 : (_monthlyCtrl.offset / max).clamp(0.0, 1.0);
-      if (next != _monthlyScroll) setState(() => _monthlyScroll = next);
-    });
   }
 
   Future<void> _load() async {
@@ -156,6 +159,7 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
 
       final plans = await _billing.fetchPlans();
       final details = await _billing.fetchMyPlanDetails();
+      final trialStatus = await _billing.fetchTrialPlanStatus();
 
       final planCode = details['plan_code']?.toString().toLowerCase() ?? 'free';
       final planEndRaw = details['plan_end_at']?.toString();
@@ -166,6 +170,7 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
         _plans = plans.where((p) => p.isActive).toList();
         _currentPlan = planCode;
         _planEndAt = planEndAt;
+        _trialStatus = trialStatus;
         _loading = false;
       });
     } catch (e) {
@@ -180,7 +185,6 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
   @override
   void dispose() {
     _annualCtrl.dispose();
-    _monthlyCtrl.dispose();
     super.dispose();
   }
 
@@ -214,8 +218,57 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
     _snack('تم إرسال طلب الاشتراك بنجاح. سيتم مراجعته قريبًا.');
   }
 
+  Future<void> _startTrialRequest() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const LocalizedText('طلب تفعيل الخطة التجريبية'),
+        content: const LocalizedText(
+          'سيتم إرسال طلب تفعيل تجريبي مجاني لمدة شهر واحد. هذه التجربة متاحة مرة واحدة فقط لهذا الحساب.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const LocalizedText('إلغاء'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const LocalizedText('إرسال الطلب'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || confirmed != true) return;
+    try {
+      await _billing.createTrialPlanRequest();
+      if (!mounted) return;
+      _snack('تم إرسال طلب التفعيل التجريبي بنجاح. سيتم مراجعته قريبًا.');
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      _snack(_mapTrialError(e));
+    }
+  }
+
   void _snack(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: LocalizedText(msg)));
+  }
+
+  String _mapTrialError(Object error) {
+    final msg = error.toString().toLowerCase();
+    if (msg.contains('trial already used')) {
+      return 'تم استخدام التجربة الشهرية سابقًا لهذا الحساب.';
+    }
+    if (msg.contains('trial requires free plan')) {
+      return 'التجربة الشهرية متاحة فقط قبل تفعيل أي خطة أخرى.';
+    }
+    if (msg.contains('pending request exists')) {
+      return 'يوجد طلب اشتراك آخر قيد المراجعة لهذا الحساب.';
+    }
+    if (msg.contains('only owner')) {
+      return 'فقط مالك العيادة يمكنه طلب التفعيل التجريبي.';
+    }
+    return 'تعذّر إرسال طلب التفعيل التجريبي.';
   }
 
   String _currentPlanName() {
@@ -232,50 +285,84 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
     return c.contains('year') || c.contains('annual') || c.contains('yearly');
   }
 
+  bool _isOwner(AuthProvider auth) => auth.role?.toLowerCase() == 'owner';
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final auth = context.watch<AuthProvider>();
+    final isOwner = _isOwner(auth);
+    final trialPlan = _plans.firstWhere(
+      (p) => p.code.toLowerCase() == 'trial_month',
+      orElse: () => const SubscriptionPlan(
+        code: 'trial_month',
+        name: 'TRIAL_MONTH',
+        priceUsd: 0,
+        durationMonths: 1,
+        isActive: true,
+      ),
+    );
+    final trialPending = _trialStatus.hasPending;
+    final trialUsed = _trialStatus.hasUsed;
+    final trialEligible = auth.isLoggedIn &&
+        isOwner &&
+        _currentPlan == 'free' &&
+        !trialPending &&
+        !_trialStatus.hasBlockingPending &&
+        !trialUsed;
+    final trialDisabledReason = trialPending
+        ? 'يوجد طلب تجريبي قيد المراجعة.'
+        : _trialStatus.hasBlockingPending
+            ? 'يوجد طلب اشتراك آخر قيد المراجعة لهذا الحساب.'
+        : trialUsed
+            ? 'تم استخدام التجربة الشهرية سابقًا لهذا الحساب.'
+            : (_currentPlan != 'free'
+                ? 'التجربة الشهرية متاحة فقط قبل تفعيل أي خطة أخرى.'
+                : (!isOwner
+                    ? 'هذه الشاشة متاحة فقط لمالك العيادة.'
+                    : 'سجّل الدخول أولاً لإرسال الطلب.'));
+    final trialButtonLabel = trialPending
+        ? 'الطلب قيد المراجعة'
+        : trialUsed
+            ? 'استُخدمت سابقًا'
+            : 'طلب التفعيل التجريبي';
 
-    return Directionality(
-      textDirection: ui.TextDirection.rtl,
-      child: Scaffold(
-        backgroundColor: scheme.surface,
-        appBar: AppBar(
-          title: const Text('خطتي'),
-          centerTitle: false,
-        ),
-        body: Stack(
-          children: [
-            _AnimatedBubbleBackdrop(scheme: scheme),
-            SafeArea(
-              child: Padding(
-                padding: kScreenPadding,
-                child: _loading
-                    ? const Center(child: CircularProgressIndicator())
-                    : _error != null
-                        ? Center(
-                            child: _ErrorState(
-                              message: _error!,
-                              onRetry: _load,
-                            ),
-                          )
-                        : LayoutBuilder(
+    return Scaffold(
+      backgroundColor: scheme.surface,
+      appBar: AppBar(
+        title: const LocalizedText('خطتي'),
+        centerTitle: false,
+      ),
+      body: Stack(
+        children: [
+          _AnimatedBubbleBackdrop(scheme: scheme),
+          SafeArea(
+            child: Padding(
+              padding: kScreenPadding,
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : !isOwner
+                      ? Center(
+                          child: _ErrorState(
+                            message: 'هذه الشاشة متاحة فقط لمالك العيادة.',
+                            onRetry: _load,
+                          ),
+                        )
+                  : _error != null
+                      ? Center(
+                          child: _ErrorState(
+                            message: _error!,
+                            onRetry: _load,
+                          ),
+                        )
+                      : LayoutBuilder(
                             builder: (context, constraints) {
                               final w = constraints.maxWidth;
-                              final monthlyPlans = _plans
-                                  .where((p) =>
-                                      p.code.toLowerCase().contains('month'))
-                                  .toList();
                               final annualPlans = _plans
                                   .where((p) =>
                                       p.code.toLowerCase().contains('year'))
                                   .toList();
                               final cardWidth = w >= 720 ? 340.0 : (w - 12);
-                              final monthlyWidth = monthlyPlans.isEmpty
-                                  ? 0.0
-                                  : (monthlyPlans.length * cardWidth) +
-                                      ((monthlyPlans.length - 1) * 12.0);
                               final annualWidth = annualPlans.isEmpty
                                   ? 0.0
                                   : (annualPlans.length * cardWidth) +
@@ -332,85 +419,50 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
                                     const SizedBox(height: 18),
 
                                     _SectionTitle(
-                                      title: 'الخطط الشهرية',
-                                      subtitle: 'خطط شهرية مرنة مع إمكانية الترقية.',
+                                      title: 'الخطة التجريبية الشهرية',
+                                      subtitle:
+                                          'تجربة مجانية لمدة شهر واحد بصلاحيات الخطة الشهرية الحالية ولمرة واحدة فقط.',
                                     ),
                                     const SizedBox(height: 10),
-                                    IntrinsicHeight(
-                                      child: SingleChildScrollView(
-                                        controller: _monthlyCtrl,
-                                        scrollDirection: Axis.horizontal,
-                                        physics: const BouncingScrollPhysics(),
-                                        padding: const EdgeInsets.symmetric(horizontal: 2),
-                                        child: SizedBox(
-                                          width: math.max(w, monthlyWidth),
-                                          child: Row(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            mainAxisAlignment:
-                                                monthlyWidth < w
-                                                    ? MainAxisAlignment.center
-                                                    : MainAxisAlignment.start,
-                                            children: [
-                                              for (final plan in monthlyPlans) ...[
-                                                SizedBox(
-                                                  width: cardWidth,
-                                                  child: _PlanPricingCard(
-                                                    planName: _planDisplayName(
-                                                        plan.code, plan.name),
-                                                    planCode: plan.code,
-                                                    isCurrent: plan.code
-                                                            .toLowerCase() ==
-                                                        _currentPlan
-                                                            .toLowerCase(),
-                                                    isFree: plan.code
-                                                            .toLowerCase() ==
-                                                        'free',
-                                                    isAnnual:
-                                                        _isAnnualByCode(
-                                                            plan.code),
-                                                    priceMain: plan.code
-                                                                .toLowerCase() ==
-                                                            'free'
-                                                        ? 'مجانية'
-                                                        : _currency.format(
-                                                            plan.priceUsd),
-                                                    priceSuffix: '',
-                                                    features: _featuresForPlan(
-                                                        plan.code),
-                                                    employeesPolicy:
-                                                        _employeesPolicyForPlan(
-                                                            plan.code),
-                                                    canUpgrade:
-                                                        auth.isLoggedIn &&
-                                                            plan.code
-                                                                    .toLowerCase() !=
-                                                                _currentPlan
-                                                                    .toLowerCase() &&
-                                                            plan.code
-                                                                    .toLowerCase() !=
-                                                                'free',
-                                                    onUpgrade: () =>
-                                                        _startUpgrade(plan),
-                                                    onNeedLogin: () => _snack(
-                                                        'سجّل الدخول أولاً لطلب الترقية.'),
-                                                  ),
-                                                ),
-                                                const SizedBox(width: 12),
-                                              ],
-                                            ],
-                                          ),
+                                    SizedBox(
+                                      width: cardWidth,
+                                      child: _PlanPricingCard(
+                                        planName: _planDisplayName(
+                                          trialPlan.code,
+                                          trialPlan.name,
                                         ),
+                                        planCode: trialPlan.code,
+                                        isCurrent: trialPlan.code.toLowerCase() ==
+                                            _currentPlan.toLowerCase(),
+                                        isFree: false,
+                                        isAnnual: false,
+                                        priceMain: 'مجانية',
+                                        priceSuffix: '',
+                                        features: _featuresForPlan(trialPlan.code),
+                                        employeesPolicy:
+                                            _employeesPolicyForPlan(trialPlan.code),
+                                        canUpgrade: trialEligible,
+                                        onUpgrade: _startTrialRequest,
+                                        onNeedLogin: () => _snack(trialDisabledReason),
+                                        subtitleOverride:
+                                            'فعّل شهراً تجريبياً واحداً مجاناً لتجربة مزايا الخطة الشهرية الحالية.',
+                                        buttonLabelOverride: trialButtonLabel,
+                                        disabledNote: trialDisabledReason,
+                                        badgeTextOverride: trialPlan.code
+                                                    .toLowerCase() ==
+                                                _currentPlan.toLowerCase()
+                                            ? 'الخطة الحالية'
+                                            : 'مرة واحدة',
+                                        popularBadgeOverride: 'تجربة مجانية',
                                       ),
                                     ),
-                                    const SizedBox(height: 8),
-                                    _ScrollHintBar(progress: _monthlyScroll),
 
                                     const SizedBox(height: 18),
 
                                     _SectionTitle(
                                       title: 'الخطط السنوية',
-                                      subtitle: 'الخطط السنوية مع مزايا كاملة ومدة 12 شهر.',
+                                      subtitle:
+                                          'الاشتراكات السنوية الرسمية بعد انتهاء التجربة أو عند الترقية المباشرة.',
                                     ),
                                     const SizedBox(height: 10),
                                     IntrinsicHeight(
@@ -420,7 +472,10 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
                                         physics: const BouncingScrollPhysics(),
                                         padding: const EdgeInsets.symmetric(horizontal: 2),
                                         child: SizedBox(
-                                          width: math.max(w, annualWidth),
+                                          width: math.max<double>(
+                                            w,
+                                            annualWidth,
+                                          ),
                                           child: Row(
                                             crossAxisAlignment:
                                                 CrossAxisAlignment.start,
@@ -460,6 +515,7 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
                                                             plan.code),
                                                     canUpgrade:
                                                         auth.isLoggedIn &&
+                                                            isOwner &&
                                                             plan.code
                                                                     .toLowerCase() !=
                                                                 _currentPlan
@@ -470,7 +526,9 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
                                                     onUpgrade: () =>
                                                         _startUpgrade(plan),
                                                     onNeedLogin: () => _snack(
-                                                        'سجّل الدخول أولاً لطلب الترقية.'),
+                                                        isOwner
+                                                            ? 'سجّل الدخول أولاً لطلب الترقية.'
+                                                            : 'فقط مالك العيادة يمكنه طلب الاشتراك.'),
                                                   ),
                                                 ),
                                                 const SizedBox(width: 12),
@@ -488,6 +546,13 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
                                         icon: Icons.lock_rounded,
                                         title: 'ملاحظة',
                                         body: 'لا يمكنك طلب ترقية قبل تسجيل الدخول.',
+                                      ),
+                                    if (auth.isLoggedIn && !isOwner)
+                                      _InfoBanner(
+                                        icon: Icons.verified_user_outlined,
+                                        title: 'تنبيه',
+                                        body:
+                                            'إدارة الخطط والاشتراكات متاحة فقط لمالك العيادة.',
                                       ),
 
                                     const SizedBox(height: 24),
@@ -510,10 +575,9 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
                               );
                             },
                           ),
-              ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -684,7 +748,7 @@ class _SectionTitle extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
+        LocalizedText(
           title,
           style: TextStyle(
             fontSize: 18,
@@ -693,7 +757,7 @@ class _SectionTitle extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 4),
-        Text(
+        LocalizedText(
           subtitle,
           style: TextStyle(
             fontSize: 12.5,
@@ -723,6 +787,7 @@ class _PlanHeaderModern extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final code = currentPlanCode.toLowerCase();
     final isFree = code == 'free';
+    final isTrial = code == 'trial_month';
     final isPro = code == 'month_pro' || code == 'year_pro';
     final isPlus = code == 'month_plus' || code == 'year_plus';
 
@@ -763,8 +828,7 @@ class _PlanHeaderModern extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'الخطة الحالية',
+                LocalizedText('الخطة الحالية',
                   style: TextStyle(
                     fontSize: 12.5,
                     fontWeight: FontWeight.w800,
@@ -772,7 +836,7 @@ class _PlanHeaderModern extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(
+                LocalizedText(
                   currentPlanName,
                   style: TextStyle(
                     fontSize: 16.5,
@@ -794,7 +858,7 @@ class _PlanHeaderModern extends StatelessWidget {
                             .withValues(alpha: 0.2),
                       ),
                     ),
-                    child: Text(
+                    child: LocalizedText(
                       isPro ? 'PRO' : 'PLUS',
                       style: TextStyle(
                         fontSize: 11,
@@ -806,8 +870,7 @@ class _PlanHeaderModern extends StatelessWidget {
                 ],
                 if (!isFree && planEndAt != null) ...[
                   const SizedBox(height: 6),
-                  Text(
-                    'تنتهي: ${DateFormat('yyyy-MM-dd').format(planEndAt!)}',
+                  LocalizedText('تنتهي: ${DateFormat('yyyy-MM-dd').format(planEndAt!)}',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
@@ -822,21 +885,25 @@ class _PlanHeaderModern extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(999),
-              color: isFree
+              color: (isFree || isTrial)
                   ? scheme.secondary.withValues(alpha: 0.14)
                   : scheme.primary.withValues(alpha: 0.14),
               border: Border.all(
-                color: isFree
+                color: (isFree || isTrial)
                     ? scheme.secondary.withValues(alpha: 0.25)
                     : scheme.primary.withValues(alpha: 0.25),
               ),
             ),
-            child: Text(
-              isFree ? 'مجانية' : 'مدفوعة',
+            child: LocalizedText(
+              isFree
+                  ? 'مجانية'
+                  : (isTrial ? 'تجربة مجانية' : 'مدفوعة'),
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w900,
-                color: isFree ? scheme.secondary : scheme.primary,
+                color: isFree || isTrial
+                    ? scheme.secondary
+                    : scheme.primary,
               ),
             ),
           ),
@@ -860,6 +927,11 @@ class _PlanPricingCard extends StatelessWidget {
     required this.canUpgrade,
     required this.onUpgrade,
     required this.onNeedLogin,
+    this.subtitleOverride,
+    this.buttonLabelOverride,
+    this.disabledNote,
+    this.badgeTextOverride,
+    this.popularBadgeOverride,
   });
 
   final String planName;
@@ -878,6 +950,11 @@ class _PlanPricingCard extends StatelessWidget {
   final bool canUpgrade;
   final VoidCallback onUpgrade;
   final VoidCallback onNeedLogin;
+  final String? subtitleOverride;
+  final String? buttonLabelOverride;
+  final String? disabledNote;
+  final String? badgeTextOverride;
+  final String? popularBadgeOverride;
 
   IconData get _planIcon {
     if (isFree) return Icons.rocket_launch_rounded;
@@ -888,6 +965,8 @@ class _PlanPricingCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final code = planCode.toLowerCase();
+    final isTrial = code == 'trial_month';
 
     final accent = isCurrent
         ? scheme.primary
@@ -895,35 +974,34 @@ class _PlanPricingCard extends StatelessWidget {
 
     const surface = Colors.transparent;
 
-    final badgeText = isCurrent
-        ? 'الخطة الحالية'
-        : (isAnnual && !isFree ? 'أفضل قيمة' : null);
+    final badgeText = badgeTextOverride ?? (isCurrent ? 'الخطة الحالية' : null);
 
-    final popularBadge = () {
-      final c = planCode.toLowerCase();
-      if (c == 'month' || c == 'year') return 'الأكثر استخدامًا';
+    final popularBadge = popularBadgeOverride ?? (() {
+      if (code == 'year') return 'الأكثر استخدامًا';
+      return null;
+    }());
+
+    final headerBadge = () {
+      if (code == 'year') return 'أفضل قيمة';
+      if (code == 'month_pro' || code == 'year_pro') return 'PRO';
+      if (code == 'month_plus' || code == 'year_plus') return 'PLUS';
       return null;
     }();
 
-    final tierBadge = () {
-      final c = planCode.toLowerCase();
-      if (c == 'month_pro' || c == 'year_pro') return 'PRO';
-      if (c == 'month_plus' || c == 'year_plus') return 'PLUS';
-      return null;
-    }();
-
-    final code = planCode.toLowerCase();
     final tier =
         (code == 'month_pro' || code == 'year_pro') ? 'برو' : (code == 'month_plus' || code == 'year_plus') ? 'بلس' : '';
     final subtitle = isFree
         ? 'ابدأ مجانًا واستكشف الأساسيات.'
-        : (isAnnual
+        : (isTrial
+            ? 'تفعيل مجاني لمرة واحدة لمدة شهر كامل بصلاحيات الخطة الشهرية الحالية.'
+            : (isAnnual
             ? 'اشتراك سنوي${tier.isNotEmpty ? " $tier" : ""} بمزايا كاملة لمدة 12 شهر.'
-            : 'اشتراك شهري${tier.isNotEmpty ? " $tier" : ""} مرن مع تجديد شهري.');
+            : 'اشتراك شهري${tier.isNotEmpty ? " $tier" : ""} مرن مع تجديد شهري.'));
 
-    final buttonLabel = isCurrent
+    final buttonLabel = buttonLabelOverride ??
+        (isCurrent
         ? 'الخطة الحالية'
-        : (isFree ? 'الخطة المجانية' : 'طلب ترقية');
+        : (isFree ? 'الخطة المجانية' : 'طلب ترقية'));
 
     final isButtonEnabled = !isCurrent && !isFree && canUpgrade;
 
@@ -988,7 +1066,7 @@ class _PlanPricingCard extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
+                            LocalizedText(
                               planName,
                               style: TextStyle(
                                 fontSize: 17,
@@ -996,7 +1074,7 @@ class _PlanPricingCard extends StatelessWidget {
                                 color: scheme.onSurface,
                               ),
                             ),
-                            if (tierBadge != null) ...[
+                            if (headerBadge != null) ...[
                               const SizedBox(height: 6),
                               Container(
                                 padding: const EdgeInsets.symmetric(
@@ -1010,8 +1088,8 @@ class _PlanPricingCard extends StatelessWidget {
                                     color: accent.withValues(alpha: 0.22),
                                   ),
                                 ),
-                                child: Text(
-                                  tierBadge,
+                                child: LocalizedText(
+                                  headerBadge,
                                   style: TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w900,
@@ -1021,8 +1099,8 @@ class _PlanPricingCard extends StatelessWidget {
                               ),
                             ],
                             const SizedBox(height: 6),
-                            Text(
-                              subtitle,
+                            LocalizedText(
+                              subtitleOverride ?? subtitle,
                               style: TextStyle(
                                 fontSize: 12.5,
                                 height: 1.25,
@@ -1042,7 +1120,7 @@ class _PlanPricingCard extends StatelessWidget {
                             color: accent.withValues(alpha: 0.14),
                             border: Border.all(color: accent.withValues(alpha: 0.22)),
                           ),
-                          child: Text(
+                          child: LocalizedText(
                             badgeText,
                             style: TextStyle(
                               fontSize: 11,
@@ -1064,7 +1142,7 @@ class _PlanPricingCard extends StatelessWidget {
                               color: scheme.secondary.withValues(alpha: 0.22),
                             ),
                           ),
-                          child: Text(
+                          child: LocalizedText(
                             popularBadge,
                             style: TextStyle(
                               fontSize: 11,
@@ -1103,7 +1181,7 @@ class _PlanPricingCard extends StatelessWidget {
                             text: TextSpan(
                               children: [
                                 TextSpan(
-                                  text: priceMain,
+                                  text: context.trRaw(priceMain),
                                   style: TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.w900,
@@ -1172,7 +1250,7 @@ class _PlanPricingCard extends StatelessWidget {
                           borderRadius: BorderRadius.circular(16),
                         ),
                       ),
-                      child: Text(
+                      child: LocalizedText(
                         buttonLabel,
                         style: const TextStyle(fontWeight: FontWeight.w900),
                       ),
@@ -1182,8 +1260,7 @@ class _PlanPricingCard extends StatelessWidget {
                   // Small note for non-current paid plan when user not logged in
                   if (!isFree && !isCurrent && !canUpgrade) ...[
                     const SizedBox(height: 10),
-                    Text(
-                      'سجّل الدخول لإرسال طلب الترقية.',
+                    LocalizedText(disabledNote ?? 'سجّل الدخول لإرسال طلب الترقية.',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
@@ -1230,7 +1307,7 @@ class _CardSectionLabel extends StatelessWidget {
           child: Icon(icon, size: 16, color: accent),
         ),
         const SizedBox(width: 8),
-        Text(
+        LocalizedText(
           title,
           style: TextStyle(
             fontSize: 13.5,
@@ -1279,7 +1356,7 @@ class _FeatureRow extends StatelessWidget {
               spacing: 8,
               runSpacing: 6,
               children: [
-                Text(
+                LocalizedText(
                   cleanText,
                   style: TextStyle(
                     fontSize: 12.8,
@@ -1299,8 +1376,7 @@ class _FeatureRow extends StatelessWidget {
                         color: scheme.tertiary.withValues(alpha: 0.25),
                       ),
                     ),
-                    child: Text(
-                      'تحت التطوير',
+                    child: LocalizedText('تحت التطوير',
                       style: TextStyle(
                         fontSize: 10.5,
                         fontWeight: FontWeight.w800,
@@ -1357,7 +1433,7 @@ class _InfoBanner extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                LocalizedText(
                   title,
                   style: TextStyle(
                     fontSize: 13.5,
@@ -1366,7 +1442,7 @@ class _InfoBanner extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 6),
-                Text(
+                LocalizedText(
                   body,
                   style: TextStyle(
                     fontSize: 12.5,
@@ -1399,7 +1475,7 @@ class _ErrorState extends StatelessWidget {
       children: [
         Icon(Icons.error_outline_rounded, size: 40, color: scheme.error),
         const SizedBox(height: 10),
-        Text(
+        LocalizedText(
           message,
           textAlign: TextAlign.center,
           style: TextStyle(
@@ -1411,7 +1487,7 @@ class _ErrorState extends StatelessWidget {
         FilledButton.icon(
           onPressed: onRetry,
           icon: const Icon(Icons.refresh_rounded),
-          label: const Text('إعادة المحاولة'),
+          label: const LocalizedText('إعادة المحاولة'),
         ),
       ],
     );
@@ -1435,8 +1511,7 @@ class _PaymentMethodPicker extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'اختر وسيلة الدفع',
+            LocalizedText('اختر وسيلة الدفع',
               style: TextStyle(
                 fontSize: 16.5,
                 fontWeight: FontWeight.w900,
@@ -1444,8 +1519,7 @@ class _PaymentMethodPicker extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 6),
-            Text(
-              'اختر طريقة الدفع المناسبة لإرسال طلب الاشتراك.',
+            LocalizedText('اختر طريقة الدفع المناسبة لإرسال طلب الاشتراك.',
               style: TextStyle(
                 fontSize: 12.5,
                 fontWeight: FontWeight.w700,
@@ -1511,8 +1585,7 @@ class _PaymentMethodPicker extends StatelessWidget {
                                     ),
                                   ),
                                   const SizedBox(height: 4),
-                                  Text(
-                                    'الحساب: ${m.bankAccount}',
+                                  LocalizedText('الحساب: ${m.bankAccount}',
                                     style: TextStyle(
                                       fontWeight: FontWeight.w700,
                                       color: scheme.onSurface.withValues(alpha: 0.65),
@@ -1521,7 +1594,12 @@ class _PaymentMethodPicker extends StatelessWidget {
                                 ],
                               ),
                             ),
-                            Icon(Icons.chevron_left_rounded, color: scheme.onSurface.withValues(alpha: 0.6)),
+                            Icon(
+                              context.isRtl
+                                  ? Icons.chevron_left_rounded
+                                  : Icons.chevron_right_rounded,
+                              color: scheme.onSurface.withValues(alpha: 0.6),
+                            ),
                           ],
                         ),
                       ),

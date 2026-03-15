@@ -1,14 +1,16 @@
 // lib/screens/patients/patient_balances_screen.dart
-import 'dart:ui' as ui show TextDirection;
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:aelmamclinic/utils/app_formatters.dart';
 
 import 'package:aelmamclinic/core/tbian_ui.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/models/patient.dart';
 import 'package:aelmamclinic/services/db_service.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class PatientBalancesScreen extends StatefulWidget {
   const PatientBalancesScreen({super.key});
@@ -19,7 +21,7 @@ class PatientBalancesScreen extends StatefulWidget {
 
 class _PatientBalancesScreenState extends State<PatientBalancesScreen> {
   final _search = TextEditingController();
-  final _money = NumberFormat('#,##0.00');
+  NumberFormat get _money => AppFormatters.numberFormat('#,##0.00');
   List<Patient> _all = [];
   List<Patient> _filtered = [];
   bool _loading = true;
@@ -70,21 +72,21 @@ class _PatientBalancesScreenState extends State<PatientBalancesScreen> {
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          title: const Text('تسديد مبلغ'),
+          title: const LocalizedText('تسديد مبلغ'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('المتبقي: ${p.remaining.toStringAsFixed(2)}'),
+              LocalizedText('المتبقي: ${p.remaining.toStringAsFixed(2)}'),
               const SizedBox(height: 8),
               TextField(
                 controller: amountCtrl,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'المبلغ المدفوع'),
+                decoration: InputDecoration(labelText: context.trRaw('المبلغ المدفوع')),
               ),
               const SizedBox(height: 8),
               TextField(
                 controller: noteCtrl,
-                decoration: const InputDecoration(labelText: 'ملاحظة (اختياري)'),
+                decoration: InputDecoration(labelText: context.trRaw('ملاحظة (اختياري)')),
               ),
               const SizedBox(height: 8),
               StatefulBuilder(
@@ -96,7 +98,7 @@ class _PatientBalancesScreenState extends State<PatientBalancesScreen> {
                       amountCtrl.text = p.remaining.toStringAsFixed(2);
                     }
                   },
-                  title: const Text('اعتبار المدفوع = الإجمالي'),
+                  title: const LocalizedText('اعتبار المدفوع = الإجمالي'),
                   contentPadding: EdgeInsets.zero,
                 ),
               ),
@@ -105,7 +107,7 @@ class _PatientBalancesScreenState extends State<PatientBalancesScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('إلغاء'),
+              child: const LocalizedText('إلغاء'),
             ),
             ElevatedButton(
               onPressed: () async {
@@ -126,11 +128,11 @@ class _PatientBalancesScreenState extends State<PatientBalancesScreen> {
                 } catch (e) {
                   if (!context.mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('تعذر التسديد: $e')),
+                    SnackBar(content: LocalizedText('تعذر التسديد: $e')),
                   );
                 }
               },
-              child: const Text('حفظ'),
+              child: const LocalizedText('حفظ'),
             ),
           ],
         );
@@ -143,11 +145,11 @@ class _PatientBalancesScreenState extends State<PatientBalancesScreen> {
     final scheme = Theme.of(context).colorScheme;
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
-          title: const Text('مستحقات المرضى'),
+          title: const LocalizedText('مستحقات المرضى'),
         ),
         body: SafeArea(
           child: RefreshIndicator(
@@ -174,7 +176,7 @@ class _PatientBalancesScreenState extends State<PatientBalancesScreen> {
                   const Center(child: CircularProgressIndicator()),
                 ] else if (_filtered.isEmpty) ...[
                   const SizedBox(height: 60),
-                  const Center(child: Text('لا توجد مستحقات حالياً.')),
+                  const Center(child: LocalizedText('لا توجد مستحقات حالياً.')),
                 ] else ...[
                   ..._filtered.map((p) {
                     final total = p.paidAmount + p.remaining;
@@ -215,8 +217,7 @@ class _PatientBalancesScreenState extends State<PatientBalancesScreen> {
                             ),
                             if ((p.collateral ?? '').trim().isNotEmpty) ...[
                               const SizedBox(height: 8),
-                              Text(
-                                'الرهن: ${p.collateral!.trim()}',
+                              LocalizedText('الرهن: ${p.collateral!.trim()}',
                                 style: TextStyle(
                                   color: scheme.onSurface.withValues(alpha: .8),
                                 ),
@@ -247,8 +248,10 @@ class _PatientBalancesScreenState extends State<PatientBalancesScreen> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(label,
-              style: const TextStyle(fontWeight: FontWeight.w700)),
+          LocalizedText(
+            label,
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
           const SizedBox(width: 6),
           Text(value),
         ],

@@ -25,10 +25,13 @@ import 'package:sqflite/sqflite.dart' as sq;
 import 'package:path_provider/path_provider.dart' as path_provider;
 import 'package:path/path.dart' as p;
 import 'package:aelmamclinic/utils/app_paths.dart';
+import 'package:aelmamclinic/utils/network_error_classifier.dart';
+import 'package:aelmamclinic/core/app_navigation.dart';
 
 /*──────── مزوّدات الحالة ────────*/
 import 'providers/activation_provider.dart';
 import 'providers/appointment_provider.dart';
+import 'providers/locale_provider.dart';
 import 'providers/theme_provider.dart';
 import 'providers/repository_provider.dart';
 import 'providers/auth_provider.dart';
@@ -36,7 +39,6 @@ import 'providers/chat_provider.dart';
 
 /*──────── خدمات وودجتس عامة ────────*/
 import 'services/notification_service.dart';
-import 'services/chat_realtime_notifier.dart';
 import 'services/db_service.dart';
 import 'services/push_notifications_service.dart';
 import 'services/network_status_service.dart';
@@ -71,51 +73,80 @@ import 'core/theme.dart';
 import 'core/constants.dart';
 import 'core/nhost_manager.dart';
 import 'core/nhost_config.dart';
+import 'l10n/app_localizations.dart';
 import 'utils/notifications_helper.dart';
 import 'core/backend_lock.dart';
 import 'screens/offline/offline_mode_screen.dart';
 import 'services/nhost_graphql_service.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import 'utils/app_observability.dart';
 import 'utils/app_error_reporter.dart';
+import 'utils/app_locale.dart';
+import 'utils/l10n_extensions.dart';
 import 'firebase_options.dart';
+import 'phase11/background_runtime_strategy.dart';
 
 /// هل المنصّة تدعم flutter_local_notifications؟ (Android/iOS/macOS)
 bool get _pushSupported {
   try {
-    return Platform.isAndroid || Platform.isIOS || Platform.isMacOS || Platform.isWindows;
-  } catch (_) {
+    return Platform.isAndroid ||
+        Platform.isIOS ||
+        Platform.isMacOS ||
+        Platform.isWindows;
+  } catch (e, st) {
+    AppObservability.warn(
+      scope: 'APP',
+      code: ObsCode.appPlatformProbeFailed,
+      message: 'push platform capability probe failed',
+      flowId: AppObservability.newFlowId('app_push_supported_probe'),
+      error: e,
+      stackTrace: st,
+    );
     return false;
   }
 }
 
-/// مفاتيح ملاحة عامة لفتح الشاشات من الإشعارات
-final GlobalKey<NavigatorState> _navKey = GlobalKey<NavigatorState>();
 bool _f11Down = false;
+bool _fullscreenToggleInFlight = false;
+DateTime? _lastFullscreenToggleAt;
+const Duration _fullscreenToggleCooldown = Duration(milliseconds: 350);
 
 Future<void> _toggleFullscreen() async {
   if (!(Platform.isWindows || Platform.isLinux || Platform.isMacOS)) return;
+  if (_fullscreenToggleInFlight) return;
+  final lastToggleAt = _lastFullscreenToggleAt;
+  if (lastToggleAt != null &&
+      DateTime.now().difference(lastToggleAt) < _fullscreenToggleCooldown) {
+    return;
+  }
+  _fullscreenToggleInFlight = true;
   final isFull = await windowManager.isFullScreen();
-  await windowManager.setFullScreen(!isFull);
+  try {
+    await windowManager.setFullScreen(!isFull);
+    await Future<void>.delayed(const Duration(milliseconds: 120));
+    WidgetsBinding.instance.scheduleFrame();
+    if (await windowManager.isFocused() == false) {
+      await windowManager.focus();
+    }
+  } catch (e, st) {
+    dev.log(
+      'F11 fullscreen toggle failed',
+      name: 'WINDOW',
+      error: e,
+      stackTrace: st,
+    );
+  } finally {
+    _lastFullscreenToggleAt = DateTime.now();
+    _fullscreenToggleInFlight = false;
+  }
 }
 
 bool _isNetworkErrorMessage(String message) {
-  final s = message.toLowerCase();
-  return s.contains('network') ||
-      s.contains('socket') ||
-      s.contains('timeout') ||
-      s.contains('timed out') ||
-      s.contains('failed host lookup') ||
-      s.contains('bad gateway') ||
-      s.contains('semaphore timeout') ||
-      s.contains('semaphore') ||
-      s.contains('service temporarily unavailable') ||
-      s.contains('responseformatexception') ||
-      s.contains('formatexception') ||
-      s.contains('unexpected character') ||
-      s.contains('document is empty') ||
-      s.contains('eof') ||
-      s.contains('503') ||
-      s.contains('502');
+  return NetworkErrorClassifier.isTransportLikeMessage(message);
+}
+
+bool _isServerUnavailableMessage(String message) {
+  return NetworkErrorClassifier.isServerUnavailableLikeMessage(message);
 }
 
 DynamicLibrary _loadWindowsSqliteLibrary() {
@@ -148,7 +179,17 @@ void main() {
       try {
         final dataRoot = await AppPaths.dataRoot();
         Directory.current = dataRoot;
-      } catch (_) {}
+        AppConstants.debugLog('Data root: ${dataRoot.path}', tag: 'PATHS');
+      } catch (e, st) {
+        AppObservability.warn(
+          scope: 'APP',
+          code: ObsCode.appDataRootInitFailed,
+          message: 'failed to switch current directory to app data root',
+          flowId: AppObservability.newFlowId('app_data_root_switch'),
+          error: e,
+          stackTrace: st,
+        );
+      }
     }
 
     if (BackendLock.isOffline) {
@@ -165,18 +206,6 @@ void main() {
     await AppConstants.loadRuntimeOverrides();
     // تفعيل عميل Nhost بشكل مبكر لضمان جاهزية GraphQL/Auth/Storage.
     NhostManager.client;
-    // مراقبة الشبكة (Online/Offline)
-    unawaited(NetworkStatusService.instance.start());
-
-    // تهيئة Firebase + معالج الخلفية (Android/iOS فقط)
-    if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
-      await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
-      FirebaseMessaging.onBackgroundMessage(
-        PushNotificationsService.firebaseMessagingBackgroundHandler,
-      );
-    }
     AppConstants.debugLog(
       'Nhost config: subdomain=${NhostConfig.subdomain}, '
       'region=${NhostConfig.region}, '
@@ -196,7 +225,16 @@ void main() {
       try {
         final root = await AppPaths.dataRoot();
         await root.create(recursive: true);
-      } catch (_) {}
+      } catch (e, st) {
+        AppObservability.warn(
+          scope: 'APP',
+          code: ObsCode.appDataRootInitFailed,
+          message: 'failed to create app data root',
+          flowId: AppObservability.newFlowId('app_data_root_create'),
+          error: e,
+          stackTrace: st,
+        );
+      }
     }
 
     // SQLite عبر FFI على الديسكتوب
@@ -214,7 +252,7 @@ void main() {
         if (event.logicalKey == LogicalKeyboardKey.f11) {
           if (event is KeyDownEvent && !_f11Down) {
             _f11Down = true;
-            _toggleFullscreen();
+            unawaited(_toggleFullscreen());
           } else if (event is KeyUpEvent) {
             _f11Down = false;
           }
@@ -242,184 +280,150 @@ void main() {
       debugPrint("FlutterError: ${details.exception}");
       final raw = details.exceptionAsString();
       final isNet = _isNetworkErrorMessage(raw);
-      final msg = isNet
-          ? 'يبدو ان الشبكة غير مستقرة لديك'
-          : 'حدث خطأ غير متوقع. تم تسجيله.';
-      if (isNet) {
-        AppErrorReporter.info(msg, error: details.exception, stack: details.stack);
+      final isServer = _isServerUnavailableMessage(raw);
+      final flowId = AppObservability.newFlowId('app_flutter_error');
+      AppObservability.error(
+        scope: 'APP',
+        code: ObsCode.appFlutterError,
+        message: 'Unhandled FlutterError captured',
+        flowId: flowId,
+        context: {
+          'isNetworkError': isNet,
+          'isServerUnavailable': isServer,
+        },
+        error: details.exception,
+        stackTrace: details.stack,
+      );
+      final msg = isServer
+          ? 'تعذر الوصول إلى الخادم حاليًا. حاول مرة أخرى بعد قليل.'
+          : isNet
+              ? 'يبدو ان الشبكة غير مستقرة لديك'
+              : 'حدث خطأ غير متوقع. تم تسجيله.';
+      if (isNet || isServer) {
+        AppErrorReporter.info(msg,
+            error: details.exception, stack: details.stack);
       } else {
-        AppErrorReporter.report(msg, error: details.exception, stack: details.stack);
+        AppErrorReporter.report(msg,
+            error: details.exception, stack: details.stack);
       }
       await _logCrash(details.exceptionAsString(), details.stack.toString());
       try {
         FlutterError.presentError(details);
-      } catch (_) {
+      } catch (e, st) {
+        AppObservability.warn(
+          scope: 'APP',
+          code: ObsCode.appFlutterErrorPresentationFailed,
+          message: 'FlutterError.presentError failed; dumping to console',
+          flowId: AppObservability.newFlowId('app_flutter_present_error'),
+          error: e,
+          stackTrace: st,
+        );
         FlutterError.dumpErrorToConsole(details);
       }
     };
 
-    // إشعارات محلية فقط
-    if (_pushSupported) {
-      await _requestNotificationPermission();
+    final localeProvider = LocaleProvider();
+    final authProvider = AuthProvider();
+    final activationProvider = ActivationProvider();
+    final db = DBService.instance;
 
-      await NotificationService().initialize();
-      NotificationService.attachNavigator(
-        _navKey,
-        chatRouteName: ChatRoomLoader.routeName,
-      );
-      NotificationService.setOnNotificationTap((payload, response) async {
-        if (payload != null && payload.startsWith('patient:')) {
-          final parts = payload.split(':');
-          final id = parts.length > 1 ? int.tryParse(parts[1]) : null;
-          if (id != null) {
-            try {
-              final patient = await DBService.instance.getPatientById(id);
-              final navigator = _navKey.currentState;
-              if (patient != null && navigator != null) {
-                navigator.push(
-                  MaterialPageRoute(
-                    builder: (_) => ViewPatientScreen(patient: patient),
-                  ),
-                );
-              }
-            } catch (e) {
-              debugPrint('⚠️ فشل فتح المريض من الإشعار: $e');
-            }
-          }
-          return;
-        }
-
-        if (payload != null &&
-            payload.isNotEmpty &&
-            _navKey.currentState != null) {
+    NotificationService.attachNavigator(
+      appNavigatorKey,
+      chatRouteName: ChatRoomLoader.routeName,
+    );
+    NotificationService.setOnNotificationTap((payload, response) async {
+      final normalized = payload?.trim().toLowerCase() ?? '';
+      if (payload != null && payload.startsWith('patient:')) {
+        final parts = payload.split(':');
+        final id = parts.length > 1 ? int.tryParse(parts[1]) : null;
+        if (id != null) {
           try {
-            _navKey.currentState!
-                .pushNamed(ChatRoomLoader.routeName, arguments: payload);
-          } catch (e) {
-            debugPrint('⚠️ navigation on tap failed: $e');
-          }
-        }
-      });
-
-      // اختبار إشعار في وضع التطوير
-      if (kDebugMode) {
-        WidgetsBinding.instance.addPostFrameCallback((_) async {
-          try {
-            if (NotificationService().isReady) {
-              await NotificationService().showChatNotification(
-                id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
-                title: 'اختبار إشعار الدردشة',
-                body: 'لو وصلك هذا التنبيه فالقناة تعمل والصوت مضبوط',
-                payload: 'TEST_CONV_ID',
+            final patient = await DBService.instance.getPatientById(id);
+            final navigator = appNavigatorKey.currentState;
+            if (patient != null && navigator != null) {
+              navigator.push(
+                MaterialPageRoute(
+                  builder: (_) => ViewPatientScreen(patient: patient),
+                ),
               );
             }
-          } catch (_) {}
-        });
+          } catch (e) {
+            debugPrint('⚠️ فشل فتح المريض من الإشعار: $e');
+          }
+        }
+        return;
       }
 
-      await NotificationsHelper.instance.init();
-    } else {
-      debugPrint('🔕 Notifications disabled on this platform.');
-    }
+      if (normalized == 'plan_request' ||
+          normalized == 'seat_request' ||
+          normalized.startsWith('admin:')) {
+        try {
+          appNavigatorKey.currentState?.pushNamed('/admin');
+        } catch (e) {
+          debugPrint('⚠️ navigation to admin failed: $e');
+        }
+        return;
+      }
 
-    // التحقق من تلاعب الوقت عند الإقلاع
-    await _checkTimeTampering();
-
-    // تحميل حالة التفعيل
-    final prefs = await SharedPreferences.getInstance();
-    final bool isActivated = prefs.getBool('isActivated') ?? false;
-    final String? expiryString = prefs.getString('expiryDate');
-    final DateTime? expiryDate =
-        expiryString != null ? DateTime.parse(expiryString) : null;
-    final String? lastCheckString = prefs.getString('lastTimeCheck');
-    final DateTime? lastTimeCheck =
-        lastCheckString != null ? DateTime.parse(lastCheckString) : null;
-
-    // خدمات
-    final db = DBService.instance;
-    await db.database;
-
-    final authProvider = AuthProvider();
-    await authProvider.init();
+      if (payload != null &&
+          payload.isNotEmpty &&
+          appNavigatorKey.currentState != null) {
+        try {
+          appNavigatorKey.currentState!
+              .pushNamed(ChatRoomLoader.routeName, arguments: payload);
+        } catch (e) {
+          debugPrint('⚠️ navigation on tap failed: $e');
+        }
+      }
+    });
 
     runApp(
       MultiProvider(
         providers: [
           Provider<DBService>.value(value: db),
           ChangeNotifierProvider<AuthProvider>.value(value: authProvider),
-          ChangeNotifierProvider(
-            create: (_) => ActivationProvider.withInitial(
-              isActivated: isActivated,
-              expiryDate: expiryDate,
-              lastTimeCheck: lastTimeCheck,
-            ),
+          ChangeNotifierProvider<LocaleProvider>.value(value: localeProvider),
+          ChangeNotifierProvider<ActivationProvider>.value(
+            value: activationProvider,
           ),
           ChangeNotifierProvider(
-            create: (_) => AppointmentProvider()..loadAppointments(),
+            create: (_) => AppointmentProvider(),
           ),
           ChangeNotifierProvider(create: (_) => ThemeProvider()),
           ChangeNotifierProxyProvider<AuthProvider, RepositoryProvider>(
             create: (_) => RepositoryProvider(),
             update: (_, auth, repo) {
               final rp = repo ?? RepositoryProvider();
-              if (auth.isLoggedIn) {
-                Future.microtask(() => rp.onAuthChanged(auth.accountId));
-              } else {
-                Future.microtask(() => rp.onAuthChanged(null));
-              }
+              rp.scheduleAuthChange(
+                auth.canEnterClinicShell ? auth.accountId : null,
+              );
               return rp;
             },
           ),
           // ChatProvider يعتمد على AuthProvider
-          ChangeNotifierProxyProvider<AuthProvider, ChatProvider>(
+          ChangeNotifierProxyProvider2<AuthProvider, LocaleProvider,
+              ChatProvider>(
             create: (_) => ChatProvider(),
-            update: (_, auth, previous) {
+            update: (_, auth, locale, previous) {
               final cp = previous ?? ChatProvider();
+              final remoteBoundReady = auth.canRunRemoteBoundServices;
 
-              if (auth.isLoggedIn) {
-                Future.microtask(() async {
-                  await PushNotificationsService.instance.initForAuth(
-                    accountId: auth.accountId,
-                    role: auth.role,
-                  );
-                });
-                Future.microtask(() async {
-                  final uid = NhostManager.client.auth.currentUser?.id;
-                  if (uid == null || uid.isEmpty) return;
-
-                  String? accId = auth.accountId;
-                  accId ??= await cp.fetchAccountIdForCurrentUser(
-                    isSuperAdmin: auth.isSuperAdmin,
-                  );
-
-                  await ChatRealtimeNotifier.instance.start(
-                    accountId: accId, // قد تكون null (كل الحسابات)
-                    myUid: uid,
-                  );
-                });
+              if (remoteBoundReady) {
+                unawaited(PushNotificationsService.instance.initForAuth(
+                  accountId: auth.accountId,
+                  role: auth.role,
+                  languageCode: locale.languageCode,
+                ));
               } else {
-                ChatRealtimeNotifier.instance.stop();
-                PushNotificationsService.instance.dispose();
-                cp.onSignedOut();
+                unawaited(PushNotificationsService.instance.dispose());
               }
 
-              if (auth.isLoggedIn && !cp.ready) {
-                Future.microtask(() async {
-                  String? accId = auth.accountId;
-                  accId ??= await cp.fetchAccountIdForCurrentUser(
-                    isSuperAdmin: auth.isSuperAdmin,
-                  );
-                  if ((accId == null || accId.isEmpty) && !auth.isSuperAdmin) {
-                    return;
-                  }
-                  await cp.bootstrap(
-                    accountId:
-                        (accId != null && accId.isNotEmpty) ? accId : null,
-                    role: auth.role ?? '',
-                    isSuperAdmin: auth.isSuperAdmin,
-                  );
-                });
-              }
+              cp.scheduleAuthSync(
+                isLoggedIn: remoteBoundReady,
+                accountId: remoteBoundReady ? auth.accountId : null,
+                role: remoteBoundReady ? auth.role : null,
+                isSuperAdmin: remoteBoundReady && auth.isSuperAdmin,
+              );
 
               return cp;
             },
@@ -428,14 +432,36 @@ void main() {
         child: const MyApp(),
       ),
     );
+
+    unawaited(_bootstrapRuntimeAfterRunApp(
+      localeProvider: localeProvider,
+      authProvider: authProvider,
+      db: db,
+    ));
   }, (error, stack) async {
     debugPrint("Zoned error: $error\n$stack");
     final raw = error.toString();
     final isNet = _isNetworkErrorMessage(raw);
-    final msg = isNet
-        ? 'يبدو ان الشبكة غير مستقرة لديك'
-        : 'حدث خطأ غير متوقع. تم تسجيله.';
-    if (isNet) {
+    final isServer = _isServerUnavailableMessage(raw);
+    final flowId = AppObservability.newFlowId('app_zoned_error');
+    AppObservability.error(
+      scope: 'APP',
+      code: ObsCode.appZonedError,
+      message: 'Unhandled zone error captured',
+      flowId: flowId,
+      context: {
+        'isNetworkError': isNet,
+        'isServerUnavailable': isServer,
+      },
+      error: error,
+      stackTrace: stack,
+    );
+    final msg = isServer
+        ? 'تعذر الوصول إلى الخادم حاليًا. حاول مرة أخرى بعد قليل.'
+        : isNet
+            ? 'يبدو ان الشبكة غير مستقرة لديك'
+            : 'حدث خطأ غير متوقع. تم تسجيله.';
+    if (isNet || isServer) {
       AppErrorReporter.info(msg, error: error, stack: stack);
     } else {
       AppErrorReporter.report(msg, error: error, stack: stack);
@@ -444,19 +470,114 @@ void main() {
   });
 }
 
-// التحقق من تلاعب الوقت
-Future<void> _checkTimeTampering() async {
-  final prefs = await SharedPreferences.getInstance();
-  final lastCheck = prefs.getString('lastTimeCheck');
+Future<void> _bootstrapRuntimeAfterRunApp({
+  required LocaleProvider localeProvider,
+  required AuthProvider authProvider,
+  required DBService db,
+}) async {
+  final flowId = AppObservability.newFlowId('app_runtime_bootstrap');
+  try {
+    unawaited(NetworkStatusService.instance.start());
 
-  if (lastCheck != null) {
-    final lastCheckTime = DateTime.parse(lastCheck);
-    if (DateTime.now().isBefore(lastCheckTime)) {
-      await prefs.setBool('isActivated', false);
-      await prefs.remove('expiryDate');
-    }
+    await Future.wait([
+      _initializeFirebaseBootstrap(),
+      localeProvider.ready,
+      db.database,
+    ]);
+
+    final prefs = await SharedPreferences.getInstance();
+    await _purgeLegacyRememberedSecrets(prefs);
+
+    await Future.wait([
+      authProvider.init(),
+      _initializeLocalNotifications(localeProvider: localeProvider),
+    ]);
+  } catch (e, st) {
+    AppObservability.error(
+      scope: 'APP',
+      code: ObsCode.appRuntimeBootstrapFailed,
+      message: 'post-runApp runtime bootstrap failed',
+      flowId: flowId,
+      error: e,
+      stackTrace: st,
+    );
+    AppErrorReporter.report(
+      'تعذرت بعض تهيئات التطبيق عند الإقلاع.',
+      error: e,
+      stack: st,
+    );
   }
-  await prefs.setString('lastTimeCheck', DateTime.now().toIso8601String());
+}
+
+Future<void> _initializeFirebaseBootstrap() async {
+  if (kIsWeb || !(Platform.isAndroid || Platform.isIOS)) {
+    return;
+  }
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+  FirebaseMessaging.onBackgroundMessage(
+    PushNotificationsService.firebaseMessagingBackgroundHandler,
+  );
+}
+
+Future<void> _initializeLocalNotifications({
+  required LocaleProvider localeProvider,
+}) async {
+  final decision = resolveBackgroundRuntimeDecision(
+    pushSupported: _pushSupported,
+    isAndroid: !kIsWeb && Platform.isAndroid,
+    isIos: !kIsWeb && Platform.isIOS,
+  );
+  AppObservability.info(
+    scope: 'PUSH',
+    code: ObsCode.pushBackgroundStrategySelected,
+    message: 'background runtime strategy selected',
+    flowId: AppObservability.newFlowId('push_background_strategy'),
+    context: {
+      'mode': decision.mode.name,
+      'supportsTerminatedPush': decision.supportsTerminatedPush,
+      'requiresBatteryOptimizationPrompt':
+          decision.requiresBatteryOptimizationPrompt,
+    },
+  );
+  if (!_pushSupported) {
+    debugPrint('🔕 Notifications disabled on this platform.');
+    return;
+  }
+
+  await _requestNotificationPermission();
+  await NotificationService().initialize();
+  await NotificationsHelper.instance.init();
+
+  if (!kDebugMode) {
+    return;
+  }
+
+  WidgetsBinding.instance.addPostFrameCallback((_) async {
+    try {
+      if (NotificationService().isReady) {
+        await NotificationService().showChatNotification(
+          id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
+          title: NotificationService().translateRaw('اختبار إشعار الدردشة'),
+          body: NotificationService().translateRaw(
+            'لو وصلك هذا التنبيه فالقناة تعمل والصوت مضبوط',
+            languageCode: localeProvider.languageCode,
+          ),
+          payload: 'TEST_CONV_ID',
+        );
+      }
+    } catch (e, st) {
+      AppObservability.warn(
+        scope: 'APP',
+        code: ObsCode.appDebugNotificationFailed,
+        message: 'debug notification probe failed',
+        flowId: AppObservability.newFlowId('app_debug_notification'),
+        error: e,
+        stackTrace: st,
+      );
+    }
+  });
 }
 
 // تسجيل الأخطاء في ملف
@@ -505,15 +626,17 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final themeProvider = context.watch<ThemeProvider>();
+    final localeProvider = context.watch<LocaleProvider>();
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: AppConstants.appName,
-      navigatorKey: _navKey,
+      onGenerateTitle: (context) => context.tr('app_name'),
+      navigatorKey: appNavigatorKey,
       scaffoldMessengerKey: AppErrorReporter.messengerKey,
-      locale: const Locale('ar'),
-      supportedLocales: const [Locale('ar'), Locale('en')],
+      locale: localeProvider.locale,
+      supportedLocales: AppLocale.supportedLocales,
       localizationsDelegates: const [
+        AppLocalizations.delegate,
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
@@ -522,11 +645,14 @@ class MyApp extends StatelessWidget {
       darkTheme: AppTheme.dark,
       themeMode: themeProvider.themeMode,
       builder: (ctx, child) {
+        if (child == null) {
+          return const SizedBox.shrink();
+        }
         return ActivationListener(
           child: AuthGuardListener(
-            child: Directionality(
-              textDirection: TextDirection.rtl,
-              child: ResponsiveFrame(child: child!),
+            child: ResponsiveFrame(
+              key: ValueKey(localeProvider.languageCode),
+              child: child,
             ),
           ),
         );
@@ -589,7 +715,6 @@ class MyApp extends StatelessWidget {
         return MaterialPageRoute(
           builder: (_) => page,
           settings: settings,
-          maintainState: false,
         );
       },
     );
@@ -639,6 +764,10 @@ class _AppInitializerState extends State<AppInitializer> {
     final activation = context.watch<ActivationProvider>();
     final auth = context.watch<AuthProvider>();
 
+    if (!activation.isReady || !auth.isInitComplete) {
+      return const _StartupBootstrapScreen();
+    }
+
     final activationEnabled = AppConstants.activationGateEnabled;
     final isActivated = activationEnabled ? activation.isActivated : true;
 
@@ -655,232 +784,40 @@ class _AppInitializerState extends State<AppInitializer> {
     if (!auth.isLoggedIn) {
       return const LoginScreen();
     }
-    if (!auth.hasNhostSession && NetworkStatusService.instance.isOnline) {
-      return const _SessionRestoreScreen();
-    }
     if (auth.isSuperAdmin) {
-      return const AdminDashboardScreen();
+      return auth.canEnterRemoteAdminShell
+          ? const AdminDashboardScreen()
+          : const LoginScreen();
     }
-    if ((auth.accountId ?? '').trim().isEmpty) {
-      return const _PostLoginBootstrapScreen();
-    }
-    return const StatisticsOverviewScreen();
+    return auth.canEnterClinicShell
+        ? const StatisticsOverviewScreen()
+        : const LoginScreen();
   }
 }
 
-class _PostLoginBootstrapScreen extends StatefulWidget {
-  const _PostLoginBootstrapScreen();
-
-  @override
-  State<_PostLoginBootstrapScreen> createState() =>
-      _PostLoginBootstrapScreenState();
-}
-
-class _PostLoginBootstrapScreenState extends State<_PostLoginBootstrapScreen> {
-  bool _working = false;
-  String? _message;
-  StreamSubscription<bool>? _netSub;
-  Timer? _retryTimer;
-  bool _autoReloginAttempted = false;
-  bool _autoReloginInFlight = false;
-
-  static const _rememberMeKey = 'auth.remember_me';
-  static const _rememberEmailKey = 'auth.remember_email';
-  static const _rememberPassKey = 'auth.remember_pass';
-
-  @override
-  void initState() {
-    super.initState();
-    _netSub = NetworkStatusService.instance.changes.listen((online) {
-      if (!online || !mounted) return;
-      final auth = context.read<AuthProvider>();
-      if (_working) return;
-      if (auth.isSuperAdmin) return;
-      if ((auth.accountId ?? '').trim().isNotEmpty) return;
-      _probe();
-    });
-    WidgetsBinding.instance.addPostFrameCallback((_) => _probe());
-  }
-
-  Future<void> _probe() async {
-    if (_working) return;
-    _retryTimer?.cancel();
-    _working = true;
-    final auth = context.read<AuthProvider>();
-    if (!NetworkStatusService.instance.isOnline) {
-      if (mounted) {
-        setState(() => _message =
-            'لا يوجد إنترنت لتجهيز الحساب الآن. سيتم الانتظار حتى يعود الاتصال…');
-      }
-      _working = false;
-      return;
-    }
-    for (int i = 0; i < 8; i++) {
-      if (!NetworkStatusService.instance.isOnline) {
-        if (mounted) {
-          setState(() => _message =
-              'OFFLINE: تجهيز الحساب يحتاج إنترنت. سيتم المتابعة تلقائيًا عند رجوع الاتصال…');
-        }
-        _working = false;
-        return;
-      }
-      final result = await auth.refreshAndValidateCurrentUser();
-      if (!mounted) return;
-      if (auth.isSuperAdmin) {
-        _working = false;
-        return;
-      }
-      if (result.status == AuthSessionStatus.networkError ||
-          result.status == AuthSessionStatus.unknown) {
-        if (mounted) {
-          setState(() => _message = 'يبدو ان الشبكة غير مستقرة لديك');
-        }
-        _working = false;
-        _retryTimer = Timer(const Duration(seconds: 5), () {
-          if (!mounted) return;
-          _probe();
-        });
-        return;
-      }
-      if ((auth.accountId ?? '').trim().isNotEmpty) {
-        _working = false;
-        return;
-      }
-      await Future.delayed(const Duration(milliseconds: 400));
-    }
-    if (!mounted) return;
-    setState(() => _message =
-        'تعذّر تجهيز الحساب حاليًا. سيتم إعادة المحاولة تلقائيًا.');
-    unawaited(_tryAutoRelogin(auth));
-    _retryTimer = Timer(const Duration(seconds: 5), () {
-      if (!mounted) return;
-      _probe();
-    });
-    _working = false;
-  }
-
-  Future<void> _tryAutoRelogin(AuthProvider auth) async {
-    if (_autoReloginInFlight || _autoReloginAttempted) return;
-    _autoReloginInFlight = true;
-    _autoReloginAttempted = true;
-    try {
-      final sp = await SharedPreferences.getInstance();
-      final remember = sp.getBool(_rememberMeKey) ?? false;
-      if (!remember) return;
-      final email = sp.getString(_rememberEmailKey) ?? '';
-      final pass = sp.getString(_rememberPassKey) ?? '';
-      if (email.isEmpty || pass.isEmpty) return;
-      if (!NetworkStatusService.instance.isOnline) return;
-
-      await auth.signOut();
-      await auth.signIn(email, pass);
-      await auth.refreshAndValidateCurrentUser();
-    } catch (_) {
-      // سيتم عرض رسالة الشبكة العامة من طبقة الخطأ
-    } finally {
-      _autoReloginInFlight = false;
-    }
-  }
-
-  @override
-  void dispose() {
-    _netSub?.cancel();
-    _retryTimer?.cancel();
-    super.dispose();
-  }
+class _StartupBootstrapScreen extends StatelessWidget {
+  const _StartupBootstrapScreen();
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       body: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const CircularProgressIndicator(),
-            const SizedBox(height: 12),
-            Text(_message ?? 'جارٍ تجهيز الحساب...'),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SessionRestoreScreen extends StatefulWidget {
-  const _SessionRestoreScreen();
-
-  @override
-  State<_SessionRestoreScreen> createState() => _SessionRestoreScreenState();
-}
-
-class _SessionRestoreScreenState extends State<_SessionRestoreScreen> {
-  bool _working = false;
-  String? _message;
-  StreamSubscription<bool>? _netSub;
-  Timer? _retryTimer;
-
-  @override
-  void initState() {
-    super.initState();
-    _netSub = NetworkStatusService.instance.changes.listen((online) {
-      if (!online || !mounted) return;
-      if (_working) return;
-      _restore();
-    });
-    WidgetsBinding.instance.addPostFrameCallback((_) => _restore());
-  }
-
-  Future<void> _restore() async {
-    if (_working) return;
-    _retryTimer?.cancel();
-    _working = true;
-    final auth = context.read<AuthProvider>();
-    if (!NetworkStatusService.instance.isOnline) {
-      if (mounted) {
-        setState(() => _message =
-            'لا يوجد إنترنت لاستعادة الجلسة. سيتم الانتظار حتى يعود الاتصال…');
-      }
-      _working = false;
-      return;
-    }
-    setState(() => _message = 'جارٍ استعادة الجلسة...');
-    final ok = await auth.ensureNhostSessionReady(reason: 'appStart');
-    if (ok) {
-      await auth.refreshAndValidateCurrentUser();
-    }
-    _working = false;
-    if (!mounted) return;
-    if (!auth.hasNhostSession) {
-      setState(() => _message =
-          'تعذّر استعادة الجلسة. سيتم إعادة المحاولة تلقائيًا.');
-      _retryTimer = Timer(const Duration(seconds: 5), () {
-        if (!mounted) return;
-        _restore();
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    _netSub?.cancel();
-    _retryTimer?.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const CircularProgressIndicator(),
-            const SizedBox(height: 12),
-            Text(_message ?? 'جارٍ استعادة الجلسة...'),
-            const SizedBox(height: 12),
-            TextButton(
-              onPressed: _restore,
-              child: const Text('إعادة المحاولة الآن'),
+            const SizedBox(
+              width: 36,
+              height: 36,
+              child: CircularProgressIndicator(strokeWidth: 3),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'جاري تهيئة التطبيق...',
+              style: TextStyle(
+                color: scheme.onSurface,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ],
         ),
@@ -893,18 +830,35 @@ Future<void> _requestNotificationPermission() async {
   if (!_pushSupported) return;
   try {
     final status = await Permission.notification.status;
+    final prefs = await SharedPreferences.getInstance();
+    final l10n = await AppLocalizations.load(
+      AppLocale.localeFromCode(prefs.getString(LocaleProvider.prefsKey)),
+    );
     if (status.isDenied || status.isRestricted) {
       final result = await Permission.notification.request();
       if (result.isDenied) {
-        await ToastUtils.show(
-          'هذا التطبيق يحتاج إلى إذن الإشعارات لتذكيرك بالمواعيد.',
-        );
+        await ToastUtils.show(l10n.tr('notif_permission_required'));
       } else if (result.isPermanentlyDenied) {
-        await ToastUtils.show('يرجى تمكين الإشعارات من إعدادات التطبيق.');
+        await ToastUtils.show(l10n.tr('notif_permission_open_settings'));
         openAppSettings();
       }
     }
-  } catch (_) {}
+  } catch (e, st) {
+    AppObservability.warn(
+      scope: 'APP',
+      code: ObsCode.appNotificationPermissionFailed,
+      message: 'notification permission request failed',
+      flowId: AppObservability.newFlowId('app_notification_permission'),
+      error: e,
+      stackTrace: st,
+    );
+  }
+}
+
+Future<void> _purgeLegacyRememberedSecrets(SharedPreferences prefs) async {
+  if (prefs.containsKey('auth.remember_pass')) {
+    await prefs.remove('auth.remember_pass');
+  }
 }
 
 /*──────────────────────────── ChatRoomLoader ────────────────────────────*/
@@ -929,7 +883,7 @@ class _ChatRoomLoaderState extends State<ChatRoomLoader> {
   @override
   void initState() {
     super.initState();
-    _load();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
   Future<void> _load() async {
@@ -937,14 +891,14 @@ class _ChatRoomLoaderState extends State<ChatRoomLoader> {
       final user = NhostManager.client.auth.currentUser;
       if (user == null) {
         setState(() {
-          _error = 'يجب تسجيل الدخول لفتح المحادثة.';
+          _error = context.tr('chat_loader_login_required');
           _loading = false;
         });
         return;
       }
       if (widget.conversationId.isEmpty) {
         setState(() {
-          _error = 'لا يوجد معرّف محادثة في الطلب.';
+          _error = context.tr('chat_loader_missing_conversation_id');
           _loading = false;
         });
         return;
@@ -979,7 +933,7 @@ class _ChatRoomLoaderState extends State<ChatRoomLoader> {
 
       if (row == null) {
         setState(() {
-          _error = 'لم أجد المحادثة أو لا تملك صلاحية الوصول.';
+          _error = context.tr('chat_loader_not_found');
           _loading = false;
         });
         return;
@@ -991,7 +945,10 @@ class _ChatRoomLoaderState extends State<ChatRoomLoader> {
       });
     } catch (e) {
       setState(() {
-        _error = 'تعذّر فتح المحادثة: $e';
+        _error = context.tr(
+          'chat_loader_open_failed',
+          params: {'reason': e},
+        );
         _loading = false;
       });
     }
@@ -1008,12 +965,12 @@ class _ChatRoomLoaderState extends State<ChatRoomLoader> {
       return ChatRoomScreen(conversation: _conv!);
     }
     return Scaffold(
-      appBar: AppBar(title: const Text('المحادثة')),
+      appBar: AppBar(title: Text(context.tr('chat_loader_title'))),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Text(
-            _error ?? 'تعذّر فتح المحادثة.',
+            _error ?? context.tr('chat_loader_fallback_error'),
             textAlign: TextAlign.center,
             style: const TextStyle(fontWeight: FontWeight.w800),
           ),

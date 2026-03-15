@@ -15,10 +15,10 @@
 //   - core/theme.dart       (kPrimaryColor)
 //   - core/neumorphism.dart (NeuCard)
 
-import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
+import 'package:aelmamclinic/utils/app_locale.dart';
 
 class TypingIndicator extends StatefulWidget {
   /// القائمة الموحدة للأسماء/الإيميلات.
@@ -132,12 +132,16 @@ class _TypingIndicatorState extends State<TypingIndicator>
     final typingText =
         (widget.textOverride != null && widget.textOverride!.trim().isNotEmpty)
             ? widget.textOverride!.trim()
-            : _composeTypingText(widget.items, widget.maxNamesToShow);
+            : _composeTypingText(
+                context,
+                widget.items,
+                widget.maxNamesToShow,
+              );
 
     final dotSize = widget.dotSize ?? (widget.compact ? 7.0 : 6.0);
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Align(
         alignment: alignment,
         child: Padding(
@@ -195,8 +199,13 @@ class _TypingIndicatorState extends State<TypingIndicator>
     );
   }
 
-  /// إنشاء نص عربي: "فلان يكتب…" / "فلان وفلان يكتبان…" / "فلان وآخرون يكتبون…"
-  String _composeTypingText(List<String> ps, int maxNamesToShow) {
+  String _composeTypingText(
+    BuildContext context,
+    List<String> ps,
+    int maxNamesToShow,
+  ) {
+    final isArabic = AppLocale.isRtl(Localizations.localeOf(context));
+
     // تنظيف وتفريد الأسماء (مع الحفاظ على ترتيب الظهور)
     final seen = <String>{};
     final cleaned = <String>[];
@@ -206,7 +215,9 @@ class _TypingIndicatorState extends State<TypingIndicator>
       final key = t.toLowerCase();
       if (seen.add(key)) cleaned.add(t);
     }
-    if (cleaned.isEmpty) return 'يكتب…';
+    if (cleaned.isEmpty) {
+      return isArabic ? 'يكتب…' : 'Typing...';
+    }
 
     String nice(String s) {
       final t = s.trim();
@@ -219,16 +230,19 @@ class _TypingIndicatorState extends State<TypingIndicator>
     final names = cleaned.map((s) => _ltrName(nice(s))).toList();
 
     if (names.length == 1) {
-      return '${names[0]} يكتب…';
+      return isArabic ? '${names[0]} يكتب…' : '${names[0]} is typing...';
     }
 
     if (names.length == 2) {
-      return '${names[0]} و ${names[1]} يكتبان…';
+      return isArabic
+          ? '${names[0]} و ${names[1]} يكتبان…'
+          : '${names[0]} and ${names[1]} are typing...';
     }
 
-    // عرض حتى maxNamesToShow ثم “وآخرون”
-    final shown = names.take(maxNamesToShow).join('، ');
-    return '$shown وآخرون يكتبون…';
+    final shown = names.take(maxNamesToShow).join(isArabic ? '، ' : ', ');
+    return isArabic
+        ? '$shown وآخرون يكتبون…'
+        : '$shown and others are typing...';
   }
 
   /// نعرض الاسم/الإيميل باتجاه LTR داخل النص العربي بإحاطته بعلامة LRM

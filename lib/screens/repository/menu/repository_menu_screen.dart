@@ -1,5 +1,4 @@
 // lib/screens/repository/menu/repository_menu_screen.dart
-import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -9,6 +8,7 @@ import 'package:aelmamclinic/widgets/feature_hub.dart';
 
 import 'package:aelmamclinic/providers/repository_provider.dart';
 import 'package:aelmamclinic/screens/repository/health/repository_health_screen.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class RepositoryMenuScreen extends StatelessWidget {
   const RepositoryMenuScreen({super.key});
@@ -20,7 +20,7 @@ class RepositoryMenuScreen extends StatelessWidget {
     final repoProvider = context.watch<RepositoryProvider>();
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -38,7 +38,7 @@ class RepositoryMenuScreen extends StatelessWidget {
             ],
           ),
           leading: IconButton(
-            tooltip: 'رجوع',
+            tooltip: context.trRaw('رجوع'),
             onPressed: () => Navigator.pop(context),
             icon: const Icon(Icons.arrow_back_rounded),
           ),

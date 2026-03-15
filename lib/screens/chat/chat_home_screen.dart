@@ -17,6 +17,8 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import 'chat_room_screen.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class ChatHomeScreen extends StatefulWidget {
   const ChatHomeScreen({super.key});
@@ -53,13 +55,11 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
     final chat = context.read<ChatProvider>();
     if (chat.busy) return;
     final auth = context.read<AuthProvider>();
-    if (!chat.ready) {
-      await chat.bootstrap(
-        accountId: auth.accountId,
-        role: auth.role,
-        isSuperAdmin: auth.isSuperAdmin,
-      );
-    }
+    await chat.ensureBootstrapped(
+      accountId: auth.accountId,
+      role: auth.role,
+      isSuperAdmin: auth.isSuperAdmin,
+    );
     if (!mounted) return;
     final isOwner = auth.role?.toLowerCase() == 'owner';
     if (isOwner) {
@@ -86,7 +86,7 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
     if (convId == null) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('خدمة العملاء غير مفعّلة بعد.')),
+        const SnackBar(content: LocalizedText('خدمة العملاء غير مفعّلة بعد.')),
       );
       return;
     }
@@ -194,7 +194,7 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
                         );
                       },
                       decoration: InputDecoration(
-                        hintText: 'ابحث بالرقم أو البريد',
+                        hintText: context.trRaw('ابحث بالرقم أو البريد'),
                         prefixIcon: const Icon(Icons.search_rounded),
                         suffixIcon: _query.isEmpty
                             ? null
@@ -207,12 +207,12 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
                               ),
                         border: const OutlineInputBorder(),
                       ),
-                      textDirection: ui.TextDirection.rtl,
+                      textDirection: Directionality.of(context),
                     ),
                   ),
                   const SizedBox(width: 8),
                   FilterChip(
-                    label: const Text('غير المقروءة'),
+                    label: const LocalizedText('غير المقروءة'),
                     avatar: const Icon(
                       Icons.mark_chat_unread_rounded,
                       size: 18,
@@ -222,7 +222,7 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
                   ),
                   const SizedBox(width: 8),
                   FilterChip(
-                    label: const Text('المؤرشفة'),
+                    label: const LocalizedText('المؤرشفة'),
                     avatar: const Icon(Icons.archive_rounded, size: 18),
                     selected: _archivedOnly,
                     onSelected: (value) async {
@@ -247,8 +247,7 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
             const SliverFillRemaining(
               hasScrollBody: false,
               child: Center(
-                child: Text(
-                  'لا توجد محادثات متاحة.',
+                child: LocalizedText('لا توجد محادثات متاحة.',
                   style: TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
@@ -329,26 +328,25 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
         child: Row(
           children: [
             IconButton(
-              tooltip: 'رجوع',
+              tooltip: context.trRaw('رجوع'),
               onPressed: () => Navigator.of(context).maybePop(),
               icon: const Icon(Icons.arrow_back_rounded),
             ),
             const Icon(Icons.chat_rounded),
             const SizedBox(width: 8),
             const Expanded(
-              child: Text(
-                'المحادثات',
+              child: LocalizedText('المحادثات',
                 style: TextStyle(fontWeight: FontWeight.w800),
               ),
             ),
             if (auth.role?.toLowerCase() == 'owner')
               IconButton(
-                tooltip: 'خدمة العملاء',
+                tooltip: context.trRaw('خدمة العملاء'),
                 onPressed: _openSupportChat,
                 icon: const Icon(Icons.support_agent_rounded),
               ),
             IconButton(
-              tooltip: 'تحديث',
+              tooltip: context.trRaw('تحديث'),
               onPressed: chat.busy ? null : _refresh,
               icon: const Icon(Icons.refresh_rounded),
             ),
@@ -358,21 +356,21 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
     }
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: isWide
             ? null
             : AppBar(
-                title: const Text('المحادثات'),
+                title: const LocalizedText('المحادثات'),
                 actions: [
                   if (auth.role?.toLowerCase() == 'owner')
                     IconButton(
-                      tooltip: 'خدمة العملاء',
+                      tooltip: context.trRaw('خدمة العملاء'),
                       onPressed: _openSupportChat,
                       icon: const Icon(Icons.support_agent_rounded),
                     ),
                   IconButton(
-                    tooltip: 'تحديث',
+                    tooltip: context.trRaw('تحديث'),
                     onPressed: chat.busy ? null : _refresh,
                     icon: const Icon(Icons.refresh_rounded),
                   ),
@@ -382,7 +380,7 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
             ? null
             : FloatingActionButton(
                 onPressed: () => _showNewConversationDialog(context),
-                tooltip: 'بدء محادثة جديدة',
+                tooltip: context.trRaw('بدء محادثة جديدة'),
                 child: const Icon(Icons.chat_rounded),
               ),
         body: SafeArea(
@@ -404,7 +402,7 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
                                   child: FloatingActionButton(
                                     onPressed: () =>
                                         _showNewConversationDialog(context),
-                                    tooltip: 'بدء محادثة جديدة',
+                                    tooltip: context.trRaw('بدء محادثة جديدة'),
                                     child: const Icon(Icons.chat_rounded),
                                   ),
                                 ),
@@ -435,8 +433,7 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
                               ),
                             ),
                             child: Center(
-                              child: Text(
-                                'اختر محادثة لعرضها هنا.',
+                              child: LocalizedText('اختر محادثة لعرضها هنا.',
                                 style: TextStyle(
                                   fontWeight: FontWeight.w700,
                                   color: scheme.onSurface.withValues(alpha: .6),
@@ -448,8 +445,7 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
                         final conv = chat.conversationById(selectedConvId);
                         if (conv == null) {
                           return Center(
-                            child: Text(
-                              'اختر محادثة لعرضها هنا.',
+                            child: LocalizedText('اختر محادثة لعرضها هنا.',
                               style: TextStyle(
                                 fontWeight: FontWeight.w700,
                                 color: Theme.of(context)
@@ -481,26 +477,26 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
     final result = await showDialog<String>(
       context: context,
       builder: (_) => Directionality(
-        textDirection: ui.TextDirection.rtl,
+        textDirection: Directionality.of(context),
         child: AlertDialog(
-          title: const Text('تحديد اسم بديل'),
+          title: const LocalizedText('تحديد اسم بديل'),
           content: TextField(
             controller: controller,
             autofocus: true,
-            decoration: const InputDecoration(
-              hintText: 'اكتب الاسم الذي تريد إظهاره',
+            decoration: InputDecoration(
+              hintText: context.trRaw('اكتب الاسم الذي تريد إظهاره'),
             ),
-            textDirection: ui.TextDirection.rtl,
+            textDirection: Directionality.of(context),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('إلغاء'),
+              child: const LocalizedText('إلغاء'),
             ),
             FilledButton(
               onPressed: () =>
                   Navigator.of(context).pop(controller.text.trim()),
-              child: const Text('حفظ'),
+              child: const LocalizedText('حفظ'),
             ),
           ],
         ),
@@ -516,7 +512,7 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
+        content: LocalizedText(
           trimmed.isEmpty ? 'تم إزالة الاسم البديل' : 'تم تحديث الاسم البديل',
         ),
       ),
@@ -563,14 +559,14 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
     await showModalBottomSheet<void>(
       context: context,
       builder: (_) => Directionality(
-        textDirection: ui.TextDirection.rtl,
+        textDirection: Directionality.of(context),
         child: SafeArea(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               ListTile(
                 leading: const Icon(Icons.visibility_rounded),
-                title: const Text('عرض المحادثة'),
+                title: const LocalizedText('عرض المحادثة'),
                 onTap: () {
                   Navigator.of(context).pop();
                   _openConversation(conversation.id);
@@ -579,10 +575,10 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
               if (isDirect)
                 ListTile(
                   leading: const Icon(Icons.edit_rounded),
-                  title: const Text('تعديل الاسم البديل'),
+                  title: const LocalizedText('تعديل الاسم البديل'),
                   subtitle: (alias != null && alias.isNotEmpty)
-                      ? Text('الاسم الحالي: $alias')
-                      : const Text('سيظهر البريد الأصلي إذا تُرك الحقل فارغاً'),
+                      ? LocalizedText('الاسم الحالي: $alias')
+                      : const LocalizedText('سيظهر البريد الأصلي إذا تُرك الحقل فارغاً'),
                   onTap: () {
                     Navigator.of(context).pop();
                     _showAliasDialog(conversation);
@@ -590,7 +586,7 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
                 ),
               ListTile(
                 leading: const Icon(Icons.mark_email_read_rounded),
-                title: const Text('تعيين كمقروء'),
+                title: const LocalizedText('تعيين كمقروء'),
                 onTap: () async {
                   Navigator.of(context).pop();
                   await chat.markConversationRead(conversation.id);
@@ -611,7 +607,7 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
               ),
               ListTile(
                 leading: const Icon(Icons.delete_outline_rounded),
-                title: const Text('حذف المحادثة من جهازي'),
+                title: const LocalizedText('حذف المحادثة من جهازي'),
                 onTap: () async {
                   Navigator.of(context).pop();
                   await chat.deleteConversationForMe(conversation.id);
@@ -629,9 +625,9 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
     final result = await showDialog<String>(
       context: context,
       builder: (_) => Directionality(
-        textDirection: ui.TextDirection.rtl,
+        textDirection: Directionality.of(context),
         child: AlertDialog(
-          title: const Text('بدء محادثة جديدة'),
+          title: const LocalizedText('بدء محادثة جديدة'),
           content: TextField(
             controller: inputCtrl,
             keyboardType: TextInputType.emailAddress,
@@ -646,21 +642,21 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
                 );
               }),
             ],
-            decoration: const InputDecoration(
-              hintText: 'أدخل رقم الحساب لبدء دردشة معه',
+            decoration: InputDecoration(
+              hintText: context.trRaw('أدخل رقم الحساب لبدء دردشة معه'),
             ),
             textDirection: ui.TextDirection.ltr,
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('إلغاء'),
+              child: const LocalizedText('إلغاء'),
             ),
             FilledButton(
               onPressed: () => Navigator.of(
                 context,
               ).pop(inputCtrl.text.trim().toLowerCase()),
-              child: const Text('بدء'),
+              child: const LocalizedText('بدء'),
             ),
           ],
         ),
@@ -694,7 +690,7 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('تعذر إنشاء المحادثة: $e')));
+      ).showSnackBar(SnackBar(content: LocalizedText('تعذر إنشاء المحادثة: $e')));
     } finally {
       inputCtrl.dispose();
     }

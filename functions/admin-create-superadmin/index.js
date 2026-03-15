@@ -1,3 +1,8 @@
+const {
+  extractBearer,
+  resolveUserIdFromToken,
+} = require('../_shared/storage_utils');
+
 const readBody = (req) =>
   new Promise((resolve) => {
     if (req.body && typeof req.body === 'object') {
@@ -153,30 +158,6 @@ async function ensureAuthUser(email, password) {
   return userId;
 }
 
-const parseJwtSub = (authHeader) => {
-  if (!authHeader) return '';
-  const token = authHeader.replace(/^Bearer\s+/i, '').trim();
-  const parts = token.split('.');
-  if (parts.length < 2) return '';
-  try {
-    const padded = parts[1]
-      .replace(/-/g, '+')
-      .replace(/_/g, '/')
-      .padEnd(parts[1].length + ((4 - (parts[1].length % 4)) % 4), '=');
-    const raw = Buffer.from(padded, 'base64').toString('utf8');
-    const payload = JSON.parse(raw);
-    const claims = payload['https://hasura.io/jwt/claims'] || {};
-    return (
-      claims['x-hasura-user-id'] ||
-      payload.sub ||
-      claims.sub ||
-      ''
-    ).toString();
-  } catch (_) {
-    return '';
-  }
-};
-
 const sanitizeTabs = (tabs) => {
   const list = Array.isArray(tabs) ? tabs : [];
   const normalized = list
@@ -233,7 +214,8 @@ module.exports = async function handler(req, res) {
       res.status(401).json({ ok: false, error: 'Missing authorization' });
       return;
     }
-    const callerUid = parseJwtSub(authHeader);
+    const token = extractBearer(req);
+    const callerUid = token ? await resolveUserIdFromToken(token) : '';
     if (!isUuid(callerUid)) {
       res.status(401).json({ ok: false, error: 'Invalid token' });
       return;

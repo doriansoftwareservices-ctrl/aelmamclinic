@@ -8,6 +8,8 @@ import 'package:aelmamclinic/services/db_service.dart';
 // تصميم TBIAN
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class EditDoctorScreen extends StatefulWidget {
   final Doctor doctor;
@@ -86,7 +88,7 @@ class _EditDoctorScreenState extends State<EditDoctorScreen> {
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('تم تحديث ساعات المناوبة')),
+      const SnackBar(content: LocalizedText('تم تحديث ساعات المناوبة')),
     );
     Navigator.pop(context);
   }
@@ -108,7 +110,7 @@ class _EditDoctorScreenState extends State<EditDoctorScreen> {
               errorBuilder: (_, __, ___) => const SizedBox.shrink(),
             ),
             const SizedBox(width: 8),
-            const Text('تعديل بيانات الطبيب'),
+            const LocalizedText('تعديل بيانات الطبيب'),
           ],
         ),
       ),
@@ -122,21 +124,21 @@ class _EditDoctorScreenState extends State<EditDoctorScreen> {
                 // بيانات الطبيب (عرض فقط)
                 NeuField(
                   controller: _nameCtrl,
-                  labelText: 'اسم الطبيب',
+                  labelText: context.trRaw('اسم الطبيب'),
                   enabled: false,
                   prefix: const Icon(Icons.badge_rounded),
                 ),
                 const SizedBox(height: 10),
                 NeuField(
                   controller: _specializationCtrl,
-                  labelText: 'التخصص',
+                  labelText: context.trRaw('التخصص'),
                   enabled: false,
                   prefix: const Icon(Icons.work_rounded),
                 ),
                 const SizedBox(height: 10),
                 NeuField(
                   controller: _phoneCtrl,
-                  labelText: 'رقم الهاتف',
+                  labelText: context.trRaw('رقم الهاتف'),
                   enabled: false,
                   prefix: const Icon(Icons.call_rounded),
                   keyboardType: TextInputType.phone,
@@ -155,8 +157,7 @@ class _EditDoctorScreenState extends State<EditDoctorScreen> {
                     contentPadding: EdgeInsets.zero,
                     leading: Icon(Icons.schedule_rounded,
                         color: kPrimaryColor.withValues(alpha: .9)),
-                    title: const Text(
-                      'ساعات المناوبة (من)',
+                    title: const LocalizedText('ساعات المناوبة (من)',
                       style:
                           TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
                     ),
@@ -184,8 +185,7 @@ class _EditDoctorScreenState extends State<EditDoctorScreen> {
                     contentPadding: EdgeInsets.zero,
                     leading: Icon(Icons.access_time_filled_rounded,
                         color: kPrimaryColor.withValues(alpha: .9)),
-                    title: const Text(
-                      'ساعات المناوبة (إلى)',
+                    title: const LocalizedText('ساعات المناوبة (إلى)',
                       style:
                           TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
                     ),
@@ -204,7 +204,7 @@ class _EditDoctorScreenState extends State<EditDoctorScreen> {
 
                 // زر الحفظ
                 Align(
-                  alignment: Alignment.centerRight,
+                  alignment: AlignmentDirectional.centerStart,
                   child: NeuButton.primary(
                     label: 'حفظ التعديلات',
                     icon: Icons.save_rounded,

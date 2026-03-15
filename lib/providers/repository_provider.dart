@@ -1,12 +1,13 @@
 // lib/providers/repository_provider.dart
 
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 
+import 'package:flutter/foundation.dart';
 import 'package:aelmamclinic/models/item_type.dart';
 import 'package:aelmamclinic/models/item.dart';
 import 'package:aelmamclinic/models/inventory_health_report.dart';
 import 'package:aelmamclinic/services/repository_service.dart';
+import 'package:aelmamclinic/utils/app_observability.dart';
 
 /* ربط مباشر مع الـ DB + Sync */
 import 'package:aelmamclinic/services/db_service.dart';
@@ -37,6 +38,13 @@ class RepositoryProvider extends ChangeNotifier {
   Timer? _debounceTimer;
   bool _refreshBusy = false;
   String? _boundAccountId;
+  String? _queuedAuthAccountId;
+  Future<void>? _authChangeDrain;
+  bool _disposed = false;
+  bool _pendingTypesRefresh = false;
+  bool _pendingItemsRefresh = false;
+  bool _pendingAlertsRefresh = false;
+  bool _refreshRequestedWhileBusy = false;
 
   /* ─── البيانات المجمَّعة في الذاكرة ─── */
   List<ItemType> _types = [];
@@ -93,12 +101,26 @@ class RepositoryProvider extends ChangeNotifier {
     ], trimmed);
 
     // إعادة تحميل بيانات المستودع للحساب الحالي
-    await _refreshAll(repair: true);
+    await _refreshSnapshot(
+      refreshTypes: true,
+      refreshItems: true,
+      refreshAlerts: true,
+    );
+  }
+
+  void scheduleAuthChange(String? accountId) {
+    _queuedAuthAccountId = accountId?.trim();
+    if (_authChangeDrain != null) return;
+    _authChangeDrain = Future.microtask(_drainAuthChanges);
   }
 
   /* ─── عمليات التهيئة ─── */
   Future<void> loadAllData() => bootstrap();
-  Future<void> bootstrap() async => _refreshAll(repair: true);
+  Future<void> bootstrap() async => _refreshSnapshot(
+        refreshTypes: true,
+        refreshItems: true,
+        refreshAlerts: true,
+      );
   Future<void> loadAlerts() async => _checkAlerts();
 
   Future<InventoryRepairReport> repairInventoryIntegrity({
@@ -219,8 +241,45 @@ class RepositoryProvider extends ChangeNotifier {
   }
 
   /* ─── داخليّات ─── */
-  Future<void> _refreshAll({bool repair = false}) async {
-    if (_refreshBusy) return;
+  Future<void> _drainAuthChanges() async {
+    do {
+      final next = _queuedAuthAccountId;
+      _queuedAuthAccountId = null;
+      if (_disposed) {
+        _authChangeDrain = null;
+        return;
+      }
+      try {
+        await onAuthChanged(next);
+      } catch (e, st) {
+        AppObservability.warn(
+          scope: 'REPO',
+          code: ObsCode.repoAuthChangeFailed,
+          message: 'repository auth change reconciliation failed',
+          flowId: AppObservability.newFlowId('repo_auth_change'),
+          context: {
+            'accountId': next,
+          },
+          error: e,
+          stackTrace: st,
+        );
+      }
+    } while (_queuedAuthAccountId != null && !_disposed);
+    _authChangeDrain = null;
+  }
+
+  Future<void> _refreshSnapshot({
+    bool refreshTypes = true,
+    bool refreshItems = true,
+    bool refreshAlerts = true,
+  }) async {
+    if (_refreshBusy) {
+      _refreshRequestedWhileBusy = true;
+      _pendingTypesRefresh = _pendingTypesRefresh || refreshTypes;
+      _pendingItemsRefresh = _pendingItemsRefresh || refreshItems;
+      _pendingAlertsRefresh = _pendingAlertsRefresh || refreshAlerts;
+      return;
+    }
     _refreshBusy = true;
     try {
       final accountId = await _db.currentAccountId();
@@ -230,47 +289,83 @@ class RepositoryProvider extends ChangeNotifier {
         }
       }
 
-      if (repair) {
-        try {
-          await _service.repairInventoryIntegrity(backup: true);
-        } catch (_) {}
+      final snapshot = await _service.fetchSnapshot(
+        includeTypes: refreshTypes,
+        includeItems: refreshItems,
+        includeAlerts: refreshAlerts,
+      );
+
+      if (refreshTypes) {
+        final dedup = <String, ItemType>{};
+        for (final t in snapshot.types) {
+          final nameKey = t.name.trim().toLowerCase();
+          final key = t.id != null ? 'id:${t.id}' : 'name:$nameKey';
+          if (!dedup.containsKey(key)) {
+            dedup[key] = t;
+          }
+        }
+        _types = dedup.values.toList()
+          ..sort((a, b) => a.name.compareTo(b.name));
       }
 
-      final fetched = await _service.fetchItemTypes();
-      final dedup = <String, ItemType>{};
-      for (final t in fetched) {
-        final nameKey = t.name.trim().toLowerCase();
-        final key = t.id != null ? 'id:${t.id}' : 'name:$nameKey';
-        if (!dedup.containsKey(key)) {
-          dedup[key] = t;
+      if (refreshItems) {
+        _itemsByType.clear();
+        _orphanItems = [];
+        for (final t in _types) {
+          if (t.id != null) {
+            _itemsByType[t.id!] = <Item>[];
+          }
         }
-      }
-      _types = dedup.values.toList()
-        ..sort((a, b) => a.name.compareTo(b.name));
-      final allItems = await _service.fetchAllItems();
-      _itemsByType.clear();
-      _orphanItems = [];
-      for (final t in _types) {
-        if (t.id != null) {
-          _itemsByType[t.id!] = <Item>[];
+        for (final item in snapshot.items) {
+          final list = _itemsByType[item.typeId];
+          if (list != null) {
+            list.add(item);
+          } else {
+            _orphanItems.add(item);
+          }
         }
-      }
-      for (final item in allItems) {
-        final list = _itemsByType[item.typeId];
-        if (list != null) {
-          list.add(item);
-        } else {
-          _orphanItems.add(item);
+        for (final entry in _itemsByType.entries) {
+          entry.value.sort((a, b) => a.name.compareTo(b.name));
         }
+        _orphanItems.sort((a, b) => a.name.compareTo(b.name));
       }
-      for (final entry in _itemsByType.entries) {
-        entry.value.sort((a, b) => a.name.compareTo(b.name));
+
+      if (refreshAlerts) {
+        _hasLowStockAlerts = snapshot.hasLowStockAlerts;
+        _lowStock = snapshot.lowStockItems;
       }
-      _orphanItems.sort((a, b) => a.name.compareTo(b.name));
-      await _checkAlerts(notify: false);
+
       notifyListeners();
+    } catch (e, st) {
+      AppObservability.warn(
+        scope: 'REPO',
+        code: ObsCode.repoRefreshFailed,
+        message: 'repository snapshot refresh failed',
+        flowId: AppObservability.newFlowId('repo_refresh'),
+        context: {
+          'refreshTypes': refreshTypes,
+          'refreshItems': refreshItems,
+          'refreshAlerts': refreshAlerts,
+        },
+        error: e,
+        stackTrace: st,
+      );
     } finally {
       _refreshBusy = false;
+      if (_refreshRequestedWhileBusy && !_disposed) {
+        _refreshRequestedWhileBusy = false;
+        final refreshTypesNext = _pendingTypesRefresh;
+        final refreshItemsNext = _pendingItemsRefresh;
+        final refreshAlertsNext = _pendingAlertsRefresh;
+        _pendingTypesRefresh = false;
+        _pendingItemsRefresh = false;
+        _pendingAlertsRefresh = false;
+        unawaited(_refreshSnapshot(
+          refreshTypes: refreshTypesNext,
+          refreshItems: refreshItemsNext,
+          refreshAlerts: refreshAlertsNext,
+        ));
+      }
     }
   }
 
@@ -319,20 +414,50 @@ class RepositoryProvider extends ChangeNotifier {
     _dbSub?.cancel();
     _dbSub = _db.changes.listen((table) {
       if (_interestingTables.contains(table)) {
+          _pendingTypesRefresh =
+              _pendingTypesRefresh || table == 'item_types';
+          _pendingItemsRefresh =
+              _pendingItemsRefresh ||
+              table == 'item_types' ||
+              table == 'items' ||
+              table == 'purchases' ||
+              table == 'consumptions';
+          _pendingAlertsRefresh = true;
           _debounceTimer?.cancel();
           _debounceTimer = Timer(_changeDebounce, () {
-            // تغييرات المخزون والتنبيهات تؤثّر على الشارات واللوائح:
-            _refreshAll(repair: false);
+            final refreshTypes = _pendingTypesRefresh;
+            final refreshItems = _pendingItemsRefresh;
+            final refreshAlerts = _pendingAlertsRefresh;
+            _pendingTypesRefresh = false;
+            _pendingItemsRefresh = false;
+            _pendingAlertsRefresh = false;
+            if (_refreshBusy) {
+              _refreshRequestedWhileBusy = true;
+              _pendingTypesRefresh = _pendingTypesRefresh || refreshTypes;
+              _pendingItemsRefresh = _pendingItemsRefresh || refreshItems;
+              _pendingAlertsRefresh = _pendingAlertsRefresh || refreshAlerts;
+              return;
+            }
+            unawaited(_refreshSnapshot(
+              refreshTypes: refreshTypes,
+              refreshItems: refreshItems,
+              refreshAlerts: refreshAlerts,
+            ));
           });
         }
       });
   }
 
   /// تحديث فوري يدوي (مثلاً عند سحب-لتحديث)
-  Future<void> refreshNow() => _refreshAll();
+  Future<void> refreshNow() => _refreshSnapshot(
+        refreshTypes: true,
+        refreshItems: true,
+        refreshAlerts: true,
+      );
 
   @override
   void dispose() {
+    _disposed = true;
     _dbSub?.cancel();
     _debounceTimer?.cancel();
     super.dispose();

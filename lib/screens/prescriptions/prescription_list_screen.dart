@@ -1,5 +1,4 @@
 // lib/screens/prescriptions/prescription_list_screen.dart
-import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
@@ -12,6 +11,8 @@ import 'view_prescription_screen.dart';
 
 /* تصميم TBIAN */
 import 'package:aelmamclinic/core/neumorphism.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 /// معلومات مختصرة عن الوصفة تُستخدم فى القائمة
 class _PrescriptionInfo {
@@ -175,7 +176,7 @@ class _PrescriptionListScreenState extends State<PrescriptionListScreen> {
   Future<void> _exportAllToPdf() async {
     if (_filtered.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('لا توجد بيانات للتصدير')),
+        const SnackBar(content: LocalizedText('لا توجد بيانات للتصدير')),
       );
       return;
     }
@@ -199,11 +200,11 @@ class _PrescriptionListScreenState extends State<PrescriptionListScreen> {
     final dateFmt = DateFormat('yyyy-MM-dd');
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
-          title: const Text('الوصفات الطبية'),
+          title: const LocalizedText('الوصفات الطبية'),
           flexibleSpace: Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -216,7 +217,7 @@ class _PrescriptionListScreenState extends State<PrescriptionListScreen> {
           actions: [
             IconButton(
               onPressed: _exportAllToPdf,
-              tooltip: 'تصدير الكل PDF',
+              tooltip: context.trRaw('تصدير الكل PDF'),
               icon: const Icon(Icons.picture_as_pdf),
             ),
           ],
@@ -241,7 +242,7 @@ class _PrescriptionListScreenState extends State<PrescriptionListScreen> {
                 child: TextField(
                   controller: _searchCtrl,
                   decoration: InputDecoration(
-                    hintText: 'بحث بالاسم / الهاتف / الطبيب',
+                    hintText: context.trRaw('بحث بالاسم / الهاتف / الطبيب'),
                     prefixIcon: const Icon(Icons.search),
                     filled: true,
                     fillColor: scheme.surface,
@@ -331,7 +332,7 @@ class _PrescriptionListScreenState extends State<PrescriptionListScreen> {
                       await _load();
                     },
                     icon: const Icon(Icons.add),
-                    label: const Text('إنشاء وصفة جديدة'),
+                    label: const LocalizedText('إنشاء وصفة جديدة'),
                   ),
                 ),
               ),
@@ -348,7 +349,7 @@ class _PrescriptionListScreenState extends State<PrescriptionListScreen> {
                                 physics: const AlwaysScrollableScrollPhysics(),
                                 children: const [
                                   SizedBox(height: 120),
-                                  Center(child: Text('لا توجد وصفات')),
+                                  Center(child: LocalizedText('لا توجد وصفات')),
                                 ],
                               )
                             : ListView.separated(
@@ -383,8 +384,7 @@ class _PrescriptionListScreenState extends State<PrescriptionListScreen> {
                                         style: const TextStyle(
                                             fontWeight: FontWeight.w800),
                                       ),
-                                      subtitle: Text(
-                                        '$dateStr • د/${p.doctorName ?? 'غير محدَّد'}',
+                                      subtitle: LocalizedText('$dateStr • د/${p.doctorName ?? 'غير محدَّد'}',
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(

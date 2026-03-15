@@ -12,6 +12,19 @@ const readBody = (req) =>
     });
   });
 
+const MAX_PROOF_BYTES = 10 * 1024 * 1024;
+const STORAGE_UPLOAD_TIMEOUT_MS = Number(
+  process.env.STORAGE_UPLOAD_TIMEOUT_MS || 30000,
+);
+
+const estimateBase64Bytes = (value) => {
+  const normalized = `${value || ''}`.replace(/\s+/g, '');
+  if (!normalized) return 0;
+  const paddingMatch = normalized.match(/=+$/);
+  const padding = paddingMatch ? paddingMatch[0].length : 0;
+  return Math.floor((normalized.length * 3) / 4) - padding;
+};
+
 const resolveStorageUrl = () => {
   const subdomain = process.env.NHOST_SUBDOMAIN;
   const region = process.env.NHOST_REGION;
@@ -146,7 +159,7 @@ function buildMultipart({
   };
 }
 
-function postMultipart(url, headers, body) {
+function postMultipart(url, headers, body, timeoutMs) {
   return new Promise((resolve, reject) => {
     const target = new URL(url);
     const opts = {
@@ -166,6 +179,9 @@ function postMultipart(url, headers, body) {
       });
     });
     req.on('error', reject);
+    req.setTimeout(timeoutMs, () => {
+      req.destroy(new Error(`storage upload timeout after ${timeoutMs}ms`));
+    });
     req.write(body);
     req.end();
   });
@@ -246,11 +262,11 @@ module.exports = async function handler(req, res) {
 
   try {
     stage = 'method';
-  if (req.method !== 'POST') {
+    if (req.method !== 'POST') {
       return fail(405, 'method_not_allowed');
     }
     stage = 'auth_header';
-    const authHeader = req.headers?.authorization;
+    const authHeader = req.headers?.authorization || req.headers?.Authorization;
     if (!authHeader) {
       return fail(401, 'missing_authorization');
     }
@@ -277,10 +293,15 @@ module.exports = async function handler(req, res) {
     if (!base64) {
       return fail(400, 'missing_base64_payload');
     }
-    const maxBytes = 10 * 1024 * 1024;
+
+    const estimatedBytes = estimateBase64Bytes(base64);
+    if (estimatedBytes > MAX_PROOF_BYTES) {
+      return fail(413, 'file_too_large');
+    }
+
     stage = 'decode_base64';
-  const buffer = Buffer.from(base64, 'base64');
-    if (buffer.length > maxBytes) {
+    const buffer = Buffer.from(base64, 'base64');
+    if (buffer.length > MAX_PROOF_BYTES) {
       return fail(413, 'file_too_large');
     }
 
@@ -322,6 +343,7 @@ module.exports = async function handler(req, res) {
         ...multipart.headers,
       },
       multipart.body,
+      STORAGE_UPLOAD_TIMEOUT_MS,
     );
 
     let responsePayload = uploadResp.text;

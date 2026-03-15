@@ -97,6 +97,36 @@ class ReportLocalizer {
 
   String withLabel(String label, String value) => '${tr(label)}: $value';
 
+  String fileStem(String raw) {
+    final localized = tr(raw);
+    final sanitized = localized
+        .replaceAll(RegExp(r'[\\/:*?"<>|]+'), ' ')
+        .replaceAll(RegExp(r'[^A-Za-z0-9\u0600-\u06FF._ -]+'), ' ')
+        .trim()
+        .replaceAll(RegExp(r'\s+'), '_')
+        .replaceAll(RegExp(r'_+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+    if (sanitized.isNotEmpty) return sanitized;
+    return isRtl ? 'ملف' : 'file';
+  }
+
+  String fileName(
+    String rawStem, {
+    required String extension,
+    Iterable<Object?> suffixes = const <Object?>[],
+  }) {
+    final stem = fileStem(rawStem);
+    final resolvedSuffixes = suffixes
+        .where((value) => value != null && value.toString().trim().isNotEmpty)
+        .map((value) => fileStem(value.toString()))
+        .where((value) => value.isNotEmpty)
+        .toList();
+    final base = <String>[stem, ...resolvedSuffixes].join('_');
+    final normalizedExtension = extension.replaceFirst('.', '').trim();
+    if (normalizedExtension.isEmpty) return base;
+    return '$base.$normalizedExtension';
+  }
+
   String pageLabel(int pageNumber, int pagesCount) {
     final counter = AppFormatters.localizeDigits(
       '$pageNumber/$pagesCount',

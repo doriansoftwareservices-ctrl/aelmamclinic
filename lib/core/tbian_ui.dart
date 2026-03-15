@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
 import 'neumorphism.dart';
 import 'theme.dart';
 
@@ -25,7 +27,7 @@ class TSearchField extends StatelessWidget {
         controller: controller,
         onChanged: onChanged,
         decoration: InputDecoration(
-          hintText: hint,
+          hintText: context.trRaw(hint),
           prefixIcon:
               Icon(Icons.search, color: scheme.onSurface.withValues(alpha: .7)),
           suffixIcon: controller.text.isEmpty
@@ -70,7 +72,7 @@ class TDateButton extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              label,
+              context.trRaw(label),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style:
@@ -89,10 +91,36 @@ class TPrimaryButton extends StatelessWidget {
   final VoidCallback? onPressed;
   const TPrimaryButton(
       {super.key, this.icon, required this.label, required this.onPressed});
+
+  IconData? _resolveDirectionalIcon(BuildContext context, IconData? source) {
+    if (source == null) return null;
+    if (source == Icons.arrow_back_ios_new_rounded) {
+      return context.isRtl
+          ? Icons.arrow_back_ios_new_rounded
+          : Icons.arrow_forward_ios_rounded;
+    }
+    if (source == Icons.arrow_back_rounded) {
+      return context.isRtl
+          ? Icons.arrow_back_rounded
+          : Icons.arrow_forward_rounded;
+    }
+    if (source == Icons.chevron_left_rounded) {
+      return context.isRtl
+          ? Icons.chevron_left_rounded
+          : Icons.chevron_right_rounded;
+    }
+    if (source == Icons.chevron_right_rounded) {
+      return context.isRtl
+          ? Icons.chevron_left_rounded
+          : Icons.chevron_right_rounded;
+    }
+    return source;
+  }
+
   @override
   Widget build(BuildContext context) {
     return NeuButton.flat(
-      icon: icon,
+      icon: _resolveDirectionalIcon(context, icon),
       label: label,
       onPressed: onPressed,
     );
@@ -105,13 +133,42 @@ class TOutlinedButton extends StatelessWidget {
   final VoidCallback? onPressed;
   const TOutlinedButton(
       {super.key, this.icon, required this.label, required this.onPressed});
+
+  IconData? _resolveDirectionalIcon(BuildContext context, IconData? source) {
+    if (source == null) return null;
+    if (source == Icons.arrow_back_ios_new_rounded) {
+      return context.isRtl
+          ? Icons.arrow_back_ios_new_rounded
+          : Icons.arrow_forward_ios_rounded;
+    }
+    if (source == Icons.arrow_back_rounded) {
+      return context.isRtl
+          ? Icons.arrow_back_rounded
+          : Icons.arrow_forward_rounded;
+    }
+    if (source == Icons.chevron_left_rounded) {
+      return context.isRtl
+          ? Icons.chevron_left_rounded
+          : Icons.chevron_right_rounded;
+    }
+    if (source == Icons.chevron_right_rounded) {
+      return context.isRtl
+          ? Icons.chevron_left_rounded
+          : Icons.chevron_right_rounded;
+    }
+    return source;
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return OutlinedButton.icon(
       onPressed: onPressed,
-      icon: Icon(icon, color: scheme.onSurface.withValues(alpha: .85)),
-      label: Text(label),
+      icon: Icon(
+        _resolveDirectionalIcon(context, icon),
+        color: scheme.onSurface.withValues(alpha: .85),
+      ),
+      label: Text(context.trRaw(label)),
       style: OutlinedButton.styleFrom(
         foregroundColor: scheme.onSurface,
         side: BorderSide(color: scheme.outlineVariant.withValues(alpha: .4)),
@@ -130,7 +187,7 @@ class TSectionHeader extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Text(
+      child: LocalizedText(
         title,
         style: TextStyle(
           color: scheme.onSurface,
@@ -162,8 +219,11 @@ class TInfoCard extends StatelessWidget {
       child: ListTile(
         contentPadding: EdgeInsets.zero,
         leading: Icon(icon, color: kPrimaryColor),
-        title: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
-        subtitle: Text(
+        title: LocalizedText(
+          label,
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+        subtitle: LocalizedText(
           value,
           maxLines: maxLines,
           overflow: TextOverflow.ellipsis,

@@ -7,6 +7,8 @@ import 'package:aelmamclinic/services/db_service.dart';
 // تصميم TBIAN
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class ComplaintsScreen extends StatefulWidget {
   const ComplaintsScreen({super.key});
@@ -70,7 +72,7 @@ class _ComplaintsScreenState extends State<ComplaintsScreen> {
               children: [
                 NeuField(
                   controller: titleCtrl,
-                  labelText: 'العنوان',
+                  labelText: context.trRaw('العنوان'),
                   prefix: const Icon(Icons.flag_outlined),
                   validator: (v) =>
                       (v == null || v.trim().isEmpty) ? 'أدخل العنوان' : null,
@@ -78,7 +80,7 @@ class _ComplaintsScreenState extends State<ComplaintsScreen> {
                 const SizedBox(height: 10),
                 NeuField(
                   controller: descCtrl,
-                  labelText: 'الوصف',
+                  labelText: context.trRaw('الوصف'),
                   maxLines: 3,
                   prefix: const Icon(Icons.description_outlined),
                 ),
@@ -88,12 +90,12 @@ class _ComplaintsScreenState extends State<ComplaintsScreen> {
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('إلغاء')),
+                child: const LocalizedText('إلغاء')),
             FilledButton(
               onPressed: () {
                 if (formKey.currentState!.validate()) Navigator.pop(ctx, true);
               },
-              child: const Text('حفظ'),
+              child: const LocalizedText('حفظ'),
             ),
           ],
         );
@@ -153,18 +155,18 @@ class _ComplaintsScreenState extends State<ComplaintsScreen> {
       builder: (ctx) {
         final scheme = Theme.of(ctx).colorScheme;
         return AlertDialog(
-          title: const Text('تأكيد الحذف'),
-          content: const Text('سيتم حذف الشكوى نهائياً، هل أنت متأكد؟'),
+          title: const LocalizedText('تأكيد الحذف'),
+          content: const LocalizedText('سيتم حذف الشكوى نهائياً، هل أنت متأكد؟'),
           backgroundColor: scheme.surface,
           shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(kRadius)),
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('إلغاء')),
+                child: const LocalizedText('إلغاء')),
             FilledButton.tonal(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('حذف'),
+              child: const LocalizedText('حذف'),
             ),
           ],
         );
@@ -226,7 +228,7 @@ class _ComplaintsScreenState extends State<ComplaintsScreen> {
               errorBuilder: (_, __, ___) => const SizedBox.shrink(),
             ),
             const SizedBox(width: 8),
-            const Text('الشكاوي والأعطال'),
+            const LocalizedText('الشكاوي والأعطال'),
           ],
         ),
       ),
@@ -255,9 +257,8 @@ class _ComplaintsScreenState extends State<ComplaintsScreen> {
                     ),
                     const SizedBox(width: 12),
                     const Expanded(
-                      child: Text(
-                        'سجل الشكاوى والأعطال',
-                        textAlign: TextAlign.right,
+                      child: LocalizedText('سجل الشكاوى والأعطال',
+                        textAlign: TextAlign.start,
                         style: TextStyle(
                             fontSize: 20, fontWeight: FontWeight.w900),
                       ),
@@ -279,7 +280,7 @@ class _ComplaintsScreenState extends State<ComplaintsScreen> {
                             children: const [
                               Icon(Icons.inbox_rounded, size: 40),
                               SizedBox(height: 10),
-                              Text('لا توجد شكاوى مسجّلة',
+                              LocalizedText('لا توجد شكاوى مسجّلة',
                                   style:
                                       TextStyle(fontWeight: FontWeight.w700)),
                             ],
@@ -362,14 +363,14 @@ class _ComplaintsScreenState extends State<ComplaintsScreen> {
                                               context: context,
                                               builder: (ctx) => AlertDialog(
                                                 title:
-                                                    const Text('رد الإدارة'),
+                                                    const LocalizedText('رد الإدارة'),
                                                 content: Text(replyText),
                                                 actions: [
                                                   TextButton(
                                                     onPressed: () =>
                                                         Navigator.of(ctx)
                                                             .pop(),
-                                                    child: const Text('إغلاق'),
+                                                    child: const LocalizedText('إغلاق'),
                                                   ),
                                                 ],
                                               ),
@@ -405,7 +406,7 @@ class _ComplaintsScreenState extends State<ComplaintsScreen> {
                                             child: ListTile(
                                               leading:
                                                   const Icon(Icons.reply_all),
-                                              title: const Text('عرض الرد',
+                                              title: const LocalizedText('عرض الرد',
                                                   style: TextStyle(
                                                       fontWeight:
                                                           FontWeight.w700)),
@@ -415,7 +416,7 @@ class _ComplaintsScreenState extends State<ComplaintsScreen> {
                                           value: 'edit',
                                           child: ListTile(
                                             leading: Icon(Icons.edit),
-                                            title: Text('تعديل',
+                                            title: LocalizedText('تعديل',
                                                 style: TextStyle(
                                                     fontWeight:
                                                         FontWeight.w700)),
@@ -426,7 +427,7 @@ class _ComplaintsScreenState extends State<ComplaintsScreen> {
                                           child: ListTile(
                                             leading: Icon(Icons.delete,
                                                 color: Colors.red),
-                                            title: Text('حذف',
+                                            title: LocalizedText('حذف',
                                                 style: TextStyle(
                                                     fontWeight:
                                                         FontWeight.w700)),
@@ -441,13 +442,13 @@ class _ComplaintsScreenState extends State<ComplaintsScreen> {
                                         showDialog<void>(
                                           context: context,
                                           builder: (ctx) => AlertDialog(
-                                            title: const Text('رد الإدارة'),
+                                            title: const LocalizedText('رد الإدارة'),
                                             content: Text(replyText),
                                             actions: [
                                               TextButton(
                                                 onPressed: () =>
                                                     Navigator.of(ctx).pop(),
-                                                child: const Text('إغلاق'),
+                                                child: const LocalizedText('إغلاق'),
                                               ),
                                             ],
                                           ),

@@ -9,6 +9,7 @@ import 'package:aelmamclinic/models/payment_method.dart';
 import 'package:aelmamclinic/services/billing_service.dart';
 import 'package:aelmamclinic/services/employee_seat_service.dart';
 import 'package:aelmamclinic/services/nhost_storage_service.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
 
 class EmployeeSeatPaymentScreen extends StatefulWidget {
   const EmployeeSeatPaymentScreen({
@@ -161,8 +162,7 @@ class _EmployeeSeatPaymentScreenState extends State<EmployeeSeatPaymentScreen> {
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    'رقم الحساب: ${method.bankAccount}',
+                  LocalizedText('رقم الحساب: ${method.bankAccount}',
                     style: TextStyle(
                       color: scheme.onSurface.withValues(alpha: 0.7),
                     ),
@@ -185,7 +185,7 @@ class _EmployeeSeatPaymentScreenState extends State<EmployeeSeatPaymentScreen> {
     final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('دفع رسوم المقعد الإضافي')),
+      appBar: AppBar(title: const LocalizedText('دفع رسوم المقعد الإضافي')),
       body: SafeArea(
         child: Padding(
           padding: kScreenPadding,
@@ -198,12 +198,11 @@ class _EmployeeSeatPaymentScreenState extends State<EmployeeSeatPaymentScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'تفاصيل الطلب',
+                          const LocalizedText('تفاصيل الطلب',
                             style: TextStyle(fontWeight: FontWeight.w700),
                           ),
                           const SizedBox(height: 6),
-                          Text('الموظف: ${widget.employeeEmail}'),
+                          LocalizedText('الموظف: ${widget.employeeEmail}'),
                           const SizedBox(height: 6),
                           Text(
                             widget.priceUsd > 0
@@ -221,8 +220,7 @@ class _EmployeeSeatPaymentScreenState extends State<EmployeeSeatPaymentScreen> {
                     if (_methods.isEmpty)
                       NeuCard(
                         padding: const EdgeInsets.all(14),
-                        child: Text(
-                          'لا توجد وسائل دفع متاحة حاليًا.',
+                        child: LocalizedText('لا توجد وسائل دفع متاحة حاليًا.',
                           style: TextStyle(
                               color: scheme.onSurface.withValues(alpha: 0.7)),
                         ),

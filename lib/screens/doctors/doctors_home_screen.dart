@@ -1,6 +1,5 @@
 // lib/screens/doctors/doctors_home_screen.dart
 
-import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -17,6 +16,8 @@ import 'package:aelmamclinic/services/doctors_services_home_screen.dart';
 // تصميم TBIAN
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/widgets/feature_hub.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class DoctorsHomeScreen extends StatefulWidget {
   const DoctorsHomeScreen({super.key});
@@ -58,7 +59,7 @@ class _DoctorsHomeScreenState extends State<DoctorsHomeScreen>
   @override
   Widget build(BuildContext context) {
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Consumer<AppointmentProvider>(
         builder: (context, appointmentProvider, _) {
           final hasReminder = appointmentProvider.hasTodayAppointments;
@@ -76,13 +77,13 @@ class _DoctorsHomeScreenState extends State<DoctorsHomeScreen>
                     errorBuilder: (_, __, ___) => const SizedBox.shrink(),
                   ),
                   const SizedBox(width: 8),
-                  const Text('الأطباء'),
+                  const LocalizedText('الأطباء'),
                 ],
               ),
               actions: [
                 if (hasReminder)
                   IconButton(
-                    tooltip: 'مواعيد اليوم',
+                    tooltip: context.trRaw('مواعيد اليوم'),
                     onPressed: () {
                       // منطق الإشعارات إن لزم لاحقاً
                     },

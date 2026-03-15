@@ -1,5 +1,4 @@
 // lib/screens/prescriptions/view_prescription_screen.dart
-import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -13,6 +12,7 @@ import 'package:aelmamclinic/services/prescription_pdf_service.dart';
 
 /* تصميم TBIAN */
 import 'package:aelmamclinic/core/neumorphism.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
 
 class ViewPrescriptionScreen extends StatefulWidget {
   final int prescriptionId; // رقم الوصفة
@@ -125,11 +125,11 @@ class _ViewPrescriptionScreenState extends State<ViewPrescriptionScreen> {
     final scheme = Theme.of(context).colorScheme;
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
-          title: const Text('تفاصيل الوصفة'),
+          title: const LocalizedText('تفاصيل الوصفة'),
           elevation: 4,
           flexibleSpace: Container(
             decoration: BoxDecoration(
@@ -210,8 +210,7 @@ class _ViewPrescriptionScreenState extends State<ViewPrescriptionScreen> {
                       ),
                     ],
                     const SizedBox(height: 16),
-                    Text(
-                      'الأدوية',
+                    LocalizedText('الأدوية',
                       style: TextStyle(
                         color: scheme.onSurface.withValues(alpha: .85),
                         fontSize: 18,
@@ -222,7 +221,7 @@ class _ViewPrescriptionScreenState extends State<ViewPrescriptionScreen> {
                     Expanded(
                       child: data.items.isEmpty
                           ? Center(
-                              child: Text('لا توجد أدوية',
+                              child: LocalizedText('لا توجد أدوية',
                                   style: TextStyle(
                                       color: scheme.onSurface
                                           .withValues(alpha: .6))),
@@ -263,8 +262,7 @@ class _ViewPrescriptionScreenState extends State<ViewPrescriptionScreen> {
                                               ),
                                             ),
                                             const SizedBox(height: 2),
-                                            Text(
-                                              'أيام: ${it.days}  •  مرات/يوم: ${it.timesPerDay}',
+                                            LocalizedText('أيام: ${it.days}  •  مرات/يوم: ${it.timesPerDay}',
                                               style: TextStyle(
                                                 color: scheme.onSurface
                                                     .withValues(alpha: .7),
@@ -285,7 +283,7 @@ class _ViewPrescriptionScreenState extends State<ViewPrescriptionScreen> {
                       width: double.infinity,
                       child: ElevatedButton.icon(
                         icon: const Icon(Icons.picture_as_pdf),
-                        label: const Text('تصدير PDF'),
+                        label: const LocalizedText('تصدير PDF'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: scheme.primary,
                           foregroundColor: scheme.onPrimary,

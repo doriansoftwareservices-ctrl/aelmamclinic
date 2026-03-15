@@ -13,6 +13,8 @@ import 'package:aelmamclinic/services/save_file_service.dart';
 // تصميم TBIAN
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class ListConsumptionScreen extends StatefulWidget {
   const ListConsumptionScreen({super.key});
@@ -122,7 +124,7 @@ class _ListConsumptionScreenState extends State<ListConsumptionScreen> {
   Future<void> _shareExcelFile() async {
     if (_filteredConsumptions.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('لا توجد بيانات للمشاركة')),
+        const SnackBar(content: LocalizedText('لا توجد بيانات للمشاركة')),
       );
       return;
     }
@@ -141,7 +143,7 @@ class _ListConsumptionScreenState extends State<ListConsumptionScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('حدث خطأ أثناء المشاركة: $e')),
+        SnackBar(content: LocalizedText('حدث خطأ أثناء المشاركة: $e')),
       );
     }
   }
@@ -150,7 +152,7 @@ class _ListConsumptionScreenState extends State<ListConsumptionScreen> {
   Future<void> _downloadExcelFile() async {
     if (_filteredConsumptions.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('لا توجد بيانات للتنزيل')),
+        const SnackBar(content: LocalizedText('لا توجد بيانات للتنزيل')),
       );
       return;
     }
@@ -161,7 +163,7 @@ class _ListConsumptionScreenState extends State<ListConsumptionScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('حدث خطأ أثناء التنزيل: $e')),
+        SnackBar(content: LocalizedText('حدث خطأ أثناء التنزيل: $e')),
       );
     }
   }
@@ -183,17 +185,17 @@ class _ListConsumptionScreenState extends State<ListConsumptionScreen> {
               errorBuilder: (_, __, ___) => const SizedBox.shrink(),
             ),
             const SizedBox(width: 8),
-            const Text('استعراض المصروفات / الاستهلاكات'),
+            const LocalizedText('استعراض المصروفات / الاستهلاكات'),
           ],
         ),
         actions: [
           IconButton(
-            tooltip: 'مشاركة',
+            tooltip: context.trRaw('مشاركة'),
             onPressed: _shareExcelFile,
             icon: const Icon(Icons.share_rounded),
           ),
           IconButton(
-            tooltip: 'تنزيل',
+            tooltip: context.trRaw('تنزيل'),
             onPressed: _downloadExcelFile,
             icon: const Icon(Icons.download_rounded),
           ),
@@ -223,9 +225,8 @@ class _ListConsumptionScreenState extends State<ListConsumptionScreen> {
                     ),
                     const SizedBox(width: 12),
                     const Expanded(
-                      child: Text(
-                        'قائمة عمليات الصرف/الاستهلاك',
-                        textAlign: TextAlign.right,
+                      child: LocalizedText('قائمة عمليات الصرف/الاستهلاك',
+                        textAlign: TextAlign.start,
                         style: TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.w900,
@@ -290,9 +291,8 @@ class _ListConsumptionScreenState extends State<ListConsumptionScreen> {
                     const Icon(Icons.summarize_rounded, color: kPrimaryColor),
                     const SizedBox(width: 10),
                     Expanded(
-                      child: Text(
-                        'إجمالي المصروفات / الاستهلاكات: ${_totalAmount.toStringAsFixed(2)}',
-                        textAlign: TextAlign.right,
+                      child: LocalizedText('إجمالي المصروفات / الاستهلاكات: ${_totalAmount.toStringAsFixed(2)}',
+                        textAlign: TextAlign.start,
                         style: const TextStyle(
                           fontSize: 15.5,
                           fontWeight: FontWeight.w800,
@@ -308,8 +308,7 @@ class _ListConsumptionScreenState extends State<ListConsumptionScreen> {
               Expanded(
                 child: _filteredConsumptions.isEmpty
                     ? Center(
-                        child: Text(
-                          'لا توجد بيانات',
+                        child: LocalizedText('لا توجد بيانات',
                           style: TextStyle(
                             color: scheme.onSurface.withValues(alpha: .6),
                             fontWeight: FontWeight.w700,
@@ -343,8 +342,7 @@ class _ListConsumptionScreenState extends State<ListConsumptionScreen> {
                                   size: 22,
                                 ),
                               ),
-                              title: Text(
-                                'مبلغ: ${c.amount.toStringAsFixed(2)}',
+                              title: LocalizedText('مبلغ: ${c.amount.toStringAsFixed(2)}',
                                 style: const TextStyle(
                                   fontWeight: FontWeight.w900,
                                   fontSize: 14.5,
@@ -352,8 +350,7 @@ class _ListConsumptionScreenState extends State<ListConsumptionScreen> {
                               ),
                               subtitle: Padding(
                                 padding: const EdgeInsets.only(top: 3),
-                                child: Text(
-                                  'تاريخ: $date | نوع: ${c.note}',
+                                child: LocalizedText('تاريخ: $date | نوع: ${c.note}',
                                   style: TextStyle(
                                     color: scheme.onSurface.withValues(
                                       alpha: .65,
@@ -363,7 +360,7 @@ class _ListConsumptionScreenState extends State<ListConsumptionScreen> {
                                 ),
                               ),
                               trailing: IconButton(
-                                tooltip: 'حذف',
+                                tooltip: context.trRaw('حذف'),
                                 onPressed: () => _deleteItem(c.id!),
                                 icon: const Icon(
                                   Icons.delete_rounded,
@@ -410,8 +407,7 @@ class _DateTile extends StatelessWidget {
           style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14.5),
         ),
         subtitle: value == null
-            ? Text(
-                'اضغط للاختيار',
+            ? LocalizedText('اضغط للاختيار',
                 style: TextStyle(
                   color: scheme.onSurface.withValues(alpha: .55),
                   fontWeight: FontWeight.w600,

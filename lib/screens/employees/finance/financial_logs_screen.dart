@@ -1,8 +1,8 @@
 // lib/screens/employees/finance/financial_logs_screen.dart
 import 'dart:convert';
-import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:aelmamclinic/utils/app_formatters.dart';
 
 /*── TBIAN ─*/
 import 'package:aelmamclinic/core/theme.dart';
@@ -11,7 +11,9 @@ import 'package:aelmamclinic/core/tbian_ui.dart';
 
 /*── الخدمات ─*/
 import 'package:aelmamclinic/services/logging_service.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 import 'finance_access_guard.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
 
 class FinancialLogsScreen extends StatefulWidget {
   const FinancialLogsScreen({super.key});
@@ -42,9 +44,8 @@ class _FinancialLogsScreenState extends State<FinancialLogsScreen> {
   bool _showDelete = true;
 
   // تنسيقات
-  final DateFormat _dtView = DateFormat('yyyy-MM-dd – HH:mm');
-  final DateFormat _justDate = DateFormat('yyyy-MM-dd');
-  final NumberFormat _moneyFmt = NumberFormat('#,##0.00');
+  DateFormat get _justDate => AppFormatters.dateFormat('yyyy-MM-dd');
+  NumberFormat get _moneyFmt => AppFormatters.numberFormat('#,##0.00');
 
   @override
   void initState() {
@@ -81,7 +82,7 @@ class _FinancialLogsScreenState extends State<FinancialLogsScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('خطأ في جلب السجلات: $e')),
+        SnackBar(content: LocalizedText('خطأ في جلب السجلات: $e')),
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -125,7 +126,7 @@ class _FinancialLogsScreenState extends State<FinancialLogsScreen> {
     final s = iso?.toString() ?? '';
     final dt = DateTime.tryParse(s);
     if (dt == null) return s;
-    return _dtView.format(dt);
+    return AppFormatters.formatDateTime(dt, pattern: 'yyyy-MM-dd – HH:mm');
   }
 
   // انتقاء تاريخ (من/إلى)
@@ -136,7 +137,7 @@ class _FinancialLogsScreenState extends State<FinancialLogsScreen> {
       initialDate: (isStart ? _startDate : _endDate) ?? DateTime.now(),
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
-      locale: const Locale('ar', ''),
+      locale: AppFormatters.localeOf(context),
       builder: (ctx, child) => Theme(
         data: Theme.of(ctx).copyWith(
           colorScheme: ColorScheme.light(primary: scheme.primary),
@@ -230,9 +231,9 @@ class _FinancialLogsScreenState extends State<FinancialLogsScreen> {
     showDialog(
       context: context,
       builder: (_) => Directionality(
-        textDirection: ui.TextDirection.rtl,
+        textDirection: Directionality.of(context),
         child: AlertDialog(
-          title: const Text('تفاصيل السجل'),
+          title: const LocalizedText('تفاصيل السجل'),
           content: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -250,7 +251,7 @@ class _FinancialLogsScreenState extends State<FinancialLogsScreen> {
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text('إغلاق')),
+                child: const LocalizedText('إغلاق')),
           ],
         ),
       ),
@@ -263,12 +264,12 @@ class _FinancialLogsScreenState extends State<FinancialLogsScreen> {
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: RichText(
         text: TextSpan(
-          text: '$label ',
+          text: '${context.trRaw(label)} ',
           style:
               TextStyle(fontWeight: FontWeight.bold, color: scheme.onSurface),
           children: [
             TextSpan(
-                text: value,
+                text: AppFormatters.localizeDigits(value),
                 style: TextStyle(
                     fontWeight: FontWeight.normal, color: scheme.onSurface))
           ],
@@ -322,7 +323,7 @@ class _FinancialLogsScreenState extends State<FinancialLogsScreen> {
               decoration: BoxDecoration(color: color, shape: BoxShape.circle),
             ),
             Expanded(
-              child: Text(
+              child: LocalizedText(
                 type,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -333,7 +334,7 @@ class _FinancialLogsScreenState extends State<FinancialLogsScreen> {
         ),
         subtitle: Padding(
           padding: const EdgeInsets.only(top: 4),
-          child: Text(
+          child: LocalizedText(
             [
               'العملية: $op   •   المبلغ: $amount',
               if (desc.isNotEmpty) 'التفاصيل: $desc',
@@ -345,7 +346,7 @@ class _FinancialLogsScreenState extends State<FinancialLogsScreen> {
         trailing: emp.isNotEmpty
             ? CircleAvatar(
                 backgroundColor: kPrimaryColor.withValues(alpha: .10),
-                child: Text(
+                child: LocalizedText(
                   emp,
                   style: const TextStyle(
                       color: kPrimaryColor, fontWeight: FontWeight.bold),
@@ -361,7 +362,7 @@ class _FinancialLogsScreenState extends State<FinancialLogsScreen> {
   Widget build(BuildContext context) {
     return FinanceAccessGuard(
       child: Directionality(
-        textDirection: ui.TextDirection.rtl,
+        textDirection: Directionality.of(context),
         child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -470,7 +471,7 @@ class _FinancialLogsScreenState extends State<FinancialLogsScreen> {
                   ] else if (_filtered.isEmpty) ...[
                     const SizedBox(height: 120),
                     const Center(
-                        child: Text('لا توجد سجلات مطابقة',
+                        child: LocalizedText('لا توجد سجلات مطابقة',
                             style: TextStyle(
                                 fontSize: 16, color: Colors.black54))),
                   ] else ...[
@@ -498,9 +499,13 @@ class _FinancialLogsScreenState extends State<FinancialLogsScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Row(
         children: [
-          Text(label,
-              style: TextStyle(
-                  fontWeight: FontWeight.w700, color: scheme.onSurface)),
+          LocalizedText(
+            label,
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: scheme.onSurface,
+            ),
+          ),
           const SizedBox(width: 6),
           Switch(
               value: value,
@@ -520,8 +525,10 @@ class _FinancialLogsScreenState extends State<FinancialLogsScreen> {
         borderRadius: BorderRadius.circular(100),
         border: Border.all(color: scheme.outlineVariant.withValues(alpha: .6)),
       ),
-      child: Text(text,
-          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+      child: LocalizedText(
+        text,
+        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+      ),
     );
   }
 }

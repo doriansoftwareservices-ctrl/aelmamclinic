@@ -1,0 +1,66 @@
+phase: 13
+name: localization_foundation_and_hygiene_gate
+status: completed
+started_at: "2026-03-10"
+completed_at: "2026-03-10"
+scope:
+  - lib
+  - test
+  - scripts
+  - docs
+deliverables:
+  - id: P13-D1
+    name: dynamic_raw_string_translation_patterns
+    status: completed
+    paths:
+      - lib/l10n/raw_string_localizer.dart
+  - id: P13-D2
+    name: locale_aware_runtime_feedback_and_report_file_helpers
+    status: completed
+    paths:
+      - lib/utils/toast_utils.dart
+      - lib/utils/report_localizer.dart
+  - id: P13-D3
+    name: localization_hygiene_regression_gate
+    status: completed
+    paths:
+      - lib/phase13/check_localization_hygiene.sh
+      - lib/phase13/localization_ui_allowlist.txt
+      - lib/phase13/localization_direction_allowlist.txt
+      - scripts/phase13_verify.sh
+  - id: P13-D4
+    name: focused_localization_foundation_tests
+    status: completed
+    paths:
+      - test/l10n/raw_string_localizer_test.dart
+      - test/utils/report_localizer_test.dart
+  - id: P13-D5
+    name: phase13_documentation
+    status: completed
+    paths:
+      - docs/phase13/closure_report_2026-03-10.md
+gates:
+  - id: L10N-001
+    name: dynamic_label_value_translation_available
+    status: passed
+  - id: L10N-002
+    name: count_and_parenthetical_patterns_supported
+    status: passed
+  - id: L10N-003
+    name: runtime_toast_feedback_uses_current_locale
+    status: passed
+  - id: L10N-004
+    name: new_raw_arabic_ui_text_regression_gate_present
+    status: passed
+  - id: L10N-005
+    name: new_hardcoded_directionality_regression_gate_present
+    status: passed
+  - id: G1
+    name: focused_phase13_verification
+    status: local_pass
+    reason: localization hygiene script completed locally; unit tests were added for the shared layer and are ready for the full Flutter gate on Windows/CI
+next_phase_readiness:
+  phase_14_allowed: true
+  notes:
+    - stage 2 can now clean screen families file-by-file without reintroducing new raw Arabic UI leaks elsewhere
+    - stage 3 can now normalize PDF/Excel/file-name outputs on top of the shared report-localizer file helpers

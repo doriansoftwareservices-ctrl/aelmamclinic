@@ -1,5 +1,4 @@
 // lib/screens/settings/tower_commission_settings_screen.dart
-import 'dart:ui' as ui show TextDirection;
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -7,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 /*── تصميم TBIAN ─*/
 import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/core/tbian_ui.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
 
 class TowerCommissionSettingsScreen extends StatefulWidget {
   const TowerCommissionSettingsScreen({super.key});
@@ -69,7 +69,7 @@ class _TowerCommissionSettingsScreenState
     }
 
     if (err != null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: LocalizedText(err)));
       return;
     }
 
@@ -82,7 +82,7 @@ class _TowerCommissionSettingsScreenState
 
     setState(() => _busy = false);
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('تم حفظ إعدادات نسبة المركز الطبي بنجاح')),
+      const SnackBar(content: LocalizedText('تم حفظ إعدادات نسبة المركز الطبي بنجاح')),
     );
   }
 
@@ -131,7 +131,7 @@ class _TowerCommissionSettingsScreenState
     final scheme = Theme.of(context).colorScheme;
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,

@@ -23,7 +23,7 @@ class NhostConfig {
   static final String _defaultGraphqlUrl = const String.fromEnvironment(
     'NHOST_GRAPHQL_URL',
     defaultValue:
-        'https://ujxbrdbrjbujvlylpbbn.hasura.ap-southeast-1.nhost.run/v1/graphql',
+        'https://ujxbrdbrjbujvlylpbbn.graphql.ap-southeast-1.nhost.run/v1',
   );
   static String? _overrideGraphqlUrl;
 

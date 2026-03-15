@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
+import 'package:aelmamclinic/utils/app_formatters.dart';
 import 'package:aelmamclinic/utils/app_locale.dart';
 
 class AppLocalizations {
@@ -47,13 +48,15 @@ class AppLocalizations {
     Map<String, Object?> params = const <String, Object?>{},
   }) {
     var value = _strings[key] ?? key;
-    if (params.isEmpty) {
-      return value;
+    if (params.isNotEmpty) {
+      params.forEach((name, replacement) {
+        value = value.replaceAll('{$name}', '${replacement ?? ''}');
+      });
     }
-    params.forEach((name, replacement) {
-      value = value.replaceAll('{$name}', '${replacement ?? ''}');
-    });
-    return value;
+    return AppFormatters.localizeDigits(
+      value,
+      languageCode: locale.languageCode,
+    );
   }
 
   static Future<Map<String, String>> _loadStrings(String languageCode) {

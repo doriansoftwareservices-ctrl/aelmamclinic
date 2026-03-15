@@ -100,13 +100,27 @@ class DeviceIdService {
         // تجاهل ونكمل بالمرشّحات التالية
       }
 
-      // 1) مجلدات مفضّلة للحفاظ على الهوية عبر إعادة التثبيت
-      final localAppData = Platform.environment['LOCALAPPDATA'];
+      // 1) مجلد مفضّل للحفاظ على الهوية عبر إعادة التثبيت (LOCALAPPDATA فقط)
+      final env = Platform.environment;
+      final localAppData = env['LOCALAPPDATA'] ??
+          (() {
+            final profile = env['USERPROFILE'];
+            if (profile != null && profile.trim().isNotEmpty) {
+              return p.join(profile.trim(), 'AppData', 'Local');
+            }
+            final homeDrive = env['HOMEDRIVE'];
+            final homePath = env['HOMEPATH'];
+            if (homeDrive != null &&
+                homeDrive.trim().isNotEmpty &&
+                homePath != null &&
+                homePath.trim().isNotEmpty) {
+              return p.join(homeDrive.trim(), homePath.trim(), 'AppData', 'Local');
+            }
+            return null;
+          })();
       final candidates = <String>[
         if (localAppData != null && localAppData.trim().isNotEmpty)
           p.join(localAppData, 'ElmamClinic'),
-        r'D:\ElmamClinic',
-        r'C:\ElmamClinic',
       ];
       for (final preferred in candidates) {
         try {
@@ -148,6 +162,8 @@ class DeviceIdService {
       }
       if (Platform.isWindows) {
         final legacyDirs = <String>[
+          r'C:\ElmamClinic',
+          r'D:\ElmamClinic',
           r'C:\aelmam_clinic',
           r'D:\aelmam_clinic',
         ];

@@ -21,6 +21,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'package:aelmamclinic/providers/auth_provider.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
 
 /// مفاتيح الميزات كما تُخزّن في account_feature_permissions.allowed_features
 class FeatureKeys {
@@ -232,7 +233,7 @@ class FeatureGate extends StatelessWidget {
           onTap: onDeniedTap ??
               () => ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text('ليس لديك صلاحية للوصول إلى هذه الميزة'),
+                      content: LocalizedText('ليس لديك صلاحية للوصول إلى هذه الميزة'),
                       behavior: SnackBarBehavior.floating,
                       duration: Duration(seconds: 2),
                     ),
@@ -330,8 +331,7 @@ class _FeatureLoadingPlaceholder extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          Text(
-            'جاري تحميل الصلاحيات...',
+          LocalizedText('جاري تحميل الصلاحيات...',
             style: TextStyle(
               color: scheme.onSurfaceVariant,
               fontWeight: FontWeight.w600,
@@ -359,7 +359,7 @@ extension FeatureContextX on BuildContext {
   void showNotAllowedSnack({String? message}) {
     ScaffoldMessenger.of(this).showSnackBar(
       SnackBar(
-        content: Text(message ?? 'ليس لديك صلاحية للوصول إلى هذه الميزة'),
+        content: LocalizedText(message ?? 'ليس لديك صلاحية للوصول إلى هذه الميزة'),
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 2),
       ),

@@ -1,5 +1,4 @@
 // lib/services/doctors_services_list_screen.dart
-import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 
 /*── تصميم TBIAN ─*/
@@ -13,6 +12,8 @@ import 'package:aelmamclinic/models/doctor.dart';
 
 /*── شاشة التفاصيل ─*/
 import 'doctor_services_detail_screen.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class DoctorsServicesListScreen extends StatefulWidget {
   const DoctorsServicesListScreen({super.key});
@@ -97,8 +98,7 @@ class _DoctorsServicesListScreenState extends State<DoctorsServicesListScreen> {
       return const [
         SizedBox(height: 80),
         Center(
-          child: Text(
-            'لا توجد نتائج',
+          child: LocalizedText('لا توجد نتائج',
             style: TextStyle(fontWeight: FontWeight.w700),
           ),
         ),
@@ -108,8 +108,7 @@ class _DoctorsServicesListScreenState extends State<DoctorsServicesListScreen> {
     return [
       Padding(
         padding: const EdgeInsetsDirectional.only(start: 6, bottom: 8),
-        child: Text(
-          'الأطباء: ${_filteredDoctors.length}',
+        child: LocalizedText('الأطباء: ${_filteredDoctors.length}',
           style: TextStyle(
             color: scheme.onSurface.withValues(alpha: .6),
             fontWeight: FontWeight.w800,
@@ -144,8 +143,7 @@ class _DoctorsServicesListScreenState extends State<DoctorsServicesListScreen> {
                     ),
                   ),
                 ),
-                title: Text(
-                  'د/ ${doctor.name}',
+                title: LocalizedText('د/ ${doctor.name}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontWeight: FontWeight.w900),
@@ -181,7 +179,7 @@ class _DoctorsServicesListScreenState extends State<DoctorsServicesListScreen> {
     final scheme = Theme.of(context).colorScheme;
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -200,7 +198,7 @@ class _DoctorsServicesListScreenState extends State<DoctorsServicesListScreen> {
           ),
           actions: [
             IconButton(
-              tooltip: 'تحديث',
+              tooltip: context.trRaw('تحديث'),
               icon: const Icon(Icons.refresh_rounded),
               onPressed: _loadDoctors,
             ),
@@ -231,8 +229,7 @@ class _DoctorsServicesListScreenState extends State<DoctorsServicesListScreen> {
                       ),
                       const SizedBox(width: 10),
                       const Expanded(
-                        child: Text(
-                          'خدمات الأطباء',
+                        child: LocalizedText('خدمات الأطباء',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -297,7 +294,7 @@ class _ErrorCard extends StatelessWidget {
           ElevatedButton.icon(
             onPressed: onRetry,
             icon: const Icon(Icons.refresh, color: Colors.white, size: 18),
-            label: const Text('إعادة المحاولة',
+            label: const LocalizedText('إعادة المحاولة',
                 style: TextStyle(color: Colors.white)),
             style: ElevatedButton.styleFrom(
               backgroundColor: scheme.error,

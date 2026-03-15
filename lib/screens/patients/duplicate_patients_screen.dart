@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:aelmamclinic/utils/app_formatters.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:pdf/pdf.dart';
@@ -18,8 +19,11 @@ import 'package:aelmamclinic/services/clinic_profile_service.dart';
 import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/utils/pdf_fonts.dart';
 import 'package:aelmamclinic/utils/pdf_text.dart';
+import 'package:aelmamclinic/utils/report_localizer.dart';
 import 'view_patient_screen.dart';
 import 'edit_patient_screen.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class DuplicatePatientsScreen extends StatefulWidget {
   final String phoneNumber;
@@ -37,8 +41,8 @@ class DuplicatePatientsScreen extends StatefulWidget {
 
 class _DuplicatePatientsScreenState extends State<DuplicatePatientsScreen> {
   final _searchCtrl = TextEditingController();
-  final _dateOnly = DateFormat('yyyy-MM-dd');
-  final _dateTime = DateFormat('yyyy-MM-dd HH:mm');
+  DateFormat get _dateOnly => AppFormatters.dateFormat('yyyy-MM-dd');
+  DateFormat get _dateTime => AppFormatters.dateFormat('yyyy-MM-dd HH:mm');
 
   final List<Patient> _duplicates = [];
   List<Patient> _filtered = [];
@@ -129,6 +133,7 @@ class _DuplicatePatientsScreenState extends State<DuplicatePatientsScreen> {
       initialDate: _startDate ?? DateTime.now(),
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
+      locale: AppFormatters.localeOf(context),
       builder: (ctx, child) => Theme(
         data: Theme.of(ctx).copyWith(
           colorScheme: ColorScheme.light(primary: scheme.primary),
@@ -149,6 +154,7 @@ class _DuplicatePatientsScreenState extends State<DuplicatePatientsScreen> {
       initialDate: _endDate ?? DateTime.now(),
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
+      locale: AppFormatters.localeOf(context),
       builder: (ctx, child) => Theme(
         data: Theme.of(ctx).copyWith(
           colorScheme: ColorScheme.light(primary: scheme.primary),
@@ -195,15 +201,15 @@ class _DuplicatePatientsScreenState extends State<DuplicatePatientsScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('تأكيد الحذف'),
-        content: const Text('سيتم حذف السجل نهائيًا. هل أنت متأكد؟'),
+        title: const LocalizedText('تأكيد الحذف'),
+        content: const LocalizedText('سيتم حذف السجل نهائيًا. هل أنت متأكد؟'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('إلغاء')),
+              child: const LocalizedText('إلغاء')),
           ElevatedButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('حذف')),
+              child: const LocalizedText('حذف')),
         ],
       ),
     );
@@ -217,15 +223,15 @@ class _DuplicatePatientsScreenState extends State<DuplicatePatientsScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('حذف المحدد'),
-        content: Text('سيتم حذف ${_selectedIds.length} سجل. هل تريد المتابعة؟'),
+        title: const LocalizedText('حذف المحدد'),
+        content: LocalizedText('سيتم حذف ${_selectedIds.length} سجل. هل تريد المتابعة؟'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('إلغاء')),
+              child: const LocalizedText('إلغاء')),
           ElevatedButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('حذف')),
+              child: const LocalizedText('حذف')),
         ],
       ),
     );
@@ -239,6 +245,7 @@ class _DuplicatePatientsScreenState extends State<DuplicatePatientsScreen> {
 
   Future<void> _exportPdf() async {
     if (_selectedIds.isEmpty) return;
+    final i18n = ReportLocalizer();
 
     pw.Font cairo;
     pw.Font cairoBold;
@@ -252,7 +259,6 @@ class _DuplicatePatientsScreenState extends State<DuplicatePatientsScreen> {
     }
 
     final clinic = await ClinicProfileService.loadActiveOrFallback();
-    final clinicPhones = clinic.phonesDisplay;
     Uint8List? logoData;
     try {
       logoData = await ClinicProfileService.loadReportLogoBytes();
@@ -267,16 +273,19 @@ class _DuplicatePatientsScreenState extends State<DuplicatePatientsScreen> {
         _duplicates.where((p) => _selectedIds.contains(p.id!)).toList();
 
     for (final p in selectedPatients) {
-      final dateStr = _dateTime.format(p.registerDate);
+      final dateStr = i18n.formatDateTime(
+        p.registerDate,
+        pattern: 'yyyy-MM-dd HH:mm',
+      );
       final svcs = _servicesByPatient[p.id!] ?? const <PatientService>[];
       if (svcs.isEmpty) {
-        rows.add([p.name, '—', '0.00', dateStr]);
+        rows.add([p.name, '—', i18n.formatNumber(0), dateStr]);
       } else {
         for (final s in svcs) {
           rows.add([
             p.name,
             s.serviceName,
-            s.serviceCost.toStringAsFixed(2),
+            i18n.formatNumber(s.serviceCost),
             dateStr
           ]);
         }
@@ -285,129 +294,58 @@ class _DuplicatePatientsScreenState extends State<DuplicatePatientsScreen> {
 
     final baseText = pw.TextStyle(font: cairo, fontSize: 12, height: 1.35);
     final boldText = pw.TextStyle(font: cairoBold, fontSize: 12, height: 1.35);
-    final pageTheme = pw.PageTheme(
-      pageFormat: PdfPageFormat.a4,
-      margin: const pw.EdgeInsets.all(20),
-      textDirection: pw.TextDirection.rtl,
-      theme: pw.ThemeData.withFont(base: cairo, bold: cairoBold),
-    );
+    final pageTheme = i18n.pageTheme(base: cairo, bold: cairoBold);
 
     pw.Widget thinDivider([double v = 6]) => pw.Padding(
           padding: pw.EdgeInsets.symmetric(vertical: v),
           child: pw.Container(height: 0.7, color: PdfColors.grey300),
         );
 
-    pw.Widget infoRow(String labelEn, String value) => pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-          children: [
-            pw.Expanded(
-                child: pw.Text(pdfText(value),
-                    style: baseText, textAlign: pw.TextAlign.right)),
-            pw.SizedBox(width: 14),
-            pw.Text(labelEn, style: boldText, textAlign: pw.TextAlign.left),
-          ],
-        );
+    pw.Widget infoRow(String label, String value) {
+      final labelWidget = pw.Text(
+        i18n.pdf(label),
+        style: boldText,
+        textAlign: i18n.startAlign,
+      );
+      final valueWidget = pw.Expanded(
+        child: pw.Text(
+          pdfText(value),
+          style: baseText,
+          textAlign: i18n.startAlign,
+        ),
+      );
+      return pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: i18n.isRtl
+            ? <pw.Widget>[valueWidget, pw.SizedBox(width: 14), labelWidget]
+            : <pw.Widget>[labelWidget, pw.SizedBox(width: 14), valueWidget],
+      );
+    }
 
     pdf.addPage(
       pw.MultiPage(
         pageTheme: pageTheme,
-        header: (_) => pw.Column(
-          children: [
-            pw.Row(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Expanded(
-                  child: pw.Padding(
-                    padding: const pw.EdgeInsets.only(right: 12),
-                    child: pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.start,
-                      children: [
-                        pw.Text(pdfText(clinic.nameAr),
-                            style: pw.TextStyle(
-                                font: cairoBold,
-                                fontSize: 14,
-                                color: PdfColors.blueGrey)),
-                        pw.Text(pdfText(clinic.addressAr),
-                            style: pw.TextStyle(font: cairo, fontSize: 9)),
-                        pw.Text(pdfText('الهاتف: $clinicPhones'),
-                            style: pw.TextStyle(font: cairo, fontSize: 9)),
-                      ],
-                    ),
-                  ),
-                ),
-                pw.Container(
-                  width: 100,
-                  height: 60,
-                  alignment: pw.Alignment.topCenter,
-                  child: logoData == null
-                      ? pw.SizedBox()
-                      : pw.Image(pw.MemoryImage(logoData), width: 56, height: 56),
-                ),
-                pw.Expanded(
-                  child: pw.Padding(
-                    padding: const pw.EdgeInsets.only(left: 12),
-                    child: pw.Directionality(
-                      textDirection: pw.TextDirection.ltr,
-                      child: pw.Column(
-                        crossAxisAlignment: pw.CrossAxisAlignment.start,
-                        children: [
-                          pw.Text(clinic.nameEn,
-                              textAlign: pw.TextAlign.left,
-                              style: pw.TextStyle(
-                                  font: cairoBold,
-                                  fontSize: 14,
-                                  color: PdfColors.blueGrey)),
-                          pw.Text(clinic.addressEn,
-                              textAlign: pw.TextAlign.left,
-                              style: pw.TextStyle(font: cairo, fontSize: 9)),
-                          pw.Text('Tel: $clinicPhones',
-                              textAlign: pw.TextAlign.left,
-                              style: pw.TextStyle(font: cairo, fontSize: 9)),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            pw.SizedBox(height: 8),
-            pw.Container(height: 1, color: PdfColors.grey500),
-          ],
+        header: (_) => i18n.buildLetterhead(
+          clinic: clinic,
+          regular: cairo,
+          bold: cairoBold,
+          logoData: logoData,
         ),
-        footer: (ctx) => pw.Container(
-          alignment: pw.Alignment.center,
-          padding: const pw.EdgeInsets.only(top: 6),
-          decoration: const pw.BoxDecoration(
-            border:
-                pw.Border(top: pw.BorderSide(width: 0.6, color: PdfColors.grey300)),
-          ),
-          child: pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.center,
-            children: [
-              pw.Text(
-                pdfText(
-                  '${clinic.nameAr} - ${clinic.addressAr} - هاتف: $clinicPhones',
-                ),
-                style: pw.TextStyle(
-                    font: cairo, fontSize: 9, color: PdfColors.blueGrey),
-              ),
-              pw.SizedBox(width: 8),
-              pw.Directionality(
-                textDirection: pw.TextDirection.ltr,
-                child: pw.Text(
-                  'Page ${ctx.pageNumber}/${ctx.pagesCount}',
-                  style: pw.TextStyle(
-                      font: cairo, fontSize: 9, color: PdfColors.blueGrey),
-                ),
-              ),
-            ],
-          ),
+        footer: (ctx) => i18n.buildFooter(
+          clinic: clinic,
+          regular: cairo,
+          pageNumber: ctx.pageNumber,
+          pagesCount: ctx.pagesCount,
         ),
         build: (_) => [
           pw.SizedBox(height: 10),
           pw.Center(
             child: pw.Text(
-              pdfText('سجلات ${widget.patientName} (${widget.phoneNumber})'),
+              i18n.pdf(
+                i18n.isRtl
+                    ? 'سجلات ${widget.patientName} (${widget.phoneNumber})'
+                    : 'Patient records ${widget.patientName} (${widget.phoneNumber})',
+              ),
               style: pw.TextStyle(
                   font: cairoBold,
                   fontSize: 16,
@@ -416,15 +354,15 @@ class _DuplicatePatientsScreenState extends State<DuplicatePatientsScreen> {
           ),
           pw.SizedBox(height: 8),
           thinDivider(),
-          infoRow('Patient', widget.patientName),
-          infoRow('Phone', widget.phoneNumber),
+          infoRow('اسم المريض', widget.patientName),
+          infoRow('رقم الهاتف', widget.phoneNumber),
           pw.SizedBox(height: 10),
           pw.TableHelper.fromTextArray(
             headers: [
-              pdfText('المريض'),
-              pdfText('الخدمة'),
-              pdfText('السعر'),
-              pdfText('التاريخ')
+              i18n.pdf('المريض'),
+              i18n.pdf('الخدمة'),
+              i18n.pdf('السعر'),
+              i18n.pdf('التاريخ')
             ],
             data: rows
                 .map((r) => [
@@ -439,8 +377,8 @@ class _DuplicatePatientsScreenState extends State<DuplicatePatientsScreen> {
             headerDecoration:
                 const pw.BoxDecoration(color: PdfColors.grey300),
             cellAlignments: <int, pw.Alignment>{
-              0: pw.Alignment.centerRight,
-              1: pw.Alignment.centerRight,
+              0: i18n.isRtl ? pw.Alignment.centerRight : pw.Alignment.centerLeft,
+              1: i18n.isRtl ? pw.Alignment.centerRight : pw.Alignment.centerLeft,
               2: pw.Alignment.center,
               3: pw.Alignment.center,
             },
@@ -454,9 +392,12 @@ class _DuplicatePatientsScreenState extends State<DuplicatePatientsScreen> {
           pw.SizedBox(height: 10),
           thinDivider(),
           pw.Text(
-              pdfText(
-                  'الإجمالي المحدد: ${_selectedTotal.toStringAsFixed(2)}'),
-              textAlign: pw.TextAlign.left,
+              i18n.pdf(
+                i18n.isRtl
+                    ? 'الإجمالي المحدد: ${i18n.formatNumber(_selectedTotal)}'
+                    : 'Selected total: ${i18n.formatNumber(_selectedTotal)}',
+              ),
+              textAlign: i18n.startAlign,
               style: pw.TextStyle(
                   font: cairoBold,
                   fontSize: 12,
@@ -467,7 +408,11 @@ class _DuplicatePatientsScreenState extends State<DuplicatePatientsScreen> {
 
     await Printing.sharePdf(
       bytes: await pdf.save(),
-      filename: 'duplicates_${widget.patientName}.pdf',
+      filename: i18n.fileName(
+        'سجلات المرضى المكررة',
+        extension: 'pdf',
+        suffixes: <Object?>[DateTime.now().millisecondsSinceEpoch],
+      ),
     );
   }
 
@@ -479,26 +424,27 @@ class _DuplicatePatientsScreenState extends State<DuplicatePatientsScreen> {
     return Scaffold(
       appBar: AppBar(
         centerTitle: true,
-        title: Text('سجلات ${widget.patientName}'),
+        title: Text(
+          '${context.trRaw('سجلات')} ${widget.patientName}',
+        ),
         actions: [
           if (selectedCount > 0)
             Center(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: Text(
-                  'المحدَّد: $selectedCount',
+                child: LocalizedText('المحدَّد: $selectedCount',
                   style: const TextStyle(fontWeight: FontWeight.w800),
                 ),
               ),
             ),
           IconButton(
-            tooltip: 'تحديد/إلغاء الكل',
+            tooltip: context.trRaw('تحديد/إلغاء الكل'),
             icon: const Icon(Icons.select_all),
             onPressed: _filtered.isEmpty ? null : _toggleSelectAll,
           ),
           IconButton(
             icon: const Icon(Icons.picture_as_pdf),
-            tooltip: 'تصدير المحدد إلى PDF',
+            tooltip: context.trRaw('تصدير المحدد إلى PDF'),
             onPressed: selectedCount == 0 ? null : _exportPdf,
           ),
         ],
@@ -566,7 +512,7 @@ class _DuplicatePatientsScreenState extends State<DuplicatePatientsScreen> {
                     const Center(child: CircularProgressIndicator()),
                   ] else if (_filtered.isEmpty) ...[
                     const SizedBox(height: 120),
-                    const Center(child: Text('لا توجد نتائج')),
+                    const Center(child: LocalizedText('لا توجد نتائج')),
                   ] else ...[
                     ..._filtered.map((p) {
                       final pId = p.id!;
@@ -604,8 +550,7 @@ class _DuplicatePatientsScreenState extends State<DuplicatePatientsScreen> {
                                   style: const TextStyle(
                                       fontWeight: FontWeight.w800),
                                 ),
-                                subtitle: Text(
-                                  '$dateStr  •  الإجمالي: ${total.toStringAsFixed(2)}',
+                                subtitle: LocalizedText('$dateStr  •  الإجمالي: ${total.toStringAsFixed(2)}',
                                   style: TextStyle(
                                     color: Theme.of(context)
                                         .colorScheme
@@ -673,7 +618,7 @@ class _DuplicatePatientsScreenState extends State<DuplicatePatientsScreen> {
                                                 color: kPrimaryColor,
                                               ),
                                               const SizedBox(width: 6),
-                                              Text('الطبيب: ${p.doctorName!}',
+                                              LocalizedText('الطبيب: ${p.doctorName!}',
                                                   style: const TextStyle(
                                                       fontWeight:
                                                           FontWeight.w600)),
@@ -696,7 +641,7 @@ class _DuplicatePatientsScreenState extends State<DuplicatePatientsScreen> {
                                               .toList(),
                                         )
                                       else
-                                        const Text('لا توجد خدمات'),
+                                        const LocalizedText('لا توجد خدمات'),
                                       const SizedBox(height: 10),
                                       Row(
                                         children: [
@@ -735,7 +680,7 @@ class _DuplicatePatientsScreenState extends State<DuplicatePatientsScreen> {
                                           ),
                                           const SizedBox(width: 8),
                                           IconButton(
-                                            tooltip: 'حذف',
+                                            tooltip: context.trRaw('حذف'),
                                             icon: const Icon(
                                               Icons.delete_outline,
                                               color: Colors.red,
@@ -778,12 +723,11 @@ class _DuplicatePatientsScreenState extends State<DuplicatePatientsScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text('المحدَّد: ${_selectedIds.length}',
+                            LocalizedText('المحدَّد: ${_selectedIds.length}',
                                 style: const TextStyle(
                                     fontWeight: FontWeight.w800)),
                             const SizedBox(height: 4),
-                            Text(
-                                'الإجمالي: ${_selectedTotal.toStringAsFixed(2)}'),
+                            LocalizedText('الإجمالي: ${_selectedTotal.toStringAsFixed(2)}'),
                           ],
                         ),
                       ),
@@ -799,7 +743,7 @@ class _DuplicatePatientsScreenState extends State<DuplicatePatientsScreen> {
                             _selectedIds.isEmpty ? null : _deleteSelected,
                         icon: const Icon(Icons.delete_forever,
                             color: Colors.white),
-                        label: const Text('حذف المحدد',
+                        label: const LocalizedText('حذف المحدد',
                             style: TextStyle(color: Colors.white)),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.red.shade700,

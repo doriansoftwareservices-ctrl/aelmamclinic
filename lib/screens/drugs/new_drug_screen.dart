@@ -7,6 +7,8 @@ import 'package:aelmamclinic/core/validators.dart';
 
 import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/models/drug.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class NewDrugScreen extends StatefulWidget {
   final Drug? initialDrug; // إن كانت موجودة → وضع تعديل
@@ -92,7 +94,7 @@ class _NewDrugScreenState extends State<NewDrugScreen> {
     // تحقق من التكرار (يتجاهل المحذوف منطقياً إن وُجد)
     if (await _isDuplicateName(name)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('اسم الدواء موجود مسبقًا')),
+        const SnackBar(content: LocalizedText('اسم الدواء موجود مسبقًا')),
       );
       return;
     }
@@ -142,7 +144,7 @@ class _NewDrugScreenState extends State<NewDrugScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(widget.initialDrug == null
+          content: LocalizedText(widget.initialDrug == null
               ? 'تم إضافة الدواء'
               : 'تم تحديث بيانات الدواء'),
         ),
@@ -152,7 +154,7 @@ class _NewDrugScreenState extends State<NewDrugScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('خطأ أثناء الحفظ: $e')),
+        SnackBar(content: LocalizedText('خطأ أثناء الحفظ: $e')),
       );
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -164,7 +166,7 @@ class _NewDrugScreenState extends State<NewDrugScreen> {
     final isEdit = widget.initialDrug != null;
 
     return Directionality(
-      textDirection: TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -188,8 +190,8 @@ class _NewDrugScreenState extends State<NewDrugScreen> {
                   // الاسم
                   NeuField(
                     controller: _nameCtrl,
-                    labelText: 'اسم الدواء',
-                    hintText: 'ادخل اسم الدواء',
+                    labelText: context.trRaw('اسم الدواء'),
+                    hintText: context.trRaw('ادخل اسم الدواء'),
                     prefix: const Icon(Icons.label_important_outline_rounded),
                     validator: (v) =>
                         Validators.required(v, fieldName: 'اسم الدواء'),
@@ -199,8 +201,8 @@ class _NewDrugScreenState extends State<NewDrugScreen> {
                   // الملاحظات
                   NeuField(
                     controller: _notesCtrl,
-                    labelText: 'ملاحظات (اختياري)',
-                    hintText: 'أدخل أي ملاحظات',
+                    labelText: context.trRaw('ملاحظات (اختياري)'),
+                    hintText: context.trRaw('أدخل أي ملاحظات'),
                     prefix: const Icon(Icons.notes_rounded),
                     maxLines: 3,
                   ),

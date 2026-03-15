@@ -1,11 +1,13 @@
 // lib/screens/patients/patient_picker_screen.dart
-import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:aelmamclinic/utils/app_formatters.dart';
 
 import 'package:aelmamclinic/core/formatters.dart';
 import 'package:aelmamclinic/models/patient.dart';
 import 'package:aelmamclinic/services/db_service.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class PatientPickerScreen extends StatefulWidget {
   const PatientPickerScreen({super.key});
@@ -30,8 +32,8 @@ class _PatientPickerScreenState extends State<PatientPickerScreen> {
   final Map<String, List<Patient>> _patientsByKey = {};
 
   bool _loading = true;
-  final _dateOnly = DateFormat('yyyy-MM-dd');
-  final _dateTime = DateFormat('yyyy-MM-dd HH:mm');
+  DateFormat get _dateOnly => AppFormatters.dateFormat('yyyy-MM-dd');
+  DateFormat get _dateTime => AppFormatters.dateFormat('yyyy-MM-dd HH:mm');
 
   @override
   void initState() {
@@ -84,7 +86,7 @@ class _PatientPickerScreenState extends State<PatientPickerScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('فشل تحميل البيانات: $e')),
+          SnackBar(content: LocalizedText('فشل تحميل البيانات: $e')),
         );
       }
     } finally {
@@ -134,7 +136,7 @@ class _PatientPickerScreenState extends State<PatientPickerScreen> {
           ..sort((a, b) => b.registerDate.compareTo(a.registerDate));
         final scheme = Theme.of(ctx).colorScheme;
         return Directionality(
-          textDirection: ui.TextDirection.rtl,
+          textDirection: Directionality.of(context),
           child: SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
@@ -150,8 +152,7 @@ class _PatientPickerScreenState extends State<PatientPickerScreen> {
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
-                  Text(
-                    'اختر زيارة لـ ${rep.name}',
+                  LocalizedText('اختر زيارة لـ ${rep.name}',
                     style: const TextStyle(fontWeight: FontWeight.w800),
                   ),
                   const SizedBox(height: 8),
@@ -199,10 +200,10 @@ class _PatientPickerScreenState extends State<PatientPickerScreen> {
     final scheme = Theme.of(context).colorScheme;
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('اختيار المريض'),
+          title: const LocalizedText('اختيار المريض'),
           centerTitle: true,
           elevation: 4,
           flexibleSpace: Container(
@@ -234,7 +235,7 @@ class _PatientPickerScreenState extends State<PatientPickerScreen> {
                 child: TextField(
                   controller: _searchCtrl,
                   decoration: InputDecoration(
-                    hintText: 'ابحث بالاسم أو الهاتف',
+                    hintText: context.trRaw('ابحث بالاسم أو الهاتف'),
                     prefixIcon: const Icon(Icons.search),
                     suffixIcon: _searchCtrl.text.isEmpty
                         ? null
@@ -267,7 +268,7 @@ class _PatientPickerScreenState extends State<PatientPickerScreen> {
                                 physics: const AlwaysScrollableScrollPhysics(),
                                 children: const [
                                   SizedBox(height: 160),
-                                  Center(child: Text('لا توجد نتائج')),
+                                  Center(child: LocalizedText('لا توجد نتائج')),
                                 ],
                               )
                             : ListView.builder(
@@ -320,8 +321,7 @@ class _PatientPickerScreenState extends State<PatientPickerScreen> {
                                       ),
                                       trailing: (repsList.length > 1)
                                           ? Chip(
-                                              label: Text(
-                                                  '${repsList.length} زيارات'),
+                                              label: LocalizedText('${repsList.length} زيارات'),
                                               backgroundColor: scheme
                                                   .primaryContainer
                                                   .withValues(alpha: .35),

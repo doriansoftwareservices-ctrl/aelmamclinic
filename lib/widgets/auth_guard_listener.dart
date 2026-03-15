@@ -3,8 +3,16 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'package:aelmamclinic/core/app_navigation.dart';
 import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:aelmamclinic/services/network_status_service.dart';
+import 'package:aelmamclinic/utils/app_error_reporter.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
+
+enum _PendingWipeGuardAction {
+  wipe,
+  signOut,
+}
 
 class AuthGuardListener extends StatefulWidget {
   final Widget child;
@@ -64,27 +72,49 @@ class _AuthGuardListenerState extends State<AuthGuardListener>
   Future<void> _runCheck() async {
     if (!mounted || _checking || !_active) return;
     final auth = context.read<AuthProvider>();
-    if (!auth.isLoggedIn || auth.isSuperAdmin) return;
-    if (!NetworkStatusService.instance.isOnline) {
-      _showOfflineNotice();
-      return;
+    if (!auth.isLoggedIn) return;
+    if (!auth.hasPendingLocalWipe) {
+      _pendingWipePrompted = false;
     }
     _checking = true;
     try {
-      if (!auth.hasNhostSession) {
-        await auth.ensureNhostSessionReady(reason: 'guard');
-        if (!auth.hasNhostSession) return;
-      }
       if (auth.hasPendingLocalWipe && !_pendingWipePrompted) {
         _pendingWipePrompted = true;
-        await _showPendingWipeDialog(auth);
+        final resolved = await _showPendingWipeDialog(auth);
+        _pendingWipePrompted = auth.hasPendingLocalWipe;
+        if (!resolved || auth.hasPendingLocalWipe || !auth.isLoggedIn) {
+          return;
+        }
       }
-      final result = await auth.refreshAndValidateCurrentUser();
+      if (auth.isSuperAdmin && auth.hasNhostSession) return;
+      final online = await NetworkStatusService.instance.refreshNow();
+      if (!online) {
+        _showOfflineNotice();
+        return;
+      }
+      final result = await auth.reconcileAuthenticatedSession(
+        reason: 'guard',
+        bootstrapOnSuccess: true,
+        bootstrapPull: false,
+        resumeSyncOnSuccess: true,
+      );
       if (!mounted || result.isSuccess) return;
+
+      if (result.status == AuthSessionStatus.isolationRequired ||
+          auth.hasPendingLocalWipe) {
+        _pendingWipePrompted = true;
+        await _showPendingWipeDialog(auth);
+        _pendingWipePrompted = auth.hasPendingLocalWipe;
+        return;
+      }
 
       if (result.status == AuthSessionStatus.networkError ||
           result.status == AuthSessionStatus.unknown) {
-        _showOfflineNotice();
+        if (!NetworkStatusService.instance.isOnline || auth.isOffline) {
+          _showOfflineNotice();
+        } else {
+          _showServerUnavailableNotice();
+        }
         return;
       }
 
@@ -95,13 +125,10 @@ class _AuthGuardListenerState extends State<AuthGuardListener>
 
       final message = _messageForStatus(result.status);
       if (message != null && mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(message)));
+        AppErrorReporter.info(message);
       }
       if (result.status == AuthSessionStatus.disabled ||
-          result.status == AuthSessionStatus.accountFrozen ||
-          result.status == AuthSessionStatus.planUpgradeRequired ||
-          result.status == AuthSessionStatus.signedOut) {
+          result.status == AuthSessionStatus.accountFrozen) {
         await auth.signOut();
       }
     } finally {
@@ -109,46 +136,56 @@ class _AuthGuardListenerState extends State<AuthGuardListener>
     }
   }
 
-  Future<void> _showPendingWipeDialog(AuthProvider auth) async {
-    if (!mounted) return;
-    final confirmed = await showDialog<bool>(
-      context: context,
+  Future<bool> _showPendingWipeDialog(AuthProvider auth) async {
+    if (!mounted) return false;
+    final dialogContext =
+        appNavigatorKey.currentState?.overlay?.context ??
+            appNavigatorKey.currentContext;
+    if (dialogContext == null) return false;
+    final action = await showDialog<_PendingWipeGuardAction>(
+      context: dialogContext,
+      useRootNavigator: true,
       barrierDismissible: false,
       builder: (ctx) {
         return AlertDialog(
-          title: const Text('تغيير الحساب'),
-          content: const Text(
-            'تم رصد تبديل الحساب أو اختلاف البيانات المحلية. يُنصح بمسح البيانات المحلية '
-            'لتجنب اختلاط البيانات بين العيادات. سيتم إنشاء نسخة احتياطية قبل المسح.',
+          title: Text(context.tr('auth_confirm_switch_title')),
+          content: Text(
+            context.tr('auth_pending_wipe_guard_message'),
+            textAlign: TextAlign.start,
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('لاحقًا'),
+              onPressed: () =>
+                  Navigator.of(ctx).pop(_PendingWipeGuardAction.signOut),
+              child: Text(context.tr('common_logout')),
             ),
             ElevatedButton(
-              onPressed: () => Navigator.of(ctx).pop(true),
-              child: const Text('مسح الآن (موصى به)'),
+              onPressed: () =>
+                  Navigator.of(ctx).pop(_PendingWipeGuardAction.wipe),
+              child: Text(context.tr('auth_action_backup_and_wipe_now')),
             ),
           ],
         );
       },
     );
 
-    if (confirmed == true && mounted) {
-      final ok = await auth.performPendingLocalWipe(
-        createBackup: true,
-        rebootstrap: true,
-      );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(ok
-              ? 'تم إنشاء نسخة احتياطية ومسح البيانات المحلية.'
-              : 'فشل تنفيذ المسح. يرجى المحاولة مرة أخرى.'),
-        ),
-      );
+    if (action == _PendingWipeGuardAction.signOut) {
+      await auth.signOut();
+      return true;
     }
+    if (action != _PendingWipeGuardAction.wipe) return false;
+
+    final ok = await auth.performPendingLocalWipe(
+      createBackup: true,
+      rebootstrap: true,
+    );
+    if (!mounted) return ok;
+    AppErrorReporter.info(
+      context.tr(
+        ok ? 'auth_pending_wipe_success' : 'auth_pending_wipe_failed',
+      ),
+    );
+    return ok;
   }
 
   void _showOfflineNotice() {
@@ -159,8 +196,19 @@ class _AuthGuardListenerState extends State<AuthGuardListener>
     }
     _lastOfflineNoticeAt = now;
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('يبدو ان الشبكة غير مستقرة لديك')),
+    AppErrorReporter.report('يبدو ان الشبكة غير مستقرة لديك');
+  }
+
+  void _showServerUnavailableNotice() {
+    final now = DateTime.now();
+    if (_lastOfflineNoticeAt != null &&
+        now.difference(_lastOfflineNoticeAt!).inSeconds < 20) {
+      return;
+    }
+    _lastOfflineNoticeAt = now;
+    if (!mounted) return;
+    AppErrorReporter.report(
+      context.trRaw('تعذر الوصول إلى الخادم حاليًا. حاول مرة أخرى بعد قليل.'),
     );
   }
 
@@ -170,6 +218,8 @@ class _AuthGuardListenerState extends State<AuthGuardListener>
         return 'قم بمراجعة الإدارة.';
       case AuthSessionStatus.accountFrozen:
         return 'تم تجميد حساب العيادة. تواصل مع الإدارة.';
+      case AuthSessionStatus.isolationRequired:
+        return context.tr('auth_status_local_isolation_required');
       case AuthSessionStatus.planUpgradeRequired:
         return 'ناسف فالخطة الحالية للمرفق الصحي هي FREE يجب تجديد الاشتراك';
       case AuthSessionStatus.noAccount:

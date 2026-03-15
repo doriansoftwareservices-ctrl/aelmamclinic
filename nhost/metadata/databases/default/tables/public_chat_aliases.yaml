@@ -2,7 +2,19 @@ table:
   name: chat_aliases
   schema: public
 insert_permissions:
+  - role: employee
+    permission:
+      check:
+        owner_uid:
+          _eq: X-Hasura-User-Id
+      columns: '*'
   - role: me
+    permission:
+      check:
+        owner_uid:
+          _eq: X-Hasura-User-Id
+      columns: '*'
+  - role: owner
     permission:
       check:
         owner_uid:
@@ -25,7 +37,19 @@ insert_permissions:
           _eq: X-Hasura-User-Id
       columns: '*'
 select_permissions:
+  - role: employee
+    permission:
+      columns: '*'
+      filter:
+        owner_uid:
+          _eq: X-Hasura-User-Id
   - role: me
+    permission:
+      columns: '*'
+      filter:
+        owner_uid:
+          _eq: X-Hasura-User-Id
+  - role: owner
     permission:
       columns: '*'
       filter:
@@ -48,7 +72,25 @@ select_permissions:
         owner_uid:
           _eq: X-Hasura-User-Id
 update_permissions:
+  - role: employee
+    permission:
+      columns: '*'
+      filter:
+        owner_uid:
+          _eq: X-Hasura-User-Id
+      check:
+        owner_uid:
+          _eq: X-Hasura-User-Id
   - role: me
+    permission:
+      columns: '*'
+      filter:
+        owner_uid:
+          _eq: X-Hasura-User-Id
+      check:
+        owner_uid:
+          _eq: X-Hasura-User-Id
+  - role: owner
     permission:
       columns: '*'
       filter:
@@ -81,7 +123,17 @@ update_permissions:
         owner_uid:
           _eq: X-Hasura-User-Id
 delete_permissions:
+  - role: employee
+    permission:
+      filter:
+        owner_uid:
+          _eq: X-Hasura-User-Id
   - role: me
+    permission:
+      filter:
+        owner_uid:
+          _eq: X-Hasura-User-Id
+  - role: owner
     permission:
       filter:
         owner_uid:

@@ -1,8 +1,8 @@
 // lib/screens/employees/finance/employees_finance_summary_screen.dart
 
-import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:aelmamclinic/utils/app_formatters.dart';
 
 /*── TBIAN ─*/
 import 'package:aelmamclinic/core/theme.dart';
@@ -13,6 +13,7 @@ import 'package:aelmamclinic/core/tbian_ui.dart';
 import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/services/logging_service.dart';
 import 'finance_access_guard.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
 
 /// ── ثوابت الألوان الموحدة ──
 const Color accentColor = Color(0xFF004A61);
@@ -45,8 +46,8 @@ class _EmployeesFinanceSummaryScreenState
 
   bool _busy = false;
 
-  final DateFormat _dateFmt = DateFormat('yyyy-MM-dd');
-  final NumberFormat _moneyFmt = NumberFormat('#,##0.00');
+  DateFormat get _dateFmt => AppFormatters.dateFormat('yyyy-MM-dd');
+  NumberFormat get _moneyFmt => AppFormatters.numberFormat('#,##0.00');
 
   double _asDouble(dynamic v) =>
       (v is num) ? v.toDouble() : double.tryParse('${v ?? 0}') ?? 0.0;
@@ -57,7 +58,7 @@ class _EmployeesFinanceSummaryScreenState
 
     return FinanceAccessGuard(
       child: Directionality(
-        textDirection: ui.TextDirection.rtl,
+        textDirection: Directionality.of(context),
         child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -81,8 +82,7 @@ class _EmployeesFinanceSummaryScreenState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  'الخلاصة المالية',
+                LocalizedText('الخلاصة المالية',
                   style: TextStyle(
                     color: scheme.onSurface,
                     fontSize: 18,
@@ -217,7 +217,7 @@ class _EmployeesFinanceSummaryScreenState
               _moneyFmt.format(value),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              textDirection: ui.TextDirection.rtl,
+              textDirection: Directionality.of(context),
               style: TextStyle(
                 color: scheme.onSurface,
                 fontSize: emphasize ? 20 : 18,
@@ -267,13 +267,13 @@ class _EmployeesFinanceSummaryScreenState
   Future<void> _calculate() async {
     if (_startDate == null || _endDate == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('اختر الفترة الزمنية أولاً')),
+        const SnackBar(content: LocalizedText('اختر الفترة الزمنية أولاً')),
       );
       return;
     }
     if (_startDate!.isAfter(_endDate!)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تاريخ البداية أكبر من تاريخ النهاية')),
+        const SnackBar(content: LocalizedText('تاريخ البداية أكبر من تاريخ النهاية')),
       );
       return;
     }
@@ -359,7 +359,7 @@ class _EmployeesFinanceSummaryScreenState
       });
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذر الحساب: $e')),
+        SnackBar(content: LocalizedText('تعذر الحساب: $e')),
       );
     } finally {
       if (mounted) setState(() => _busy = false);

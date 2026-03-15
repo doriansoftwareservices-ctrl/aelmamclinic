@@ -18,7 +18,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:ui' as ui show TextDirection;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -36,6 +35,7 @@ import 'package:aelmamclinic/providers/chat_provider.dart';
 import 'package:aelmamclinic/services/chat_service.dart';
 import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/services/attachment_cache.dart';
+import 'package:aelmamclinic/utils/app_locale.dart';
 import 'package:aelmamclinic/utils/text_direction.dart' as td;
 import 'package:aelmamclinic/utils/chat_code_utils.dart';
 import 'package:aelmamclinic/widgets/chat/attachment_chip.dart';
@@ -44,6 +44,8 @@ import 'package:aelmamclinic/widgets/chat/message_bubble.dart';
 import 'package:aelmamclinic/widgets/chat/typing_indicator.dart';
 import 'chat_search_screen.dart';
 import 'image_viewer_screen.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class ChatRoomScreen extends StatefulWidget {
   final ChatConversation conversation;
@@ -277,7 +279,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('الرسالة خارج النطاق الحالي. مرّر للأعلى لتحميل المزيد.'),
+        content: LocalizedText('الرسالة خارج النطاق الحالي. مرّر للأعلى لتحميل المزيد.'),
       ));
     }
   }
@@ -367,7 +369,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
             children: [
               ListTile(
                 leading: const Icon(Icons.image_rounded),
-                title: const Text('إرفاق صورة'),
+                title: const LocalizedText('إرفاق صورة'),
                 onTap: () async {
                   Navigator.pop(ctx);
                   await _pickImages();
@@ -376,7 +378,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
               if (!kIsWeb && (Platform.isAndroid || Platform.isIOS))
                 ListTile(
                   leading: const Icon(Icons.photo_camera_rounded),
-                  title: const Text('التقاط بالكاميرا'),
+                  title: const LocalizedText('التقاط بالكاميرا'),
                   onTap: () async {
                     Navigator.pop(ctx);
                     await _pickImages(fromCamera: true);
@@ -384,7 +386,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                 ),
               ListTile(
                 leading: const Icon(Icons.attach_file_rounded),
-                title: const Text('إرفاق ملف'),
+                title: const LocalizedText('إرفاق ملف'),
                 onTap: () async {
                   Navigator.pop(ctx);
                   await _pickFiles();
@@ -546,8 +548,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
             messageId: msg.id,
             emoji: emoji,
           );
-        } catch (_) {
-          // تجاهل
+        } catch (e) {
+          _snack('تعذّر تحديث التفاعل: $e');
         }
       },
       onForward: (msg) => _forwardMessageFlow(msg),
@@ -562,22 +564,22 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          title: const Text('تعديل الرسالة'),
+          title: const LocalizedText('تعديل الرسالة'),
           content: TextField(
             controller: c,
             maxLines: 5,
             minLines: 1,
             textDirection: td.textDirectionFor(c.text),
             onChanged: (_) => (ctx as Element).markNeedsBuild(),
-            decoration: const InputDecoration(hintText: 'اكتب النص الجديد…'),
+            decoration: InputDecoration(hintText: context.trRaw('اكتب النص الجديد…')),
           ),
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(ctx, null),
-                child: const Text('إلغاء')),
+                child: const LocalizedText('إلغاء')),
             FilledButton(
                 onPressed: () => Navigator.pop(ctx, c.text.trim()),
-                child: const Text('حفظ')),
+                child: const LocalizedText('حفظ')),
           ],
         );
       },
@@ -588,16 +590,16 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     final res = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('حذف الرسالة'),
-        content: const Text('هل تريد حذف هذه الرسالة للجميع؟'),
+        title: const LocalizedText('حذف الرسالة'),
+        content: const LocalizedText('هل تريد حذف هذه الرسالة للجميع؟'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('إلغاء')),
+              child: const LocalizedText('إلغاء')),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
-            child: const Text('حذف'),
+            child: const LocalizedText('حذف'),
           ),
         ],
       ),
@@ -862,7 +864,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         return StatefulBuilder(
           builder: (ctx, setState) {
             return AlertDialog(
-              title: const Text('إعادة توجيه إلى…'),
+              title: const LocalizedText('إعادة توجيه إلى…'),
               content: SizedBox(
                 width: 420,
                 height: 420,
@@ -894,7 +896,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(ctx, null),
-                  child: const Text('إلغاء'),
+                  child: const LocalizedText('إلغاء'),
                 ),
                 FilledButton(
                   onPressed: selected.isEmpty
@@ -905,7 +907,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                               .toList();
                           Navigator.pop(ctx, chosen);
                         },
-                  child: const Text('إرسال'),
+                  child: const LocalizedText('إرسال'),
                 ),
               ],
             );
@@ -940,7 +942,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   void _snack(Object msg) {
     if (!mounted) return;
     final text = _friendlyMessage(msg);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: LocalizedText(text)));
   }
 
   bool _isAdminRole(String? role) =>
@@ -960,19 +962,19 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   String _titleFor(ChatConversation c) {
     final t = (c.title ?? '').trim();
     if (t.isNotEmpty) return t;
-    if (c.isGroup) return 'مجموعة';
+    if (c.isGroup) return context.trRaw('مجموعة');
     try {
       final chat = context.read<ChatProvider>();
       if (chat.isSupportConversation(c.id)) {
-        return chat.supportDisplayName;
+        return context.trRaw(chat.supportDisplayName);
       }
       final raw = chat.displayTitleOf(c.id).trim();
-      if (raw.isEmpty) return 'محادثة';
+      if (raw.isEmpty) return context.trRaw('محادثة');
       return ChatCodeUtils.isChatCode(raw)
           ? ChatCodeUtils.format(raw)
           : raw;
     } catch (_) {
-      return 'محادثة';
+      return context.trRaw('محادثة');
     }
   }
 
@@ -990,9 +992,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
           .read<ChatProvider>()
           .displayNamesForTyping(_convId, [m.senderUid]);
       final name = (names.isNotEmpty ? names.first : '').trim();
-      return name.isNotEmpty ? name : 'بدون رقم';
+      return name.isNotEmpty ? name : context.trRaw('بدون رقم');
     } catch (_) {
-      return 'بدون رقم';
+      return context.trRaw('بدون رقم');
     }
   }
 
@@ -1192,7 +1194,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
+          LocalizedText(
             title,
             style: TextStyle(
               color: scheme.onSurface,
@@ -1204,8 +1206,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
           if (_loadingSuggestions)
             const Center(child: CircularProgressIndicator(strokeWidth: 2))
           else if (_suggestions.isEmpty)
-            Text(
-              'لا توجد نتائج مطابقة.',
+            LocalizedText('لا توجد نتائج مطابقة.',
               style: TextStyle(
                 color: scheme.onSurface.withValues(alpha: .6),
                 fontSize: 12,
@@ -1317,15 +1318,43 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   String _dayLabel(DateTime utc) {
     final now = DateTime.now();
     final d = utc.toLocal();
+    final isArabic = AppLocale.isRtl(Localizations.localeOf(context));
     bool sameDay(DateTime a, DateTime b) =>
         a.year == b.year && a.month == b.month && a.day == b.day;
 
     final yesterday = DateTime(now.year, now.month, now.day - 1);
-    if (sameDay(d, now)) return 'اليوم';
-    if (sameDay(d, yesterday)) return 'أمس';
+    if (sameDay(d, now)) return isArabic ? 'اليوم' : 'Today';
+    if (sameDay(d, yesterday)) return isArabic ? 'أمس' : 'Yesterday';
     final mm = d.month.toString().padLeft(2, '0');
     final dd = d.day.toString().padLeft(2, '0');
     return '${d.year}/$mm/$dd';
+  }
+
+  String _typingSummaryLabel(List<String> names) {
+    final cleaned =
+        names.map((name) => name.trim()).where((name) => name.isNotEmpty).toList();
+    if (cleaned.isEmpty) return '';
+
+    final isArabic = AppLocale.isRtl(Localizations.localeOf(context));
+    if (cleaned.length == 1) {
+      return isArabic
+          ? '${cleaned.first} يكتب…'
+          : '${cleaned.first} is typing...';
+    }
+
+    final joined = cleaned.join(isArabic ? '، ' : ', ');
+    return isArabic ? '$joined يكتبون…' : '$joined are typing...';
+  }
+
+  String _newMessagesLabel(int count) {
+    final isArabic = AppLocale.isRtl(Localizations.localeOf(context));
+    if (count <= 0) {
+      return isArabic ? 'رسائل جديدة' : 'New messages';
+    }
+    if (count == 1) {
+      return isArabic ? 'رسالة 1 غير مقروءة' : '1 unread message';
+    }
+    return isArabic ? 'رسائل $count غير مقروءة' : '$count unread messages';
   }
 
   /*──────────────────── UI ────────────────────*/
@@ -1412,8 +1441,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                               Icon(Icons.chat_bubble_outline_rounded,
                                   size: 36, color: scheme.outline),
                               const SizedBox(height: 10),
-                              Text(
-                                'لا توجد رسائل بعد',
+                              LocalizedText('لا توجد رسائل بعد',
                                 style: TextStyle(
                                   color:
                                       scheme.onSurface.withValues(alpha: .7),
@@ -1421,8 +1449,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                                 ),
                               ),
                               const SizedBox(height: 4),
-                              Text(
-                                'ابدأ بكتابة رسالتك في الأسفل',
+                              LocalizedText('ابدأ بكتابة رسالتك في الأسفل',
                                 style: TextStyle(
                                   color:
                                       scheme.onSurface.withValues(alpha: .55),
@@ -1516,8 +1543,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                                       ScaffoldMessenger.of(context)
                                           .showSnackBar(
                                         const SnackBar(
-                                          content: Text(
-                                            'الملف لم يكتمل تنزيله بعد.',
+                                          content: LocalizedText('الملف لم يكتمل تنزيله بعد.',
                                           ),
                                         ),
                                       );
@@ -1583,14 +1609,16 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                                     _DayDivider(label: dayLabel!),
                                   if (isUnreadAnchor)
                                     _NewMessagesDivider(
-                                        count: _initialUnread),
+                                      count: _initialUnread,
+                                      labelBuilder: _newMessagesLabel,
+                                    ),
                                   Container(
                                     margin:
                                         const EdgeInsets.symmetric(vertical: 2),
                                     child: Align(
                                       alignment: mine
-                                          ? Alignment.centerLeft
-                                          : Alignment.centerRight,
+                                          ? AlignmentDirectional.centerEnd
+                                          : AlignmentDirectional.centerStart,
                                       child: ConstrainedBox(
                                         constraints: BoxConstraints(
                                             maxWidth: maxBubbleW),
@@ -1741,7 +1769,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                     ),
                     const SizedBox(width: 8),
                     IconButton(
-                      tooltip: 'إلغاء الرد',
+                      tooltip: context.trRaw('إلغاء الرد'),
                       onPressed: _clearReply,
                       icon: const Icon(Icons.close_rounded),
                     ),
@@ -1772,7 +1800,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     if (widget.embedded) {
       final isSupport = provider.isSupportConversation(_convId);
       return Directionality(
-        textDirection: ui.TextDirection.rtl,
+        textDirection: Directionality.of(context),
         child: Column(
           children: [
             _EmbeddedRoomHeader(
@@ -1802,7 +1830,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     }
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         extendBody: true,
         appBar: AppBar(
@@ -1859,9 +1887,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
               if (typingNames.isNotEmpty) ...[
                 const SizedBox(height: 2),
                 Text(
-                  typingNames.length == 1
-                      ? '${typingNames.first} يكتب…'
-                      : '${typingNames.join('، ')} يكتبون…',
+                  _typingSummaryLabel(typingNames),
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 12,
@@ -1875,7 +1901,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
           actions: [
             if (isSupportConv && isSupportAgent && !conv.isGroup)
               PopupMenuButton<String>(
-                tooltip: 'إدارة الجلسة',
+                tooltip: context.trRaw('إدارة الجلسة'),
                 icon: const Icon(Icons.support_agent_rounded),
                 onSelected: (v) async {
                   if (v == 'send_rating') {
@@ -1900,18 +1926,18 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                   PopupMenuItem(
                     value: 'send_rating',
                     enabled: !hasOpenRating,
-                    child: const Text('إنهاء الجلسة وإرسال الاستمارة'),
+                    child: const LocalizedText('إنهاء الجلسة وإرسال الاستمارة'),
                   ),
                   PopupMenuItem(
                     value: 'close',
                     enabled: supportStatus == ChatSupportStatus.responded ||
                         hasRatingResponse,
-                    child: const Text('إغلاق المحادثة'),
+                    child: const LocalizedText('إغلاق المحادثة'),
                   ),
                 ],
               ),
             IconButton(
-              tooltip: 'بحث',
+              tooltip: context.trRaw('بحث'),
               icon: const Icon(Icons.search_rounded),
               onPressed: () async {
                 final selId = await Navigator.of(context).push<String?>(
@@ -1929,7 +1955,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
             ),
             if (_chatAttachmentsEnabled)
               IconButton(
-                tooltip: 'المرفقات',
+                tooltip: context.trRaw('المرفقات'),
                 onPressed: () async => _pickImages(),
                 icon: const Icon(Icons.image_rounded),
               ),
@@ -2088,32 +2114,29 @@ class _SupportRatingRequestCardState extends State<_SupportRatingRequestCard> {
             enabled: canEdit,
             maxLines: 3,
             minLines: 1,
-            textDirection: ui.TextDirection.rtl,
-            decoration: const InputDecoration(
-              labelText: 'ملاحظات (اختياري)',
+            textDirection: Directionality.of(context),
+            decoration: InputDecoration(
+              labelText: context.trRaw('ملاحظات (اختياري)'),
               border: OutlineInputBorder(),
             ),
           ),
           const SizedBox(height: 10),
           if (hasResponse && !widget.isOwnerSide)
-            Text(
-              'تم استلام تقييم العميل.',
+            LocalizedText('تم استلام تقييم العميل.',
               style: TextStyle(
                 color: scheme.primary,
                 fontWeight: FontWeight.w800,
               ),
             )
           else if (hasResponse && widget.isOwnerSide)
-            Text(
-              'تم إرسال تقييمك.',
+            LocalizedText('تم إرسال تقييمك.',
               style: TextStyle(
                 color: scheme.primary,
                 fontWeight: FontWeight.w800,
               ),
             )
           else if (!widget.isOwnerSide)
-            Text(
-              'بانتظار رد العميل على الاستمارة.',
+            LocalizedText('بانتظار رد العميل على الاستمارة.',
               style: TextStyle(
                 color: scheme.onSurface.withValues(alpha: .65),
                 fontWeight: FontWeight.w700,
@@ -2135,7 +2158,7 @@ class _SupportRatingRequestCardState extends State<_SupportRatingRequestCard> {
                         }
                       }
                     : null,
-                child: const Text('إرسال التقييم'),
+                child: const LocalizedText('إرسال التقييم'),
               ),
             ),
         ],
@@ -2159,8 +2182,7 @@ class _SupportRatingResponseCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'تقييم العميل',
+          LocalizedText('تقييم العميل',
             style: TextStyle(
               fontWeight: FontWeight.w800,
               color: scheme.onSurface,
@@ -2308,13 +2330,13 @@ class _EmbeddedRoomHeader extends StatelessWidget {
           ),
           if (onSearch != null)
             IconButton(
-              tooltip: 'بحث',
+              tooltip: context.trRaw('بحث'),
               onPressed: onSearch,
               icon: const Icon(Icons.search_rounded),
             ),
           if (onAttachments != null)
             IconButton(
-              tooltip: 'المرفقات',
+              tooltip: context.trRaw('المرفقات'),
               onPressed: onAttachments,
               icon: const Icon(Icons.image_rounded),
             ),
@@ -2326,7 +2348,11 @@ class _EmbeddedRoomHeader extends StatelessWidget {
 
 class _NewMessagesDivider extends StatelessWidget {
   final int count;
-  const _NewMessagesDivider({required this.count});
+  final String Function(int count) labelBuilder;
+  const _NewMessagesDivider({
+    required this.count,
+    required this.labelBuilder,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -2342,11 +2368,7 @@ class _NewMessagesDivider extends StatelessWidget {
             border: Border.all(color: c.primary.withValues(alpha: .35)),
           ),
           child: Text(
-            count <= 0
-                ? 'رسائل جديدة'
-                : (count == 1
-                    ? 'رسالة 1 غير مقروءة'
-                    : 'رسائل $count غير مقروءة'),
+            labelBuilder(count),
             style: TextStyle(
               color: c.primary,
               fontWeight: FontWeight.w900,
@@ -2493,7 +2515,7 @@ class _ComposerBar extends StatelessWidget {
               children: const [
                 Icon(Icons.image_rounded, size: 20),
                 SizedBox(width: 10),
-                Text('إرفاق صورة'),
+                LocalizedText('إرفاق صورة'),
               ],
             ),
           ),
@@ -2504,7 +2526,7 @@ class _ComposerBar extends StatelessWidget {
                 children: const [
                   Icon(Icons.photo_camera_rounded, size: 20),
                   SizedBox(width: 10),
-                  Text('التقاط بالكاميرا'),
+                  LocalizedText('التقاط بالكاميرا'),
                 ],
               ),
             ),
@@ -2514,7 +2536,7 @@ class _ComposerBar extends StatelessWidget {
               children: const [
                 Icon(Icons.attach_file_rounded, size: 20),
                 SizedBox(width: 10),
-                Text('إرفاق ملف'),
+                LocalizedText('إرفاق ملف'),
               ],
             ),
           ),
@@ -2557,7 +2579,7 @@ class _ComposerBar extends StatelessWidget {
                 ),
                 child: IconButton(
                   icon: const Icon(Icons.add_rounded),
-                  tooltip: 'إرفاق',
+                  tooltip: context.trRaw('إرفاق'),
                   onPressed: showAttachBubble,
                 ),
               ),
@@ -2588,9 +2610,9 @@ class _ComposerBar extends StatelessWidget {
                   onChanged: onChanged,
                   textDirection: td.textDirectionFor(textCtrl.text),
                   textInputAction: TextInputAction.newline,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     border: InputBorder.none,
-                    hintText: 'اكتب رسالة...',
+                    hintText: context.trRaw('اكتب رسالة...'),
                   ),
                   onSubmitted: (_) => FocusScope.of(context).unfocus(),
                 ),
@@ -2670,7 +2692,7 @@ class _FileAttachChip extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.close_rounded),
             onPressed: onRemove,
-            tooltip: 'إزالة',
+            tooltip: context.trRaw('إزالة'),
           ),
         ],
       ),

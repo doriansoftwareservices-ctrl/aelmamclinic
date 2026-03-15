@@ -5,15 +5,57 @@ select_permissions:
   - role: employee
     permission:
       columns: '*'
-      filter: {}
+      filter:
+        _exists:
+          _table:
+            name: chat_participants
+            schema: public
+          _where:
+            conversation_id:
+              _ceq: conversation_id
+            _or:
+              - is_deleted:
+                  _eq: false
+              - is_deleted:
+                  _is_null: true
+            user_uid:
+              _eq: X-Hasura-User-Id
   - role: me
     permission:
       columns: '*'
-      filter: {}
+      filter:
+        _exists:
+          _table:
+            name: chat_participants
+            schema: public
+          _where:
+            conversation_id:
+              _ceq: conversation_id
+            _or:
+              - is_deleted:
+                  _eq: false
+              - is_deleted:
+                  _is_null: true
+            user_uid:
+              _eq: X-Hasura-User-Id
   - role: owner
     permission:
       columns: '*'
-      filter: {}
+      filter:
+        _exists:
+          _table:
+            name: chat_participants
+            schema: public
+          _where:
+            conversation_id:
+              _ceq: conversation_id
+            _or:
+              - is_deleted:
+                  _eq: false
+              - is_deleted:
+                  _is_null: true
+            user_uid:
+              _eq: X-Hasura-User-Id
   - role: superadmin
     permission:
       columns: '*'
@@ -21,8 +63,36 @@ select_permissions:
   - role: support
     permission:
       columns: '*'
-      filter: {}
+      filter:
+        _exists:
+          _table:
+            name: chat_participants
+            schema: public
+          _where:
+            conversation_id:
+              _ceq: conversation_id
+            _or:
+              - is_deleted:
+                  _eq: false
+              - is_deleted:
+                  _is_null: true
+            user_uid:
+              _eq: X-Hasura-User-Id
   - role: user
     permission:
       columns: '*'
-      filter: {}
+      filter:
+        _exists:
+          _table:
+            name: chat_participants
+            schema: public
+          _where:
+            conversation_id:
+              _ceq: conversation_id
+            _or:
+              - is_deleted:
+                  _eq: false
+              - is_deleted:
+                  _is_null: true
+            user_uid:
+              _eq: X-Hasura-User-Id

@@ -1,0 +1,20 @@
+version: 1
+phase: P15
+name: "Localization Screen Family Wave B"
+status: completed
+updated_at: "2026-03-10"
+scope:
+  - "patients"
+  - "returns"
+  - "employees"
+  - "employee_finance"
+  - "repository"
+  - "patient_and_repository_exports"
+outputs:
+  - "raw_string_localizer_wave_b_keys_added"
+  - "shared_directional_icon_resolution_enabled"
+  - "operational_exports_switched_to_report_localizer"
+  - "patient_employee_helper_widgets_localized"
+verification:
+  script: "scripts/phase15_verify.sh"
+  status: pass

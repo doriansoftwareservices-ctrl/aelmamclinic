@@ -10,8 +10,10 @@ import 'package:sqflite_common/sqlite_api.dart';
 import 'package:uuid/uuid.dart';
 
 import 'package:aelmamclinic/data/sync/alert_settings_sync_service.dart';
+import 'package:aelmamclinic/phase5/sync_determinism.dart';
 import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/services/nhost_graphql_service.dart';
+import 'package:aelmamclinic/utils/app_observability.dart';
 
 /// كلاس مساعد اختياري لتحويل الحقول عند الدفع/السحب.
 /// ضع أي من الدالتين إن كنت تحتاج مسار تحويل مخصص لهذا الجدول.
@@ -168,6 +170,7 @@ class SyncService {
 
   /// تأخير دفع التغييرات المتتالية لنفس الجدول (دمجها بعد 1 ثانية).
   final Duration pushDebounce;
+
   /// هل نعتمد دفتر الحركة (purchases/consumptions) كمصدر الحقيقة للمخزون؟
   /// إذا false: نعتمد items.stock ونتجنب تطبيق دلتا الدفتر أثناء السحب.
   final bool useLedgerStock;
@@ -197,6 +200,8 @@ class SyncService {
 
   /// قفل دفع مخصص لكل جدول لمنع تكرار الدفع بالتوازي
   final Map<String, bool> _pushBusy = {};
+  final Map<String, Future<void>> _pushQueue = {};
+  final List<Completer<void>> _idleWaiters = <Completer<void>>[];
 
   /// مؤقّتات دفع مجمّعة لكل جدول (debounce)
   final Map<String, Timer> _pushTimers = {};
@@ -615,6 +620,52 @@ class SyncService {
     }
   }
 
+  String _newSyncFlow(String label) =>
+      AppObservability.newFlowId('sync_$label');
+
+  Map<String, Object?> _syncContext([Map<String, Object?>? extra]) {
+    return <String, Object?>{
+      'accountId': accountId,
+      'deviceId': deviceId,
+      'syncEnabled': _syncEnabled,
+      ...?extra,
+    };
+  }
+
+  void _syncWarn(
+    String code,
+    String message, {
+    String? flowId,
+    Map<String, Object?>? context,
+    Object? error,
+    StackTrace? stackTrace,
+  }) {
+    AppObservability.warn(
+      scope: 'SYNC',
+      code: code,
+      message: message,
+      flowId: flowId,
+      context: _syncContext(context),
+      error: error,
+      stackTrace: stackTrace,
+    );
+  }
+
+  void _syncInfo(
+    String code,
+    String message, {
+    String? flowId,
+    Map<String, Object?>? context,
+  }) {
+    AppObservability.info(
+      scope: 'SYNC',
+      code: code,
+      message: message,
+      flowId: flowId,
+      context: _syncContext(context),
+    );
+  }
+
   void _validateConstraintMap() {
     for (final table in _remoteAllow.keys) {
       if (!_syncConstraints.containsKey(table)) {
@@ -633,6 +684,19 @@ class SyncService {
       deviceId!.trim().toLowerCase() != 'app-unknown';
 
   static const Duration _kGuardTtl = Duration(seconds: 20);
+  static const Duration _kSyncStalenessThreshold = Duration(minutes: 2);
+  static const SyncRetryPolicy _kNetworkRetryPolicy = SyncRetryPolicy(
+    baseDelay: Duration(milliseconds: 350),
+    maxDelay: Duration(seconds: 3),
+  );
+  static const SyncRetryPolicy _kRealtimeRetryPolicy = SyncRetryPolicy(
+    baseDelay: Duration(seconds: 4),
+    maxDelay: Duration(seconds: 60),
+  );
+  static const SyncRetryPolicy _kPullRetryPolicy = SyncRetryPolicy(
+    baseDelay: Duration(seconds: 2),
+    maxDelay: Duration(seconds: 30),
+  );
   final Future<bool> Function()? _canSync;
   bool _syncEnabled = true;
   static const String _conflictPolicy =
@@ -640,6 +704,69 @@ class SyncService {
   int _manualPauseDepth = 0;
   DateTime? _lastGuardCheckAt;
   bool? _lastGuardAllowed;
+  SyncLifecyclePhase _phase = SyncLifecyclePhase.idle;
+  String _phaseReason = 'init';
+
+  bool get _hasActivePushes => _pushBusy.values.any((v) => v == true);
+
+  void _setPhase(
+    SyncLifecyclePhase next,
+    String reason, {
+    String? flowId,
+    Map<String, Object?>? context,
+  }) {
+    if (_phase == next && _phaseReason == reason) return;
+    _phase = next;
+    _phaseReason = reason;
+    _syncInfo(
+      ObsCode.syncStateTransition,
+      'sync phase -> ${next.name}',
+      flowId: flowId,
+      context: {
+        'phase': next.name,
+        'reason': reason,
+        ...?context,
+      },
+    );
+  }
+
+  void _settlePhase(String reason, {String? flowId}) {
+    if (_phase == SyncLifecyclePhase.disposed) {
+      return;
+    }
+    if (!_syncEnabled) {
+      _setPhase(SyncLifecyclePhase.blocked, reason, flowId: flowId);
+      return;
+    }
+    if (_manualPauseDepth > 0) {
+      _setPhase(SyncLifecyclePhase.paused, reason, flowId: flowId);
+      return;
+    }
+    if (_pullInProgress) {
+      _setPhase(SyncLifecyclePhase.pulling, reason, flowId: flowId);
+      return;
+    }
+    if (_hasActivePushes) {
+      _setPhase(SyncLifecyclePhase.pushing, reason, flowId: flowId);
+      return;
+    }
+    if (_realtimeEnabled) {
+      _setPhase(SyncLifecyclePhase.realtimeActive, reason, flowId: flowId);
+      return;
+    }
+    _setPhase(SyncLifecyclePhase.idle, reason, flowId: flowId);
+  }
+
+  void _completeIdleWaitersIfReady() {
+    if (_pullInProgress || _hasActivePushes || _idleWaiters.isEmpty) return;
+    final waiters = List<Completer<void>>.from(_idleWaiters);
+    _idleWaiters.clear();
+    for (final waiter in waiters) {
+      if (!waiter.isCompleted) {
+        waiter.complete();
+      }
+    }
+  }
 
   Future<bool> _ensureSyncAllowed() async {
     if (!_syncEnabled) return false;
@@ -654,7 +781,14 @@ class SyncService {
     bool allowed = false;
     try {
       allowed = await guard();
-    } catch (_) {
+    } catch (e, st) {
+      _syncWarn(
+        ObsCode.syncGuardCheckFailed,
+        'sync guard check failed',
+        flowId: _newSyncFlow('guard_check'),
+        error: e,
+        stackTrace: st,
+      );
       allowed = false;
     }
     _lastGuardCheckAt = now;
@@ -668,6 +802,11 @@ class SyncService {
   Future<void> _blockSync(String reason) async {
     if (!_syncEnabled) return;
     _syncEnabled = false;
+    _cancelPullScheduling();
+    _pullRequestedWhileBusy = false;
+    _pullRetryCount = 0;
+    _setPhase(SyncLifecyclePhase.blocked, reason,
+        flowId: _newSyncFlow('blocked'));
     _log('Sync disabled ($reason)');
     for (final t in _pushTimers.values) {
       t.cancel();
@@ -680,8 +819,10 @@ class SyncService {
     _manualPauseDepth += 1;
     if (_manualPauseDepth > 1) return;
     _syncEnabled = false;
-    _periodicPullTimer?.cancel();
-    _periodicPullTimer = null;
+    _cancelPullScheduling();
+    _pullRequestedWhileBusy = false;
+    _setPhase(SyncLifecyclePhase.paused, 'manual_pause',
+        flowId: _newSyncFlow('pause'));
     await stopRealtime();
   }
 
@@ -692,23 +833,50 @@ class SyncService {
     _syncEnabled = true;
     _lastGuardAllowed = null;
     _lastGuardCheckAt = null;
+    _setPhase(SyncLifecyclePhase.idle, 'resume_requested',
+        flowId: _newSyncFlow('resume'));
     await startRealtime();
-    _ensurePeriodicPull();
+    _scheduleNextPullCheck(reason: 'resume_sync', force: true);
     try {
       final dirty = await DBService.instance.getDirtySyncTables();
       for (final t in dirty) {
         unawaited(pushFor(t));
       }
-    } catch (_) {}
+    } catch (e, st) {
+      _syncWarn(
+        ObsCode.syncResumeDirtyTablesFailed,
+        'loading dirty sync tables failed during resumeSync',
+        flowId: _newSyncFlow('resume_dirty_tables'),
+        error: e,
+        stackTrace: st,
+      );
+    }
   }
 
-  Future<void> waitForIdle({Duration timeout = const Duration(seconds: 10)}) async {
-    final deadline = DateTime.now().add(timeout);
-    while (true) {
-      final busyPush = _pushBusy.values.any((v) => v == true);
-      if (!_pullInProgress && !busyPush) return;
-      if (DateTime.now().isAfter(deadline)) return;
-      await Future<void>.delayed(const Duration(milliseconds: 80));
+  Future<void> waitForIdle(
+      {Duration timeout = const Duration(seconds: 10)}) async {
+    if (!_pullInProgress && !_hasActivePushes) return;
+    final waiter = Completer<void>();
+    _idleWaiters.add(waiter);
+    try {
+      await waiter.future.timeout(timeout);
+    } on TimeoutException catch (e, st) {
+      _syncWarn(
+        ObsCode.syncWaitForIdleTimeout,
+        'waitForIdle reached timeout before sync became idle',
+        flowId: _newSyncFlow('wait_for_idle'),
+        context: {
+          'timeoutMs': timeout.inMilliseconds,
+          'phase': _phase.name,
+          'phaseReason': _phaseReason,
+          'pullInProgress': _pullInProgress,
+          'activePushes': _pushBusy.entries.where((e) => e.value).length,
+        },
+        error: e,
+        stackTrace: st,
+      );
+    } finally {
+      _idleWaiters.remove(waiter);
     }
   }
 
@@ -797,9 +965,8 @@ class SyncService {
       if (table == 'service_doctor_share') {
         final serviceId = filtered['service_id'] ?? filtered['serviceId'];
         final doctorId = filtered['doctor_id'] ?? filtered['doctorId'];
-        final int? s = serviceId is num
-            ? serviceId.toInt()
-            : int.tryParse('$serviceId');
+        final int? s =
+            serviceId is num ? serviceId.toInt() : int.tryParse('$serviceId');
         final int? d =
             doctorId is num ? doctorId.toInt() : int.tryParse('$doctorId');
         if (s == null || d == null || s <= 0 || d <= 0) return null;
@@ -1129,8 +1296,9 @@ class SyncService {
         : (isDelRaw?.toString().trim().toLowerCase() == 'true' ||
             isDelRaw?.toString().trim() == '1');
 
-    final itemRaw =
-        filteredRow['itemId'] ?? filteredRow['item_id'] ?? filteredRow['itemID'];
+    final itemRaw = filteredRow['itemId'] ??
+        filteredRow['item_id'] ??
+        filteredRow['itemID'];
     final int? newItemId = (itemRaw is num)
         ? itemRaw.toInt()
         : int.tryParse(itemRaw?.toString() ?? '');
@@ -1174,12 +1342,9 @@ class SyncService {
         ? prevItemRaw.toInt()
         : int.tryParse(prevItemRaw?.toString() ?? '');
 
-    if (prevItemId != null &&
-        newItemId != null &&
-        prevItemId != newItemId) {
+    if (prevItemId != null && newItemId != null && prevItemId != newItemId) {
       if (!prevDeleted && prevQty != 0) {
-        final prevDelta =
-            (localTable == 'purchases') ? -prevQty : prevQty;
+        final prevDelta = (localTable == 'purchases') ? -prevQty : prevQty;
         await _applyStockDelta(prevItemId, prevDelta);
       }
       if (!newDeleted && newQty != 0) {
@@ -1281,7 +1446,8 @@ class SyncService {
     }
     final notNullCols = _localNotNullColsCache[table] ?? const <String>{};
     if (notNullCols.isEmpty) return;
-    values.removeWhere((key, value) => value == null && notNullCols.contains(key));
+    values.removeWhere(
+        (key, value) => value == null && notNullCols.contains(key));
   }
 
   bool _hasMeaningfulValue(dynamic value) {
@@ -1314,8 +1480,9 @@ class SyncService {
       final rawValue = rawRow[fkSnake];
       if (!_hasMeaningfulValue(rawValue)) continue;
 
-      final filteredValue =
-          filteredRow.containsKey(fkSnake) ? filteredRow[fkSnake] : filteredRow[fkCamel];
+      final filteredValue = filteredRow.containsKey(fkSnake)
+          ? filteredRow[fkSnake]
+          : filteredRow[fkCamel];
       if (!_hasMeaningfulValue(filteredValue)) {
         missing.add(fkSnake);
       }
@@ -2300,7 +2467,16 @@ class SyncService {
     Future<T> Function() action, {
     int maxAttempts = 3,
     Duration firstDelay = const Duration(milliseconds: 350),
+    SyncRetryPolicy? policy,
+    String? retryReason,
   }) async {
+    final retryPolicy = policy ??
+        (maxAttempts == 3 && firstDelay == const Duration(milliseconds: 350)
+            ? _kNetworkRetryPolicy
+            : SyncRetryPolicy(
+                baseDelay: firstDelay,
+                maxDelay: firstDelay * maxAttempts,
+              ));
     int attempt = 0;
     while (true) {
       try {
@@ -2308,17 +2484,39 @@ class SyncService {
       } on OperationException catch (e) {
         attempt++;
         if (attempt >= maxAttempts) rethrow;
-        final d = firstDelay * attempt;
+        final d = retryPolicy.delayForAttempt(attempt);
         _log(
           'Retry after GraphQL error (attempt $attempt/$maxAttempts): ${_formatGqlError(e)}',
+        );
+        _syncInfo(
+          ObsCode.syncRetryScheduled,
+          'retry scheduled after GraphQL error',
+          flowId: _newSyncFlow('network_retry'),
+          context: {
+            'reason': retryReason ?? 'graphql_operation',
+            'attempt': attempt,
+            'maxAttempts': maxAttempts,
+            'delayMs': d.inMilliseconds,
+          },
         );
         await Future.delayed(d);
       } catch (e) {
         attempt++;
         if (attempt >= maxAttempts) rethrow;
-        final d = firstDelay * attempt;
+        final d = retryPolicy.delayForAttempt(attempt);
         _log(
           'Retry after error (attempt $attempt/$maxAttempts): $e',
+        );
+        _syncInfo(
+          ObsCode.syncRetryScheduled,
+          'retry scheduled after sync error',
+          flowId: _newSyncFlow('network_retry'),
+          context: {
+            'reason': retryReason ?? 'sync_operation',
+            'attempt': attempt,
+            'maxAttempts': maxAttempts,
+            'delayMs': d.inMilliseconds,
+          },
         );
         await Future.delayed(d);
       }
@@ -2369,7 +2567,18 @@ class SyncService {
           limit: 1,
         ))
             .firstOrNull;
-      } catch (_) {
+      } catch (e, st) {
+        _syncWarn(
+          ObsCode.syncStampLocalMetaReadFailed,
+          'reading local sync metadata before stamp failed',
+          flowId: _newSyncFlow('stamp_local_meta_read'),
+          context: {
+            'localTable': localTable,
+            'localId': localId,
+          },
+          error: e,
+          stackTrace: st,
+        );
         existing = null;
       }
 
@@ -2421,8 +2630,21 @@ class SyncService {
       if (row.isEmpty) return;
 
       try {
-        await _db.update(localTable, row, where: 'id = ?', whereArgs: [localId]);
-      } catch (_) {/* صامت */}
+        await _db
+            .update(localTable, row, where: 'id = ?', whereArgs: [localId]);
+      } catch (e, st) {
+        _syncWarn(
+          ObsCode.syncStampLocalMetaWriteFailed,
+          'writing local sync metadata failed',
+          flowId: _newSyncFlow('stamp_local_meta_write'),
+          context: {
+            'localTable': localTable,
+            'localId': localId,
+          },
+          error: e,
+          stackTrace: st,
+        );
+      }
     });
   }
 
@@ -2529,7 +2751,8 @@ class SyncService {
     if (remoteTable == 'service_doctor_share') {
       if (snake['service_id'] == null) {
         final raw = localRow['serviceId'] ?? localRow['service_id'];
-        final int? localId = raw is num ? raw.toInt() : int.tryParse('${raw ?? ''}');
+        final int? localId =
+            raw is num ? raw.toInt() : int.tryParse('${raw ?? ''}');
         if (localId != null && localId > 0) {
           snake['service_id'] =
               await _resolveRemoteIdForLocal('medical_services', localId);
@@ -2537,15 +2760,18 @@ class SyncService {
       }
       if (snake['doctor_id'] == null) {
         final raw = localRow['doctorId'] ?? localRow['doctor_id'];
-        final int? localId = raw is num ? raw.toInt() : int.tryParse('${raw ?? ''}');
+        final int? localId =
+            raw is num ? raw.toInt() : int.tryParse('${raw ?? ''}');
         if (localId != null && localId > 0) {
-          snake['doctor_id'] = await _resolveRemoteIdForLocal('doctors', localId);
+          snake['doctor_id'] =
+              await _resolveRemoteIdForLocal('doctors', localId);
         }
       }
     } else if (remoteTable == 'patient_services') {
       if (snake['patient_id'] == null) {
         final raw = localRow['patientId'] ?? localRow['patient_id'];
-        final int? localId = raw is num ? raw.toInt() : int.tryParse('${raw ?? ''}');
+        final int? localId =
+            raw is num ? raw.toInt() : int.tryParse('${raw ?? ''}');
         if (localId != null && localId > 0) {
           snake['patient_id'] =
               await _resolveRemoteIdForLocal('patients', localId);
@@ -2553,7 +2779,8 @@ class SyncService {
       }
       if (snake['service_id'] == null) {
         final raw = localRow['serviceId'] ?? localRow['service_id'];
-        final int? localId = raw is num ? raw.toInt() : int.tryParse('${raw ?? ''}');
+        final int? localId =
+            raw is num ? raw.toInt() : int.tryParse('${raw ?? ''}');
         if (localId != null && localId > 0) {
           snake['service_id'] =
               await _resolveRemoteIdForLocal('medical_services', localId);
@@ -2648,23 +2875,48 @@ class SyncService {
     return normalized;
   }
 
-  Future<void> _pushTable(String localTable, String remoteTable) async {
-    if (!_hasAccount) {
-      _log('PUSH $remoteTable skipped (no accountId)');
-      return;
-    }
-    if (!_hasDevice) {
-      _log(
-        'PUSH $remoteTable skipped (no deviceId). Set a real deviceId to avoid cross-device conflicts.',
+  Future<void> _runSerializedPush(
+    String remoteTable,
+    Future<void> Function() action,
+  ) {
+    final previous = _pushQueue[remoteTable] ?? Future<void>.value();
+    late final Future<void> next;
+    next = previous.catchError((_) {}).then((_) async {
+      _pushBusy[remoteTable] = true;
+      _setPhase(
+        SyncLifecyclePhase.pushing,
+        'push:$remoteTable',
+        flowId: _newSyncFlow('push_start'),
+        context: {'remoteTable': remoteTable},
       );
-      return;
-    }
-    bool hadFailure = false;
-    while (_pushBusy[remoteTable] == true) {
-      await Future.delayed(const Duration(milliseconds: 120));
-    }
-    _pushBusy[remoteTable] = true;
-    try {
+      try {
+        await action();
+      } finally {
+        _pushBusy.remove(remoteTable);
+        if (identical(_pushQueue[remoteTable], next)) {
+          _pushQueue.remove(remoteTable);
+        }
+        _completeIdleWaitersIfReady();
+        _settlePhase('push_complete:$remoteTable');
+      }
+    });
+    _pushQueue[remoteTable] = next;
+    return next;
+  }
+
+  Future<void> _pushTable(String localTable, String remoteTable) async {
+    return _runSerializedPush(remoteTable, () async {
+      if (!_hasAccount) {
+        _log('PUSH $remoteTable skipped (no accountId)');
+        return;
+      }
+      if (!_hasDevice) {
+        _log(
+          'PUSH $remoteTable skipped (no deviceId). Set a real deviceId to avoid cross-device conflicts.',
+        );
+        return;
+      }
+      bool hadFailure = false;
       // 0) دفع حذف السجلات المعلّمة محليًا
       await _pushDeletedRows(localTable, remoteTable);
 
@@ -2803,7 +3055,8 @@ class SyncService {
           final response = await _withRetry(() async {
             return await _upsertRemoteRows(remoteTable, filteredChunk);
           });
-          await _cacheRemoteIdsFromResponse(remoteTable, response, filteredMeta);
+          await _cacheRemoteIdsFromResponse(
+              remoteTable, response, filteredMeta);
         } on OperationException catch (e) {
           hadFailure = true;
           final bool isNameUniqueConflict = (remoteTable == 'drugs') &&
@@ -2882,9 +3135,7 @@ class SyncService {
       if (!hadFailure) {
         await DBService.instance.clearDirty(localTable);
       }
-    } finally {
-      _pushBusy[remoteTable] = false;
-    }
+    });
   }
 
   /// دمج اعتمادًا على مفتاح طبيعي واحد (مثل name) داخل نفس الحساب.
@@ -3202,8 +3453,7 @@ class SyncService {
         });
         remoteRows = (data[remoteTable] as List?) ?? const [];
       } catch (e) {
-        if (e is OperationException &&
-            _isMissingRemoteField(e, remoteTable)) {
+        if (e is OperationException && _isMissingRemoteField(e, remoteTable)) {
           _disableRemoteTable(remoteTable, 'missing in remote schema');
           break;
         }
@@ -3636,8 +3886,7 @@ class SyncService {
         });
         remoteRows = (data[remoteTable] as List?) ?? const [];
       } catch (e) {
-        if (e is OperationException &&
-            _isMissingRemoteField(e, remoteTable)) {
+        if (e is OperationException && _isMissingRemoteField(e, remoteTable)) {
           _disableRemoteTable(remoteTable, 'missing in remote schema');
           break;
         }
@@ -3762,8 +4011,9 @@ class SyncService {
         }
 
         if (localTable == 'items') {
-          final nameKey =
-              filtered.containsKey('name') ? 'name' : (filtered.containsKey('Name') ? 'Name' : null);
+          final nameKey = filtered.containsKey('name')
+              ? 'name'
+              : (filtered.containsKey('Name') ? 'Name' : null);
           if (nameKey != null) {
             final v = filtered[nameKey];
             if (v == null || v.toString().trim().isEmpty) {
@@ -3773,13 +4023,15 @@ class SyncService {
 
           if (filtered.containsKey('price') && filtered['price'] == null) {
             filtered['price'] = 0;
-          } else if (filtered.containsKey('Price') && filtered['Price'] == null) {
+          } else if (filtered.containsKey('Price') &&
+              filtered['Price'] == null) {
             filtered['Price'] = 0;
           }
 
           if (filtered.containsKey('stock') && filtered['stock'] == null) {
             filtered['stock'] = 0;
-          } else if (filtered.containsKey('Stock') && filtered['Stock'] == null) {
+          } else if (filtered.containsKey('Stock') &&
+              filtered['Stock'] == null) {
             filtered['Stock'] = 0;
           }
 
@@ -3957,7 +4209,10 @@ class SyncService {
   bool _realtimeUnsupportedNotified = false;
   Timer? _realtimeRetryTimer;
   int _realtimeRetryCount = 0;
-  Timer? _periodicPullTimer;
+  Timer? _scheduledPullTimer;
+  Timer? _pullRetryTimer;
+  int _pullRetryCount = 0;
+  bool _pullRequestedWhileBusy = false;
   DateTime? _lastRealtimeEventAt;
   DateTime? _lastPullAt;
   bool _pullInProgress = false;
@@ -3981,6 +4236,7 @@ class SyncService {
   }) async {
     if (rows.isEmpty) return;
     _lastRealtimeEventAt = DateTime.now();
+    _scheduleNextPullCheck(reason: 'realtime_event');
     final versions =
         _realtimeRowVersions.putIfAbsent(remoteTable, () => <String, String>{});
 
@@ -4201,7 +4457,8 @@ class SyncService {
           remoteUuid: remoteUuid,
           remoteDeviceId: remoteDeviceId,
           remoteLocalId: rawLocalInt,
-          reason: 'realtime missing required FK mapping: ${missingFks.join(', ')}',
+          reason:
+              'realtime missing required FK mapping: ${missingFks.join(', ')}',
           filteredRow: filtered,
           rawRow: raw,
         );
@@ -4209,8 +4466,9 @@ class SyncService {
       }
     }
     if (localTable == 'items') {
-      final nameKey =
-          filtered.containsKey('name') ? 'name' : (filtered.containsKey('Name') ? 'Name' : null);
+      final nameKey = filtered.containsKey('name')
+          ? 'name'
+          : (filtered.containsKey('Name') ? 'Name' : null);
       if (nameKey != null) {
         final v = filtered[nameKey];
         if (v == null || v.toString().trim().isEmpty) {
@@ -4306,7 +4564,8 @@ class SyncService {
 
     bool inserted = false;
     try {
-      await _upsertLocalNonDestructive(localTable, filtered, id: resolvedLocalId);
+      await _upsertLocalNonDestructive(localTable, filtered,
+          id: resolvedLocalId);
       inserted = await _verifyLocalRowExists(localTable, resolvedLocalId);
     } catch (e) {
       _logPullRowFailure(
@@ -4525,19 +4784,176 @@ class SyncService {
     );
   }
 
+  void _cancelPullScheduling() {
+    _scheduledPullTimer?.cancel();
+    _scheduledPullTimer = null;
+    _pullRetryTimer?.cancel();
+    _pullRetryTimer = null;
+  }
+
+  void _scheduleNextPullCheck({
+    required String reason,
+    bool force = false,
+  }) {
+    _scheduledPullTimer?.cancel();
+    _scheduledPullTimer = null;
+    if (!_syncEnabled || !_hasAccount || _manualPauseDepth > 0) {
+      return;
+    }
+
+    final decision = computeSyncPullSchedule(
+      now: DateTime.now(),
+      stalenessThreshold: _kSyncStalenessThreshold,
+      lastPullAt: _lastPullAt,
+      lastRealtimeEventAt: _lastRealtimeEventAt,
+      force: force,
+    );
+    final flowId = _newSyncFlow('pull_schedule');
+
+    if (decision.shouldPullNow) {
+      _syncInfo(
+        ObsCode.syncPullScheduled,
+        'pull requested immediately',
+        flowId: flowId,
+        context: {
+          'reason': reason,
+          'decision': decision.reason,
+          'activityAgeMs': decision.activityAge.inMilliseconds,
+        },
+      );
+      unawaited(
+        _requestPullIfNeeded(
+          reason: '$reason:${decision.reason}',
+          force: true,
+        ),
+      );
+      return;
+    }
+
+    final nextDelay = decision.nextCheckDelay ?? const Duration(seconds: 1);
+    _syncInfo(
+      ObsCode.syncPullSkipped,
+      'pull deferred until activity becomes stale',
+      flowId: flowId,
+      context: {
+        'reason': reason,
+        'decision': decision.reason,
+        'delayMs': nextDelay.inMilliseconds,
+        'activityAgeMs': decision.activityAge.inMilliseconds,
+      },
+    );
+    _scheduledPullTimer = Timer(nextDelay, () {
+      _scheduledPullTimer = null;
+      unawaited(_requestPullIfNeeded(reason: '$reason:timer'));
+    });
+  }
+
+  void _schedulePullRetry(String reason) {
+    if (_pullRetryTimer != null || !_syncEnabled || !_hasAccount) return;
+    final attempt = _pullRetryCount + 1;
+    final delay = _kPullRetryPolicy.delayForAttempt(attempt);
+    _pullRetryCount = min(attempt, 6);
+    _syncInfo(
+      ObsCode.syncRetryScheduled,
+      'pull retry scheduled',
+      flowId: _newSyncFlow('pull_retry_schedule'),
+      context: {
+        'reason': reason,
+        'attempt': attempt,
+        'delayMs': delay.inMilliseconds,
+      },
+    );
+    _pullRetryTimer = Timer(delay, () async {
+      _pullRetryTimer = null;
+      await _requestPullIfNeeded(reason: 'pull_retry:$reason', force: true);
+    });
+  }
+
+  Future<void> _requestPullIfNeeded({
+    required String reason,
+    bool force = false,
+  }) async {
+    if (!_hasAccount || !_syncEnabled) return;
+    if (_pullInProgress) {
+      _pullRequestedWhileBusy = true;
+      _syncInfo(
+        ObsCode.syncPullSkipped,
+        'pull request queued behind active pull',
+        flowId: _newSyncFlow('pull_queued'),
+        context: {'reason': reason},
+      );
+      return;
+    }
+    if (!await _ensureSyncAllowed()) return;
+
+    final decision = computeSyncPullSchedule(
+      now: DateTime.now(),
+      stalenessThreshold: _kSyncStalenessThreshold,
+      lastPullAt: _lastPullAt,
+      lastRealtimeEventAt: _lastRealtimeEventAt,
+      force: force,
+    );
+    if (!decision.shouldPullNow) {
+      _scheduleNextPullCheck(reason: reason);
+      return;
+    }
+
+    _pullRetryTimer?.cancel();
+    _pullRetryTimer = null;
+    try {
+      await pullAll(
+        reason: '$reason:${decision.reason}',
+        flowId: _newSyncFlow('pull_request'),
+      );
+    } catch (e, st) {
+      _syncWarn(
+        ObsCode.syncPullFailed,
+        'scheduled pull failed',
+        flowId: _newSyncFlow('pull_request_failed'),
+        context: {'reason': reason},
+        error: e,
+        stackTrace: st,
+      );
+      _schedulePullRetry(reason);
+    }
+  }
+
   void _scheduleRealtimeRetry(String reason) {
     if (!_realtimeSupported) return;
     if (_realtimeRetryTimer != null) return;
     if (!_hasAccount) return;
-    final delaySeconds = min(60, 4 * pow(2, _realtimeRetryCount)).toInt();
-    _realtimeRetryCount = min(_realtimeRetryCount + 1, 5);
-    _log('Realtime retry scheduled in ${delaySeconds}s ($reason)');
-    _realtimeRetryTimer = Timer(Duration(seconds: delaySeconds), () async {
+    final attempt = _realtimeRetryCount + 1;
+    final delay = _kRealtimeRetryPolicy.delayForAttempt(attempt);
+    _realtimeRetryCount = min(attempt, 6);
+    _log('Realtime retry scheduled in ${delay.inSeconds}s ($reason)');
+    _syncInfo(
+      ObsCode.syncRetryScheduled,
+      'realtime retry scheduled',
+      flowId: _newSyncFlow('realtime_retry_schedule'),
+      context: {
+        'reason': reason,
+        'attempt': attempt,
+        'delayMs': delay.inMilliseconds,
+      },
+    );
+    _realtimeRetryTimer = Timer(delay, () async {
       _realtimeRetryTimer = null;
       if (!_realtimeSupported || !_hasAccount) return;
       try {
         await startRealtime();
-      } catch (_) {}
+      } catch (e, st) {
+        _syncWarn(
+          ObsCode.syncRealtimeRetryFailed,
+          'realtime retry start failed',
+          flowId: _newSyncFlow('realtime_retry'),
+          context: {
+            'reason': reason,
+            'delayMs': delay.inMilliseconds,
+          },
+          error: e,
+          stackTrace: st,
+        );
+      }
     });
   }
 
@@ -4551,6 +4967,11 @@ class SyncService {
         _log('Realtime skipped (sync blocked)');
         return;
       }
+      _setPhase(
+        SyncLifecyclePhase.realtimeStarting,
+        'start_realtime',
+        flowId: _newSyncFlow('realtime_start'),
+      );
       // ✅ تفادي ازدواج الاشتراكات عند إعادة التهيئة (مثلاً بعد تغيير المستخدم)
       await _stopRealtimeInternal();
       if (!_hasAccount) {
@@ -4645,8 +5066,12 @@ class SyncService {
       _realtimeRetryCount = 0;
       _realtimeRetryTimer?.cancel();
       _realtimeRetryTimer = null;
-      _ensurePeriodicPull();
-      await _triggerPullIfStale();
+      _setPhase(
+        SyncLifecyclePhase.realtimeActive,
+        'realtime_ready',
+        flowId: _newSyncFlow('realtime_ready'),
+      );
+      _scheduleNextPullCheck(reason: 'realtime_started', force: false);
     });
   }
 
@@ -4656,8 +5081,8 @@ class SyncService {
   }
 
   Future<void> _stopRealtimeInternal() async {
-    _periodicPullTimer?.cancel();
-    _periodicPullTimer = null;
+    _scheduledPullTimer?.cancel();
+    _scheduledPullTimer = null;
     _realtimeRetryTimer?.cancel();
     _realtimeRetryTimer = null;
     final subs = _subscriptions.values.toList(growable: false);
@@ -4669,6 +5094,7 @@ class SyncService {
     }
     _realtimeRowVersions.clear();
     _realtimeEnabled = false;
+    _settlePhase('realtime_stopped');
     _log('Realtime unsubscribed from all tables');
   }
 
@@ -4685,13 +5111,26 @@ class SyncService {
       _log('Bootstrap skipped (sync blocked)');
       return;
     }
+    _setPhase(
+      SyncLifecyclePhase.bootstrapping,
+      'bootstrap',
+      flowId: _newSyncFlow('bootstrap'),
+      context: {
+        'pull': pull,
+        'realtime': realtime,
+      },
+    );
     if (pull) {
-      await pullAll();
+      await pullAll(
+        reason: 'bootstrap_initial',
+        flowId: _newSyncFlow('bootstrap_pull'),
+      );
     }
     if (realtime) {
       await startRealtime();
     }
-    _ensurePeriodicPull();
+    _scheduleNextPullCheck(reason: 'bootstrap_complete', force: !pull);
+    _settlePhase('bootstrap_complete');
   }
 
   /// إعادة ربط الخدمة عند تغيّر الحساب/الجهاز
@@ -4723,20 +5162,39 @@ class SyncService {
     _syncEnabled = true;
     _lastGuardAllowed = null;
     _lastGuardCheckAt = null;
+    _pullRequestedWhileBusy = false;
+    _pullRetryCount = 0;
+    _cancelPullScheduling();
+    _setPhase(
+      SyncLifecyclePhase.idle,
+      'rebind',
+      flowId: _newSyncFlow('rebind'),
+      context: {
+        'changedAcc': changedAcc,
+        'changedDev': changedDev,
+      },
+    );
 
     if (initialPull) {
-      await pullAll();
+      await pullAll(
+        reason: 'rebind_initial',
+        flowId: _newSyncFlow('rebind_pull'),
+      );
     }
     if (restartRealtime) {
       await startRealtime();
     }
-    _ensurePeriodicPull();
+    _scheduleNextPullCheck(reason: 'rebind_complete', force: !initialPull);
   }
 
   /// تنظيف سريع
   Future<void> dispose() async {
-    _periodicPullTimer?.cancel();
-    _periodicPullTimer = null;
+    _setPhase(
+      SyncLifecyclePhase.disposed,
+      'dispose',
+      flowId: _newSyncFlow('dispose'),
+    );
+    _cancelPullScheduling();
     await stopRealtime();
     if (_clientListener != null) {
       NhostGraphqlService.buildNotifier().removeListener(_clientListener!);
@@ -4757,30 +5215,7 @@ class SyncService {
   Future<void> _restartRealtimeForClientRefresh() async {
     await stopRealtime();
     await startRealtime();
-    await _triggerPullIfStale(force: true);
-  }
-
-  void _ensurePeriodicPull() {
-    if (_periodicPullTimer != null) return;
-    _periodicPullTimer =
-        Timer.periodic(const Duration(minutes: 1), (_) async {
-      if (!_hasAccount) return;
-      await _triggerPullIfStale();
-    });
-  }
-
-  Future<void> _triggerPullIfStale({bool force = false}) async {
-    if (!_hasAccount) return;
-    if (!await _ensureSyncAllowed()) return;
-    final now = DateTime.now();
-    final lastRt = _lastRealtimeEventAt;
-    final lastPull = _lastPullAt;
-    final recentRt =
-        lastRt != null && now.difference(lastRt) < const Duration(minutes: 2);
-    final recentPull = lastPull != null &&
-        now.difference(lastPull) < const Duration(minutes: 2);
-    if (!force && (recentRt || recentPull)) return;
-    await pullAll();
+    await _requestPullIfNeeded(reason: 'client_refresh', force: true);
   }
 
   /*──────────────────── جداول محددة (واجهات علنية) ───────────────────*/
@@ -4936,6 +5371,7 @@ class SyncService {
       if (!dirty.contains(table)) return;
       await fn();
     }
+
     // أسس
     await pushIfDirty('item_types', pushItemTypes);
     await pushIfDirty('items', pushItems);
@@ -4968,9 +5404,27 @@ class SyncService {
     await pushIfDirty('financial_logs', pushFinancialLogs);
   }
 
-  Future<void> pullAll() async {
-    if (_pullInProgress) return;
+  Future<void> pullAll({
+    String reason = 'manual',
+    String? flowId,
+  }) async {
+    if (_pullInProgress) {
+      _pullRequestedWhileBusy = true;
+      _syncInfo(
+        ObsCode.syncPullSkipped,
+        'pullAll skipped because another pull is already running',
+        flowId: flowId,
+        context: {'reason': reason},
+      );
+      return;
+    }
     _pullInProgress = true;
+    final resolvedFlowId = flowId ?? _newSyncFlow('pull_all');
+    _setPhase(
+      SyncLifecyclePhase.pulling,
+      reason,
+      flowId: resolvedFlowId,
+    );
     // أسس
     try {
       if (!await _ensureSyncAllowed()) return;
@@ -5004,11 +5458,38 @@ class SyncService {
       await pullComplaints();
       await pullFinancialLogs();
       _lastPullAt = DateTime.now();
+      _pullRetryCount = 0;
+      _pullRetryTimer?.cancel();
+      _pullRetryTimer = null;
+      _scheduleNextPullCheck(reason: 'pull_complete');
       unawaited(DBService.instance.markStatisticsDirty());
       unawaited(DBService.instance.repairInventoryIntegrity(backup: false));
       unawaited(DBService.instance.auditSyncMappings());
+    } catch (e, st) {
+      _syncWarn(
+        ObsCode.syncPullFailed,
+        'pullAll failed',
+        flowId: resolvedFlowId,
+        context: {'reason': reason},
+        error: e,
+        stackTrace: st,
+      );
+      _schedulePullRetry(reason);
+      rethrow;
     } finally {
       _pullInProgress = false;
+      _completeIdleWaitersIfReady();
+      if (_pullRequestedWhileBusy) {
+        _pullRequestedWhileBusy = false;
+        unawaited(
+          _requestPullIfNeeded(
+            reason: 'pull_followup_after_busy',
+            force: true,
+          ),
+        );
+      } else {
+        _settlePhase('pull_complete');
+      }
     }
   }
 
@@ -5110,8 +5591,4 @@ class SyncService {
         return _schedulePush(table, () => _pushNow(table));
     }
   }
-}
-
-extension<T> on List<T> {
-  T? get firstOrNull => isEmpty ? null : first;
 }

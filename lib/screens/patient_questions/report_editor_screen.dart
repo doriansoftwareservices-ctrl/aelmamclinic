@@ -9,6 +9,8 @@ import 'package:aelmamclinic/models/patient_complaint_question.dart';
 import 'package:aelmamclinic/models/patient_complaint_template.dart';
 import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:aelmamclinic/services/patient_questions_service.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class ReportEditorScreen extends StatefulWidget {
   final Patient patient;
@@ -79,7 +81,7 @@ class _ReportEditorScreenState extends State<ReportEditorScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('تعذر تحميل البيانات: $e')));
+          .showSnackBar(SnackBar(content: LocalizedText('تعذر تحميل البيانات: $e')));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -99,7 +101,7 @@ class _ReportEditorScreenState extends State<ReportEditorScreen> {
 
     if (_reportCtrl.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('أدخل نص التقرير أولاً')),
+        const SnackBar(content: LocalizedText('أدخل نص التقرير أولاً')),
       );
       return;
     }
@@ -135,7 +137,7 @@ class _ReportEditorScreenState extends State<ReportEditorScreen> {
 
     setState(() => _saving = true);
     try {
-      await _svc.createReport(
+      final reportId = await _svc.createReport(
         accountId: accountId,
         patientId: widget.remotePatientId,
         patientComplaintId: widget.complaint.id,
@@ -146,12 +148,12 @@ class _ReportEditorScreenState extends State<ReportEditorScreen> {
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('تم حفظ التقرير')));
-      Navigator.pop(context, true);
+          .showSnackBar(const SnackBar(content: LocalizedText('تم حفظ التقرير')));
+      Navigator.pop(context, reportId);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('تعذر الحفظ: $e')));
+          .showSnackBar(SnackBar(content: LocalizedText('تعذر الحفظ: $e')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -163,10 +165,10 @@ class _ReportEditorScreenState extends State<ReportEditorScreen> {
         _template?.title ?? widget.complaint.complaintTitleCustom ?? '—';
 
     return Directionality(
-      textDirection: TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('إنشاء تقرير'),
+          title: const LocalizedText('إنشاء تقرير'),
         ),
         body: SafeArea(
           child: Padding(
@@ -181,11 +183,11 @@ class _ReportEditorScreenState extends State<ReportEditorScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('المريض: ${widget.patient.name}',
+                            LocalizedText('المريض: ${widget.patient.name}',
                                 style: const TextStyle(
                                     fontWeight: FontWeight.bold)),
                             const SizedBox(height: 4),
-                            Text('ما يعاني منه: $complaintTitle'),
+                            LocalizedText('ما يعاني منه: $complaintTitle'),
                           ],
                         ),
                       ),
@@ -195,7 +197,7 @@ class _ReportEditorScreenState extends State<ReportEditorScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('نص التقرير',
+                            const LocalizedText('نص التقرير',
                                 style: TextStyle(
                                     fontWeight: FontWeight.bold, fontSize: 15)),
                             const SizedBox(height: 8),
@@ -203,7 +205,7 @@ class _ReportEditorScreenState extends State<ReportEditorScreen> {
                               height: 220,
                               child: NeuField(
                                 controller: _reportCtrl,
-                                labelText: 'اكتب التقرير هنا',
+                                labelText: context.trRaw('اكتب التقرير هنا'),
                                 maxLines: null,
                                 keyboardType: TextInputType.multiline,
                                 textInputAction: TextInputAction.newline,
@@ -237,9 +239,9 @@ class _ReportEditorScreenState extends State<ReportEditorScreen> {
                                         style: const TextStyle(
                                             fontWeight: FontWeight.w700)),
                                     const SizedBox(height: 4),
-                                    Text('الإجابة: ${_answerLabel(ans?.answerBool)}'),
+                                    LocalizedText('الإجابة: ${_answerLabel(ans?.answerBool)}'),
                                     if ((ans?.noteText ?? '').trim().isNotEmpty)
-                                      Text('ملاحظة: ${ans!.noteText}'),
+                                      LocalizedText('ملاحظة: ${ans!.noteText}'),
                                     const Divider(height: 16),
                                   ],
                                 ),
@@ -255,7 +257,7 @@ class _ReportEditorScreenState extends State<ReportEditorScreen> {
                             child: FilledButton.icon(
                               onPressed: _saving ? null : () => _save('final'),
                               icon: const Icon(Icons.save),
-                              label: const Text('حفظ'),
+                              label: const LocalizedText('حفظ'),
                             ),
                           ),
                           const SizedBox(width: 10),
@@ -263,7 +265,7 @@ class _ReportEditorScreenState extends State<ReportEditorScreen> {
                             child: OutlinedButton.icon(
                               onPressed: _saving ? null : () => _save('draft'),
                               icon: const Icon(Icons.save_as_outlined),
-                              label: const Text('حفظ كمسودة'),
+                              label: const LocalizedText('حفظ كمسودة'),
                             ),
                           ),
                         ],

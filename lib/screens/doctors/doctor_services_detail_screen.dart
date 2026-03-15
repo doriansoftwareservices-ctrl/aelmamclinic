@@ -1,5 +1,4 @@
 // lib/screens/doctors/doctor_services_detail_screen.dart
-import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 
 import 'package:aelmamclinic/models/doctor.dart';
@@ -8,6 +7,8 @@ import 'package:aelmamclinic/services/db_service.dart';
 // تصميم TBIAN
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class DoctorServicesDetailScreen extends StatefulWidget {
   final Doctor doctor;
@@ -90,7 +91,7 @@ class _DoctorServicesDetailScreenState
       _towerShareCtrl.text = (_towerSharePercentage ?? 0.0).toString();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذر تحميل البيانات: $e')),
+        SnackBar(content: LocalizedText('تعذر تحميل البيانات: $e')),
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -103,20 +104,20 @@ class _DoctorServicesDetailScreenState
 
     if (shareVal < 0 || towerVal < 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('النسب يجب أن تكون موجبة')),
+        const SnackBar(content: LocalizedText('النسب يجب أن تكون موجبة')),
       );
       return;
     }
     if (shareVal > 100 || towerVal > 100) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('النسب يجب أن تكون بين 0 و 100')),
+        const SnackBar(content: LocalizedText('النسب يجب أن تكون بين 0 و 100')),
       );
       return;
     }
     final bothEmpty = shareVal == 0 && towerVal == 0;
     if (bothEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('يرجى إدخال نسبة الطبيب أو المركز')),
+        const SnackBar(content: LocalizedText('يرجى إدخال نسبة الطبيب أو المركز')),
       );
       return;
     }
@@ -130,14 +131,14 @@ class _DoctorServicesDetailScreenState
     final sum = (shareVal + towerVal);
     if ((sum - 100.0).abs() > 0.01) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('مجموع نسبة الطبيب والمركز يجب أن يساوي 100%')),
+        const SnackBar(content: LocalizedText('مجموع نسبة الطبيب والمركز يجب أن يساوي 100%')),
       );
       return;
     }
 
     if (widget.serviceId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('يرجى تحديد الخدمة أولًا')),
+        const SnackBar(content: LocalizedText('يرجى تحديد الخدمة أولًا')),
       );
       return;
     }
@@ -163,12 +164,12 @@ class _DoctorServicesDetailScreenState
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم حفظ النسب بنجاح')),
+        const SnackBar(content: LocalizedText('تم حفظ النسب بنجاح')),
       );
       Navigator.pop(context);
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('خطأ أثناء الحفظ: $e')),
+        SnackBar(content: LocalizedText('خطأ أثناء الحفظ: $e')),
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -178,7 +179,7 @@ class _DoctorServicesDetailScreenState
   @override
   Widget build(BuildContext context) {
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -219,9 +220,8 @@ class _DoctorServicesDetailScreenState
                             ),
                             const SizedBox(width: 12),
                             const Expanded(
-                              child: Text(
-                                'أدخل نسب الطبيب ونسبة المركز الطبي لهذه الخدمة',
-                                textAlign: TextAlign.right,
+                              child: LocalizedText('أدخل نسب الطبيب ونسبة المركز الطبي لهذه الخدمة',
+                                textAlign: TextAlign.start,
                                 style: TextStyle(
                                   fontWeight: FontWeight.w900,
                                   fontSize: 18,
@@ -268,7 +268,7 @@ class _DoctorServicesDetailScreenState
                         controller: _shareCtrl,
                         keyboardType: const TextInputType.numberWithOptions(
                             decimal: true),
-                        labelText: 'نسبة الطبيب (%)',
+                        labelText: context.trRaw('نسبة الطبيب (%)'),
                         prefix: const Icon(Icons.percent_rounded),
                       ),
                       const SizedBox(height: 12),
@@ -276,13 +276,13 @@ class _DoctorServicesDetailScreenState
                         controller: _towerShareCtrl,
                         keyboardType: const TextInputType.numberWithOptions(
                             decimal: true),
-                        labelText: 'نسبة المركز الطبي (%)',
+                        labelText: context.trRaw('نسبة المركز الطبي (%)'),
                         prefix: const Icon(Icons.account_balance_rounded),
                       ),
 
                       const SizedBox(height: 18),
                       Align(
-                        alignment: Alignment.centerLeft,
+                        alignment: AlignmentDirectional.centerEnd,
                         child: NeuButton.primary(
                           label: 'حفظ',
                           icon: Icons.save_rounded,

@@ -22,6 +22,8 @@ import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:aelmamclinic/services/nhost_graphql_service.dart';
 import 'package:aelmamclinic/utils/chat_code_utils.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class PermissionsScreen extends StatefulWidget {
   const PermissionsScreen({super.key});
@@ -144,7 +146,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('خطأ غير متوقع: $e')));
+            .showSnackBar(SnackBar(content: LocalizedText('خطأ غير متوقع: $e')));
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -180,7 +182,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-              content: Text('هذه العملية مخصّصة للمالك أو السوبر أدمن فقط.')),
+              content: LocalizedText('هذه العملية مخصّصة للمالك أو السوبر أدمن فقط.')),
         );
       }
       return;
@@ -245,14 +247,14 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('تم حفظ الصلاحيات.')),
+          const SnackBar(content: LocalizedText('تم حفظ الصلاحيات.')),
         );
       }
       setState(() {});
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('خطأ غير متوقع: $e')));
+            .showSnackBar(SnackBar(content: LocalizedText('خطأ غير متوقع: $e')));
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -272,14 +274,14 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
     }
 
     return Directionality(
-      textDirection: TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
-          title: const Text('صلاحيات الميزات'),
+          title: const LocalizedText('صلاحيات الميزات'),
           actions: [
             IconButton(
-              tooltip: 'تحديث',
+              tooltip: context.trRaw('تحديث'),
               onPressed: (!canView || _loading) ? null : _loadAll,
               icon: const Icon(Icons.refresh_rounded),
             ),
@@ -311,14 +313,12 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
           children: [
             Icon(Icons.lock_outline_rounded, color: scheme.error, size: 32),
             const SizedBox(height: 12),
-            const Text(
-              'لا تملك صلاحية عرض أو تعديل صلاحيات الميزات.',
+            const LocalizedText('لا تملك صلاحية عرض أو تعديل صلاحيات الميزات.',
               textAlign: TextAlign.center,
               style: TextStyle(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 6),
-            const Text(
-              'اطلب من السوبر أدمن منحك صلاحية "audit.permissions".',
+            const LocalizedText('اطلب من السوبر أدمن منحك صلاحية "audit.permissions".',
               textAlign: TextAlign.center,
             ),
           ],
@@ -351,10 +351,10 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           child: TextField(
             controller: _searchCtrl,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               isDense: true,
               border: InputBorder.none,
-              hintText: 'ابحث بالبريد أو الرقم…',
+              hintText: context.trRaw('ابحث بالبريد أو الرقم…'),
               prefixIcon: Icon(Icons.search_rounded),
             ),
             onChanged: (_) => setState(() {}),
@@ -368,8 +368,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
             onRefresh: _loadAll,
             child: _employees.isEmpty
                 ? const Center(
-                    child: Text(
-                      'لا يوجد موظفون مسجلون لهذا الحساب.',
+                    child: LocalizedText('لا يوجد موظفون مسجلون لهذا الحساب.',
                       style: TextStyle(fontWeight: FontWeight.w700),
                     ),
                   )
@@ -410,8 +409,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  'صلاحياتي الحالية',
+                LocalizedText('صلاحياتي الحالية',
                   style: TextStyle(
                     color: scheme.onSurface,
                     fontWeight: FontWeight.w900,
@@ -427,8 +425,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
                 ),
                 const SizedBox(height: 12),
                 if (p.allowAll)
-                  Text(
-                    'كل الميزات مفعّلة',
+                  LocalizedText('كل الميزات مفعّلة',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: scheme.onSurface.withValues(alpha: .75),
@@ -442,8 +439,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
                   ),
                 const SizedBox(height: 8),
                 if (p.allowAll)
-                  Text(
-                    'ملاحظة: تم تفعيل السماح الكلي لك من الإدارة.',
+                  LocalizedText('ملاحظة: تم تفعيل السماح الكلي لك من الإدارة.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: scheme.onSurface.withValues(alpha: .7),
@@ -761,8 +757,7 @@ class _EmployeeTile extends StatelessWidget {
                         ),
                         padding: const EdgeInsets.symmetric(
                             horizontal: 8, vertical: 4),
-                        child: Text(
-                          'افتراضي',
+                        child: LocalizedText('افتراضي',
                           style: TextStyle(
                             color: scheme.onSurface.withValues(alpha: .7),
                             fontWeight: FontWeight.w900,
@@ -775,7 +770,7 @@ class _EmployeeTile extends StatelessWidget {
                       titleText, // البريد
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.right,
+                      textAlign: TextAlign.start,
                       style: TextStyle(
                         color: scheme.onSurface,
                         fontWeight: FontWeight.w900,
@@ -791,7 +786,7 @@ class _EmployeeTile extends StatelessWidget {
                       : 'الدور: ${employee.role}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.right,
+                  textAlign: TextAlign.start,
                   style: TextStyle(
                     color: scheme.onSurface.withValues(alpha: .7),
                     fontWeight: FontWeight.w700,
@@ -800,11 +795,10 @@ class _EmployeeTile extends StatelessWidget {
                 ),
                 if (codeText.isNotEmpty) ...[
                   const SizedBox(height: 4),
-                  Text(
-                    'الرقم: $codeText',
+                  LocalizedText('الرقم: $codeText',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.right,
+                    textAlign: TextAlign.start,
                     style: TextStyle(
                       color: scheme.onSurface.withValues(alpha: .75),
                       fontWeight: FontWeight.w700,
@@ -816,7 +810,7 @@ class _EmployeeTile extends StatelessWidget {
                 Text(
                   summary(),
                   maxLines: 2,
-                  textAlign: TextAlign.right,
+                  textAlign: TextAlign.start,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: scheme.onSurface.withValues(alpha: .75),
@@ -919,7 +913,7 @@ class _PermissionEditorState extends State<_PermissionEditor> {
         : '';
 
     return Directionality(
-      textDirection: TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: SafeArea(
         top: false,
         child: DraggableScrollableSheet(
@@ -945,8 +939,7 @@ class _PermissionEditorState extends State<_PermissionEditor> {
                       ),
                       const SizedBox(width: 10),
                       Expanded(
-                        child: Text(
-                          'تعديل صلاحيات: $titleText',
+                        child: LocalizedText('تعديل صلاحيات: $titleText',
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -961,9 +954,8 @@ class _PermissionEditorState extends State<_PermissionEditor> {
                   const SizedBox(height: 12),
                   if (codeText.isNotEmpty)
                     Align(
-                      alignment: Alignment.centerRight,
-                      child: Text(
-                        'الرقم: $codeText',
+                      alignment: AlignmentDirectional.centerStart,
+                      child: LocalizedText('الرقم: $codeText',
                         style: TextStyle(
                           color: scheme.onSurface.withValues(alpha: .7),
                           fontWeight: FontWeight.w700,
@@ -1000,8 +992,7 @@ class _PermissionEditorState extends State<_PermissionEditor> {
                               Row(
                                 children: [
                                   Expanded(
-                                    child: Text(
-                                      'السماح بكل الميزات',
+                                    child: LocalizedText('السماح بكل الميزات',
                                       style: TextStyle(
                                         color: scheme.onSurface,
                                         fontWeight: FontWeight.w900,
@@ -1023,8 +1014,7 @@ class _PermissionEditorState extends State<_PermissionEditor> {
                               const SizedBox(height: 8),
                               Row(
                                 children: [
-                                  Text(
-                                    'الوصول إلى التبويبات / الميزات',
+                                  LocalizedText('الوصول إلى التبويبات / الميزات',
                                     style: TextStyle(
                                       color: scheme.onSurface,
                                       fontWeight: FontWeight.w900,
@@ -1037,14 +1027,14 @@ class _PermissionEditorState extends State<_PermissionEditor> {
                                         ? null
                                         : () => _toggleAll(true),
                                     icon: const Icon(Icons.done_all_rounded),
-                                    label: const Text('تحديد الكل'),
+                                    label: const LocalizedText('تحديد الكل'),
                                   ),
                                   TextButton.icon(
                                     onPressed: _allowAll
                                         ? null
                                         : () => _toggleAll(false),
                                     icon: const Icon(Icons.clear_all_rounded),
-                                    label: const Text('إلغاء الكل'),
+                                    label: const LocalizedText('إلغاء الكل'),
                                   ),
                                 ],
                               ),
@@ -1067,8 +1057,7 @@ class _PermissionEditorState extends State<_PermissionEditor> {
                               ),
                               const SizedBox(height: 8),
                               if (_allowAll)
-                                Text(
-                                  'عند تفعيل السماح الكلي يتم تجاهل القائمة.',
+                                LocalizedText('عند تفعيل السماح الكلي يتم تجاهل القائمة.',
                                   style: TextStyle(
                                     color:
                                         scheme.onSurface.withValues(alpha: .7),
@@ -1076,8 +1065,7 @@ class _PermissionEditorState extends State<_PermissionEditor> {
                                   ),
                                 ),
                               if (!_allowAll && _isDefaultAll)
-                                Text(
-                                  'الوضع الحالي: بدون صلاحيات (الافتراضي الآمن).',
+                                LocalizedText('الوضع الحالي: بدون صلاحيات (الافتراضي الآمن).',
                                   style: TextStyle(
                                     color:
                                         scheme.onSurface.withValues(alpha: .7),
@@ -1099,14 +1087,14 @@ class _PermissionEditorState extends State<_PermissionEditor> {
                       OutlinedButton.icon(
                         onPressed: _resetToDefault,
                         icon: const Icon(Icons.restore_rounded),
-                        label: const Text('إرجاع الافتراضي'),
+                        label: const LocalizedText('إرجاع الافتراضي'),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: FilledButton.icon(
                           onPressed: _save,
                           icon: const Icon(Icons.save_rounded),
-                          label: const Text('حفظ'),
+                          label: const LocalizedText('حفظ'),
                         ),
                       ),
                     ],

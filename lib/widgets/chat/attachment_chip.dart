@@ -12,11 +12,11 @@
 
 import 'dart:io' show File;
 import 'dart:typed_data';
-import 'dart:ui' as ui show TextDirection;
 
 import 'package:flutter/material.dart';
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 enum AttachmentUploadStatus { queued, uploading, uploaded, failed }
 
@@ -109,13 +109,13 @@ class AttachmentChip extends StatelessWidget {
     }
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Padding(
         padding:
             margin ?? const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
         child: Semantics(
-          label: 'مرفق: $title',
-          hint: tooltip,
+          label: '${context.trRaw('مرفق')}: $title',
+          hint: context.trRaw(tooltip),
           button: true,
           child: NeuCard(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -190,7 +190,7 @@ class AttachmentChip extends StatelessWidget {
 
                       // زر إزالة
                       Tooltip(
-                        message: 'إزالة',
+                        message: context.trRaw('إزالة'),
                         child: IconButton(
                           onPressed: removeEnabled ? onRemove : null,
                           icon: const Icon(Icons.close_rounded),

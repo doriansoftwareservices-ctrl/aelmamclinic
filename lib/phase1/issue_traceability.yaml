@@ -1,0 +1,167 @@
+version: 1
+generated_from: deep_audit_report_2026-03-09.txt
+scope:
+  - lib
+  - functions
+  - nhost
+issues:
+  - id: C-01
+    title: jwt_parsing_without_signature_verification
+    severity: critical
+    files:
+      - functions/admin-create-superadmin/index.js
+      - functions/admin-reset-superadmin-password/index.js
+    target_phase: 2
+    gate: sec_auth_token_verification
+  - id: C-02
+    title: missing_webhook_secret_validation
+    severity: critical
+    files:
+      - functions/notify-chat-message/index.js
+      - functions/notify-new-patient/index.js
+      - functions/notify-plan-request/index.js
+      - nhost/metadata/databases/default/tables/public_chat_messages.yaml
+      - nhost/metadata/databases/default/tables/public_patients.yaml
+      - nhost/metadata/databases/default/tables/public_subscription_requests.yaml
+      - nhost/metadata/databases/default/tables/public_employee_seat_requests.yaml
+    target_phase: 2
+    gate: sec_event_webhook_secret
+  - id: C-03
+    title: notify_handlers_return_200_on_unhandled_errors
+    severity: critical
+    files:
+      - functions/notify-chat-message/index.js
+      - functions/notify-new-patient/index.js
+      - functions/notify-plan-request/index.js
+    target_phase: 2
+    gate: sec_retry_semantics
+  - id: C-04
+    title: chat_attachment_upload_missing_size_limit
+    severity: critical
+    files:
+      - functions/admin-upload-chat-attachment/index.js
+      - functions/admin-upload-subscription-proof/index.js
+    target_phase: 2
+    gate: sec_upload_limits
+  - id: H-01
+    title: fragile_session_restore_relogin
+    severity: high
+    files:
+      - lib/main.dart
+      - lib/providers/auth_provider.dart
+      - lib/screens/auth/login_screen.dart
+    target_phase: 3
+    gate: auth_reopen_stability
+  - id: H-02
+    title: non_persistent_background_model
+    severity: high
+    files:
+      - lib/main.dart
+      - lib/services/push_notifications_service.dart
+      - lib/services/notification_service.dart
+    target_phase: 3
+    gate: background_delivery_consistency
+  - id: H-03
+    title: heavy_pre_runapp_boot
+    severity: high
+    files:
+      - lib/main.dart
+      - lib/services/db_service.dart
+      - lib/providers/auth_provider.dart
+    target_phase: 4
+    gate: startup_latency
+  - id: H-04
+    title: statistics_full_scan_and_repeated_queries
+    severity: high
+    files:
+      - lib/providers/statistics_provider.dart
+      - lib/services/db_service.dart
+    target_phase: 4
+    gate: statistics_perf
+  - id: H-05
+    title: superadmin_dashboard_polling_heavy
+    severity: high
+    files:
+      - lib/screens/admin/admin_dashboard_screen.dart
+    target_phase: 4
+    gate: admin_dashboard_perf
+  - id: H-06
+    title: chat_stack_timer_and_silent_catch_density
+    severity: high
+    files:
+      - lib/providers/chat_provider.dart
+      - lib/services/chat_realtime_notifier.dart
+    target_phase: 4
+    gate: chat_runtime_stability
+  - id: H-07
+    title: sync_stack_complexity_loops
+    severity: high
+    files:
+      - lib/services/sync_service.dart
+    target_phase: 4
+    gate: sync_runtime_stability
+  - id: H-08
+    title: token_refresh_deactivate_then_upsert
+    severity: high
+    files:
+      - lib/services/push_notifications_service.dart
+    target_phase: 3
+    gate: push_token_atomicity
+  - id: H-09
+    title: fcm_legacy_endpoint
+    severity: high
+    files:
+      - functions/_shared/notify_utils.js
+    target_phase: 3
+    gate: push_transport_modernization
+  - id: M-01
+    title: hardcoded_metadata_webhooks
+    severity: medium
+    files:
+      - nhost/metadata/cron_triggers.yaml
+      - nhost/metadata/databases/default/tables/public_chat_messages.yaml
+      - nhost/metadata/databases/default/tables/public_patients.yaml
+      - nhost/metadata/databases/default/tables/public_subscription_requests.yaml
+      - nhost/metadata/databases/default/tables/public_employee_seat_requests.yaml
+    target_phase: 2
+    gate: metadata_env_binding
+  - id: M-02
+    title: metadata_source_drift
+    severity: medium
+    files:
+      - nhost/metadata.json
+      - nhost/metadata/cron_triggers.yaml
+    target_phase: 5
+    gate: metadata_single_source
+  - id: M-03
+    title: migration_churn_and_cleanup_need
+    severity: medium
+    files:
+      - nhost/migrations/default
+    target_phase: 5
+    gate: migration_hygiene
+  - id: M-04
+    title: repository_full_refresh_with_repair
+    severity: medium
+    files:
+      - lib/providers/repository_provider.dart
+    target_phase: 4
+    gate: inventory_perf
+  - id: M-05
+    title: account_switch_manual_wipe_dependency
+    severity: medium
+    files:
+      - lib/providers/auth_provider.dart
+      - lib/widgets/auth_guard_listener.dart
+    target_phase: 3
+    gate: account_switch_isolation
+  - id: M-06
+    title: low_observability_silent_catch
+    severity: medium
+    files:
+      - lib/providers/auth_provider.dart
+      - lib/providers/chat_provider.dart
+      - lib/services/sync_service.dart
+      - lib/services/db_service.dart
+    target_phase: 4
+    gate: telemetry_minimum

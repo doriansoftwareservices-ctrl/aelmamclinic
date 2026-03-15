@@ -11,6 +11,8 @@ import 'package:aelmamclinic/models/subscription_plan.dart';
 import 'package:aelmamclinic/services/billing_service.dart';
 import 'package:aelmamclinic/services/clinic_profile_service.dart';
 import 'package:aelmamclinic/services/nhost_storage_service.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class PaymentRequestScreen extends StatefulWidget {
   const PaymentRequestScreen({
@@ -78,7 +80,7 @@ class _PaymentRequestScreenState extends State<PaymentRequestScreen> {
     if (ext.isNotEmpty && !allowed.contains(ext)) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('يرجى اختيار صورة فقط.')),
+        const SnackBar(content: LocalizedText('يرجى اختيار صورة فقط.')),
       );
       return;
     }
@@ -160,11 +162,11 @@ class _PaymentRequestScreenState extends State<PaymentRequestScreen> {
     final proofLabel = _proofFile == null ? 'لم يتم إرفاق إثبات الدفع' : _proofFile!.uri.pathSegments.last;
 
     return Directionality(
-      textDirection: TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         backgroundColor: scheme.surface,
         appBar: AppBar(
-          title: const Text('بيانات الدفع'),
+          title: const LocalizedText('بيانات الدفع'),
           centerTitle: false,
         ),
         body: Stack(
@@ -192,19 +194,19 @@ class _PaymentRequestScreenState extends State<PaymentRequestScreen> {
 
                     NeuField(
                       controller: _clinicNameCtrl,
-                      labelText: 'اسم العيادة',
+                      labelText: context.trRaw('اسم العيادة'),
                       prefix: const Icon(Icons.local_hospital_outlined),
                     ),
                     const SizedBox(height: 10),
                     NeuField(
                       controller: _referenceCtrl,
-                      labelText: 'رقم العملية / مرجع التحويل',
+                      labelText: context.trRaw('رقم العملية / مرجع التحويل'),
                       prefix: const Icon(Icons.confirmation_number_outlined),
                     ),
                     const SizedBox(height: 10),
                     NeuField(
                       controller: _senderCtrl,
-                      labelText: 'اسم المحوّل (اختياري)',
+                      labelText: context.trRaw('اسم المحوّل (اختياري)'),
                       prefix: const Icon(Icons.person_outline),
                     ),
 
@@ -240,7 +242,7 @@ class _PaymentRequestScreenState extends State<PaymentRequestScreen> {
                                 ),
                               )
                             : const Icon(Icons.send_rounded),
-                        label: Text(
+                        label: LocalizedText(
                           _submitting ? 'جارٍ الإرسال...' : 'إرسال الطلب',
                           style: const TextStyle(fontWeight: FontWeight.w900),
                         ),
@@ -255,8 +257,7 @@ class _PaymentRequestScreenState extends State<PaymentRequestScreen> {
 
                     const SizedBox(height: 12),
 
-                    Text(
-                      'عند إرسال الطلب سيتم مراجعته واعتماده من الإدارة.',
+                    LocalizedText('عند إرسال الطلب سيتم مراجعته واعتماده من الإدارة.',
                       style: TextStyle(
                         fontSize: 12.5,
                         height: 1.25,
@@ -534,8 +535,7 @@ class _HeaderCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'الخطة المطلوبة',
+                LocalizedText('الخطة المطلوبة',
                   style: TextStyle(
                     fontSize: 12.5,
                     fontWeight: FontWeight.w800,
@@ -543,7 +543,7 @@ class _HeaderCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(
+                LocalizedText(
                   planName,
                   style: TextStyle(
                     fontSize: 16.5,
@@ -625,8 +625,7 @@ class _MethodCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'وسيلة الدفع',
+                LocalizedText('وسيلة الدفع',
                   style: TextStyle(
                     fontSize: 12.5,
                     fontWeight: FontWeight.w800,
@@ -642,8 +641,7 @@ class _MethodCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 6),
-                Text(
-                  'رقم الحساب: ${method.bankAccount}',
+                LocalizedText('رقم الحساب: ${method.bankAccount}',
                   style: TextStyle(
                     fontWeight: FontWeight.w700,
                     color: scheme.onSurface.withValues(alpha: 0.70),
@@ -670,16 +668,16 @@ class _SectionTitle extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          title,
-          style: TextStyle(
-            fontSize: 16.5,
-            fontWeight: FontWeight.w900,
+                LocalizedText(
+                  title,
+                  style: TextStyle(
+                    fontSize: 16.5,
+                    fontWeight: FontWeight.w900,
             color: scheme.onSurface,
           ),
         ),
         const SizedBox(height: 4),
-        Text(
+        LocalizedText(
           subtitle,
           style: TextStyle(
             fontSize: 12.5,
@@ -735,15 +733,27 @@ class _AttachmentCard extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              label,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontWeight: FontWeight.w800,
-                color: scheme.onSurface.withValues(alpha: hasFile ? 0.85 : 0.72),
-              ),
-            ),
+            child: hasFile
+                ? Text(
+                    label,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: scheme.onSurface
+                          .withValues(alpha: hasFile ? 0.85 : 0.72),
+                    ),
+                  )
+                : LocalizedText(
+                    label,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: scheme.onSurface
+                          .withValues(alpha: hasFile ? 0.85 : 0.72),
+                    ),
+                  ),
           ),
           const SizedBox(width: 10),
           Row(
@@ -758,7 +768,7 @@ class _AttachmentCard extends StatelessWidget {
                 const SizedBox(width: 8),
                 IconButton(
                   onPressed: onClear,
-                  tooltip: 'إزالة',
+                  tooltip: context.trRaw('إزالة'),
                   icon: Icon(Icons.close_rounded, color: scheme.error),
                 ),
               ],

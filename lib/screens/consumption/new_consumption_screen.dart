@@ -9,6 +9,8 @@ import 'list_consumption_screen.dart';
 // تصميم TBIAN
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class NewConsumptionScreen extends StatefulWidget {
   const NewConsumptionScreen({super.key});
@@ -41,7 +43,7 @@ class _NewConsumptionScreenState extends State<NewConsumptionScreen> {
     if (_selectedConsumptionType == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-            content: Text('الرجاء اختيار نوع المصروفات / الاستهلاكات')),
+            content: LocalizedText('الرجاء اختيار نوع المصروفات / الاستهلاكات')),
       );
       return;
     }
@@ -78,7 +80,7 @@ class _NewConsumptionScreenState extends State<NewConsumptionScreen> {
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('فشل حفظ الاستهلاك: $e')),
+        SnackBar(content: LocalizedText('فشل حفظ الاستهلاك: $e')),
       );
     }
   }
@@ -106,7 +108,7 @@ class _NewConsumptionScreenState extends State<NewConsumptionScreen> {
             backgroundColor: scheme.surface,
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(kRadius)),
-            title: const Text('اختر نوع المصروفات / الاستهلاكات'),
+            title: const LocalizedText('اختر نوع المصروفات / الاستهلاكات'),
             contentPadding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
             content: SizedBox(
               width: 420,
@@ -115,7 +117,7 @@ class _NewConsumptionScreenState extends State<NewConsumptionScreen> {
                 children: [
                   NeuField(
                     controller: searchCtrl,
-                    labelText: 'بحث',
+                    labelText: context.trRaw('بحث'),
                     prefix: const Icon(Icons.search),
                     onChanged: (q) {
                       setD(() {
@@ -130,7 +132,7 @@ class _NewConsumptionScreenState extends State<NewConsumptionScreen> {
                   SizedBox(
                     height: 260,
                     child: filtered.isEmpty
-                        ? const Center(child: Text('لا يوجد أنواع'))
+                        ? const Center(child: LocalizedText('لا يوجد أنواع'))
                         : ListView.separated(
                             itemCount: filtered.length,
                             separatorBuilder: (_, __) =>
@@ -168,7 +170,7 @@ class _NewConsumptionScreenState extends State<NewConsumptionScreen> {
             actions: [
               TextButton(
                   onPressed: () => Navigator.pop(ctx),
-                  child: const Text('إغلاق')),
+                  child: const LocalizedText('إغلاق')),
             ],
           );
         },
@@ -194,7 +196,7 @@ class _NewConsumptionScreenState extends State<NewConsumptionScreen> {
               errorBuilder: (_, __, ___) => const SizedBox.shrink(),
             ),
             const SizedBox(width: 8),
-            const Text('إضافة مبلغ صرف أو استهلاك'),
+            const LocalizedText('إضافة مبلغ صرف أو استهلاك'),
           ],
         ),
       ),
@@ -219,9 +221,8 @@ class _NewConsumptionScreenState extends State<NewConsumptionScreen> {
                     ),
                     const SizedBox(width: 12),
                     const Expanded(
-                      child: Text(
-                        'تسجيل عملية صرف/استهلاك',
-                        textAlign: TextAlign.right,
+                      child: LocalizedText('تسجيل عملية صرف/استهلاك',
+                        textAlign: TextAlign.start,
                         style: TextStyle(
                             fontSize: 20, fontWeight: FontWeight.w900),
                       ),
@@ -237,7 +238,7 @@ class _NewConsumptionScreenState extends State<NewConsumptionScreen> {
                   Expanded(
                     child: NeuField(
                       controller: _addTypeCtrl,
-                      labelText: 'إضافة نوع مصروفات / استهلاكات',
+                      labelText: context.trRaw('إضافة نوع مصروفات / استهلاكات'),
                       prefix: const Icon(Icons.add_outlined),
                     ),
                   ),
@@ -253,7 +254,7 @@ class _NewConsumptionScreenState extends State<NewConsumptionScreen> {
                         setState(() => _consumptionTypes.add(newType));
                         _addTypeCtrl.clear();
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('تمت إضافة النوع')),
+                          const SnackBar(content: LocalizedText('تمت إضافة النوع')),
                         );
                       }
                     },
@@ -272,7 +273,7 @@ class _NewConsumptionScreenState extends State<NewConsumptionScreen> {
                   contentPadding: EdgeInsets.zero,
                   leading:
                       const Icon(Icons.event_rounded, color: kPrimaryColor),
-                  title: const Text('التاريخ',
+                  title: const LocalizedText('التاريخ',
                       style: TextStyle(
                           fontWeight: FontWeight.w900, fontSize: 14.5)),
                   subtitle: Padding(
@@ -290,7 +291,7 @@ class _NewConsumptionScreenState extends State<NewConsumptionScreen> {
               // المبلغ
               NeuField(
                 controller: _amountCtrl,
-                labelText: 'المبلغ',
+                labelText: context.trRaw('المبلغ'),
                 keyboardType: TextInputType.number,
                 prefix: const Icon(Icons.numbers_rounded),
               ),
@@ -306,14 +307,12 @@ class _NewConsumptionScreenState extends State<NewConsumptionScreen> {
                   contentPadding: EdgeInsets.zero,
                   leading:
                       const Icon(Icons.category_outlined, color: kPrimaryColor),
-                  title: const Text(
-                    'نوع المصروفات / الاستهلاكات',
+                  title: const LocalizedText('نوع المصروفات / الاستهلاكات',
                     style:
                         TextStyle(fontWeight: FontWeight.w900, fontSize: 14.5),
                   ),
                   subtitle: _selectedConsumptionType == null
-                      ? Text(
-                          'اضغط للاختيار',
+                      ? LocalizedText('اضغط للاختيار',
                           style: TextStyle(
                             color: scheme.onSurface.withValues(alpha: .55),
                             fontWeight: FontWeight.w600,
@@ -336,7 +335,7 @@ class _NewConsumptionScreenState extends State<NewConsumptionScreen> {
 
               // حفظ
               Align(
-                alignment: Alignment.centerLeft,
+                alignment: AlignmentDirectional.centerEnd,
                 child: NeuButton.primary(
                   label: 'حفظ',
                   icon: Icons.check_rounded,

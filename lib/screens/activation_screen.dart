@@ -1,7 +1,6 @@
 // File: lib/screens/activation_screen.dart
 import 'dart:convert';
 import 'dart:math';
-import 'dart:ui' as ui show TextDirection;
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
@@ -19,6 +18,8 @@ import 'package:aelmamclinic/core/tbian_ui.dart';
 
 import 'package:aelmamclinic/providers/activation_provider.dart';
 import 'statistics/statistics_overview_screen.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class ActivationScreen extends StatefulWidget {
   const ActivationScreen({super.key});
@@ -57,9 +58,10 @@ class _ActivationScreenState extends State<ActivationScreen> {
       savedSerial = _generateSerialCode();
       await prefs.setString('storedSerialCode', savedSerial);
     }
+    final resolvedSerial = savedSerial;
 
     if (!mounted) return;
-    setState(() => serialCode = savedSerial!);
+    setState(() => serialCode = resolvedSerial);
   }
 
   String _generateSerialCode() {
@@ -118,16 +120,15 @@ class _ActivationScreenState extends State<ActivationScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('تحديث السيريال'),
-        content: const Text(
-            'سيتم إنشاء سيريال جديد، ولن تعمل أكواد التفعيل المرتبطة بالسيريال السابق.\nهل تريد المتابعة؟'),
+        title: const LocalizedText('تحديث السيريال'),
+        content: const LocalizedText('سيتم إنشاء سيريال جديد، ولن تعمل أكواد التفعيل المرتبطة بالسيريال السابق.\nهل تريد المتابعة؟'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('إلغاء')),
+              child: const LocalizedText('إلغاء')),
           FilledButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('تأكيد')),
+              child: const LocalizedText('تأكيد')),
         ],
       ),
     );
@@ -162,7 +163,7 @@ class _ActivationScreenState extends State<ActivationScreen> {
     if (entered.isEmpty) {
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('الرجاء إدخال رمز التفعيل')),
+        const SnackBar(content: LocalizedText('الرجاء إدخال رمز التفعيل')),
       );
       return;
     }
@@ -171,7 +172,7 @@ class _ActivationScreenState extends State<ActivationScreen> {
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('تم استخدام هذا الرمز مسبقاً'),
+          content: LocalizedText('تم استخدام هذا الرمز مسبقاً'),
           backgroundColor: Colors.red,
           duration: Duration(seconds: 3),
         ),
@@ -209,7 +210,7 @@ class _ActivationScreenState extends State<ActivationScreen> {
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('رمز التفعيل غير صالح'),
+          content: LocalizedText('رمز التفعيل غير صالح'),
           backgroundColor: Colors.red,
           duration: Duration(seconds: 3),
         ),
@@ -242,7 +243,7 @@ class _ActivationScreenState extends State<ActivationScreen> {
     final scheme = Theme.of(context).colorScheme;
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -261,7 +262,7 @@ class _ActivationScreenState extends State<ActivationScreen> {
           ),
           actions: [
             IconButton(
-              tooltip: 'مشاركة السيريال',
+              tooltip: context.trRaw('مشاركة السيريال'),
               icon: const Icon(Icons.share_rounded),
               onPressed: _shareCode,
             ),
@@ -281,8 +282,7 @@ class _ActivationScreenState extends State<ActivationScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Text(
-                          'السيريال الخاص بك',
+                        LocalizedText('السيريال الخاص بك',
                           style: TextStyle(
                             color: scheme.onSurface.withValues(alpha: .85),
                             fontWeight: FontWeight.w800,
@@ -342,7 +342,7 @@ class _ActivationScreenState extends State<ActivationScreen> {
                       children: [
                         NeuField(
                           controller: codeController,
-                          labelText: 'أدخل رمز التفعيل',
+                          labelText: context.trRaw('أدخل رمز التفعيل'),
                           prefix: const Icon(Icons.lock_outline_rounded),
                           textAlign: TextAlign.center,
                           textDirection: TextDirection.ltr,
@@ -383,17 +383,15 @@ class _ActivationScreenState extends State<ActivationScreen> {
                         ListTile(
                           contentPadding: EdgeInsets.zero,
                           leading: Icon(Icons.info_outline_rounded),
-                          title: Text(
-                              'للحصول على الباقة المجانية أو لتجديد باقتك'),
-                          subtitle: Text('تواصل معنا وسنسعد بخدمتكم.'),
+                          title: LocalizedText('للحصول على الباقة المجانية أو لتجديد باقتك'),
+                          subtitle: LocalizedText('تواصل معنا وسنسعد بخدمتكم.'),
                         ),
                         SizedBox(height: 8),
                         ListTile(
                           contentPadding: EdgeInsets.zero,
                           leading: Icon(Icons.warning_amber_rounded,
                               color: Colors.red),
-                          title: Text(
-                            'لا يمكن استخدام نفس رمز التفعيل أكثر من مرة',
+                          title: LocalizedText('لا يمكن استخدام نفس رمز التفعيل أكثر من مرة',
                             style: TextStyle(fontWeight: FontWeight.w800),
                           ),
                         ),

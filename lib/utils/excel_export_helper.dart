@@ -11,6 +11,7 @@ import 'package:aelmamclinic/models/consumption.dart';
 import 'package:aelmamclinic/models/purchase.dart';
 import 'package:aelmamclinic/services/save_file_service.dart';
 import 'package:aelmamclinic/services/repository_service.dart';
+import 'package:aelmamclinic/utils/report_localizer.dart';
 
 /// ‎ExcelExportHelper‎:
 /// • يُولّد ملفات ‎.xlsx‎ بتنسيقٍ يُناسب "إحصاءات وكشوفات المستودع".
@@ -25,16 +26,17 @@ class ExcelExportHelper {
     required List<Item> items,
     String? exportsDir,
   }) async {
+    final i18n = ReportLocalizer();
     final excel = Excel.createExcel();
-    final sheet = excel['Statistics'];
+    final sheet = excel[i18n.isRtl ? 'إحصاءات' : 'Statistics'];
 
     // رأس الجدول
     sheet.appendRow([
-      'نوع الصنف',
-      'اسم الصنف',
-      'عدد المستخدم',
-      'المتبقي في المخزون',
-      'السعر للوحدة',
+      i18n.tr('نوع الصنف'),
+      i18n.tr('اسم الصنف'),
+      i18n.tr('عدد المستخدم'),
+      i18n.tr('المتبقي في المخزون'),
+      i18n.tr('السعر للوحدة'),
     ]);
 
     // تحميل إجمالي الاستهلاك لكل صنف (للدقة)
@@ -76,11 +78,15 @@ class ExcelExportHelper {
     }
 
     // حفظ في Downloads
-    final fileName =
-        '${type.name}_statistics_${DateTime.now().millisecondsSinceEpoch}.xlsx';
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final fileName = i18n.fileName(
+      'إحصائيات الأصناف',
+      extension: 'xlsx',
+      suffixes: <Object?>[type.name, type.id ?? timestamp, timestamp],
+    );
 
     final bytes = excel.encode();
-    if (bytes == null) throw Exception('فشل في إنشاء ملف Excel.');
+    if (bytes == null) throw Exception(i18n.tr('فشل في إنشاء ملف Excel.'));
     if (exportsDir != null && exportsDir.trim().isNotEmpty) {
       final path = p.join(exportsDir, fileName);
       await File(path).writeAsBytes(bytes, flush: true);
@@ -97,14 +103,15 @@ class ExcelExportHelper {
     required List<Consumption> consumptions,
     String? exportsDir,
   }) async {
+    final i18n = ReportLocalizer();
     final excel = Excel.createExcel();
-    final sheet = excel['Consumptions'];
+    final sheet = excel[i18n.isRtl ? 'استهلاكات' : 'Consumptions'];
 
     sheet.appendRow([
-      'اسم الصنف',
-      'تاريخ ووقت الاستهلاك',
-      'المريض (patientId)',
-      'الكمية المستهلكة',
+      i18n.tr('اسم الصنف'),
+      i18n.tr('تاريخ ووقت الاستهلاك'),
+      i18n.tr('المريض (patientId)'),
+      i18n.tr('الكمية المستهلكة'),
     ]);
 
     consumptions.sort((a, b) => a.consumedAt.compareTo(b.consumedAt));
@@ -117,11 +124,15 @@ class ExcelExportHelper {
       ]);
     }
 
-    final fileName =
-        '${item.name}_consumptions_${DateTime.now().millisecondsSinceEpoch}.xlsx';
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final fileName = i18n.fileName(
+      'استهلاكات الصنف',
+      extension: 'xlsx',
+      suffixes: <Object?>[item.name, item.id ?? timestamp, timestamp],
+    );
 
     final bytes = excel.encode();
-    if (bytes == null) throw Exception('فشل في إنشاء ملف Excel.');
+    if (bytes == null) throw Exception(i18n.tr('فشل في إنشاء ملف Excel.'));
     if (exportsDir != null && exportsDir.trim().isNotEmpty) {
       final path = p.join(exportsDir, fileName);
       await File(path).writeAsBytes(bytes, flush: true);
@@ -138,15 +149,16 @@ class ExcelExportHelper {
     required Map<int, Item> lookupItems,
     String? exportsDir,
   }) async {
+    final i18n = ReportLocalizer();
     final excel = Excel.createExcel();
-    final sheet = excel['Purchases'];
+    final sheet = excel[i18n.isRtl ? 'مشتريات' : 'Purchases'];
 
     sheet.appendRow([
-      'اسم الصنف',
-      'الكمية',
-      'سعر الوحدة',
-      'الإجمالي',
-      'التاريخ/الوقت',
+      i18n.tr('اسم الصنف'),
+      i18n.tr('الكمية'),
+      i18n.tr('سعر الوحدة'),
+      i18n.tr('الإجمالي'),
+      i18n.tr('التاريخ/الوقت'),
     ]);
 
     purchases.sort((a, b) => a.createdAt.compareTo(b.createdAt));
@@ -161,10 +173,14 @@ class ExcelExportHelper {
       ]);
     }
 
-    final fileName = 'purchases_${DateTime.now().millisecondsSinceEpoch}.xlsx';
+    final fileName = i18n.fileName(
+      'المشتريات',
+      extension: 'xlsx',
+      suffixes: <Object?>[DateTime.now().millisecondsSinceEpoch],
+    );
 
     final bytes = excel.encode();
-    if (bytes == null) throw Exception('فشل في إنشاء ملف Excel.');
+    if (bytes == null) throw Exception(i18n.tr('فشل في إنشاء ملف Excel.'));
     if (exportsDir != null && exportsDir.trim().isNotEmpty) {
       final path = p.join(exportsDir, fileName);
       await File(path).writeAsBytes(bytes, flush: true);

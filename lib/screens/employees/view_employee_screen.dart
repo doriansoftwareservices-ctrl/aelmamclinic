@@ -8,6 +8,8 @@ import 'package:aelmamclinic/core/neumorphism.dart';
 
 import 'package:aelmamclinic/services/db_service.dart';
 import 'edit_employee_screen.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class ViewEmployeeScreen extends StatefulWidget {
   final int empId;
@@ -57,7 +59,7 @@ class _ViewEmployeeScreenState extends State<ViewEmployeeScreen> {
     if (p.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('لا يوجد رقم هاتف')),
+        const SnackBar(content: LocalizedText('لا يوجد رقم هاتف')),
       );
       return;
     }
@@ -67,7 +69,7 @@ class _ViewEmployeeScreenState extends State<ViewEmployeeScreen> {
     } else {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('لا يمكن إجراء المكالمة')),
+        const SnackBar(content: LocalizedText('لا يمكن إجراء المكالمة')),
       );
     }
   }
@@ -77,7 +79,7 @@ class _ViewEmployeeScreenState extends State<ViewEmployeeScreen> {
     final cs = Theme.of(context).colorScheme;
 
     return Directionality(
-      textDirection: TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -86,7 +88,7 @@ class _ViewEmployeeScreenState extends State<ViewEmployeeScreen> {
             children: const [
               Icon(Icons.badge_rounded),
               SizedBox(width: 8),
-              Text('بيانات الموظف'),
+              LocalizedText('بيانات الموظف'),
             ],
           ),
         ),
@@ -103,7 +105,7 @@ class _ViewEmployeeScreenState extends State<ViewEmployeeScreen> {
                   await _loadEmployee();
                 },
                 icon: const Icon(Icons.edit_rounded),
-                label: const Text('تعديل'),
+                label: const LocalizedText('تعديل'),
               ),
         body: SafeArea(
           child: Padding(
@@ -112,8 +114,7 @@ class _ViewEmployeeScreenState extends State<ViewEmployeeScreen> {
                 ? const Center(child: CircularProgressIndicator())
                 : (_employee == null)
                     ? Center(
-                        child: Text(
-                          'لم يتم العثور على الموظف',
+                        child: LocalizedText('لم يتم العثور على الموظف',
                           style: TextStyle(
                             color: cs.onSurface.withValues(alpha: .6),
                             fontWeight: FontWeight.w600,
@@ -191,7 +192,7 @@ class _ViewEmployeeScreenState extends State<ViewEmployeeScreen> {
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       IconButton(
-                                        tooltip: 'نسخ',
+                                        tooltip: context.trRaw('نسخ'),
                                         icon: const Icon(Icons.copy_rounded),
                                         onPressed: () {
                                           final phone = _asString(
@@ -203,12 +204,12 @@ class _ViewEmployeeScreenState extends State<ViewEmployeeScreen> {
                                               .showSnackBar(
                                             const SnackBar(
                                                 content:
-                                                    Text('تم نسخ رقم الهاتف')),
+                                                    LocalizedText('تم نسخ رقم الهاتف')),
                                           );
                                         },
                                       ),
                                       IconButton(
-                                        tooltip: 'اتصال',
+                                        tooltip: context.trRaw('اتصال'),
                                         icon: const Icon(Icons.call_rounded),
                                         onPressed: () => _call(_asString(
                                             _employee!['phoneNumber'])),
@@ -247,6 +248,7 @@ class _ViewEmployeeScreenState extends State<ViewEmployeeScreen> {
                                   icon: Icons.local_hospital_outlined,
                                   label: 'حالة الموظف',
                                   value: _fmtDoctor(_employee!['isDoctor']),
+                                  localizeValue: true,
                                 ),
                               ],
                             ),
@@ -265,12 +267,14 @@ class _InfoRow extends StatelessWidget {
   final String label;
   final String value;
   final Widget? trailing;
+  final bool localizeValue;
 
   const _InfoRow({
     required this.icon,
     required this.label,
     required this.value,
     this.trailing,
+    this.localizeValue = false,
   });
 
   @override
@@ -289,7 +293,7 @@ class _InfoRow extends StatelessWidget {
           padding: const EdgeInsets.all(10),
           child: Icon(icon, color: kPrimaryColor),
         ),
-        title: Text(
+        title: LocalizedText(
           label,
           style: TextStyle(
             color: cs.onSurface.withValues(alpha: .7),
@@ -298,10 +302,15 @@ class _InfoRow extends StatelessWidget {
         ),
         subtitle: Padding(
           padding: const EdgeInsets.only(top: 2),
-          child: Text(
-            value,
-            style: const TextStyle(fontWeight: FontWeight.w900),
-          ),
+          child: localizeValue
+              ? LocalizedText(
+                  value,
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                )
+              : Text(
+                  value,
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
         ),
         trailing: trailing,
       ),

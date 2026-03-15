@@ -1,8 +1,8 @@
 // lib/screens/returns/edit_return_screen.dart
-import 'dart:ui' as ui show TextDirection;
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:aelmamclinic/utils/app_formatters.dart';
 
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
@@ -11,6 +11,8 @@ import 'package:aelmamclinic/core/tbian_ui.dart';
 import 'package:aelmamclinic/models/return_entry.dart';
 import 'package:aelmamclinic/services/db_service.dart';
 import 'list_returns_screen.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class EditReturnScreen extends StatefulWidget {
   final ReturnEntry returnEntry;
@@ -34,7 +36,7 @@ class _EditReturnScreenState extends State<EditReturnScreen> {
   final _remainingCtrl = TextEditingController(); // المبلغ المتبقي
   final _notesCtrl = TextEditingController(); // ملاحظات (تحرير)
 
-  final _dateOnly = DateFormat('yyyy-MM-dd');
+  DateFormat get _dateOnly => AppFormatters.dateFormat('yyyy-MM-dd');
 
   @override
   void initState() {
@@ -73,8 +75,8 @@ class _EditReturnScreenState extends State<EditReturnScreen> {
       initialDate: _selectedDate,
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
-      locale: const Locale('ar'),
-      helpText: 'اختر تاريخ العودة',
+      locale: AppFormatters.localeOf(context),
+      helpText: context.trRaw('اختر تاريخ العودة'),
       builder: (ctx, child) => Theme(
         data: Theme.of(ctx).copyWith(
           colorScheme: scheme.copyWith(primary: kPrimaryColor),
@@ -89,7 +91,7 @@ class _EditReturnScreenState extends State<EditReturnScreen> {
     final picked = await showTimePicker(
       context: context,
       initialTime: _selectedTime,
-      helpText: 'اختر وقت العودة',
+      helpText: context.trRaw('اختر وقت العودة'),
       builder: (ctx, child) => Theme(
         data: Theme.of(ctx).copyWith(
           timePickerTheme: const TimePickerThemeData(),
@@ -129,7 +131,7 @@ class _EditReturnScreenState extends State<EditReturnScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('تم تعديل بيانات العودة بنجاح.'),
+        content: LocalizedText('تم تعديل بيانات العودة بنجاح.'),
         duration: Duration(seconds: 2),
       ),
     );
@@ -140,7 +142,7 @@ class _EditReturnScreenState extends State<EditReturnScreen> {
     final scheme = Theme.of(context).colorScheme;
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -159,7 +161,7 @@ class _EditReturnScreenState extends State<EditReturnScreen> {
           ),
           actions: [
             IconButton(
-              tooltip: 'حفظ',
+              tooltip: context.trRaw('حفظ'),
               icon: const Icon(Icons.check_rounded),
               onPressed: _onSavePressed,
             ),
@@ -207,31 +209,31 @@ class _EditReturnScreenState extends State<EditReturnScreen> {
                         children: [
                           NeuField(
                             controller: _patientNameCtrl,
-                            labelText: 'اسم المريض',
+                            labelText: context.trRaw('اسم المريض'),
                             enabled: false,
                           ),
                           const SizedBox(height: 10),
                           NeuField(
                             controller: _phoneCtrl,
-                            labelText: 'رقم الهاتف',
+                            labelText: context.trRaw('رقم الهاتف'),
                             enabled: false,
                           ),
                           const SizedBox(height: 10),
                           NeuField(
                             controller: _ageCtrl,
-                            labelText: 'العمر',
+                            labelText: context.trRaw('العمر'),
                             enabled: false,
                           ),
                           const SizedBox(height: 10),
                           NeuField(
                             controller: _doctorCtrl,
-                            labelText: 'الطبيب',
+                            labelText: context.trRaw('الطبيب'),
                             enabled: false,
                           ),
                           const SizedBox(height: 10),
                           NeuField(
                             controller: _diagnosisCtrl,
-                            labelText: 'حالة المريض',
+                            labelText: context.trRaw('حالة المريض'),
                             enabled: false,
                             maxLines: 2,
                           ),
@@ -247,14 +249,14 @@ class _EditReturnScreenState extends State<EditReturnScreen> {
                         children: [
                           NeuField(
                             controller: _remainingCtrl,
-                            labelText: 'المبلغ المتبقي عليه',
+                            labelText: context.trRaw('المبلغ المتبقي عليه'),
                             keyboardType: const TextInputType.numberWithOptions(
                                 decimal: true, signed: false),
                           ),
                           const SizedBox(height: 10),
                           NeuField(
                             controller: _notesCtrl,
-                            labelText: 'ملاحظات',
+                            labelText: context.trRaw('ملاحظات'),
                             maxLines: 3,
                           ),
                         ],

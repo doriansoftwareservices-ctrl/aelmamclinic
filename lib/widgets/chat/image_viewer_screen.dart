@@ -22,6 +22,7 @@ import 'package:aelmamclinic/services/nhost_storage_service.dart';
 import 'package:aelmamclinic/services/save_file_service.dart';
 import 'package:aelmamclinic/models/chat_models.dart' show ChatAttachment;
 import 'package:aelmamclinic/utils/time.dart' as time;
+import 'package:aelmamclinic/widgets/localized_text.dart';
 
 /// عنصر داخلي موحّد لتمثيل صورة للعرض
 class _ImageItem {
@@ -206,12 +207,12 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
       await Clipboard.setData(ClipboardData(text: url));
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم نسخ الرابط')),
+        const SnackBar(content: LocalizedText('تم نسخ الرابط')),
       );
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تعذّر نسخ الرابط')),
+        const SnackBar(content: LocalizedText('تعذّر نسخ الرابط')),
       );
     }
   }
@@ -227,7 +228,7 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
     await showDialog<void>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('معلومات الصورة'),
+        title: const LocalizedText('معلومات الصورة'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -245,7 +246,7 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).maybePop(),
-            child: const Text('إغلاق'),
+            child: const LocalizedText('إغلاق'),
           )
         ],
       ),
@@ -280,7 +281,7 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('تعذّر الحفظ: $e')));
+          .showSnackBar(SnackBar(content: LocalizedText('تعذّر الحفظ: $e')));
     }
   }
 
@@ -297,16 +298,16 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('حذف الصورة'),
-        content: const Text('هل تريد بالتأكيد حذف هذه الصورة؟'),
+        title: const LocalizedText('حذف الصورة'),
+        content: const LocalizedText('هل تريد بالتأكيد حذف هذه الصورة؟'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('إلغاء')),
+              child: const LocalizedText('إلغاء')),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('حذف'),
+            child: const LocalizedText('حذف'),
           ),
         ],
       ),
@@ -328,7 +329,7 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
     final total = widget.items.length;
 
     return Directionality(
-      textDirection: TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         backgroundColor: Colors.black,
         body: Stack(
@@ -372,8 +373,7 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
                       ),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: Text(
-                          'صورة ${_index + 1} / $total',
+                        child: LocalizedText('صورة ${_index + 1} / $total',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
@@ -413,21 +413,21 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
                               value: _MenuAction.copyLink,
                               child: ListTile(
                                 leading: Icon(Icons.link_rounded),
-                                title: Text('نسخ الرابط'),
+                                title: LocalizedText('نسخ الرابط'),
                               ),
                             ),
                             const PopupMenuItem(
                               value: _MenuAction.info,
                               child: ListTile(
                                 leading: Icon(Icons.info_outline_rounded),
-                                title: Text('معلومات'),
+                                title: LocalizedText('معلومات'),
                               ),
                             ),
                             const PopupMenuItem(
                               value: _MenuAction.save,
                               child: ListTile(
                                 leading: Icon(Icons.download_rounded),
-                                title: Text('حفظ الصورة'),
+                                title: LocalizedText('حفظ الصورة'),
                               ),
                             ),
                           ];
@@ -436,7 +436,7 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
                               value: _MenuAction.openExternal,
                               child: ListTile(
                                 leading: Icon(Icons.open_in_new_rounded),
-                                title: Text('فتح خارج التطبيق'),
+                                title: LocalizedText('فتح خارج التطبيق'),
                               ),
                             ));
                           }
@@ -447,7 +447,7 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
                               child: ListTile(
                                 leading: const Icon(Icons.delete_rounded,
                                     color: Colors.red),
-                                title: const Text('حذف',
+                                title: const LocalizedText('حذف',
                                     style: TextStyle(color: Colors.red)),
                               ),
                             ));
@@ -529,7 +529,7 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
       Navigator.of(context).pop(); // أغلق حوار التقدم
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
+          content: LocalizedText(
             savedPath.isEmpty
                 ? 'تم حفظ الملف بنجاح.'
                 : 'تم الحفظ في: $savedPath',
@@ -540,7 +540,7 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
       if (!mounted) return;
       Navigator.of(context).maybePop();
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('تعذّر الحفظ: $e')));
+          .showSnackBar(SnackBar(content: LocalizedText('تعذّر الحفظ: $e')));
     }
   }
 

@@ -1,0 +1,61 @@
+phase: 14
+name: localization_screen_family_wave_a
+status: completed
+started_at: "2026-03-10"
+completed_at: "2026-03-10"
+scope:
+  - lib
+  - scripts
+  - docs
+deliverables:
+  - id: P14-D1
+    name: subscription_clinic_reports_statistics_screen_family_cleanup
+    status: completed
+    paths:
+      - lib/screens/subscription/my_plan_screen.dart
+      - lib/screens/clinic/clinic_profile_screen.dart
+      - lib/screens/reports/report_screen.dart
+      - lib/screens/statistics/statistics_overview_screen.dart
+      - lib/screens/statistics/statistics_screen.dart
+  - id: P14-D2
+    name: shared_localization_dictionary_expansion_for_phase14_families
+    status: completed
+    paths:
+      - lib/l10n/raw_string_localizer.dart
+  - id: P14-D3
+    name: localized_pdf_export_filenames_for_statistics_reports
+    status: completed
+    paths:
+      - lib/screens/statistics/statistics_screen.dart
+  - id: P14-D4
+    name: phase14_targeted_verification
+    status: completed
+    paths:
+      - lib/phase14/check_phase14_screen_family.sh
+      - scripts/phase14_verify.sh
+  - id: P14-D5
+    name: phase14_documentation
+    status: completed
+    paths:
+      - docs/phase14/closure_report_2026-03-10.md
+gates:
+  - id: L10N-014-001
+    name: target_screen_family_has_no_new_raw_text_widgets
+    status: passed
+  - id: L10N-014-002
+    name: fixed_back_arrows_removed_from_targeted_flows
+    status: passed
+  - id: L10N-014-003
+    name: statistics_pdf_exports_use_localized_human_filenames
+    status: passed
+  - id: L10N-014-004
+    name: shared_localization_hygiene_gate_still_passes
+    status: passed
+  - id: G1
+    name: focused_phase14_verification
+    status: local_pass
+    reason: targeted screen-family checks and the shared localization hygiene gate passed locally; WSL formatting/analyze remains limited by the Windows-only Flutter SDK layout
+next_phase_readiness:
+  phase_15_allowed: true
+  notes:
+    - stage 3 can now focus on the remaining operational families and exported report surfaces without revisiting the subscription, clinic-profile, report, or statistics wave-a screens

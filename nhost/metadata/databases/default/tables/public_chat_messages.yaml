@@ -304,8 +304,11 @@ event_triggers:
       enable_manual: false
       insert:
         columns: '*'
+    headers:
+      - name: x-hasura-event-secret
+        value_from_env: NHOST_WEBHOOK_SECRET
     retry_conf:
       interval_sec: 10
       num_retries: 3
       timeout_sec: 60
-    webhook: https://ujxbrdbrjbujvlylpbbn.functions.ap-southeast-1.nhost.run/v1/notify-chat-message
+    webhook_from_env: NHOST_FUNCTION_NOTIFY_CHAT_MESSAGE_URL

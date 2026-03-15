@@ -1,6 +1,5 @@
 // lib/screens/employees/list_employees_screen.dart
 import 'dart:io';
-import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
@@ -15,6 +14,9 @@ import 'package:aelmamclinic/services/export_service.dart';
 import 'package:aelmamclinic/screens/employees/view_employee_screen.dart';
 import 'package:aelmamclinic/screens/employees/edit_employee_screen.dart';
 import 'package:aelmamclinic/screens/employees/new_employee_screen.dart';
+import 'package:aelmamclinic/utils/report_localizer.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class ListEmployeesScreen extends StatefulWidget {
   const ListEmployeesScreen({super.key});
@@ -61,7 +63,7 @@ class _ListEmployeesScreenState extends State<ListEmployeesScreen> {
       if (!mounted) return;
       setState(() => _loading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذّر تحميل الموظفين: $e')),
+        SnackBar(content: LocalizedText('تعذّر تحميل الموظفين: $e')),
       );
     }
   }
@@ -91,7 +93,7 @@ class _ListEmployeesScreenState extends State<ListEmployeesScreen> {
     } else {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('لا يمكن إجراء المكالمة')),
+        const SnackBar(content: LocalizedText('لا يمكن إجراء المكالمة')),
       );
     }
   }
@@ -100,7 +102,7 @@ class _ListEmployeesScreenState extends State<ListEmployeesScreen> {
     if (_filteredEmployees.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('لا توجد بيانات للمشاركة')),
+        const SnackBar(content: LocalizedText('لا توجد بيانات للمشاركة')),
       );
       return;
     }
@@ -108,19 +110,21 @@ class _ListEmployeesScreenState extends State<ListEmployeesScreen> {
       final bytes =
           await ExportService.exportEmployeesToExcel(_filteredEmployees);
       final dir = await getTemporaryDirectory();
-      final filePath = '${dir.path}/قائمة-الموظفين.xlsx';
+      final i18n = ReportLocalizer();
+      final filePath =
+          '${dir.path}/${i18n.fileName('قائمة الموظفين', extension: 'xlsx')}';
       final file = File(filePath);
       await file.writeAsBytes(bytes);
       await SharePlus.instance.share(
         ShareParams(
           files: [XFile(file.path)],
-          text: 'قائمة الموظفين المحفوظة',
+          text: i18n.tr('قائمة الموظفين المحفوظة'),
         ),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('خطأ أثناء المشاركة: $e')),
+        SnackBar(content: LocalizedText('خطأ أثناء المشاركة: $e')),
       );
     }
   }
@@ -129,7 +133,7 @@ class _ListEmployeesScreenState extends State<ListEmployeesScreen> {
     if (_filteredEmployees.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('لا توجد بيانات للتنزيل')),
+        const SnackBar(content: LocalizedText('لا توجد بيانات للتنزيل')),
       );
       return;
     }
@@ -137,17 +141,19 @@ class _ListEmployeesScreenState extends State<ListEmployeesScreen> {
       final bytes =
           await ExportService.exportEmployeesToExcel(_filteredEmployees);
       final dir = await getApplicationDocumentsDirectory();
-      final filePath = '${dir.path}/قائمة-الموظفين.xlsx';
+      final i18n = ReportLocalizer();
+      final filePath =
+          '${dir.path}/${i18n.fileName('قائمة الموظفين', extension: 'xlsx')}';
       final file = File(filePath);
       await file.writeAsBytes(bytes);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تم التنزيل إلى: $filePath')),
+        SnackBar(content: LocalizedText('تم التنزيل إلى: $filePath')),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('خطأ أثناء التنزيل: $e')),
+        SnackBar(content: LocalizedText('خطأ أثناء التنزيل: $e')),
       );
     }
   }
@@ -156,17 +162,17 @@ class _ListEmployeesScreenState extends State<ListEmployeesScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('تأكيد الحذف'),
-        content: const Text('سيتم حذف الموظف نهائيًا، هل أنت متأكد؟'),
+        title: const LocalizedText('تأكيد الحذف'),
+        content: const LocalizedText('سيتم حذف الموظف نهائيًا، هل أنت متأكد؟'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('إلغاء'),
+            child: const LocalizedText('إلغاء'),
           ),
           FilledButton.icon(
             onPressed: () => Navigator.pop(ctx, true),
             icon: const Icon(Icons.delete_rounded),
-            label: const Text('حذف'),
+            label: const LocalizedText('حذف'),
           ),
         ],
       ),
@@ -179,7 +185,7 @@ class _ListEmployeesScreenState extends State<ListEmployeesScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذّر الحذف: $e')),
+        SnackBar(content: LocalizedText('تعذّر الحذف: $e')),
       );
     }
   }
@@ -191,7 +197,7 @@ class _ListEmployeesScreenState extends State<ListEmployeesScreen> {
     final hasMore = _visibleCount < _filteredEmployees.length;
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -210,12 +216,12 @@ class _ListEmployeesScreenState extends State<ListEmployeesScreen> {
           ),
           actions: [
             IconButton(
-              tooltip: 'مشاركة Excel',
+              tooltip: context.trRaw('مشاركة Excel'),
               icon: const Icon(Icons.share_rounded),
               onPressed: _shareEmployeesExcel,
             ),
             IconButton(
-              tooltip: 'تنزيل Excel',
+              tooltip: context.trRaw('تنزيل Excel'),
               icon: const Icon(Icons.download_rounded),
               onPressed: _downloadEmployeesExcel,
             ),
@@ -229,7 +235,7 @@ class _ListEmployeesScreenState extends State<ListEmployeesScreen> {
             ).then((_) => _loadEmployees());
           },
           icon: const Icon(Icons.person_add_alt_1_rounded),
-          label: const Text('إضافة موظف'),
+          label: const LocalizedText('إضافة موظف'),
         ),
         body: SafeArea(
           child: Padding(
@@ -238,8 +244,7 @@ class _ListEmployeesScreenState extends State<ListEmployeesScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 // عنوان الصفحة
-                Text(
-                  'قائمة الموظفين',
+                LocalizedText('قائمة الموظفين',
                   style: TextStyle(
                     color: cs.onSurface,
                     fontSize: 18,
@@ -262,9 +267,8 @@ class _ListEmployeesScreenState extends State<ListEmployeesScreen> {
 
                 // عدّاد النتائج
                 Align(
-                  alignment: Alignment.centerRight,
-                  child: Text(
-                    'النتائج: ${_filteredEmployees.length}',
+                  alignment: AlignmentDirectional.centerStart,
+                  child: LocalizedText('النتائج: ${_filteredEmployees.length}',
                     style: TextStyle(
                       color: cs.onSurface.withValues(alpha: .65),
                       fontWeight: FontWeight.w700,
@@ -285,8 +289,7 @@ class _ListEmployeesScreenState extends State<ListEmployeesScreen> {
                                   children: [
                                     const SizedBox(height: 120),
                                     Center(
-                                      child: Text(
-                                        'لا توجد نتائج',
+                                      child: LocalizedText('لا توجد نتائج',
                                         style: TextStyle(
                                           color: cs.onSurface
                                               .withValues(alpha: .6),
@@ -312,8 +315,7 @@ class _ListEmployeesScreenState extends State<ListEmployeesScreen> {
                                             icon: const Icon(
                                               Icons.expand_more_rounded,
                                             ),
-                                            label: Text(
-                                              'تحميل المزيد (${_visibleCount}/${_filteredEmployees.length})',
+                                            label: LocalizedText('تحميل المزيد (${_visibleCount}/${_filteredEmployees.length})',
                                             ),
                                             onPressed: () {
                                               setState(() {
@@ -402,8 +404,7 @@ class _ListEmployeesScreenState extends State<ListEmployeesScreen> {
                                                   ScaffoldMessenger.of(context)
                                                       .showSnackBar(
                                                     const SnackBar(
-                                                      content: Text(
-                                                        'لا يوجد رقم هاتف للموظف',
+                                                      content: LocalizedText('لا يوجد رقم هاتف للموظف',
                                                       ),
                                                     ),
                                                   );
@@ -437,7 +438,7 @@ class _ListEmployeesScreenState extends State<ListEmployeesScreen> {
                                                     color: cs.primary,
                                                   ),
                                                   const SizedBox(width: 8),
-                                                  const Text('اتصال'),
+                                                  const LocalizedText('اتصال'),
                                                 ],
                                               ),
                                             ),
@@ -451,7 +452,7 @@ class _ListEmployeesScreenState extends State<ListEmployeesScreen> {
                                                     color: cs.primary,
                                                   ),
                                                   const SizedBox(width: 8),
-                                                  const Text('تعديل'),
+                                                  const LocalizedText('تعديل'),
                                                 ],
                                               ),
                                             ),
@@ -465,7 +466,7 @@ class _ListEmployeesScreenState extends State<ListEmployeesScreen> {
                                                     color: Colors.red,
                                                   ),
                                                   SizedBox(width: 8),
-                                                  Text('حذف'),
+                                                  LocalizedText('حذف'),
                                                 ],
                                               ),
                                             ),

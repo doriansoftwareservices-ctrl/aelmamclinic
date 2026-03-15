@@ -331,6 +331,33 @@ class AdminBillingService {
     return map;
   }
 
+  Future<int> fetchApprovedTrialActivationsCount() async {
+    const query = r'''
+      query ApprovedTrialActivationsCount {
+        subscription_requests(
+          where: {
+            plan_code: {_eq: "trial_month"},
+            status: {_eq: "approved"}
+          },
+          order_by: {reviewed_at: desc},
+          limit: 1000
+        ) {
+          id
+        }
+      }
+    ''';
+    final res = await _gql.query(
+      QueryOptions(
+        document: gql(query),
+        fetchPolicy: FetchPolicy.noCache,
+        context: _superAdminContext(),
+      ),
+    );
+    if (res.hasException) throw res.exception!;
+    final rows = (res.data?['subscription_requests'] as List?) ?? const [];
+    return rows.length;
+  }
+
   Future<void> createPaymentMethod({
     required String name,
     required String bankAccount,
@@ -740,7 +767,12 @@ class AdminBillingService {
   Future<List<Map<String, dynamic>>> _fetchApprovedRequestsForStats() async {
     const query = r'''
       query ApprovedSubscriptionRequests {
-        subscription_requests(where: {status: {_in: ["approved", "paid", "completed"]}}) {
+        subscription_requests(
+          where: {
+            status: {_in: ["approved", "paid", "completed"]},
+            plan_code: {_in: ["year", "year_plus", "year_pro"]}
+          }
+        ) {
           amount
           plan_code
           payment_method_id

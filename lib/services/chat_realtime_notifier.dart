@@ -11,6 +11,10 @@ import 'dart:async';
 
 import 'package:graphql_flutter/graphql_flutter.dart';
 
+import 'package:aelmamclinic/phase6/chat_reliability.dart';
+import 'package:aelmamclinic/utils/app_observability.dart';
+import 'package:aelmamclinic/utils/logger.dart';
+
 import 'notification_service.dart';
 import 'nhost_graphql_service.dart';
 
@@ -20,6 +24,11 @@ class ChatRealtimeNotifier {
     NhostGraphqlService.buildNotifier().addListener(_onClientRefresh);
   }
   static final ChatRealtimeNotifier instance = ChatRealtimeNotifier._();
+
+  static const ChatRetryPolicy _kRestartPolicy = ChatRetryPolicy(
+    baseDelay: Duration(seconds: 2),
+    maxDelay: Duration(seconds: 30),
+  );
 
   GraphQLClient _gql = NhostGraphqlService.client;
 
@@ -32,6 +41,7 @@ class ChatRealtimeNotifier {
   Stream<Map<String, dynamic>> get messageEvents => _messageEventCtrl.stream;
 
   String? _myUid;
+  String? _accountId;
 
   final Set<String> _convIds = <String>{};
   final Map<String, _ParticipantPrefs> _convPrefs =
@@ -43,55 +53,185 @@ class ChatRealtimeNotifier {
 
   bool _started = false;
   String? _activeConversationId;
+  String? _sessionKey;
+  int _sessionGeneration = 0;
+  int _restartAttempt = 0;
+  Timer? _restartTimer;
 
   StreamSubscription<QueryResult>? _messageSub;
   StreamSubscription<QueryResult>? _participantsSub;
 
+  String _newFlow(String label) => AppObservability.newFlowId('chat_rt_$label');
+
+  Map<String, Object?> _context([Map<String, Object?>? extra]) {
+    return <String, Object?>{
+      'uid': _myUid,
+      'accountId': _accountId,
+      'started': _started,
+      'conversationCount': _convIds.length,
+      'restartAttempt': _restartAttempt,
+      ...?extra,
+    };
+  }
+
+  void _warn(
+    String code,
+    String message, {
+    String? flowId,
+    Map<String, Object?>? context,
+    Object? error,
+    StackTrace? stackTrace,
+  }) {
+    AppObservability.warn(
+      scope: 'CHAT_RT',
+      code: code,
+      message: message,
+      flowId: flowId,
+      context: _context(context),
+      error: error,
+      stackTrace: stackTrace,
+    );
+    log.w(
+      message,
+      tag: 'CHAT_RT',
+      data: {
+        'uid': _safeUid(_myUid),
+        'account_id': _accountId ?? '',
+        ...?context,
+        if (error != null) 'error': '$error',
+      },
+      st: stackTrace,
+    );
+  }
+
+  void _info(
+    String code,
+    String message, {
+    String? flowId,
+    Map<String, Object?>? context,
+  }) {
+    AppObservability.info(
+      scope: 'CHAT_RT',
+      code: code,
+      message: message,
+      flowId: flowId,
+      context: _context(context),
+    );
+    log.i(
+      message,
+      tag: 'CHAT_RT',
+      data: {
+        'uid': _safeUid(_myUid),
+        'account_id': _accountId ?? '',
+        ...?context,
+      },
+    );
+  }
+
   void _onClientRefresh() {
     _gql = NhostGraphqlService.client;
     if (!_started) return;
-    _messageSub?.cancel();
-    _participantsSub?.cancel();
-    _messageSub = null;
-    _participantsSub = null;
-    unawaited(_loadConversationIds());
-    _startParticipantsSubscription();
-    _startMessageSubscription();
+    _scheduleRestart('client_refresh');
   }
 
   Future<void> start({
     required String? accountId,
     required String? myUid,
   }) async {
-    final _ = accountId; // reserved for future account-level filtering
-    _myUid = (myUid?.trim().isEmpty == true) ? null : myUid;
-
-    if (_myUid == null) {
-      _started = false;
+    final normalizedUid =
+        (myUid?.trim().isEmpty == true) ? null : myUid?.trim();
+    final normalizedAccountId =
+        (accountId?.trim().isEmpty == true) ? null : accountId?.trim();
+    final nextSessionKey =
+        '${normalizedUid ?? ''}|${normalizedAccountId ?? ''}';
+    if (_started &&
+        _sessionKey == nextSessionKey &&
+        normalizedUid == _myUid &&
+        normalizedAccountId == _accountId) {
       return;
     }
 
+    if (_started) {
+      await stop();
+    }
+
+    if (normalizedUid == null) {
+      await stop();
+      return;
+    }
+    if (!hasBoundChatAccount(normalizedAccountId)) {
+      _myUid = normalizedUid;
+      _accountId = normalizedAccountId;
+      _warn(
+        ObsCode.chatAccountScopeRequired,
+        'chat realtime start blocked because account scope is missing',
+        flowId: _newFlow('account_scope_required'),
+      );
+      await stop();
+      return;
+    }
+
+    _myUid = normalizedUid;
+    _accountId = normalizedAccountId;
+    _sessionKey = nextSessionKey;
+    _started = true;
+    _restartAttempt = 0;
+    _restartTimer?.cancel();
+    _restartTimer = null;
+    _sessionGeneration += 1;
+    final generation = _sessionGeneration;
+
     try {
       await NotificationService().initialize();
+    } catch (error, st) {
+      _warn(
+        ObsCode.chatRealtimeSubscriptionFailed,
+        'notification service initialization failed during chat realtime start',
+        flowId: _newFlow('notification_init'),
+        error: error,
+        stackTrace: st,
+      );
+    }
+
+    await _loadConversationIds(generation: generation);
+    if (!_started || generation != _sessionGeneration) return;
+    _startParticipantsSubscription(generation: generation);
+    if (_convIds.isNotEmpty) {
+      _startMessageSubscription(generation: generation);
+    }
+
+    _info(
+      ObsCode.chatStateTransition,
+      'chat realtime started',
+      flowId: _newFlow('start'),
+    );
+  }
+
+  Future<void> _cancelSubscriptions() async {
+    try {
+      await _messageSub?.cancel();
     } catch (_) {}
-
-    await _loadConversationIds();
-    _startParticipantsSubscription();
-    _startMessageSubscription();
-
-    _started = true;
+    try {
+      await _participantsSub?.cancel();
+    } catch (_) {}
+    _messageSub = null;
+    _participantsSub = null;
   }
 
   Future<void> stop() async {
     _started = false;
-    await _messageSub?.cancel();
-    await _participantsSub?.cancel();
-    _messageSub = null;
-    _participantsSub = null;
+    _restartTimer?.cancel();
+    _restartTimer = null;
+    _restartAttempt = 0;
+    _sessionGeneration += 1;
+    await _cancelSubscriptions();
     _convIds.clear();
     _convPrefs.clear();
     _localLastRead.clear();
     _activeConversationId = null;
+    _accountId = null;
+    _myUid = null;
+    _sessionKey = null;
     _pruneSeenIfNeeded(force: true);
   }
 
@@ -99,13 +239,37 @@ class ChatRealtimeNotifier {
     await stop();
     try {
       await _conversationsCtrl.close();
-    } catch (_) {}
+    } catch (error, st) {
+      _warn(
+        ObsCode.chatRealtimeSubscriptionFailed,
+        'failed to close conversations stream controller',
+        flowId: _newFlow('close_conversations_ctrl'),
+        error: error,
+        stackTrace: st,
+      );
+    }
     try {
       await _participantsCtrl.close();
-    } catch (_) {}
+    } catch (error, st) {
+      _warn(
+        ObsCode.chatRealtimeSubscriptionFailed,
+        'failed to close participants stream controller',
+        flowId: _newFlow('close_participants_ctrl'),
+        error: error,
+        stackTrace: st,
+      );
+    }
     try {
       await _messageEventCtrl.close();
-    } catch (_) {}
+    } catch (error, st) {
+      _warn(
+        ObsCode.chatRealtimeSubscriptionFailed,
+        'failed to close message events stream controller',
+        flowId: _newFlow('close_message_ctrl'),
+        error: error,
+        stackTrace: st,
+      );
+    }
   }
 
   Future<void> setMuted(String conversationId, bool muted) async {
@@ -166,17 +330,125 @@ class ChatRealtimeNotifier {
     }
   }
 
-  Future<void> _loadConversationIds() async {
+  void _scheduleRestart(
+    String reason, {
+    Object? error,
+    StackTrace? stackTrace,
+  }) {
+    if (!_started) return;
+    final nextAttempt = _restartAttempt + 1;
+    final delay = reason == 'client_refresh'
+        ? Duration.zero
+        : _kRestartPolicy.delayForAttempt(nextAttempt);
+    if (error != null) {
+      _warn(
+        ObsCode.chatRealtimeSubscriptionFailed,
+        'chat realtime subscription requires restart',
+        flowId: _newFlow('schedule_restart'),
+        context: {
+          'reason': reason,
+          'delayMs': delay.inMilliseconds,
+          'attempt': nextAttempt,
+        },
+        error: error,
+        stackTrace: stackTrace,
+      );
+    } else {
+      _info(
+        ObsCode.chatStateTransition,
+        'chat realtime restart scheduled',
+        flowId: _newFlow('schedule_restart'),
+        context: {
+          'reason': reason,
+          'delayMs': delay.inMilliseconds,
+          'attempt': nextAttempt,
+        },
+      );
+    }
+
+    final activeTimer = _restartTimer;
+    if (activeTimer != null && activeTimer.isActive) {
+      if (delay > Duration.zero) {
+        return;
+      }
+      activeTimer.cancel();
+    }
+
+    _restartAttempt = nextAttempt;
+    final generation = _sessionGeneration;
+    _restartTimer = Timer(delay, () {
+      _restartTimer = null;
+      if (!_started || generation != _sessionGeneration) return;
+      unawaited(_restartSubscriptions(reason));
+    });
+  }
+
+  Future<void> _restartSubscriptions(String reason) async {
     final uid = _myUid;
-    if (uid == null || uid.isEmpty) {
-      _convIds.clear();
-      _convPrefs.clear();
+    final accountId = _accountId;
+    if (!_started || uid == null || !hasBoundChatAccount(accountId)) {
       return;
     }
+    final generation = _sessionGeneration;
     try {
-      final query = '''
-        query MyConversationIds(\$uid: uuid!) {
-          chat_participants(where: {user_uid: {_eq: \$uid}}) {
+      await _cancelSubscriptions();
+      await _loadConversationIds(generation: generation);
+      if (!_started || generation != _sessionGeneration) return;
+      _startParticipantsSubscription(generation: generation);
+      if (_convIds.isNotEmpty) {
+        _startMessageSubscription(generation: generation);
+      }
+      _restartAttempt = 0;
+      _info(
+        ObsCode.chatStateTransition,
+        'chat realtime restart completed',
+        flowId: _newFlow('restart'),
+        context: {
+          'reason': reason,
+        },
+      );
+    } catch (error, st) {
+      _warn(
+        ObsCode.chatRealtimeRestartFailed,
+        'chat realtime restart failed',
+        flowId: _newFlow('restart_failed'),
+        context: {
+          'reason': reason,
+        },
+        error: error,
+        stackTrace: st,
+      );
+      _scheduleRestart(
+        'restart_failed',
+        error: error,
+        stackTrace: st,
+      );
+    }
+  }
+
+  Future<bool> _loadConversationIds({
+    required int generation,
+  }) async {
+    final uid = _myUid;
+    final accountId = _accountId;
+    if (uid == null ||
+        uid.isEmpty ||
+        !hasBoundChatAccount(accountId) ||
+        generation != _sessionGeneration) {
+      _convIds.clear();
+      _convPrefs.clear();
+      return false;
+    }
+    try {
+      const query = r'''
+        query MyConversationIds($uid: uuid!, $accountId: uuid!) {
+          chat_participants(
+            where: {
+              user_uid: {_eq: $uid},
+              account_id: {_eq: $accountId},
+              _or: [{is_deleted: {_eq: false}}, {is_deleted: {_is_null: true}}]
+            }
+          ) {
             conversation_id
             muted
             last_read_at
@@ -184,14 +456,21 @@ class ChatRealtimeNotifier {
           }
         }
       ''';
-      final data = await _gql.query(
+      final result = await _gql.query(
         QueryOptions(
           document: gql(query),
-          variables: {'uid': uid},
+          variables: <String, dynamic>{
+            'uid': uid,
+            'accountId': accountId,
+          },
           fetchPolicy: FetchPolicy.noCache,
         ),
       );
-      final rows = (data.data?['chat_participants'] as List?) ?? const [];
+      if (generation != _sessionGeneration) return false;
+      if (result.hasException) {
+        throw result.exception!;
+      }
+      final rows = (result.data?['chat_participants'] as List?) ?? const [];
       _convIds
         ..clear()
         ..addAll(
@@ -208,19 +487,35 @@ class ChatRealtimeNotifier {
             return MapEntry(cid, _ParticipantPrefs.fromRow(row));
           }).where((e) => e.key.isNotEmpty),
         );
-    } catch (_) {
+      return true;
+    } catch (error, st) {
       _convIds.clear();
       _convPrefs.clear();
+      _scheduleRestart(
+        'load_conversation_ids',
+        error: error,
+        stackTrace: st,
+      );
+      return false;
     }
   }
 
-  void _startParticipantsSubscription() {
+  void _startParticipantsSubscription({
+    required int generation,
+  }) {
     final uid = _myUid;
-    if (uid == null) return;
+    final accountId = _accountId;
+    if (uid == null || !hasBoundChatAccount(accountId)) return;
     _participantsSub?.cancel();
-    final subDoc = '''
-      subscription MyParticipants(\$uid: uuid!) {
-        chat_participants(where: {user_uid: {_eq: \$uid}}) {
+    const subDoc = r'''
+      subscription MyParticipants($uid: uuid!, $accountId: uuid!) {
+        chat_participants(
+          where: {
+            user_uid: {_eq: $uid},
+            account_id: {_eq: $accountId},
+            _or: [{is_deleted: {_eq: false}}, {is_deleted: {_is_null: true}}]
+          }
+        ) {
           conversation_id
           muted
           last_read_at
@@ -232,12 +527,22 @@ class ChatRealtimeNotifier {
         .subscribe(
       SubscriptionOptions(
         document: gql(subDoc),
-        variables: {'uid': uid},
+        variables: <String, dynamic>{
+          'uid': uid,
+          'accountId': accountId,
+        },
         fetchPolicy: FetchPolicy.noCache,
       ),
     )
-        .listen((result) async {
-      if (result.hasException) return;
+        .listen((result) {
+      if (!_started || generation != _sessionGeneration) return;
+      if (result.hasException) {
+        _scheduleRestart(
+          'participants_payload_exception',
+          error: result.exception!,
+        );
+        return;
+      }
       final rows = (result.data?['chat_participants'] as List?) ?? const [];
       final prevIds = Set<String>.from(_convIds);
       _convIds
@@ -256,28 +561,44 @@ class ChatRealtimeNotifier {
             return MapEntry(cid, _ParticipantPrefs.fromRow(row));
           }).where((e) => e.key.isNotEmpty),
         );
+      _restartAttempt = 0;
       if (!_setsEqual(prevIds, _convIds)) {
-        _startMessageSubscription();
+        _startMessageSubscription(generation: generation);
       }
       if (!_participantsCtrl.isClosed) _participantsCtrl.add(null);
       if (!_conversationsCtrl.isClosed) _conversationsCtrl.add(null);
+    }, onError: (Object error, StackTrace st) {
+      if (!_started || generation != _sessionGeneration) return;
+      _scheduleRestart(
+        'participants_stream_error',
+        error: error,
+        stackTrace: st,
+      );
     });
   }
 
-  void _startMessageSubscription() {
+  void _startMessageSubscription({
+    required int generation,
+  }) {
     _messageSub?.cancel();
-    if (_convIds.isEmpty) {
+    final accountId = _accountId;
+    if (_convIds.isEmpty || !hasBoundChatAccount(accountId)) {
       _messageSub = null;
       return;
     }
-    final subDoc = '''
-      subscription LatestMessages(\$convIds: [uuid!]!) {
+    const subDoc = r'''
+      subscription LatestMessages($convIds: [uuid!]!, $accountId: uuid!) {
         chat_messages(
-          where: {deleted: {_neq: true}, conversation_id: {_in: \$convIds}},
+          where: {
+            deleted: {_neq: true},
+            account_id: {_eq: $accountId},
+            conversation_id: {_in: $convIds}
+          },
           order_by: {created_at: desc},
-          limit: 500
+          limit: 120
         ) {
           id
+          account_id
           conversation_id
           sender_uid
           sender_email
@@ -291,13 +612,26 @@ class ChatRealtimeNotifier {
     ''';
     _messageSub = _gql
         .subscribe(
-          SubscriptionOptions(
-            document: gql(subDoc),
-            variables: {'convIds': _convIds.toList()},
-            fetchPolicy: FetchPolicy.noCache,
-          ),
-        )
-        .listen(_handleMessageBatch);
+      SubscriptionOptions(
+        document: gql(subDoc),
+        variables: {
+          'convIds': _convIds.toList(),
+          'accountId': accountId,
+        },
+        fetchPolicy: FetchPolicy.noCache,
+      ),
+    )
+        .listen(
+      (result) => _handleMessageBatch(result, generation: generation),
+      onError: (Object error, StackTrace st) {
+        if (!_started || generation != _sessionGeneration) return;
+        _scheduleRestart(
+          'messages_stream_error',
+          error: error,
+          stackTrace: st,
+        );
+      },
+    );
   }
 
   bool _setsEqual(Set<String> a, Set<String> b) {
@@ -308,18 +642,35 @@ class ChatRealtimeNotifier {
     return true;
   }
 
-  void _handleMessageBatch(QueryResult result) {
-    if (!_started || result.hasException) return;
+  void _handleMessageBatch(
+    QueryResult result, {
+    required int generation,
+  }) {
+    if (!_started || generation != _sessionGeneration) return;
+    if (result.hasException) {
+      _scheduleRestart(
+        'messages_payload_exception',
+        error: result.exception!,
+      );
+      return;
+    }
     final rows = (result.data?['chat_messages'] as List?) ?? const [];
     for (final raw in rows.whereType<Map>()) {
       final row = Map<String, dynamic>.from(raw);
-      unawaited(_handleMessageRow(row));
+      unawaited(_handleMessageRow(row, generation: generation));
     }
   }
 
-  Future<void> _handleMessageRow(Map<String, dynamic> row) async {
+  Future<void> _handleMessageRow(
+    Map<String, dynamic> row, {
+    required int generation,
+  }) async {
+    if (!_started || generation != _sessionGeneration) return;
     final cid = (row['conversation_id'] ?? '').toString();
-    if (cid.isEmpty || (_convIds.isNotEmpty && !_convIds.contains(cid))) {
+    final rowAccountId = (row['account_id'] ?? '').toString().trim();
+    if (cid.isEmpty ||
+        (_convIds.isNotEmpty && !_convIds.contains(cid)) ||
+        (rowAccountId.isNotEmpty && rowAccountId != (_accountId ?? ''))) {
       return;
     }
 
@@ -363,8 +714,21 @@ class ChatRealtimeNotifier {
     if (messageKnownCheck != null) {
       try {
         final known = await messageKnownCheck!(id);
+        if (!_started || generation != _sessionGeneration) return;
         if (known) return;
-      } catch (_) {}
+      } catch (error, st) {
+        _warn(
+          ObsCode.chatRealtimeSubscriptionFailed,
+          'messageKnownCheck failed; falling back to local seen-set',
+          flowId: _newFlow('message_known_check'),
+          context: {
+            'messageId': id,
+            'conversationId': cid,
+          },
+          error: error,
+          stackTrace: st,
+        );
+      }
     }
     _seenMsgIds.add(id);
     _pruneSeenIfNeeded();
@@ -377,19 +741,37 @@ class ChatRealtimeNotifier {
     final bodyRaw = (row['body'] ?? row['text'] ?? '').toString().trim();
     final senderEmail = (row['sender_email']?.toString() ?? '').trim();
 
+    final notifier = NotificationService();
     final title = senderEmail.isNotEmpty
-        ? 'لديك رسالة من $senderEmail'
-        : 'لديك رسالة جديدة';
+        ? notifier.translateRaw('لديك رسالة من $senderEmail')
+        : notifier.translateRaw('لديك رسالة جديدة');
 
-    final body =
-        (kind == 'image') ? '📷 صورة' : (bodyRaw.isEmpty ? 'رسالة' : bodyRaw);
+    final body = (kind == 'image')
+        ? notifier.translateRaw('📷 صورة')
+        : (bodyRaw.isEmpty ? notifier.translateRaw('رسالة') : bodyRaw);
 
     final nid = id.hashCode & 0x7fffffff;
 
     try {
       NotificationService().showChatNotification(
-          id: nid, title: title, body: body, payload: cid);
-    } catch (_) {}
+        id: nid,
+        title: title,
+        body: body,
+        payload: cid,
+      );
+    } catch (error, st) {
+      _warn(
+        ObsCode.chatRealtimeSubscriptionFailed,
+        'failed to show chat notification',
+        flowId: _newFlow('show_notification'),
+        context: {
+          'messageId': id,
+          'conversationId': cid,
+        },
+        error: error,
+        stackTrace: st,
+      );
+    }
   }
 
   void _pruneSeenIfNeeded({bool force = false}) {
@@ -410,11 +792,11 @@ class ChatRealtimeNotifier {
     DateTime? lastReadAt,
   }) async {
     if (conversationId.trim().isEmpty) return;
-    final mutation = '''
-      mutation UpdateParticipant(\$cid: uuid!, \$uid: uuid!, \$set: chat_participants_set_input!) {
+    final mutation = r'''
+      mutation UpdateParticipant($cid: uuid!, $uid: uuid!, $set: chat_participants_set_input!) {
         update_chat_participants(
-          where: {conversation_id: {_eq: \$cid}, user_uid: {_eq: \$uid}},
-          _set: \$set
+          where: {conversation_id: {_eq: $cid}, user_uid: {_eq: $uid}},
+          _set: $set
         ) {
           affected_rows
         }
@@ -427,18 +809,51 @@ class ChatRealtimeNotifier {
     }
     if (set.isEmpty) return;
     try {
-      await _gql.mutate(MutationOptions(
-        document: gql(mutation),
-        variables: {'cid': conversationId, 'uid': uid, 'set': set},
-        fetchPolicy: FetchPolicy.noCache,
-      ));
-    } catch (_) {}
+      final result = await _gql.mutate(
+        MutationOptions(
+          document: gql(mutation),
+          variables: {'cid': conversationId, 'uid': uid, 'set': set},
+          fetchPolicy: FetchPolicy.noCache,
+        ),
+      );
+      if (result.hasException) {
+        _warn(
+          ObsCode.chatRealtimeSubscriptionFailed,
+          'participant preferences mutation returned exception',
+          flowId: _newFlow('update_participant_prefs'),
+          context: {
+            'conversationId': conversationId,
+            'targetUid': _safeUid(uid),
+          },
+          error: result.exception!,
+        );
+      }
+    } catch (error, st) {
+      _warn(
+        ObsCode.chatRealtimeSubscriptionFailed,
+        'participant preferences mutation failed',
+        flowId: _newFlow('update_participant_prefs'),
+        context: {
+          'conversationId': conversationId,
+          'targetUid': _safeUid(uid),
+        },
+        error: error,
+        stackTrace: st,
+      );
+    }
 
-    final prev = _convPrefs[conversationId] ?? _ParticipantPrefs();
+    final prev = _convPrefs[conversationId] ?? const _ParticipantPrefs();
     _convPrefs[conversationId] = prev.copyWith(
       muted: muted,
       lastReadAt: lastReadAt,
     );
+  }
+
+  String _safeUid(String? uid) {
+    final value = (uid ?? '').trim();
+    if (value.isEmpty) return '';
+    if (value.length <= 8) return value;
+    return '${value.substring(0, 8)}...';
   }
 }
 
@@ -457,8 +872,9 @@ class _ParticipantPrefs {
     final muted = row['muted'] == true;
     final archived = row['archived'] == true || row['archived'] == 1;
     final lastReadRaw = row['last_read_at']?.toString();
-    final lastReadAt =
-        (lastReadRaw == null || lastReadRaw.isEmpty) ? null : DateTime.tryParse(lastReadRaw)?.toUtc();
+    final lastReadAt = (lastReadRaw == null || lastReadRaw.isEmpty)
+        ? null
+        : DateTime.tryParse(lastReadRaw)?.toUtc();
     return _ParticipantPrefs(
       muted: muted,
       archived: archived,

@@ -6,16 +6,19 @@
 // - تنسيقات جاهزة لعرض وقت الرسائل في القائمة والفقاعات.
 // - فواصل الأيام في شاشة الدردشة: "اليوم" / "أمس" / اسم اليوم / YYYY-MM-DD.
 // - دوال مساعدة: نفس_اليوم، أمس، ضمن آخر N أيام، تحليل/تحويل ISO-UTC مرن.
-// - بدون الاعتماد على حزمة intl.
 // - إضافات اختيارية: صيغة نسبية مختصرة، تجميع حسب اليوم، نطاق وقت قصير، مدة H:MM:SS.
 //
 // ملاحظات:
 // - جميع التنسيقات تُعرَض بالتوقيت المحلي للمستخدم.
+// - تُحسم لغة النصوص من Intl.defaultLocale افتراضيًا مع دعم تمرير languageCode.
 // - يُفضَّل التخزين/النقل بتوقيت UTC (استخدم toIsoUtc/parseDateFlexibleUtc).
 
 library time_utils;
 
-/// أسماء الأيام بالعربية وفق Dart: Monday=1..Sunday=7.
+import 'package:aelmamclinic/utils/app_locale.dart';
+import 'package:intl/intl.dart';
+
+/// أسماء الأيام وفق Dart: Monday=1..Sunday=7.
 const List<String> _kWeekdaysAr = <String>[
   'الإثنين',
   'الثلاثاء',
@@ -25,6 +28,73 @@ const List<String> _kWeekdaysAr = <String>[
   'السبت',
   'الأحد',
 ];
+
+const List<String> _kWeekdaysEn = <String>[
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday',
+];
+
+String _resolvedLanguageCode([String? languageCode]) {
+  return AppLocale.normalize(
+    languageCode ?? Intl.defaultLocale ?? AppLocale.defaultLanguageCode,
+  );
+}
+
+bool _useArabic([String? languageCode]) {
+  return _resolvedLanguageCode(languageCode) == AppLocale.arabicLanguageCode;
+}
+
+String _todayLabel([String? languageCode]) =>
+    _useArabic(languageCode) ? 'اليوم' : 'Today';
+
+String _yesterdayLabel([String? languageCode]) =>
+    _useArabic(languageCode) ? 'أمس' : 'Yesterday';
+
+String _tomorrowLabel([String? languageCode]) =>
+    _useArabic(languageCode) ? 'غدًا' : 'Tomorrow';
+
+String _nowLabel([String? languageCode]) =>
+    _useArabic(languageCode) ? 'الآن' : 'Now';
+
+String _momentsLabel({required bool future, String? languageCode}) {
+  if (_useArabic(languageCode)) {
+    return future ? 'بعد لحظات' : _nowLabel(languageCode);
+  }
+  return future ? 'In moments' : _nowLabel(languageCode);
+}
+
+String _quantityUnitAr(int value, String singular, String dual, String plural) {
+  if (value == 1) return singular;
+  if (value == 2) return dual;
+  return '$value $plural';
+}
+
+String _quantityUnitEn(int value, String singular, String plural) {
+  return value == 1 ? '1 $singular' : '$value $plural';
+}
+
+String _relativeText({
+  required int value,
+  required String singularAr,
+  required String dualAr,
+  required String pluralAr,
+  required String singularEn,
+  required String pluralEn,
+  required bool future,
+  String? languageCode,
+}) {
+  if (_useArabic(languageCode)) {
+    final unit = _quantityUnitAr(value, singularAr, dualAr, pluralAr);
+    return future ? 'بعد $unit' : 'منذ $unit';
+  }
+  final unit = _quantityUnitEn(value, singularEn, pluralEn);
+  return future ? 'In $unit' : '$unit ago';
+}
 
 String _two(int n) => n.toString().padLeft(2, '0');
 
@@ -129,12 +199,17 @@ String formatYmd(DateTime dt) {
 /// YYYY-MM-DD HH:mm (محلي).
 String formatYmdHhMm(DateTime dt) => '${formatYmd(dt)} ${formatHhMm(dt)}';
 
-/// اسم اليوم بالعربية للتاريخ المحدد (محليًا).
-String weekdayNameAr(DateTime dt) {
+/// اسم اليوم للتاريخ المحدد (محليًا) وفق اللغة الحالية أو الممررة.
+String weekdayName(DateTime dt, {String? languageCode}) {
   final l = dt.toLocal();
   final idx = (l.weekday - 1).clamp(0, _kWeekdaysAr.length - 1);
-  return _kWeekdaysAr[idx];
+  final names = _useArabic(languageCode) ? _kWeekdaysAr : _kWeekdaysEn;
+  return names[idx];
 }
+
+/// توافق خلفي للاستخدامات القديمة.
+String weekdayNameAr(DateTime dt) =>
+    weekdayName(dt, languageCode: AppLocale.arabicLanguageCode);
 
 /// -------- تنسيقات واجهة الدردشة --------
 
@@ -147,31 +222,38 @@ String formatChatListTimestamp(
   DateTime dt, {
   DateTime? now,
   bool useYesterdayLabel = false,
+  String? languageCode,
 }) {
   if (isToday(dt, now: now)) {
     return formatHhMm(dt);
   } else if (useYesterdayLabel && isYesterday(dt, now: now)) {
-    return 'أمس';
+    return _yesterdayLabel(languageCode);
   } else if (isWithinLastDays(dt, 7, now: now)) {
-    return weekdayNameAr(dt);
+    return weekdayName(dt, languageCode: languageCode);
   } else {
     return formatYmd(dt);
   }
 }
 
 /// تنسيق مختصر مناسب تحت فقاعات الرسائل (نفس قاعدة القائمة).
-String formatMessageTimestamp(DateTime dt, {DateTime? now}) =>
-    formatChatListTimestamp(dt, now: now);
+String formatMessageTimestamp(
+  DateTime dt, {
+  DateTime? now,
+  String? languageCode,
+}) =>
+    formatChatListTimestamp(dt, now: now, languageCode: languageCode);
 
 /// ترويسة فواصل الأيام في شاشة الدردشة (على نمط واتساب):
 /// - اليوم  → "اليوم"
 /// - أمس    → "أمس"
 /// - خلال الأسبوع → اسم اليوم
 /// - غير ذلك → YYYY-MM-DD
-String formatDayHeader(DateTime dt, {DateTime? now}) {
-  if (isToday(dt, now: now)) return 'اليوم';
-  if (isYesterday(dt, now: now)) return 'أمس';
-  if (isWithinLastDays(dt, 7, now: now)) return weekdayNameAr(dt);
+String formatDayHeader(DateTime dt, {DateTime? now, String? languageCode}) {
+  if (isToday(dt, now: now)) return _todayLabel(languageCode);
+  if (isYesterday(dt, now: now)) return _yesterdayLabel(languageCode);
+  if (isWithinLastDays(dt, 7, now: now)) {
+    return weekdayName(dt, languageCode: languageCode);
+  }
   return formatYmd(dt);
 }
 
@@ -179,56 +261,88 @@ String formatDayHeader(DateTime dt, {DateTime? now}) {
 /// أمثلة: "الآن"، "منذ دقيقة"، "منذ 5 دقائق"، "منذ ساعة"، "منذ ساعتين"، "منذ 5 ساعات",
 /// "أمس"، "منذ 3 أيام"، وبعد أسبوع نرجع YYYY-MM-DD.
 /// تدعم المستقبل أيضًا: "بعد دقيقة"، "بعد 3 ساعات"...
-String formatRelativeAr(DateTime dt, {DateTime? now}) {
+String formatRelative(DateTime dt, {DateTime? now, String? languageCode}) {
   final _now = (now ?? DateTime.now()).toLocal();
   final d = dt.toLocal();
   final diff = _now.difference(d);
   final future = diff.isNegative;
   final dur = diff.abs();
 
-  String past(String s) => 'منذ $s';
-  String futureS(String s) => 'بعد $s';
-
-  String choose(int value, String singular, String dual, String plural) {
-    if (value == 1) return singular;
-    if (value == 2) return dual;
-    return '$value $plural';
+  if (dur.inSeconds <= 10) {
+    return _momentsLabel(future: future, languageCode: languageCode);
   }
 
-  if (dur.inSeconds <= 10) return future ? 'بعد لحظات' : 'الآن';
-
   if (dur.inMinutes < 1) {
-    final txt = choose(dur.inSeconds, 'ثانية', 'ثانيتين', 'ثوانٍ');
-    return future ? futureS(txt) : past(txt);
+    return _relativeText(
+      value: dur.inSeconds,
+      singularAr: 'ثانية',
+      dualAr: 'ثانيتين',
+      pluralAr: 'ثوانٍ',
+      singularEn: 'second',
+      pluralEn: 'seconds',
+      future: future,
+      languageCode: languageCode,
+    );
   }
 
   if (dur.inMinutes < 60) {
-    final txt = choose(dur.inMinutes, 'دقيقة', 'دقيقتين', 'دقائق');
-    return future ? futureS(txt) : past(txt);
+    return _relativeText(
+      value: dur.inMinutes,
+      singularAr: 'دقيقة',
+      dualAr: 'دقيقتين',
+      pluralAr: 'دقائق',
+      singularEn: 'minute',
+      pluralEn: 'minutes',
+      future: future,
+      languageCode: languageCode,
+    );
   }
 
   if (dur.inHours < 24) {
-    final txt = choose(dur.inHours, 'ساعة', 'ساعتين', 'ساعات');
-    return future ? futureS(txt) : past(txt);
+    return _relativeText(
+      value: dur.inHours,
+      singularAr: 'ساعة',
+      dualAr: 'ساعتين',
+      pluralAr: 'ساعات',
+      singularEn: 'hour',
+      pluralEn: 'hours',
+      future: future,
+      languageCode: languageCode,
+    );
   }
 
   // أمس/غد
-  if (isYesterday(d, now: _now)) return 'أمس';
+  if (isYesterday(d, now: _now)) return _yesterdayLabel(languageCode);
   final tomorrow = startOfDayLocal(_now).add(const Duration(days: 1));
-  if (isSameLocalDay(d, tomorrow)) return 'غدًا';
+  if (isSameLocalDay(d, tomorrow)) return _tomorrowLabel(languageCode);
 
   if (dur.inDays < 7) {
-    final txt = choose(dur.inDays, 'يوم', 'يومين', 'أيام');
-    return future ? futureS(txt) : past(txt);
+    return _relativeText(
+      value: dur.inDays,
+      singularAr: 'يوم',
+      dualAr: 'يومين',
+      pluralAr: 'أيام',
+      singularEn: 'day',
+      pluralEn: 'days',
+      future: future,
+      languageCode: languageCode,
+    );
   }
 
   return formatYmd(dt);
 }
 
+String formatRelativeAr(DateTime dt, {DateTime? now}) =>
+    formatRelative(dt, now: now, languageCode: AppLocale.arabicLanguageCode);
+
 /// -------- صيغ إضافية اختيارية --------
 
 /// صيغة نسبية مختصرة جداً: "الآن" / "5ث" / "2د" / "3س" / "أمس" / "4ي" / تاريخ.
-String formatRelativeCompactAr(DateTime dt, {DateTime? now}) {
+String formatRelativeCompact(
+  DateTime dt, {
+  DateTime? now,
+  String? languageCode,
+}) {
   final _now = (now ?? DateTime.now()).toLocal();
   final d = dt.toLocal();
   final diff = _now.difference(d);
@@ -237,22 +351,42 @@ String formatRelativeCompactAr(DateTime dt, {DateTime? now}) {
 
   String unit(num v, String u) => '${v.toStringAsFixed(0)}$u';
 
-  if (dur.inSeconds <= 10) return future ? 'بعد لحظات' : 'الآن';
+  if (dur.inSeconds <= 10) {
+    return _momentsLabel(future: future, languageCode: languageCode);
+  }
   if (dur.inMinutes < 1)
     return future
-        ? 'بعد ${unit(dur.inSeconds, "ث")}'
-        : unit(dur.inSeconds, 'ث');
+        ? (_useArabic(languageCode)
+            ? 'بعد ${unit(dur.inSeconds, "ث")}'
+            : 'In ${unit(dur.inSeconds, "s")}')
+        : unit(dur.inSeconds, _useArabic(languageCode) ? 'ث' : 's');
   if (dur.inMinutes < 60)
     return future
-        ? 'بعد ${unit(dur.inMinutes, "د")}'
-        : unit(dur.inMinutes, 'د');
+        ? (_useArabic(languageCode)
+            ? 'بعد ${unit(dur.inMinutes, "د")}'
+            : 'In ${unit(dur.inMinutes, "m")}')
+        : unit(dur.inMinutes, _useArabic(languageCode) ? 'د' : 'm');
   if (dur.inHours < 24)
-    return future ? 'بعد ${unit(dur.inHours, "س")}' : unit(dur.inHours, 'س');
-  if (isYesterday(d, now: _now)) return 'أمس';
+    return future
+        ? (_useArabic(languageCode)
+            ? 'بعد ${unit(dur.inHours, "س")}'
+            : 'In ${unit(dur.inHours, "h")}')
+        : unit(dur.inHours, _useArabic(languageCode) ? 'س' : 'h');
+  if (isYesterday(d, now: _now)) return _yesterdayLabel(languageCode);
   if (dur.inDays < 7)
-    return future ? 'بعد ${unit(dur.inDays, "ي")}' : unit(dur.inDays, 'ي');
+    return future
+        ? (_useArabic(languageCode)
+            ? 'بعد ${unit(dur.inDays, "ي")}'
+            : 'In ${unit(dur.inDays, "d")}')
+        : unit(dur.inDays, _useArabic(languageCode) ? 'ي' : 'd');
   return formatYmd(dt);
 }
+
+String formatRelativeCompactAr(DateTime dt, {DateTime? now}) => formatRelativeCompact(
+      dt,
+      now: now,
+      languageCode: AppLocale.arabicLanguageCode,
+    );
 
 /// نطاق وقت قصير في نفس اليوم: "10:20–11:05".
 /// إن كان التاريخ مختلفًا: يُعاد "YYYY-MM-DD HH:mm – YYYY-MM-DD HH:mm".

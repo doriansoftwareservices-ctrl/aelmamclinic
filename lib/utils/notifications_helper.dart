@@ -22,41 +22,89 @@ import 'dart:io' show Platform;
 
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
 import 'package:aelmamclinic/models/item.dart';
+import 'package:aelmamclinic/utils/app_formatters.dart';
+import 'package:aelmamclinic/utils/app_locale.dart';
 
 class NotificationsHelper {
   NotificationsHelper._();
   static final NotificationsHelper instance = NotificationsHelper._();
+  static const String _localePrefsKey = 'app.locale_code';
+  static const String _lowStockChannelBaseId = 'low_stock_channel';
 
   final FlutterLocalNotificationsPlugin _fln =
       FlutterLocalNotificationsPlugin();
-
-  /// قناة أندرويد لتنبيهات انخفاض المخزون
-  static const AndroidNotificationChannel _lowStockChannel =
-      AndroidNotificationChannel(
-    'low_stock_channel',
-    'تنبيهات انخفاض المخزون',
-    description:
-        'يتم استخدام هذه القناة لتنبيهك عندما يقترب مخزون صنف من النفاد.',
-    importance: Importance.max,
-  );
 
   /// مفتاح تجميعي لإشعارات "انخفاض المخزون" على أندرويد
   static const String _lowStockGroupKey = 'group_low_stock';
 
   bool _initialized = false;
+  String _languageCode = AppLocale.defaultLanguageCode;
 
   // بثّ نقرات الإشعارات (foreground/background)
   final StreamController<String> _tapCtrl =
       StreamController<String>.broadcast();
   Stream<String> get onTap => _tapCtrl.stream;
 
+  String get _lowStockChannelId =>
+      '${_lowStockChannelBaseId}_${AppLocale.normalize(_languageCode)}_v2';
+  bool get _isArabic => AppLocale.isRtlCode(_languageCode);
+  String get _lowStockChannelName =>
+      _isArabic ? 'تنبيهات انخفاض المخزون' : 'Low stock alerts';
+  String get _lowStockChannelDescription => _isArabic
+      ? 'يتم استخدام هذه القناة لتنبيهك عندما يقترب مخزون صنف من النفاد.'
+      : 'This channel is used to alert you when an item is running low.';
+  String get _lowStockSummaryBody => _isArabic
+      ? 'تم تنبيهك بخصوص أصناف منخفضة المخزون.'
+      : 'You were alerted about items that are running low.';
+  String get _lowStockExpandedBody => _isArabic
+      ? 'تحذير انخفاض المخزون — راجع إدارة المستودع لتحديث الطلبية.'
+      : 'Low stock warning — review repository management to update the order.';
+
+  String _localizedStock(num stock) => AppFormatters.localizeDigits(
+        '$stock',
+        languageCode: _languageCode,
+      );
+
+  Future<void> _loadLanguageCode() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _languageCode = AppLocale.normalize(prefs.getString(_localePrefsKey));
+    } catch (_) {
+      _languageCode = AppLocale.defaultLanguageCode;
+    }
+  }
+
+  Future<void> setLanguageCode(String languageCode) async {
+    _languageCode = AppLocale.normalize(languageCode);
+    if (_initialized && Platform.isAndroid) {
+      await _createLowStockChannel();
+    }
+  }
+
+  Future<void> _createLowStockChannel() async {
+    if (!Platform.isAndroid) return;
+    await _fln
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(
+          AndroidNotificationChannel(
+            _lowStockChannelId,
+            _lowStockChannelName,
+            description: _lowStockChannelDescription,
+            importance: Importance.max,
+          ),
+        );
+  }
+
   /* ─── التهيئة + طلب الأذونات ─── */
   Future<void> init() async {
     if (_initialized) return;
+    await _loadLanguageCode();
 
     // مناطق الزمن
     tz.initializeTimeZones();
@@ -89,10 +137,7 @@ class NotificationsHelper {
     );
 
     // إنشاء القناة (Android)
-    await _fln
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(_lowStockChannel);
+    await _createLowStockChannel();
 
     // اطلب أذونات النظام عند الحاجة (Android 13+ / iOS / macOS)
     await requestPermissions();
@@ -136,17 +181,17 @@ class NotificationsHelper {
     final (id, name, stock) = _extractItemInfo(item);
 
     final androidDetails = AndroidNotificationDetails(
-      _lowStockChannel.id,
-      _lowStockChannel.name,
-      channelDescription: _lowStockChannel.description,
+      _lowStockChannelId,
+      _lowStockChannelName,
+      channelDescription: _lowStockChannelDescription,
       importance: Importance.max,
       priority: Priority.high,
       category: AndroidNotificationCategory.alarm,
       ticker: 'low_stock',
       groupKey: _lowStockGroupKey,
-      styleInformation: const BigTextStyleInformation(
+      styleInformation: BigTextStyleInformation(
         // نص طويل يظهر عند التوسيع
-        'تحذير انخفاض المخزون — راجع إدارة المستودع لتحديث الطلبية.',
+        _lowStockExpandedBody,
       ),
     );
 
@@ -166,8 +211,10 @@ class NotificationsHelper {
     // إشعار الفرد
     await _fln.show(
       id, // notification id
-      '⚠️ $name أوشك على النفاد',
-      'المتبقي في المستودع: $stock وحدات فقط!',
+      _isArabic ? '⚠️ $name أوشك على النفاد' : '⚠️ $name is running low',
+      _isArabic
+          ? 'المتبقي في المستودع: ${_localizedStock(stock)} وحدات فقط!'
+          : 'Only ${_localizedStock(stock)} units remain in stock!',
       NotificationDetails(
         android: androidDetails,
         iOS: darwinDetails,
@@ -179,14 +226,13 @@ class NotificationsHelper {
     // إشعار تجميعي (Group Summary) — يحسّن العرض عند تعدّد الأصناف
     await _fln.show(
       0, // ثابت للـ summary
-      'تنبيهات انخفاض المخزون',
-      'تم تنبيهك بخصوص أصناف منخفضة المخزون.',
-      const NotificationDetails(
+      _lowStockChannelName,
+      _lowStockSummaryBody,
+      NotificationDetails(
         android: AndroidNotificationDetails(
-          'low_stock_channel',
-          'تنبيهات انخفاض المخزون',
-          channelDescription:
-              'يتم استخدام هذه القناة لتنبيهك عندما يقترب مخزون صنف من النفاد.',
+          _lowStockChannelId,
+          _lowStockChannelName,
+          channelDescription: _lowStockChannelDescription,
           styleInformation: DefaultStyleInformation(true, true),
           groupKey: _lowStockGroupKey,
           setAsGroupSummary: true,

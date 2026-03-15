@@ -2,7 +2,37 @@ table:
   name: chat_typing
   schema: public
 insert_permissions:
+  - role: employee
+    permission:
+      check:
+        _exists:
+          _table:
+            name: chat_participants
+            schema: public
+          _where:
+            conversation_id:
+              _ceq: conversation_id
+            user_uid:
+              _eq: X-Hasura-User-Id
+        user_uid:
+          _eq: X-Hasura-User-Id
+      columns: '*'
   - role: me
+    permission:
+      check:
+        _exists:
+          _table:
+            name: chat_participants
+            schema: public
+          _where:
+            conversation_id:
+              _ceq: conversation_id
+            user_uid:
+              _eq: X-Hasura-User-Id
+        user_uid:
+          _eq: X-Hasura-User-Id
+      columns: '*'
+  - role: owner
     permission:
       check:
         _exists:
@@ -122,7 +152,25 @@ select_permissions:
             user_uid:
               _eq: X-Hasura-User-Id
 update_permissions:
+  - role: employee
+    permission:
+      columns: '*'
+      filter:
+        user_uid:
+          _eq: X-Hasura-User-Id
+      check:
+        user_uid:
+          _eq: X-Hasura-User-Id
   - role: me
+    permission:
+      columns: '*'
+      filter:
+        user_uid:
+          _eq: X-Hasura-User-Id
+      check:
+        user_uid:
+          _eq: X-Hasura-User-Id
+  - role: owner
     permission:
       columns: '*'
       filter:
@@ -155,7 +203,17 @@ update_permissions:
         user_uid:
           _eq: X-Hasura-User-Id
 delete_permissions:
+  - role: employee
+    permission:
+      filter:
+        user_uid:
+          _eq: X-Hasura-User-Id
   - role: me
+    permission:
+      filter:
+        user_uid:
+          _eq: X-Hasura-User-Id
+  - role: owner
     permission:
       filter:
         user_uid:

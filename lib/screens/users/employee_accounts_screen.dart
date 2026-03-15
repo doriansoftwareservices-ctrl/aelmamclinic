@@ -1,4 +1,3 @@
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -14,6 +13,8 @@ import 'package:aelmamclinic/services/employee_seat_service.dart';
 import 'package:aelmamclinic/services/nhost_employee_accounts_service.dart';
 import 'package:aelmamclinic/utils/chat_code_utils.dart';
 import 'package:aelmamclinic/utils/time.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class EmployeeAccountsScreen extends StatefulWidget {
   const EmployeeAccountsScreen({super.key});
@@ -106,14 +107,14 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
           _notifiedRequestIds.add(req.id);
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('تم اعتماد طلب الموظف بنجاح.')),
+              const SnackBar(content: LocalizedText('تم اعتماد طلب الموظف بنجاح.')),
             );
           }
         } else if (req.status == 'rejected') {
           _notifiedRequestIds.add(req.id);
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('تم رفض طلب الموظف.')),
+              const SnackBar(content: LocalizedText('تم رفض طلب الموظف.')),
             );
           }
         }
@@ -136,22 +137,22 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          title: Text(title),
+          title: LocalizedText(title),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
                 controller: emailCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'البريد الإلكتروني',
+                decoration: InputDecoration(
+                  labelText: context.trRaw('البريد الإلكتروني'),
                 ),
               ),
               const SizedBox(height: 8),
               TextField(
                 controller: passCtrl,
                 obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'كلمة المرور',
+                decoration: InputDecoration(
+                  labelText: context.trRaw('كلمة المرور'),
                 ),
               ),
             ],
@@ -159,14 +160,14 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('إلغاء'),
+              child: const LocalizedText('إلغاء'),
             ),
             FilledButton(
               onPressed: () => Navigator.of(ctx).pop({
                 'email': emailCtrl.text.trim(),
                 'password': passCtrl.text,
               }),
-              child: Text(confirmLabel),
+              child: LocalizedText(confirmLabel),
             ),
           ],
         );
@@ -219,7 +220,7 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
       if (res['ok'] == true) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('تم إنشاء حساب الموظف بنجاح.')),
+          const SnackBar(content: LocalizedText('تم إنشاء حساب الموظف بنجاح.')),
         );
         await _refresh();
         return;
@@ -228,7 +229,7 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_mapServerError(e))),
+        SnackBar(content: LocalizedText(_mapServerError(e))),
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -281,7 +282,7 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
         if (proceed == true) {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('تم إرسال الطلب للمراجعة.')),
+            const SnackBar(content: LocalizedText('تم إرسال الطلب للمراجعة.')),
           );
         }
         await _refresh();
@@ -291,7 +292,7 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_mapServerError(e))),
+        SnackBar(content: LocalizedText(_mapServerError(e))),
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -390,7 +391,7 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
                         );
                         await _refreshSeatRequests();
                       },
-                child: const Text('استكمال الدفع'),
+                child: const LocalizedText('استكمال الدفع'),
               ),
           ],
         ),
@@ -398,7 +399,7 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
     );
   }
 
-  Widget _buildLockedView(ColorScheme scheme) {
+  Widget _buildLockedView(ColorScheme scheme, {required bool canOpenMyPlan}) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -409,28 +410,32 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
             children: [
               Icon(Icons.lock_rounded, color: scheme.tertiary, size: 36),
               const SizedBox(height: 10),
-              const Text(
-                'قم برفع خطة اشتراكك لإضافة حسابات موظفين',
+              const LocalizedText('قم برفع خطة اشتراكك لإضافة حسابات موظفين',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 6),
-              Text(
-                'قم بالترقية لإدارة حسابات موظفي العيادة.',
+              LocalizedText('قم بالترقية لإدارة حسابات موظفي العيادة.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: scheme.onSurface.withValues(alpha: .7)),
               ),
               const SizedBox(height: 12),
-              FilledButton.icon(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const MyPlanScreen()),
-                  );
-                },
-                icon: const Icon(Icons.workspace_premium_rounded),
-                label: const Text('عرض الخطط المدفوعة'),
-              ),
+              if (canOpenMyPlan)
+                FilledButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const MyPlanScreen()),
+                    );
+                  },
+                  icon: const Icon(Icons.workspace_premium_rounded),
+                  label: const LocalizedText('إدارة الخطة'),
+                )
+              else
+                LocalizedText('فقط مالك العيادة يمكنه إدارة الخطة أو طلب التفعيل.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: scheme.onSurface.withValues(alpha: .7)),
+                ),
             ],
           ),
         ),
@@ -449,14 +454,12 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
             children: [
               Icon(Icons.block_rounded, color: scheme.error, size: 34),
               const SizedBox(height: 10),
-              const Text(
-                'ليست لديك صلاحية لإدارة حسابات الموظفين',
+              const LocalizedText('ليست لديك صلاحية لإدارة حسابات الموظفين',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 6),
-              Text(
-                'هذه الشاشة مخصصة لمالك العيادة.',
+              LocalizedText('هذه الشاشة مخصصة لمالك العيادة.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: scheme.onSurface.withValues(alpha: .7)),
               ),
@@ -482,8 +485,7 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'ملخص المقاعد',
+          const LocalizedText('ملخص المقاعد',
             style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
           ),
           const SizedBox(height: 8),
@@ -497,8 +499,7 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
             ],
           ),
           const SizedBox(height: 8),
-          Text(
-            'إجمالي الحسابات المرتبطة: $totalEmployees',
+          LocalizedText('إجمالي الحسابات المرتبطة: $totalEmployees',
             style: TextStyle(
               color: scheme.onSurface.withValues(alpha: .7),
             ),
@@ -545,13 +546,14 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
     final hasFeature =
         auth.isSuperAdmin || auth.featureAllowed(FeatureKeys.employeeAccounts);
     final role = auth.role?.toLowerCase();
+    final isOwner = role == 'owner';
     final roleAllowed = auth.isSuperAdmin || role == 'owner' || role == 'admin';
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('حسابات الموظفين'),
+          title: const LocalizedText('حسابات الموظفين'),
           actions: [
             if (_busy)
               const Padding(
@@ -569,7 +571,7 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
         body: Builder(
           builder: (_) {
             if (!hasFeature) {
-              return _buildLockedView(scheme);
+              return _buildLockedView(scheme, canOpenMyPlan: isOwner);
             }
             if (!roleAllowed || !canAccess) {
               return _buildNoAccess(scheme);
@@ -597,8 +599,7 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
                         Center(
                           child: Padding(
                             padding: const EdgeInsets.all(16),
-                            child: Text(
-                              'تعذّر تحميل الحسابات:\n${snapshot.error}',
+                            child: LocalizedText('تعذّر تحميل الحسابات:\n${snapshot.error}',
                               textAlign: TextAlign.center,
                               style: const TextStyle(color: Colors.red),
                             ),
@@ -639,8 +640,7 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
-                              'إدارة الموظفين',
+                            const LocalizedText('إدارة الموظفين',
                               style: TextStyle(
                                 fontWeight: FontWeight.w700,
                                 fontSize: 14,
@@ -671,8 +671,7 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
                                         color: scheme.error),
                                     const SizedBox(width: 8),
                                     Expanded(
-                                      child: Text(
-                                        'لديك $activeEmployees موظفين. الحد الأقصى $limit.',
+                                      child: LocalizedText('لديك $activeEmployees موظفين. الحد الأقصى $limit.',
                                         style: TextStyle(
                                           color: scheme.error,
                                           fontWeight: FontWeight.w600,
@@ -701,18 +700,28 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
                             ),
                             if (reachedLimit && !isProPlan) ...[
                               const SizedBox(height: 6),
-                              TextButton.icon(
-                                onPressed: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => const MyPlanScreen(),
-                                    ),
-                                  );
-                                },
-                                icon: const Icon(Icons.workspace_premium_rounded),
-                                label: const Text('ترقية الخطة'),
-                              ),
+                              if (isOwner)
+                                TextButton.icon(
+                                  onPressed: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => const MyPlanScreen(),
+                                      ),
+                                    );
+                                  },
+                                  icon:
+                                      const Icon(Icons.workspace_premium_rounded),
+                                  label: const LocalizedText('إدارة الخطة'),
+                                )
+                              else
+                                LocalizedText(
+                                  'فقط مالك العيادة يمكنه إدارة الخطة أو طلب التفعيل.',
+                                  style: TextStyle(
+                                    color: scheme.onSurface
+                                        .withValues(alpha: .7),
+                                  ),
+                                ),
                             ],
                           ],
                         ),
@@ -722,7 +731,7 @@ class _EmployeeAccountsScreenState extends State<EmployeeAccountsScreen> {
                         const Center(
                           child: Padding(
                             padding: EdgeInsets.all(16),
-                            child: Text('لا يوجد موظفون مرتبطون بالحساب.'),
+                            child: LocalizedText('لا يوجد موظفون مرتبطون بالحساب.'),
                           ),
                         )
                       else

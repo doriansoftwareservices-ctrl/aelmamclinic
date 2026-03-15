@@ -1,6 +1,5 @@
 // lib/screens/repository/purchases_consumptions/pc_menu_screen.dart
 
-import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 
 /*── تصميم TBIAN ─*/
@@ -16,7 +15,7 @@ class PcMenuScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,

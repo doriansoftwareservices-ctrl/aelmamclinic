@@ -6,6 +6,7 @@ import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:aelmamclinic/utils/app_formatters.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -16,7 +17,6 @@ import 'package:aelmamclinic/core/features.dart';
 
 import 'package:aelmamclinic/providers/statistics_provider.dart';
 import 'package:aelmamclinic/services/db_service.dart';
-import 'package:aelmamclinic/services/billing_service.dart';
 
 /*── شاشات مختلفة ───────────────────────────────────────────*/
 import 'package:aelmamclinic/services/backup_restore_service.dart';
@@ -53,10 +53,13 @@ import 'package:aelmamclinic/screens/complaints/complaints_screen.dart';
 import 'package:aelmamclinic/screens/clinic/clinic_profile_screen.dart';
 import 'package:aelmamclinic/screens/subscription/my_plan_screen.dart';
 import 'package:aelmamclinic/utils/chat_code_utils.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
+import 'package:aelmamclinic/widgets/language_switch_button.dart';
 
 /*── لتسجيل الخروج ─*/
 import 'package:aelmamclinic/screens/auth/login_screen.dart';
 import 'package:aelmamclinic/screens/admin/admin_dashboard_screen.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
 
 /// غيّر هذا الثابت حسب المطلوب:
 /// true  → إخفاء العناصر غير المسموح بها.
@@ -74,7 +77,6 @@ class StatisticsOverviewScreen extends StatefulWidget {
 class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
     with WidgetsBindingObserver {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
-  final BillingService _billing = BillingService();
 
   // عدّاد المحادثات غير المقروءة (يأتي من ChatProvider)
   StreamSubscription<String>? _dbChangesSub;
@@ -100,13 +102,13 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
       if (!mounted) return;
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تم إنشاء ملف HTML في Downloads:\n${file.path}')),
+        SnackBar(content: LocalizedText('تم إنشاء ملف HTML في Downloads:\n${file.path}')),
       );
     } catch (e) {
       if (!mounted) return;
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذّر استخراج البيانات: $e')),
+        SnackBar(content: LocalizedText('تعذّر استخراج البيانات: $e')),
       );
     }
   }
@@ -118,14 +120,14 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final auth = context.read<AuthProvider>();
-      if (auth.isSuperAdmin) {
+      if (auth.canEnterRemoteAdminShell) {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const AdminDashboardScreen()),
         );
       }
     });
     final auth = context.read<AuthProvider>();
-    if (auth.isSuperAdmin) {
+    if (auth.canEnterRemoteAdminShell) {
       return;
     }
     _refreshComplaintsBadge();
@@ -134,9 +136,11 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
         _refreshComplaintsBadge();
       }
     });
-    _checkPlanExpiryNotice();
-    _checkPlanUpgradeNotice();
     _attachAuthListener();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _syncPlanUiFromAuth();
+    });
   }
 
   void _attachAuthListener() {
@@ -159,8 +163,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
     final stamp = _planStamp(auth);
     if (stamp == _lastPlanStamp) return;
     _lastPlanStamp = stamp;
-    _checkPlanUpgradeNotice();
-    _checkPlanExpiryNotice();
+    _syncPlanUiFromAuth();
   }
 
   @override
@@ -197,35 +200,38 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
     }
   }
 
+  Future<void> _syncPlanUiFromAuth() async {
+    await _checkPlanExpiryNotice();
+    await _checkPlanUpgradeNotice();
+  }
+
   Future<void> _checkPlanExpiryNotice() async {
     final auth = context.read<AuthProvider>();
     if (auth.isSuperAdmin) return;
-    if ((auth.role ?? '').toLowerCase() != 'owner') return;
-    try {
-      final details = await _billing.fetchMyPlanDetails();
-      final planCode =
-          (details['plan_code'] ?? 'free').toString().toLowerCase();
-      final endRaw = details['plan_end_at']?.toString();
+    if ((auth.role ?? '').toLowerCase() != 'owner') {
       if (!mounted) return;
-      if (planCode == 'free' || endRaw == null || endRaw.isEmpty) {
-        setState(() {
-          _planDaysLeft = null;
-          _planExpirySoon = false;
-        });
-        return;
-      }
-      final endAt = DateTime.tryParse(endRaw)?.toLocal();
-      if (endAt == null) return;
-      final daysLeft = endAt.difference(DateTime.now()).inDays;
-      final show = daysLeft >= 0 && daysLeft <= 7;
       setState(() {
-        _planDaysLeft = daysLeft;
-        _planExpirySoon = show;
+        _planDaysLeft = null;
+        _planExpirySoon = false;
       });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _planExpirySoon = false);
+      return;
     }
+    final planCode = auth.planCode.toLowerCase();
+    final endAt = auth.planEndAt?.toLocal();
+    if (!mounted) return;
+    if (planCode == 'free' || endAt == null) {
+      setState(() {
+        _planDaysLeft = null;
+        _planExpirySoon = false;
+      });
+      return;
+    }
+    final daysLeft = endAt.difference(DateTime.now()).inDays;
+    final show = daysLeft >= 0 && daysLeft <= 7;
+    setState(() {
+      _planDaysLeft = daysLeft;
+      _planExpirySoon = show;
+    });
   }
 
   Future<void> _checkPlanUpgradeNotice() async {
@@ -237,7 +243,6 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
     if (uid == null || uid.isEmpty) return;
 
     try {
-      await auth.refreshAndValidateCurrentUser();
       final planCode = auth.planCode.toLowerCase();
       final endAt = auth.planEndAt;
       if (planCode == 'free' || endAt == null) return;
@@ -255,16 +260,18 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
       await showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('تمت الموافقة على الترقية'),
-          content: Text(
-            'تمت مراجعة طلبك والموافقة عليه.\n'
-            'تم تفعيل الخطة $planLabel وتنتهي بتاريخ $endStr.\n'
-            'يرجى تسجيل الخروج والدخول مرة أخرى لتفعيل المميزات الجديدة.',
+          title: const LocalizedText('تمت الموافقة على الترقية'),
+          content: LocalizedText(
+            _planUpgradeApprovalMessage(
+              context,
+              planLabel: planLabel,
+              endStr: endStr,
+            ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('تم'),
+              child: const LocalizedText('تم'),
             ),
           ],
         ),
@@ -277,19 +284,55 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
     if (c == 'year_pro') return 'السنوية برو';
     if (c == 'year_plus') return 'السنوية بلس';
     if (c == 'year' || c.contains('annual')) return 'السنوية';
-    if (c == 'month_pro') return 'الشهرية برو';
-    if (c == 'month_plus') return 'الشهرية بلس';
-    if (c == 'month') return 'الشهرية';
+    if (c == 'trial_month') return 'التجريبية الشهرية';
+    if (c == 'month_pro') return 'الشهرية برو القديمة';
+    if (c == 'month_plus') return 'الشهرية بلس القديمة';
+    if (c == 'month') return 'الشهرية القديمة';
     if (c == 'free') return 'المجانية';
     return c.toUpperCase();
   }
 
+  String _planUpgradeApprovalMessage(
+    BuildContext context, {
+    required String planLabel,
+    required String endStr,
+  }) {
+    final localizedPlan = context.trRaw(planLabel);
+    final localizedEnd = AppFormatters.localizeDigits(
+      endStr,
+      languageCode: context.currentLocaleCode,
+    );
+    final isTrial = planLabel == 'التجريبية الشهرية';
+    if (context.currentLocaleCode == 'en') {
+      return isTrial
+          ? 'Your monthly trial activation request was approved.\n'
+              'The $localizedPlan plan is now active and ends on $localizedEnd.\n'
+              'Please sign out and sign in again to enable the new features.'
+          : 'Your upgrade request was reviewed and approved.\n'
+              'The $localizedPlan plan has been activated and ends on $localizedEnd.\n'
+              'Please sign out and sign in again to enable the new features.';
+    }
+    return isTrial
+        ? 'تمت مراجعة طلب التفعيل التجريبي والموافقة عليه.\n'
+            'تم تفعيل الخطة $localizedPlan وتنتهي بتاريخ $localizedEnd.\n'
+            'يرجى تسجيل الخروج والدخول مرة أخرى لتفعيل المميزات الجديدة.'
+        : 'تمت مراجعة طلبك والموافقة عليه.\n'
+            'تم تفعيل الخطة $localizedPlan وتنتهي بتاريخ $localizedEnd.\n'
+            'يرجى تسجيل الخروج والدخول مرة أخرى لتفعيل المميزات الجديدة.';
+  }
+
   Widget _buildPlanExpiryBanner() {
     final scheme = Theme.of(context).colorScheme;
+    final auth = context.read<AuthProvider>();
+    final isOwner = auth.role?.toLowerCase() == 'owner';
     final daysLeft = _planDaysLeft ?? 0;
-    final msg = daysLeft == 0
-        ? 'تنتهي خطتك اليوم. يُفضّل تجديد الاشتراك.'
-        : 'تنتهي خطتك خلال $daysLeft يوم.';
+    final msg = context.currentLocaleCode == 'en'
+        ? (daysLeft == 0
+            ? 'Your plan ends today. Renewing is recommended.'
+            : 'Your plan ends in ${AppFormatters.localizeDigits('$daysLeft')} ${daysLeft == 1 ? 'day' : 'days'}.')
+        : (daysLeft == 0
+            ? 'تنتهي خطتك اليوم. يُفضّل تجديد الاشتراك.'
+            : 'تنتهي خطتك خلال ${AppFormatters.localizeDigits('$daysLeft')} يوم.');
     return NeuCard(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       child: Row(
@@ -297,18 +340,19 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
           Icon(Icons.warning_amber_rounded, color: scheme.error),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(
+            child: LocalizedText(
               msg,
               style: const TextStyle(fontWeight: FontWeight.w700),
             ),
           ),
-          TextButton(
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const MyPlanScreen()),
+          if (isOwner)
+            TextButton(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const MyPlanScreen()),
+              ),
+              child: const LocalizedText('تجديد'),
             ),
-            child: const Text('تجديد'),
-          ),
         ],
       ),
     );
@@ -319,8 +363,8 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
     final isFree = auth.planCode == 'free' && !auth.isSuperAdmin;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(isFree
-            ? 'هذه الميزة متاحة في الخطط المدفوعة فقط'
+        content: LocalizedText(isFree
+            ? 'هذه الميزة متاحة للخطط المدفوعة فقط.'
             : 'ليس لديك صلاحية للوصول إلى هذه الميزة'),
         behavior: SnackBarBehavior.floating,
         duration: Duration(seconds: 2),
@@ -332,7 +376,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
     final auth = context.read<AuthProvider>();
     final isFree = auth.planCode == 'free' && !auth.isSuperAdmin;
     final role = auth.role?.toLowerCase();
-    final canUpgrade = role == 'owner' || role == 'admin';
+    final canUpgrade = role == 'owner';
     _showNotAllowedSnack();
     if (!isFree || !canUpgrade) return;
     Navigator.push(
@@ -343,10 +387,10 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
 
   void _showUnderDevelopmentNotice() {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('هذا القسم تحت التطوير حاليًا'),
+      SnackBar(
+        content: Text(context.tr('dashboard_under_development_notice')),
         behavior: SnackBarBehavior.floating,
-        duration: Duration(seconds: 2),
+        duration: const Duration(seconds: 2),
       ),
     );
   }
@@ -355,7 +399,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
     final auth = context.read<AuthProvider>();
     final isFree = auth.planCode == 'free' && !auth.isSuperAdmin;
     final role = auth.role?.toLowerCase();
-    final canUpgrade = role == 'owner' || role == 'admin';
+    final canUpgrade = role == 'owner';
     _showNotAllowedSnack();
     if (!isFree || !canUpgrade) return;
     Navigator.push(
@@ -410,9 +454,13 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                 child: ListTile(
                   enabled: canCreate,
                   leading: const Icon(Icons.add_circle_outline),
-                  title: const Text('إنشاء عودة',
+                  title: const LocalizedText('إنشاء عودة',
                       style: TextStyle(fontWeight: FontWeight.w700)),
-                  trailing: const Icon(Icons.chevron_left_rounded),
+                  trailing: Icon(
+                    context.isRtl
+                        ? Icons.chevron_left_rounded
+                        : Icons.chevron_right_rounded,
+                  ),
                   onTap: canCreate
                       ? () {
                           Navigator.pop(ctx);
@@ -435,9 +483,13 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                 child: ListTile(
                   enabled: canView,
                   leading: const Icon(Icons.list_alt_outlined),
-                  title: const Text('استعراض العودات',
+                  title: const LocalizedText('استعراض العودات',
                       style: TextStyle(fontWeight: FontWeight.w700)),
-                  trailing: const Icon(Icons.chevron_left_rounded),
+                  trailing: Icon(
+                    context.isRtl
+                        ? Icons.chevron_left_rounded
+                        : Icons.chevron_right_rounded,
+                  ),
                   onTap: () {
                     Navigator.pop(ctx);
                     Navigator.push(
@@ -481,9 +533,13 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               child: ListTile(
                 leading: const Icon(Icons.medication_outlined),
-                title: const Text('إدارة الأدوية',
+                title: const LocalizedText('إدارة الأدوية',
                     style: TextStyle(fontWeight: FontWeight.w700)),
-                trailing: const Icon(Icons.chevron_left_rounded),
+                trailing: Icon(
+                  context.isRtl
+                      ? Icons.chevron_left_rounded
+                      : Icons.chevron_right_rounded,
+                ),
                 onTap: () {
                   Navigator.pop(ctx);
                   Navigator.push(
@@ -498,9 +554,13 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               child: ListTile(
                 leading: const Icon(Icons.medical_services_outlined),
-                title: const Text('وصفات المرضى',
+                title: const LocalizedText('وصفات المرضى',
                     style: TextStyle(fontWeight: FontWeight.w700)),
-                trailing: const Icon(Icons.chevron_left_rounded),
+                trailing: Icon(
+                  context.isRtl
+                      ? Icons.chevron_left_rounded
+                      : Icons.chevron_right_rounded,
+                ),
                 onTap: () {
                   Navigator.pop(ctx);
                   Navigator.push(
@@ -516,9 +576,13 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               child: ListTile(
                 leading: const Icon(Icons.list_alt_outlined),
-                title: const Text('قائمة الوصفات الطبية',
+                title: const LocalizedText('قائمة الوصفات الطبية',
                     style: TextStyle(fontWeight: FontWeight.w700)),
-                trailing: const Icon(Icons.chevron_left_rounded),
+                trailing: Icon(
+                  context.isRtl
+                      ? Icons.chevron_left_rounded
+                      : Icons.chevron_right_rounded,
+                ),
                 onTap: () {
                   Navigator.pop(ctx);
                   Navigator.push(
@@ -572,7 +636,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
           leading: Icon(icon, color: iconColor),
           title: Row(
             children: [
-              Expanded(child: Text(title, style: titleStyle)),
+              Expanded(child: LocalizedText(title, style: titleStyle)),
               if (showProBadge)
                 Container(
                   padding:
@@ -581,8 +645,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                     color: scheme.tertiary.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Text(
-                    'مدفوع',
+                  child: LocalizedText('مدفوع',
                     style: TextStyle(
                       color: scheme.tertiary,
                       fontSize: 11,
@@ -592,14 +655,14 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                 ),
               if (badge != null && badge.trim().isNotEmpty)
                 Container(
-                  margin: const EdgeInsets.only(left: 6),
+                  margin: const EdgeInsetsDirectional.only(start: 6),
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(
                     color: scheme.error.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Text(
+                  child: LocalizedText(
                     badge,
                     style: TextStyle(
                       color: scheme.error,
@@ -612,7 +675,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                 Container(
                   width: 8,
                   height: 8,
-                  margin: const EdgeInsets.only(left: 8),
+                  margin: const EdgeInsetsDirectional.only(start: 8),
                   decoration: const BoxDecoration(
                     color: Colors.red,
                     shape: BoxShape.circle,
@@ -708,39 +771,41 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
   /*──────── Drawer ────────*/
   Widget _buildDrawer(BuildContext context, StatisticsProvider stats) {
     final scheme = Theme.of(context).colorScheme;
+    final isRtl = context.isRtl;
 
     // استمع لتغيّرات AuthProvider كي تنعكس الصلاحيات مباشرة
     final auth = Provider.of<AuthProvider>(context);
-    return Directionality(
-      textDirection: ui.TextDirection.rtl,
-      child: Drawer(
-        width: 330,
-        backgroundColor: scheme.surface,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.horizontal(right: Radius.circular(22)),
+    return Drawer(
+      width: 330,
+      backgroundColor: scheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.horizontal(
+          right: isRtl ? const Radius.circular(22) : Radius.zero,
+          left: isRtl ? Radius.zero : const Radius.circular(22),
         ),
-        child: SafeArea(
-          child: Column(
-            children: [
-              _DrawerHeader(),
-              const Divider(height: 18),
-              Expanded(
-                child: ListView(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  children: [
-                    // الإحصاءات
-                    _featureDrawerItem(
-                      auth: auth,
-                      featureKey: FeatureKeys.dashboard,
-                      icon: Icons.insights_rounded,
-                      title: 'لوحة الإحصاءات',
-                      onTap: () => Navigator.pop(context),
-                    ),
+      ),
+      child: SafeArea(
+        child: Column(
+          children: [
+            const _DrawerHeader(),
+            const Divider(height: 18),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                children: [
+                  // الإحصاءات
+                  _featureDrawerItem(
+                    auth: auth,
+                    featureKey: FeatureKeys.dashboard,
+                    icon: Icons.insights_rounded,
+                    title: context.tr('dashboard_title'),
+                    onTap: () => Navigator.pop(context),
+                  ),
 
+                  if (auth.role?.toLowerCase() == 'owner')
                     _drawerItem(
                       icon: Icons.workspace_premium_rounded,
-                      title: 'خطتي',
+                      title: context.tr('dashboard_menu_my_plan'),
                       onTap: () {
                         Navigator.pop(context);
                         Navigator.push(
@@ -750,21 +815,20 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                         );
                       },
                     ),
-                    _featureDrawerItem(
-                      auth: auth,
-                      featureKey: FeatureKeys.clinicProfile,
-                      icon: Icons.local_hospital_outlined,
-                      title: 'بيانات المرفق الصحي',
-                      requireUpdate: true,
-                      onTap: () {
-                        Navigator.pop(context);
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => const ClinicProfileScreen()),
-                        );
-                      },
-                    ),
+                  _featureDrawerItem(
+                    auth: auth,
+                    featureKey: FeatureKeys.clinicProfile,
+                    icon: Icons.local_hospital_outlined,
+                    title: context.tr('dashboard_menu_clinic_profile'),
+                    requireUpdate: true,
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const ClinicProfileScreen()),
+                      );
+                    },
+                  ),
 
                     // المرضى
                     _featureDrawerItem(
@@ -772,7 +836,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                       featureKey: FeatureKeys.patientNew,
                       requireCreate: true,
                       icon: Icons.person_add_alt_1_rounded,
-                      title: 'تسجيل مريض جديد',
+                      title: context.tr('dashboard_menu_new_patient'),
                       onTap: () {
                         Navigator.pop(context);
                         Navigator.push(
@@ -785,7 +849,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                       auth: auth,
                       featureKey: FeatureKeys.patientsList,
                       icon: Icons.people_outline_rounded,
-                      title: 'قائمة المرضى',
+                      title: context.tr('dashboard_menu_patients_list'),
                       onTap: () {
                         Navigator.pop(context);
                         Navigator.push(
@@ -799,7 +863,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                       auth: auth,
                       featureKey: FeatureKeys.patientQuestions,
                       icon: Icons.quiz_outlined,
-                      title: 'أسئلة التشخيص للمرضى',
+                      title: context.tr('dashboard_menu_patient_questions'),
                       requireUpdate: true,
                       onTap: () {
                         Navigator.pop(context);
@@ -816,7 +880,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                       auth: auth,
                       featureKey: FeatureKeys.employees,
                       icon: Icons.groups_rounded,
-                      title: 'شؤون الموظفين',
+                      title: context.tr('dashboard_menu_employees'),
                       onTap: () {
                         Navigator.pop(context);
                         Navigator.push(
@@ -832,7 +896,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                       auth: auth,
                       featureKey: FeatureKeys.returns,
                       icon: Icons.assignment_return_outlined,
-                      title: 'العودات',
+                      title: context.tr('dashboard_menu_returns'),
                       onTap: () {
                         Navigator.pop(context);
                         _showReturnsMenu(context);
@@ -850,7 +914,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                       }
                       return _drawerItem(
                         icon: Icons.phone_rounded,
-                        title: 'حسابات الموظفين',
+                        title: context.tr('dashboard_menu_employee_accounts'),
                         enabled: allowed,
                         showProBadge: !auth.isSuperAdmin && !auth.isPro,
                         onDenied: () {
@@ -872,7 +936,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                       auth: auth,
                       featureKey: FeatureKeys.payments,
                       icon: Icons.payments_rounded,
-                      title: 'الشؤون المالية',
+                      title: context.tr('dashboard_menu_payments'),
                       onTap: () {
                         Navigator.pop(context);
                         Navigator.push(
@@ -886,9 +950,9 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                     // الاشعة والمختبرات (مجمّد دائمًا)
                     _drawerItem(
                       icon: Icons.biotech_rounded,
-                      title: 'الأشعة والمختبرات',
+                      title: context.tr('dashboard_menu_labs'),
                       enabled: false,
-                      badgeText: 'تحت التطوير',
+                      badgeText: context.tr('dashboard_menu_under_development'),
                       onDenied: _showUnderDevelopmentNotice,
                       onTap: () {},
                     ),
@@ -898,7 +962,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                       auth: auth,
                       featureKey: FeatureKeys.charts,
                       icon: Icons.bar_chart_rounded,
-                      title: 'الرسوم البيانية',
+                      title: context.tr('dashboard_menu_charts'),
                       onTap: () {
                         Navigator.pop(context);
                         Navigator.push(
@@ -914,7 +978,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                       auth: auth,
                       featureKey: FeatureKeys.repository,
                       icon: Icons.inventory_2_rounded,
-                      title: 'قسم المستودع',
+                      title: context.tr('dashboard_menu_repository'),
                       onTap: () {
                         Navigator.pop(context);
                         Navigator.push(
@@ -930,7 +994,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                       auth: auth,
                       featureKey: FeatureKeys.prescriptions,
                       icon: Icons.menu_book_rounded,
-                      title: 'الوصفات الطبية',
+                      title: context.tr('dashboard_menu_prescriptions'),
                       onTap: () {
                         Navigator.pop(context);
                         _showPrescriptionsMenu(context);
@@ -942,7 +1006,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                       auth: auth,
                       featureKey: FeatureKeys.chat,
                       icon: Icons.chat_bubble_outline_rounded,
-                      title: 'الدردشة',
+                      title: context.tr('common_chat'),
                       onTap: () {
                         Navigator.pop(context);
                         Navigator.push(
@@ -957,7 +1021,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                       auth: auth,
                       featureKey: FeatureKeys.backup,
                       icon: Icons.backup_rounded,
-                      title: 'استخراج البيانات محليا',
+                      title: context.tr('dashboard_menu_backup_local'),
                       onTap: () {
                         Navigator.pop(context);
                         _exportClinicHtml();
@@ -972,7 +1036,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                       auth: auth,
                       featureKey: FeatureKeys.accounts,
                       icon: Icons.supervisor_account_rounded,
-                      title: 'الحسابات',
+                      title: context.tr('dashboard_menu_accounts'),
                       onTap: () {
                         Navigator.pop(context);
                         Navigator.push(
@@ -986,7 +1050,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                       auth: auth,
                       featureKey: FeatureKeys.auditPermissions,
                       icon: Icons.tune_rounded,
-                      title: 'الصلاحيات',
+                      title: context.tr('dashboard_menu_permissions'),
                       onTap: () {
                         Navigator.pop(context);
                         Navigator.push(
@@ -1000,7 +1064,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                       auth: auth,
                       featureKey: FeatureKeys.auditLogs,
                       icon: Icons.receipt_long_rounded,
-                      title: 'السجلات',
+                      title: context.tr('dashboard_menu_logs'),
                       onTap: () {
                         Navigator.pop(context);
                         Navigator.push(
@@ -1013,7 +1077,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
 
                     _drawerItem(
                       icon: Icons.report_problem_outlined,
-                      title: 'الشكاوى والأعطال',
+                      title: context.tr('dashboard_menu_complaints'),
                       showAlertDot: _hasComplaintReply,
                       onTap: () {
                         Navigator.pop(context);
@@ -1026,7 +1090,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                     ),
                     _drawerItem(
                       icon: Icons.help_outline_rounded,
-                      title: 'دليل الاستخدام',
+                      title: context.tr('dashboard_menu_user_guide'),
                       onTap: () {
                         Navigator.pop(context);
                         Navigator.push(
@@ -1036,21 +1100,21 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                         );
                       },
                     ),
-                  ],
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(
+                '© 2026 ${context.tr('app_name')}',
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black45,
                 ),
               ),
-              const Padding(
-                padding: EdgeInsets.only(bottom: 12),
-                child: Text(
-                  '© 2026 ElmamClinic',
-                  style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.black45),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -1081,7 +1145,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
 
   @override
   Widget build(BuildContext context) {
-    final dateFmt = DateFormat('yyyy-MM-dd');
+    final dateFmt = AppFormatters.dateFormat('yyyy-MM-dd');
 
     return ChangeNotifierProvider(
       create: (_) => StatisticsProvider(),
@@ -1110,11 +1174,11 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                     errorBuilder: (_, __, ___) => const SizedBox.shrink(),
                   ),
                   const SizedBox(width: 8),
-                  const Text('ELMAM CLINIC'),
+                  Text(context.tr('app_name')),
                 ],
               ),
               leading: IconButton(
-                tooltip: 'القائمة',
+                tooltip: context.tr('common_menu'),
                 onPressed: _openDrawer,
                 icon: const Icon(Icons.menu_rounded),
               ),
@@ -1124,7 +1188,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                     clipBehavior: Clip.none,
                     children: [
                       IconButton(
-                        tooltip: 'الدردشة',
+                        tooltip: context.tr('common_chat'),
                         icon: const Icon(Icons.chat_bubble_outline_rounded),
                         onPressed: () async {
                           await Navigator.push(
@@ -1147,11 +1211,12 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                             ),
                             constraints: const BoxConstraints(
                                 minWidth: 18, minHeight: 16),
-                            child: Text(
+                            child: LocalizedText(
                               unreadChatsCount > 99
                                   ? '99+'
                                   : '$unreadChatsCount',
                               textAlign: TextAlign.center,
+                              textDirection: ui.TextDirection.ltr,
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 10.5,
@@ -1166,13 +1231,13 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                 IconButton(
                   onPressed: _logout,
                   icon: const Icon(Icons.logout_rounded),
-                  tooltip: 'تسجيل الخروج',
+                  tooltip: context.tr('common_logout'),
                 ),
                 Stack(
                   alignment: Alignment.center,
                   children: [
                     IconButton(
-                      tooltip: 'التذكيرات',
+                      tooltip: context.tr('dashboard_reminders'),
                       icon: Image.asset(
                         stats.todayConfirmed > 0
                             ? 'assets/images/bell_icon1.png'
@@ -1196,6 +1261,8 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                       ),
                   ],
                 ),
+                const LanguageSwitchButton(),
+                const SizedBox(width: 8),
               ],
             ),
             body: SafeArea(
@@ -1242,8 +1309,8 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                         initialDate: stats.from,
                         firstDate: DateTime(2000),
                         lastDate: DateTime.now(),
-                        locale: const Locale('ar', ''),
-                        helpText: 'اختر تاريخ البداية',
+                        locale: AppFormatters.localeOf(context),
+                        helpText: context.trRaw('اختر تاريخ البداية'),
                       );
                       if (p != null && p != stats.from) {
                         stats.setRange(from: p, to: stats.to);
@@ -1266,8 +1333,8 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                         initialDate: stats.to,
                         firstDate: DateTime(2000),
                         lastDate: DateTime.now(),
-                        locale: const Locale('ar', ''),
-                        helpText: 'اختر تاريخ النهاية',
+                        locale: AppFormatters.localeOf(context),
+                        helpText: context.trRaw('اختر تاريخ النهاية'),
                       );
                       if (p != null && p != stats.to) {
                         stats.setRange(from: stats.from, to: p);
@@ -1283,7 +1350,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                 ),
                 const SizedBox(width: 10),
                 NeuButton.flat(
-                  label: 'تحديث',
+                  label: context.trRaw('تحديث'),
                   icon: Icons.refresh_rounded,
                   onPressed: () async {
                     await stats.refresh();
@@ -1298,7 +1365,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
               opacity: stats.busy ? 0.4 : 1,
               duration: const Duration(milliseconds: 250),
               child: Directionality(
-                textDirection: ui.TextDirection.rtl,
+                textDirection: context.appUiTextDirection,
                 child: Wrap(
                   alignment: WrapAlignment.center,
                   spacing: 16,
@@ -1358,7 +1425,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                       title: 'نسبة الأطباء أشعة/مختبر',
                       value: stats.fmtDoctorRatios,
                       icon: Icons.percent_outlined,
-                      badgeText: 'تحت التطوير',
+                      badgeText: context.trRaw('تحت التطوير'),
                     ),
                     _StatCard(
                       title: 'مرضى الفترة',
@@ -1436,11 +1503,12 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
       builder: (context, snap) {
         final isFirstOpen =
             snap.data == true; // null تُعامل كـ false (عرض "مرحبًا بعودتك")
-        final title =
-            isFirstOpen ? 'مرحبًا بك في ELMAM CLINIC' : 'مرحبًا بعودتك';
+        final title = isFirstOpen
+            ? context.tr('dashboard_no_access_welcome_title')
+            : context.tr('dashboard_no_access_returning_title');
         final subtitle = isFirstOpen
-            ? 'هذه هي زيارتك الأولى على هذا الجهاز بحسابك. قد تكون بعض الأقسام مخفية إلى أن يتم منحك الصلاحيات من الإدارة.'
-            : 'تم التعرف عليك. لديك وصول محدود حسب صلاحيات الإدارة. إذا احتجت رؤية الإحصاءات، اطلب من الادارة تفعيل ميزة "لوحة الإحصاءات".';
+            ? context.tr('dashboard_no_access_welcome_subtitle')
+            : context.tr('dashboard_no_access_returning_subtitle');
 
         return Center(
           child: SingleChildScrollView(
@@ -1470,7 +1538,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          'ELMAM CLINIC',
+                          context.tr('app_name'),
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             color: scheme.onSurface,
@@ -1506,7 +1574,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                             FilledButton.icon(
                               icon: const Icon(
                                   Icons.notifications_active_rounded),
-                              label: const Text('التذكيرات'),
+                              label: Text(context.tr('dashboard_reminders')),
                               onPressed: () {
                                 Navigator.push(
                                   context,
@@ -1518,7 +1586,9 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                             if (canClinicProfile)
                               OutlinedButton.icon(
                                 icon: const Icon(Icons.local_hospital_outlined),
-                                label: const Text('بيانات المرفق الصحي'),
+                                label: Text(
+                                  context.tr('dashboard_menu_clinic_profile'),
+                                ),
                                 onPressed: () {
                                   Navigator.push(
                                     context,
@@ -1531,7 +1601,9 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                             if (canPatients)
                               OutlinedButton.icon(
                                 icon: const Icon(Icons.people_alt_rounded),
-                                label: const Text('قائمة المرضى'),
+                                label: Text(
+                                  context.tr('dashboard_menu_patients_list'),
+                                ),
                                 onPressed: () {
                                   Navigator.push(
                                     context,
@@ -1543,7 +1615,9 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                             if (canQuestions)
                               OutlinedButton.icon(
                                 icon: const Icon(Icons.quiz_outlined),
-                                label: const Text('أسئلة التشخيص للمرضى'),
+                                label: Text(
+                                  context.tr('dashboard_menu_patient_questions'),
+                                ),
                                 onPressed: () {
                                   Navigator.push(
                                     context,
@@ -1556,7 +1630,9 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                             if (canEmployees)
                               OutlinedButton.icon(
                                 icon: const Icon(Icons.groups_rounded),
-                                label: const Text('شؤون الموظفين'),
+                                label: Text(
+                                  context.tr('dashboard_menu_employees'),
+                                ),
                                 onPressed: () {
                                   Navigator.push(
                                     context,
@@ -1569,7 +1645,9 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                             if (canEmployeeAccounts)
                               OutlinedButton.icon(
                                 icon: const Icon(Icons.phone_rounded),
-                                label: const Text('حسابات الموظفين'),
+                                label: Text(
+                                  context.tr('dashboard_menu_employee_accounts'),
+                                ),
                                 onPressed: () {
                                   Navigator.push(
                                     context,
@@ -1583,13 +1661,13 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                               OutlinedButton.icon(
                                 icon: const Icon(
                                     Icons.assignment_return_outlined),
-                                label: const Text('العودات'),
+                                label: Text(context.tr('dashboard_menu_returns')),
                                 onPressed: () => _showReturnsMenu(context),
                               ),
                             if (canPayments)
                               OutlinedButton.icon(
                                 icon: const Icon(Icons.payments_rounded),
-                                label: const Text('الشؤون المالية'),
+                                label: Text(context.tr('dashboard_menu_payments')),
                                 onPressed: () {
                                   Navigator.push(
                                     context,
@@ -1602,7 +1680,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                             if (canCharts)
                               OutlinedButton.icon(
                                 icon: const Icon(Icons.bar_chart_rounded),
-                                label: const Text('الرسوم البيانية'),
+                                label: Text(context.tr('dashboard_menu_charts')),
                                 onPressed: () {
                                   Navigator.push(
                                     context,
@@ -1615,7 +1693,9 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                             if (canRepository)
                               OutlinedButton.icon(
                                 icon: const Icon(Icons.inventory_2_rounded),
-                                label: const Text('قسم المستودع'),
+                                label: Text(
+                                  context.tr('dashboard_menu_repository'),
+                                ),
                                 onPressed: () {
                                   Navigator.push(
                                     context,
@@ -1628,7 +1708,9 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                             if (canPrescriptions)
                               OutlinedButton.icon(
                                 icon: const Icon(Icons.menu_book_rounded),
-                                label: const Text('الوصفات الطبية'),
+                                label: Text(
+                                  context.tr('dashboard_menu_prescriptions'),
+                                ),
                                 onPressed: () {
                                   Navigator.push(
                                     context,
@@ -1642,7 +1724,7 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                               OutlinedButton.icon(
                                 icon: const Icon(
                                     Icons.chat_bubble_outline_rounded),
-                                label: const Text('الدردشة'),
+                                label: Text(context.tr('common_chat')),
                                 onPressed: () {
                                   Navigator.push(
                                     context,
@@ -1676,8 +1758,8 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
-                            'لا يمكنك مشاهدة لوحة الإحصاءات حاليًا. يتطلب ذلك منح صلاحية "لوحة الإحصاءات" من الادارة.',
-                            textAlign: TextAlign.right,
+                            context.tr('dashboard_no_access_info'),
+                            textAlign: TextAlign.start,
                             style: TextStyle(
                               color: scheme.onSurface.withValues(alpha: .85),
                               fontWeight: FontWeight.w700,
@@ -1699,6 +1781,8 @@ class _StatisticsOverviewScreenState extends State<StatisticsOverviewScreen>
 
 /*──────── رأس الدرج ────────*/
 class _DrawerHeader extends StatelessWidget {
+  const _DrawerHeader();
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -1728,8 +1812,8 @@ class _DrawerHeader extends StatelessWidget {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    'ELMAM CLINIC',
-                    textAlign: TextAlign.right,
+                    context.tr('app_name'),
+                    textAlign: TextAlign.start,
                     style: TextStyle(
                       color: scheme.onSurface,
                       fontSize: 20,
@@ -1785,7 +1869,11 @@ class _DrawerHeader extends StatelessWidget {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          code,
+                          AppFormatters.localizeDigits(
+                            code,
+                            languageCode: context.currentLocaleCode,
+                          ),
+                          textDirection: ui.TextDirection.ltr,
                           style: TextStyle(
                             color: scheme.primary,
                             fontWeight: FontWeight.w900,
@@ -1795,11 +1883,11 @@ class _DrawerHeader extends StatelessWidget {
                         ),
                       ),
                       IconButton(
-                        tooltip: 'نسخ الرقم',
+                        tooltip: context.trRaw('نسخ الرقم'),
                         onPressed: () async {
                           await Clipboard.setData(ClipboardData(text: code));
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('تم نسخ الرقم.')),
+                            const SnackBar(content: LocalizedText('تم نسخ الرقم.')),
                           );
                         },
                         icon: Icon(
@@ -1864,7 +1952,7 @@ class _StatCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 12),
-                Text(
+                LocalizedText(
                   title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -1875,11 +1963,11 @@ class _StatCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 6),
-                Text(
+                LocalizedText(
                   value,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  textDirection: ui.TextDirection.rtl,
+                  textDirection: ui.TextDirection.ltr,
                   style: TextStyle(
                     color: scheme.onSurface,
                     fontSize: 20,
@@ -1899,7 +1987,7 @@ class _StatCard extends StatelessWidget {
                     color: scheme.error.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Text(
+                  child: LocalizedText(
                     badge,
                     style: TextStyle(
                       color: scheme.error,
@@ -1941,8 +2029,9 @@ class _DateChip extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         Expanded(
-          child: Text(
+          child: LocalizedText(
             label,
+            textDirection: ui.TextDirection.ltr,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(

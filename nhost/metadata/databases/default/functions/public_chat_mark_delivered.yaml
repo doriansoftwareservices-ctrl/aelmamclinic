@@ -10,4 +10,5 @@ permissions:
   - role: employee
   - role: me
   - role: user
+  - role: support
   - role: superadmin

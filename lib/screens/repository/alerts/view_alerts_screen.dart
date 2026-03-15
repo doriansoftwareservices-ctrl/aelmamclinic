@@ -1,5 +1,4 @@
 // lib/screens/repository/alerts/view_alerts_screen.dart
-import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -14,6 +13,8 @@ import 'package:aelmamclinic/providers/repository_provider.dart';
 import 'package:aelmamclinic/services/repository_service.dart';
 import 'package:aelmamclinic/services/db_service.dart';
 import 'create_alert_screen.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 /// شاشة «استعراض التنبيهات» بنمط TBIAN
 class ViewAlertsScreen extends StatefulWidget {
@@ -121,19 +122,19 @@ class _ViewAlertsScreenState extends State<ViewAlertsScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('تعديل العتبة'),
+        title: const LocalizedText('تعديل العتبة'),
         content: TextField(
           controller: ctrl,
-          decoration: const InputDecoration(labelText: 'العدد الجديد'),
+          decoration: InputDecoration(labelText: context.trRaw('العدد الجديد')),
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
         ),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('إلغاء')),
+              child: const LocalizedText('إلغاء')),
           ElevatedButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('حفظ')),
+              child: const LocalizedText('حفظ')),
         ],
       ),
     );
@@ -160,16 +161,16 @@ class _ViewAlertsScreenState extends State<ViewAlertsScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('حذف التنبيه'),
-        content: Text('حذف التنبيه للصنف "${a.itemName}"؟ لا يمكن التراجع.'),
+        title: const LocalizedText('حذف التنبيه'),
+        content: LocalizedText('حذف التنبيه للصنف "${a.itemName}"؟ لا يمكن التراجع.'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('إلغاء')),
+              child: const LocalizedText('إلغاء')),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('حذف'),
+            child: const LocalizedText('حذف'),
           ),
         ],
       ),
@@ -225,10 +226,10 @@ class _ViewAlertsScreenState extends State<ViewAlertsScreen> {
     final scheme = Theme.of(context).colorScheme;
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('التنبيهات'),
+          title: const LocalizedText('التنبيهات'),
           centerTitle: true,
           flexibleSpace: Container(
             decoration: BoxDecoration(
@@ -242,7 +243,7 @@ class _ViewAlertsScreenState extends State<ViewAlertsScreen> {
           elevation: 4,
           actions: [
             IconButton(
-              tooltip: 'إضافة تنبيه',
+              tooltip: context.trRaw('إضافة تنبيه'),
               icon: const Icon(Icons.add_alert_outlined),
               onPressed: () async {
                 await Navigator.push(
@@ -303,7 +304,7 @@ class _ViewAlertsScreenState extends State<ViewAlertsScreen> {
                         runSpacing: 4,
                         children: [
                           FilterChip(
-                            label: const Text('الحرِجة فقط'),
+                            label: const LocalizedText('الحرِجة فقط'),
                             selected: _showCriticalOnly,
                             onSelected: (v) =>
                                 setState(() => _showCriticalOnly = v),
@@ -311,7 +312,7 @@ class _ViewAlertsScreenState extends State<ViewAlertsScreen> {
                             checkmarkColor: Colors.red,
                           ),
                           FilterChip(
-                            label: const Text('المفعَّلة فقط'),
+                            label: const LocalizedText('المفعَّلة فقط'),
                             selected: _showEnabledOnly,
                             onSelected: (v) =>
                                 setState(() => _showEnabledOnly = v),
@@ -346,7 +347,7 @@ class _ViewAlertsScreenState extends State<ViewAlertsScreen> {
                             Icon(Icons.notifications_off_outlined,
                                 size: 34, color: kPrimaryColor),
                             SizedBox(height: 10),
-                            Text('لا توجد تنبيهات مسجّلة.',
+                            LocalizedText('لا توجد تنبيهات مسجّلة.',
                                 style: TextStyle(fontWeight: FontWeight.w700)),
                           ],
                         ),
@@ -360,7 +361,7 @@ class _ViewAlertsScreenState extends State<ViewAlertsScreen> {
                             Icon(Icons.search_off_rounded,
                                 size: 34, color: kPrimaryColor),
                             SizedBox(height: 10),
-                            Text('لا نتائج مطابقة للمرشّحات.',
+                            LocalizedText('لا نتائج مطابقة للمرشّحات.',
                                 style: TextStyle(fontWeight: FontWeight.w700)),
                           ],
                         ),
@@ -393,8 +394,7 @@ class _ViewAlertsScreenState extends State<ViewAlertsScreen> {
                                 child: Row(
                                   children: [
                                     Expanded(
-                                      child: Text(
-                                        'الحد: ${_formatNumber(a.threshold)}  •  المتبقي: ${a.currentStock}',
+                                      child: LocalizedText('الحد: ${_formatNumber(a.threshold)}  •  المتبقي: ${a.currentStock}',
                                         style: TextStyle(
                                           color: Theme.of(context)
                                               .colorScheme
@@ -409,7 +409,7 @@ class _ViewAlertsScreenState extends State<ViewAlertsScreen> {
                                 ),
                               ),
                               trailing: PopupMenuButton<String>(
-                                tooltip: 'خيارات',
+                                tooltip: context.trRaw('خيارات'),
                                 onSelected: (val) {
                                   switch (val) {
                                     case 'toggle':
@@ -448,7 +448,7 @@ class _ViewAlertsScreenState extends State<ViewAlertsScreen> {
                                       children: [
                                         Icon(Icons.tune, color: Colors.orange),
                                         SizedBox(width: 8),
-                                        Text('تعديل العتبة'),
+                                        LocalizedText('تعديل العتبة'),
                                       ],
                                     ),
                                   ),
@@ -459,7 +459,7 @@ class _ViewAlertsScreenState extends State<ViewAlertsScreen> {
                                         Icon(Icons.delete_outline,
                                             color: Colors.red),
                                         SizedBox(width: 8),
-                                        Text('حذف'),
+                                        LocalizedText('حذف'),
                                       ],
                                     ),
                                   ),
@@ -486,7 +486,7 @@ class _ViewAlertsScreenState extends State<ViewAlertsScreen> {
             await _refresh();
           },
           icon: const Icon(Icons.add_alert),
-          label: const Text('تنبيه جديد'),
+          label: const LocalizedText('تنبيه جديد'),
         ),
       ),
     );

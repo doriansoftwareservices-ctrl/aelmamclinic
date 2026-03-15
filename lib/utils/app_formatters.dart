@@ -44,18 +44,44 @@ abstract final class AppFormatters {
     String? languageCode,
   }) {
     if (raw.isEmpty) return raw;
-    if (!AppLocale.isRtlCode(resolvedLanguageCode(languageCode))) {
-      return raw;
-    }
-
     const english = <String>['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
-    const arabic = <String>['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+    const arabicIndic = <String>[
+      '٠',
+      '١',
+      '٢',
+      '٣',
+      '٤',
+      '٥',
+      '٦',
+      '٧',
+      '٨',
+      '٩',
+    ];
+    const easternArabicIndic = <String>[
+      '۰',
+      '۱',
+      '۲',
+      '۳',
+      '۴',
+      '۵',
+      '۶',
+      '۷',
+      '۸',
+      '۹',
+    ];
 
     var output = raw;
     for (var i = 0; i < english.length; i++) {
-      output = output.replaceAll(english[i], arabic[i]);
+      output = output
+          .replaceAll(arabicIndic[i], english[i])
+          .replaceAll(easternArabicIndic[i], english[i]);
     }
-    return output;
+
+    return output
+        .replaceAll('٫', '.')
+        .replaceAll('٬', ',')
+        .replaceAll('٪', '%')
+        .replaceAll('−', '-');
   }
 
   static String formatDate(

@@ -1,7 +1,7 @@
 // lib/screens/prescriptions/patient_prescriptions_screen.dart
-import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:aelmamclinic/utils/app_formatters.dart';
 
 import 'package:aelmamclinic/core/formatters.dart';
 import 'package:aelmamclinic/models/patient.dart';
@@ -10,6 +10,8 @@ import 'package:aelmamclinic/services/db_service.dart';
 
 import 'new_prescription_screen.dart';
 import 'view_prescription_screen.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class PatientPrescriptionsScreen extends StatefulWidget {
   const PatientPrescriptionsScreen({super.key});
@@ -35,7 +37,7 @@ class _PatientPrescriptionsScreenState
 
   bool _loading = true;
 
-  final _dateOnly = DateFormat('yyyy-MM-dd');
+  DateFormat get _dateOnly => AppFormatters.dateFormat('yyyy-MM-dd');
 
   @override
   void initState() {
@@ -129,11 +131,11 @@ class _PatientPrescriptionsScreenState
     final scheme = Theme.of(context).colorScheme;
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
-          title: const Text('اختر المريض - الوصفات'),
+          title: const LocalizedText('اختر المريض - الوصفات'),
           flexibleSpace: Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -164,7 +166,7 @@ class _PatientPrescriptionsScreenState
                 child: TextField(
                   controller: _searchCtrl,
                   decoration: InputDecoration(
-                    hintText: 'بحث عن اسم أو رقم هاتف',
+                    hintText: context.trRaw('بحث عن اسم أو رقم هاتف'),
                     prefixIcon: const Icon(Icons.search),
                     filled: true,
                     fillColor: scheme.surface,
@@ -189,7 +191,7 @@ class _PatientPrescriptionsScreenState
                                 physics: const AlwaysScrollableScrollPhysics(),
                                 children: const [
                                   SizedBox(height: 140),
-                                  Center(child: Text('لا توجد نتائج')),
+                                  Center(child: LocalizedText('لا توجد نتائج')),
                                 ],
                               )
                             : ListView.builder(
@@ -314,8 +316,7 @@ class _PatientPrescriptionsScreenState
                                                         ),
                                                         icon: const Icon(
                                                             Icons.add),
-                                                        label: const Text(
-                                                            'إضافة وصفة'),
+                                                        label: const LocalizedText('إضافة وصفة'),
                                                         onPressed: () async {
                                                           final repPatient =
                                                               repsList.first;
@@ -334,8 +335,7 @@ class _PatientPrescriptionsScreenState
                                                       ),
                                                       const SizedBox(height: 8),
                                                       if (pres.isEmpty)
-                                                        const Text(
-                                                          'لا توجد وصفات سابقة',
+                                                        const LocalizedText('لا توجد وصفات سابقة',
                                                           style: TextStyle(
                                                               color:
                                                                   Colors.grey),
@@ -386,8 +386,7 @@ class _PatientPrescriptionsScreenState
                                                                   size: 20,
                                                                 ),
                                                               ),
-                                                              title: Text(
-                                                                'وصفة $dateStr',
+                                                              title: LocalizedText('وصفة $dateStr',
                                                                 style:
                                                                     const TextStyle(
                                                                   fontWeight:

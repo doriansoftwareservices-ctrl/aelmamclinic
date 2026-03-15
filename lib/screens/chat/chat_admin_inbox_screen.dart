@@ -21,6 +21,8 @@ import 'package:aelmamclinic/services/nhost_graphql_service.dart';
 import 'package:aelmamclinic/widgets/chat/conversation_tile.dart';
 import 'package:aelmamclinic/main.dart' show ChatRoomLoader;
 import 'chat_room_screen.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class ChatAdminInboxScreen extends StatefulWidget {
   const ChatAdminInboxScreen({super.key});
@@ -73,20 +75,18 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-            content: Text('الوصول لهذه الشاشة مخصّص للسوبر أدمن فقط.')),
+            content: LocalizedText('الوصول لهذه الشاشة مخصّص للسوبر أدمن فقط.')),
       );
       Navigator.of(context).maybePop();
       return;
     }
 
     final chat = context.read<ChatProvider>();
-    if (!chat.ready && !chat.busy) {
-      await chat.bootstrap(
-        accountId: null,
-        role: 'superadmin',
-        isSuperAdmin: true,
-      );
-    }
+    await chat.ensureBootstrapped(
+      accountId: null,
+      role: 'superadmin',
+      isSuperAdmin: true,
+    );
     await chat.refreshConversations();
     await _fetchInbox();
     await _loadSupportAgents();
@@ -351,7 +351,7 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذّر تحميل الصندوق: $e')),
+        SnackBar(content: LocalizedText('تعذّر تحميل الصندوق: $e')),
       );
     } finally {
       if (mounted) setState(() => _refreshing = false);
@@ -454,23 +454,23 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
     final targetEmail = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('بدء محادثة مع مالك'),
+        title: const LocalizedText('بدء محادثة مع مالك'),
         content: TextField(
           controller: emailCtrl,
           keyboardType: TextInputType.emailAddress,
-          decoration: const InputDecoration(
-            hintText: 'البريد الإلكتروني أو الرقم',
+          decoration: InputDecoration(
+            hintText: context.trRaw('البريد الإلكتروني أو الرقم'),
             prefixIcon: Icon(Icons.person_search_rounded),
           ),
           textDirection: ui.TextDirection.ltr,
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
+              onPressed: () => Navigator.pop(ctx), child: const LocalizedText('إلغاء')),
           FilledButton(
             onPressed: () =>
                 Navigator.pop(ctx, emailCtrl.text.trim().toLowerCase()),
-            child: const Text('بدء'),
+            child: const LocalizedText('بدء'),
           ),
         ],
       ),
@@ -559,7 +559,7 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
     }).toList();
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -568,12 +568,12 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
             children: const [
               Icon(Icons.support_agent_rounded, size: 22),
               SizedBox(width: 8),
-              Text('صندوق السوبر أدمن'),
+              LocalizedText('صندوق السوبر أدمن'),
             ],
           ),
           actions: [
             IconButton(
-              tooltip: 'تحديث',
+              tooltip: context.trRaw('تحديث'),
               onPressed: _refreshing ? null : _fetchInbox,
               icon: const Icon(Icons.refresh),
             ),
@@ -582,7 +582,7 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
         floatingActionButton: FloatingActionButton.extended(
           onPressed: _startOwnerDM,
           icon: const Icon(Icons.mark_email_unread_rounded),
-          label: const Text('بدء محادثة مع مالك'),
+          label: const LocalizedText('بدء محادثة مع مالك'),
         ),
         body: SafeArea(
           child: Column(
@@ -600,13 +600,12 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
                             const Icon(Icons.support_agent_rounded),
                             const SizedBox(width: 8),
                             const Expanded(
-                              child: Text(
-                                'تعيين خدمة العملاء',
+                              child: LocalizedText('تعيين خدمة العملاء',
                                 style: TextStyle(fontWeight: FontWeight.w800),
                               ),
                             ),
                             IconButton(
-                              tooltip: 'تحديث القائمة',
+                              tooltip: context.trRaw('تحديث القائمة'),
                               onPressed:
                                   _supportLoading ? null : _loadSupportAgents,
                               icon: const Icon(Icons.refresh_rounded),
@@ -616,8 +615,8 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
                         const SizedBox(height: 8),
                         DropdownButtonFormField<String>(
                           initialValue: _supportAgentUid,
-                          decoration: const InputDecoration(
-                            labelText: 'حساب خدمة العملاء',
+                          decoration: InputDecoration(
+                            labelText: context.trRaw('حساب خدمة العملاء'),
                             border: OutlineInputBorder(),
                           ),
                           items: _supportCandidates
@@ -636,14 +635,14 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
                         const SizedBox(height: 10),
                         TextField(
                           controller: _supportNameCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'الاسم الظاهر للملاك',
+                          decoration: InputDecoration(
+                            labelText: context.trRaw('الاسم الظاهر للملاك'),
                             border: OutlineInputBorder(),
                           ),
                         ),
                         const SizedBox(height: 10),
                         Align(
-                          alignment: Alignment.centerRight,
+                          alignment: AlignmentDirectional.centerStart,
                           child: SizedBox(
                             width: 180,
                             child: NeuButton.primary(
@@ -673,13 +672,13 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
                         child: TextField(
                           controller: _searchCtrl,
                           onChanged: (_) => setState(() {}),
-                          decoration: const InputDecoration(
+                          decoration: InputDecoration(
                             hintText:
-                                'ابحث بالبريد أو الرقم أو اسم العيادة…',
+                                context.trRaw('ابحث بالبريد أو الرقم أو اسم العيادة…'),
                             border: InputBorder.none,
                             prefixIcon: Icon(Icons.search_rounded),
                           ),
-                          textDirection: ui.TextDirection.rtl,
+                          textDirection: Directionality.of(context),
                         ),
                       ),
                     ),
@@ -687,7 +686,7 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
                     FilterChip(
                       selected: _unreadOnly,
                       onSelected: (v) => setState(() => _unreadOnly = v),
-                      label: const Text('غير المقروء'),
+                      label: const LocalizedText('غير المقروء'),
                       avatar:
                           const Icon(Icons.mark_chat_unread_rounded, size: 18),
                     ),
@@ -710,8 +709,7 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
                           child: NeuCard(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 18, vertical: 14),
-                            child: Text(
-                              'لا توجد محادثات مطابقة.',
+                            child: LocalizedText('لا توجد محادثات مطابقة.',
                               style: TextStyle(
                                 color: scheme.onSurface.withValues(alpha: .75),
                                 fontWeight: FontWeight.w800,
@@ -828,7 +826,7 @@ class _ChatAdminInboxScreenState extends State<ChatAdminInboxScreen> {
   void _snack(Object msg) {
     if (!mounted) return;
     final text = _friendlyMessage(msg);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: LocalizedText(text)));
   }
 
   Future<String?> _resolveEmailForIdentifier(String input) async {

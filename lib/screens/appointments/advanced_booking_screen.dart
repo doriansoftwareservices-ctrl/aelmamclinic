@@ -8,6 +8,8 @@ import 'package:aelmamclinic/services/db_service.dart';
 // تصميم TBIAN
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class AdvancedBookingScreen extends StatefulWidget {
   final Appointment? appointment; // عند التعديل
@@ -120,7 +122,7 @@ class _AdvancedBookingScreenState extends State<AdvancedBookingScreen> {
               errorBuilder: (_, __, ___) => const SizedBox.shrink(),
             ),
             const SizedBox(width: 8),
-            Text(title),
+            LocalizedText(title),
           ],
         ),
       ),
@@ -139,8 +141,7 @@ class _AdvancedBookingScreenState extends State<AdvancedBookingScreen> {
                     onTap: _selectDate,
                     contentPadding:
                         const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    title: Text(
-                      "تاريخ ووقت الموعد: ${_selectedDate.toLocal()}",
+                    title: LocalizedText("تاريخ ووقت الموعد: ${_selectedDate.toLocal()}",
                       style: const TextStyle(fontWeight: FontWeight.w800),
                     ),
                     trailing: Container(
@@ -160,7 +161,7 @@ class _AdvancedBookingScreenState extends State<AdvancedBookingScreen> {
                 // الملاحظات
                 NeuField(
                   controller: TextEditingController(text: _notes),
-                  labelText: 'ملاحظات',
+                  labelText: context.trRaw('ملاحظات'),
                   maxLines: 3,
                   prefix: const Icon(Icons.sticky_note_2_outlined),
                   onChanged: (v) => _notes = v,
@@ -191,16 +192,16 @@ class _AdvancedBookingScreenState extends State<AdvancedBookingScreen> {
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
                   child: DropdownButtonFormField<String>(
                     initialValue: _status,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       border: InputBorder.none,
-                      labelText: 'حالة الموعد',
+                      labelText: context.trRaw('حالة الموعد'),
                     ),
                     icon: const Icon(Icons.expand_more_rounded),
                     items: const [
-                      DropdownMenuItem(value: "مؤكد", child: Text("مؤكد")),
-                      DropdownMenuItem(value: "ملغى", child: Text("ملغى")),
+                      DropdownMenuItem(value: "مؤكد", child: LocalizedText("مؤكد")),
+                      DropdownMenuItem(value: "ملغى", child: LocalizedText("ملغى")),
                       DropdownMenuItem(
-                          value: "تم التعديل", child: Text("تم التعديل")),
+                          value: "تم التعديل", child: LocalizedText("تم التعديل")),
                     ],
                     onChanged: (value) => setState(() => _status = value!),
                   ),
@@ -210,7 +211,7 @@ class _AdvancedBookingScreenState extends State<AdvancedBookingScreen> {
 
                 // زر الحفظ (نيومورفيزم)
                 Align(
-                  alignment: Alignment.centerRight,
+                  alignment: AlignmentDirectional.centerStart,
                   child: NeuButton.primary(
                     label: 'حفظ الموعد',
                     icon: Icons.save_rounded,

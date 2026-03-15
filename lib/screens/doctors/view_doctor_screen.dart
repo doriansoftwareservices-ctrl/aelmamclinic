@@ -1,12 +1,13 @@
 // lib/screens/doctors/view_doctor_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'dart:ui' as ui show TextDirection;
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
 
 import 'package:aelmamclinic/models/doctor.dart';
 import 'edit_doctor_screen.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class ViewDoctorScreen extends StatelessWidget {
   final Doctor doctor;
@@ -17,7 +18,7 @@ class ViewDoctorScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -26,7 +27,7 @@ class ViewDoctorScreen extends StatelessWidget {
             children: const [
               Icon(Icons.badge_rounded),
               SizedBox(width: 8),
-              Text('بيانات الطبيب'),
+              LocalizedText('بيانات الطبيب'),
             ],
           ),
         ),
@@ -39,7 +40,7 @@ class ViewDoctorScreen extends StatelessWidget {
             );
           },
           icon: const Icon(Icons.edit_rounded),
-          label: const Text('تعديل'),
+          label: const LocalizedText('تعديل'),
         ),
         body: SafeArea(
           child: Padding(
@@ -65,7 +66,7 @@ class ViewDoctorScreen extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('د/ ${doctor.name}',
+                            LocalizedText('د/ ${doctor.name}',
                                 style: const TextStyle(
                                     fontWeight: FontWeight.w900, fontSize: 16)),
                             const SizedBox(height: 2),
@@ -102,7 +103,7 @@ class ViewDoctorScreen extends StatelessWidget {
                         label: 'رقم الهاتف',
                         value: _val(doctor.phoneNumber),
                         trailing: IconButton(
-                          tooltip: 'نسخ',
+                          tooltip: context.trRaw('نسخ'),
                           icon: const Icon(Icons.copy_rounded),
                           onPressed: () {
                             if (doctor.phoneNumber.isEmpty) return;
@@ -110,7 +111,7 @@ class ViewDoctorScreen extends StatelessWidget {
                                 ClipboardData(text: doctor.phoneNumber));
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
-                                  content: Text('تم نسخ رقم الهاتف')),
+                                  content: LocalizedText('تم نسخ رقم الهاتف')),
                             );
                           },
                         ),

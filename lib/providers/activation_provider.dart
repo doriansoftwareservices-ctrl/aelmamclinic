@@ -7,10 +7,11 @@ class ActivationProvider with ChangeNotifier {
   DateTime? _expiryDate;
   Timer? _expiryTimer;
   DateTime? _lastTimeCheck;
+  bool _initialized = false;
 
   /// المنشئ الافتراضي: يقوم بتحميل الحالة وتشغيل _init()
   ActivationProvider() {
-    _init();
+    unawaited(_init());
   }
 
   /// منشئ خاص: يستخدم بيانات مُحمّلة مسبقاً قبل runApp()
@@ -22,89 +23,98 @@ class ActivationProvider with ChangeNotifier {
     _isActivated = isActivated;
     _expiryDate = expiryDate;
     _lastTimeCheck = lastTimeCheck;
-    _syncInitialState();
+    unawaited(_syncInitialState());
   }
 
   /// يزامن الحالة الأولية: يتعامل مع انتهاء الصلاحية والتلاعب بالوقت
   Future<void> _syncInitialState() async {
-    final prefs = await SharedPreferences.getInstance();
+    try {
+      final prefs = await SharedPreferences.getInstance();
 
-    // اكتشاف الرجوع بالوقت
-    if (_lastTimeCheck != null && DateTime.now().isBefore(_lastTimeCheck!)) {
-      _isActivated = false;
-      _expiryDate = null;
-      await prefs.setBool('isActivated', false);
-      await prefs.remove('expiryDate');
-    }
-
-    // اكتشاف التقدم المفرط بالوقت (تخطي أكثر من يوم)
-    if (_lastTimeCheck != null) {
-      final diff = DateTime.now().difference(_lastTimeCheck!);
-      if (diff.inDays > 1) {
+      // اكتشاف الرجوع بالوقت
+      if (_lastTimeCheck != null && DateTime.now().isBefore(_lastTimeCheck!)) {
         _isActivated = false;
         _expiryDate = null;
         await prefs.setBool('isActivated', false);
         await prefs.remove('expiryDate');
       }
+
+      // اكتشاف التقدم المفرط بالوقت (تخطي أكثر من يوم)
+      if (_lastTimeCheck != null) {
+        final diff = DateTime.now().difference(_lastTimeCheck!);
+        if (diff.inDays > 1) {
+          _isActivated = false;
+          _expiryDate = null;
+          await prefs.setBool('isActivated', false);
+          await prefs.remove('expiryDate');
+        }
+      }
+
+      // اكتشاف انتهاء الصلاحية
+      if (_expiryDate != null && DateTime.now().isAfter(_expiryDate!)) {
+        _isActivated = false;
+        _expiryDate = null;
+        await prefs.setBool('isActivated', false);
+        await prefs.remove('expiryDate');
+      }
+
+      // ضبط المؤقت إذا لا زال هناك صلاحية
+      _setupExpiryTimer();
+
+      // تحديث آخر تحقق
+      await _updateLastTimeCheck();
+    } finally {
+      _initialized = true;
+      notifyListeners();
     }
-
-    // اكتشاف انتهاء الصلاحية
-    if (_expiryDate != null && DateTime.now().isAfter(_expiryDate!)) {
-      _isActivated = false;
-      _expiryDate = null;
-      await prefs.setBool('isActivated', false);
-      await prefs.remove('expiryDate');
-    }
-
-    // ضبط المؤقت إذا لا زال هناك صلاحية
-    _setupExpiryTimer();
-
-    // تحديث آخر تحقق
-    await _updateLastTimeCheck();
-    notifyListeners();
   }
 
   /// يحمّل حالة التفعيل من SharedPreferences ويتحقق من انتهاء الصلاحية والتلاعب بالوقت
   Future<void> _init() async {
-    final prefs = await SharedPreferences.getInstance();
-    _isActivated = prefs.getBool('isActivated') ?? false;
-    final expiryString = prefs.getString('expiryDate');
-    final lastCheckString = prefs.getString('lastTimeCheck');
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _isActivated = prefs.getBool('isActivated') ?? false;
+      final expiryString = prefs.getString('expiryDate');
+      final lastCheckString = prefs.getString('lastTimeCheck');
 
-    if (lastCheckString != null) {
-      _lastTimeCheck = DateTime.parse(lastCheckString);
+      if (lastCheckString != null) {
+        _lastTimeCheck = DateTime.parse(lastCheckString);
 
-      // اكتشاف الرجوع بالوقت
-      if (DateTime.now().isBefore(_lastTimeCheck!)) {
-        await deactivate();
-        return;
+        // اكتشاف الرجوع بالوقت
+        if (DateTime.now().isBefore(_lastTimeCheck!)) {
+          await deactivate();
+          return;
+        }
+
+        // اكتشاف التقدم المفرط بالوقت
+        final diff = DateTime.now().difference(_lastTimeCheck!);
+        if (diff.inDays > 1) {
+          await deactivate();
+          return;
+        }
       }
 
-      // اكتشاف التقدم المفرط بالوقت
-      final diff = DateTime.now().difference(_lastTimeCheck!);
-      if (diff.inDays > 1) {
-        await deactivate();
-        return;
+      if (expiryString != null) {
+        _expiryDate = DateTime.parse(expiryString);
+
+        // التحقق من انتهاء الصلاحية
+        if (DateTime.now().isAfter(_expiryDate!)) {
+          await deactivate();
+          return;
+        }
+
+        _setupExpiryTimer();
       }
+
+      await _updateLastTimeCheck();
+    } finally {
+      _initialized = true;
+      notifyListeners();
     }
-
-    if (expiryString != null) {
-      _expiryDate = DateTime.parse(expiryString);
-
-      // التحقق من انتهاء الصلاحية
-      if (DateTime.now().isAfter(_expiryDate!)) {
-        await deactivate();
-        return;
-      }
-
-      _setupExpiryTimer();
-    }
-
-    await _updateLastTimeCheck();
-    notifyListeners();
   }
 
   bool get isActivated => _isActivated;
+  bool get isReady => _initialized;
   DateTime? get expiryDate => _expiryDate;
 
   /// يفعّل التطبيق لعدد أيام محدد

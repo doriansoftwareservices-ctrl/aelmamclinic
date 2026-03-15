@@ -1,6 +1,5 @@
 // lib/screens/service_doctor_share_screen.dart
 
-import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 
 /*── تصميم TBIAN ─*/
@@ -12,6 +11,8 @@ import 'package:aelmamclinic/core/formatters.dart';
 /*── البيانات ─*/
 import 'package:aelmamclinic/models/doctor.dart';
 import 'db_service.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class ServiceDoctorShareScreen extends StatefulWidget {
   final int serviceId;
@@ -123,7 +124,7 @@ class _ServiceDoctorShareScreenState extends State<ServiceDoctorShareScreen> {
       builder: (ctx) {
         final scheme = Theme.of(ctx).colorScheme;
         return Directionality(
-          textDirection: ui.TextDirection.rtl,
+          textDirection: Directionality.of(context),
           child: Padding(
             padding: EdgeInsets.only(
               left: 16,
@@ -150,12 +151,12 @@ class _ServiceDoctorShareScreenState extends State<ServiceDoctorShareScreen> {
                       ),
                       const SizedBox(width: 8),
                       const Expanded(
-                        child: Text('اختر الطبيب',
+                        child: LocalizedText('اختر الطبيب',
                             style: TextStyle(
                                 fontWeight: FontWeight.w900, fontSize: 16)),
                       ),
                       IconButton(
-                        tooltip: 'إغلاق',
+                        tooltip: context.trRaw('إغلاق'),
                         icon: const Icon(Icons.close_rounded),
                         onPressed: () => Navigator.pop(ctx),
                       ),
@@ -202,7 +203,7 @@ class _ServiceDoctorShareScreenState extends State<ServiceDoctorShareScreen> {
                               child:
                                   const Icon(Icons.person, color: Colors.white),
                             ),
-                            title: Text('د/ ${d.name}',
+                            title: LocalizedText('د/ ${d.name}',
                                 style: const TextStyle(
                                     fontWeight: FontWeight.w800)),
                             subtitle: Text(d.specialization,
@@ -255,7 +256,7 @@ class _ServiceDoctorShareScreenState extends State<ServiceDoctorShareScreen> {
       builder: (ctx) {
         final scheme = Theme.of(ctx).colorScheme;
         return Directionality(
-          textDirection: ui.TextDirection.rtl,
+          textDirection: Directionality.of(context),
           child: StatefulBuilder(
             builder: (dialogCtx, setDialog) {
               Future<void> pick() async {
@@ -334,7 +335,7 @@ class _ServiceDoctorShareScreenState extends State<ServiceDoctorShareScreen> {
                         controller: shareCtrl,
                         keyboardType: const TextInputType.numberWithOptions(
                             decimal: true),
-                        labelText: 'نسبة الطبيب (%)',
+                        labelText: context.trRaw('نسبة الطبيب (%)'),
                         prefix: const Icon(Icons.percent_rounded),
                         textDirection: TextDirection.ltr,
                         textAlign: TextAlign.center,
@@ -345,7 +346,7 @@ class _ServiceDoctorShareScreenState extends State<ServiceDoctorShareScreen> {
                         controller: towerCtrl,
                         keyboardType: const TextInputType.numberWithOptions(
                             decimal: true),
-                        labelText: 'نسبة المركز الطبي (%)',
+                        labelText: context.trRaw('نسبة المركز الطبي (%)'),
                         prefix: const Icon(Icons.domain_rounded),
                         textDirection: TextDirection.ltr,
                         textAlign: TextAlign.center,
@@ -371,13 +372,13 @@ class _ServiceDoctorShareScreenState extends State<ServiceDoctorShareScreen> {
                 actions: [
                   TextButton(
                       onPressed: () => Navigator.pop(dialogCtx),
-                      child: const Text('إلغاء')),
+                      child: const LocalizedText('إلغاء')),
                   FilledButton(
                     onPressed: () async {
                       // تحقق القيم
                       if (!isEdit && selectedDoctorId == null) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('الرجاء اختيار الطبيب')),
+                          const SnackBar(content: LocalizedText('الرجاء اختيار الطبيب')),
                         );
                         return;
                       }
@@ -410,7 +411,7 @@ class _ServiceDoctorShareScreenState extends State<ServiceDoctorShareScreen> {
 
                       if (err != null) {
                         ScaffoldMessenger.of(context)
-                            .showSnackBar(SnackBar(content: Text(err)));
+                            .showSnackBar(SnackBar(content: LocalizedText(err)));
                         return;
                       }
 
@@ -440,7 +441,7 @@ class _ServiceDoctorShareScreenState extends State<ServiceDoctorShareScreen> {
                         if (mounted) setState(() => _busy = false);
                       }
                     },
-                    child: const Text('حفظ'),
+                    child: const LocalizedText('حفظ'),
                   ),
                 ],
               );
@@ -458,15 +459,15 @@ class _ServiceDoctorShareScreenState extends State<ServiceDoctorShareScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: scheme.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('تأكيد الحذف'),
-        content: const Text('هل تريد حذف هذه النسبة؟'),
+        title: const LocalizedText('تأكيد الحذف'),
+        content: const LocalizedText('هل تريد حذف هذه النسبة؟'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('إلغاء')),
+              child: const LocalizedText('إلغاء')),
           FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('حذف')),
+              child: const LocalizedText('حذف')),
         ],
       ),
     );
@@ -516,8 +517,7 @@ class _ServiceDoctorShareScreenState extends State<ServiceDoctorShareScreen> {
           ),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(
-              'مجموع نسب الخدمة — الأطباء: ${_fmtPct(_sumDoctorAll)}% • المركز: ${_fmtPct(_sumTowerAll)}% • المجموع: ${_fmtPct(_sumAll)}%',
+            child: LocalizedText('مجموع نسب الخدمة — الأطباء: ${_fmtPct(_sumDoctorAll)}% • المركز: ${_fmtPct(_sumTowerAll)}% • المجموع: ${_fmtPct(_sumAll)}%',
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
@@ -556,7 +556,7 @@ class _ServiceDoctorShareScreenState extends State<ServiceDoctorShareScreen> {
     if (_filtered.isEmpty) {
       return const [
         SizedBox(height: 80),
-        Center(child: Text('لا توجد أي نسب للأطباء بعد')),
+        Center(child: LocalizedText('لا توجد أي نسب للأطباء بعد')),
       ];
     }
 
@@ -588,8 +588,7 @@ class _ServiceDoctorShareScreenState extends State<ServiceDoctorShareScreen> {
                     ),
                     const SizedBox(width: 10),
                     Expanded(
-                      child: Text(
-                        'د/ $docName',
+                      child: LocalizedText('د/ $docName',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
@@ -659,7 +658,7 @@ class _ServiceDoctorShareScreenState extends State<ServiceDoctorShareScreen> {
     final scheme = Theme.of(context).colorScheme;
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -678,7 +677,7 @@ class _ServiceDoctorShareScreenState extends State<ServiceDoctorShareScreen> {
           ),
           actions: [
             IconButton(
-              tooltip: 'تحديث',
+              tooltip: context.trRaw('تحديث'),
               icon: const Icon(Icons.refresh_rounded),
               onPressed: _loadShares,
             ),
@@ -718,8 +717,7 @@ class _ServiceDoctorShareScreenState extends State<ServiceDoctorShareScreen> {
                                 style: const TextStyle(
                                     fontWeight: FontWeight.w900, fontSize: 16)),
                             const SizedBox(height: 4),
-                            Text(
-                                'السعر: ${widget.serviceCost.toStringAsFixed(2)}',
+                            LocalizedText('السعر: ${widget.serviceCost.toStringAsFixed(2)}',
                                 style: TextStyle(
                                     color:
                                         scheme.onSurface.withValues(alpha: .75),
@@ -800,7 +798,7 @@ class _ErrorCard extends StatelessWidget {
           ElevatedButton.icon(
             onPressed: onRetry,
             icon: const Icon(Icons.refresh, color: Colors.white, size: 18),
-            label: const Text('إعادة المحاولة',
+            label: const LocalizedText('إعادة المحاولة',
                 style: TextStyle(color: Colors.white)),
             style: ElevatedButton.styleFrom(
               backgroundColor: scheme.error,

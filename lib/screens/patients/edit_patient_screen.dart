@@ -4,10 +4,10 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:aelmamclinic/utils/app_formatters.dart';
 import 'package:mime/mime.dart';
 import 'package:open_file/open_file.dart';
 import 'package:provider/provider.dart';
-import 'dart:ui' as ui show TextDirection;
 
 /*── تصميم TBIAN ─*/
 import 'package:aelmamclinic/core/theme.dart';
@@ -27,6 +27,8 @@ import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:aelmamclinic/providers/repository_provider.dart';
 import 'list_patients_screen.dart';
 import 'duplicate_patients_screen.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class EditPatientScreen extends StatefulWidget {
   final Patient patient;
@@ -79,9 +81,17 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
   final List<Attachment> _deletedAttachments = [];
 
   final _formKey = GlobalKey<FormState>();
-  final _dtOnly = DateFormat('yyyy-MM-dd');
+  DateFormat get _dtOnly => AppFormatters.dateFormat('yyyy-MM-dd');
   bool _doctorRestricted = false;
   bool _saving = false;
+
+  String _doctorDisplayName(String name) {
+    final normalized = name
+        .trim()
+        .replaceFirst(RegExp(r'^(د/\s*|Dr\.\s*)', caseSensitive: false), '');
+    if (normalized.isEmpty) return '';
+    return context.isRtl ? 'د/$normalized' : 'Dr. $normalized';
+  }
 
   // ── Helpers العامة ──
   double _parseDouble(String s) {
@@ -137,7 +147,7 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
         columns: const ['name'], where: 'id = ?', whereArgs: [id], limit: 1);
     if (rows.isEmpty) return null;
     final name = (rows.first['name'] ?? '').toString().trim();
-    return name.isEmpty ? null : 'د/$name';
+    return name.isEmpty ? null : _doctorDisplayName(name);
   }
 
   @override
@@ -165,10 +175,11 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
     await _resolveDoctorAccount();
     if (_doctorRestricted && _linkedDoctor != null) {
       _selectedDoctorId = _linkedDoctor!.id;
-      _selectedDoctorName = 'د/${_linkedDoctor!.name}';
+      _selectedDoctorName = _doctorDisplayName(_linkedDoctor!.name);
     } else {
       _selectedDoctorId = p.doctorId;
-      _selectedDoctorName = p.doctorName;
+      _selectedDoctorName =
+          (p.doctorName ?? '').trim().isEmpty ? null : _doctorDisplayName(p.doctorName!);
     }
     final initialDoctor = _selectedDoctorName;
     _doctorCtrl.text = initialDoctor == null ? '' : initialDoctor;
@@ -281,7 +292,7 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
     _linkedDoctor = linked;
 
     if (forceSelection && linked != null && linked.id != null && mounted) {
-      final selectedName = 'د/${linked.name}';
+      final selectedName = _doctorDisplayName(linked.name);
       setState(() {
         _selectedDoctorId = linked!.id;
         _selectedDoctorName = selectedName;
@@ -341,13 +352,13 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx2, setStateDlg) => AlertDialog(
-          title: const Text('استخدام من المستودع'),
+          title: const LocalizedText('استخدام من المستودع'),
           content: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 DropdownButtonFormField<int>(
-                  decoration: const InputDecoration(labelText: 'نوع الصنف'),
+                  decoration: InputDecoration(labelText: context.trRaw('نوع الصنف')),
                   items: _invTypes
                       .map((t) => DropdownMenuItem(
                             value: t['id'] as int,
@@ -368,7 +379,7 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
                 const SizedBox(height: 12),
                 if (dlgTypeId != null) ...[
                   DropdownButtonFormField<int>(
-                    decoration: const InputDecoration(labelText: 'اسم الصنف'),
+                    decoration: InputDecoration(labelText: context.trRaw('اسم الصنف')),
                     items: dlgItems
                         .map((i) => DropdownMenuItem(
                               value: i['id'] as int,
@@ -388,7 +399,7 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
                   TextField(
                     controller: qtyCtrl,
                     decoration:
-                        const InputDecoration(labelText: 'الكمية المستخدمة'),
+                        InputDecoration(labelText: context.trRaw('الكمية المستخدمة')),
                     keyboardType: TextInputType.number,
                   ),
               ],
@@ -397,7 +408,7 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(ctx),
-                child: const Text('إلغاء')),
+                child: const LocalizedText('إلغاء')),
             FilledButton(
               style: FilledButton.styleFrom(backgroundColor: kPrimaryColor),
               onPressed: () async {
@@ -414,8 +425,7 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
                     if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text(
-                              'الكمية المطلوبة ($q) تتجاوز المتاح في المخزون ($stock)'),
+                          content: LocalizedText('الكمية المطلوبة ($q) تتجاوز المتاح في المخزون ($stock)'),
                           backgroundColor: scheme.error,
                         ),
                       );
@@ -431,7 +441,7 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
                   });
                 }
               },
-              child: const Text('حفظ', style: TextStyle(color: Colors.white)),
+              child: const LocalizedText('حفظ', style: TextStyle(color: Colors.white)),
             ),
           ],
         ),
@@ -453,7 +463,7 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
 
     return FilterChip(
       backgroundColor: bg,
-      label: Text(label),
+      label: LocalizedText(label),
       onSelected: (_) {},
       onDeleted: () {
         setState(() {
@@ -495,7 +505,7 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
     if (!await File(a.filePath).exists()) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('الملف غير موجود: ${a.fileName}')),
+        SnackBar(content: LocalizedText('الملف غير موجود: ${a.fileName}')),
       );
       return;
     }
@@ -550,7 +560,7 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
     final cost = _parseDouble(_manualCostCtrl.text);
     if (name.isEmpty || cost <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('أدخل اسم الخدمة وتكلفتها (> 0)')),
+        const SnackBar(content: LocalizedText('أدخل اسم الخدمة وتكلفتها (> 0)')),
       );
       return;
     }
@@ -603,7 +613,7 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
   Future<void> _selectDoctorForRadLab() async {
     if (_doctorRestricted && _linkedDoctor != null) {
       setState(() {
-        final selectedName = 'د/${_linkedDoctor!.name}';
+        final selectedName = _doctorDisplayName(_linkedDoctor!.name);
         _selectedDoctorId = _linkedDoctor!.id;
         _selectedDoctorName = selectedName;
         _doctorCtrl.text = selectedName;
@@ -617,15 +627,15 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx2, setDlg) => AlertDialog(
-          title: const Text('اختر الطبيب'),
+          title: const LocalizedText('اختر الطبيب'),
           content: SizedBox(
             width: double.maxFinite,
             height: 300,
             child: Column(
               children: [
                 TextField(
-                  decoration: const InputDecoration(
-                    hintText: 'بحث عن الطبيب…',
+                  decoration: InputDecoration(
+                    hintText: context.trRaw('بحث عن الطبيب…'),
                     prefixIcon: Icon(Icons.search),
                   ),
                   onChanged: (v) => setDlg(() => filtered = source
@@ -636,7 +646,7 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
                 const SizedBox(height: 10),
                 Expanded(
                   child: filtered.isEmpty
-                      ? const Center(child: Text('لا يوجد نتائج'))
+                      ? const Center(child: LocalizedText('لا يوجد نتائج'))
                       : ListView.builder(
                           itemCount: filtered.length,
                           itemBuilder: (c, i) {
@@ -648,12 +658,18 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
                                   horizontal: 10, vertical: 8),
                               child: ListTile(
                                 contentPadding: EdgeInsets.zero,
-                                title: Text('د/${d.name}',
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.w700)),
+                                title: Text(
+                                  _doctorDisplayName(d.name),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
                                 subtitle: Text(d.specialization),
-                                trailing:
-                                    const Icon(Icons.chevron_left_rounded),
+                                trailing: Icon(
+                                  context.isRtl
+                                      ? Icons.chevron_left_rounded
+                                      : Icons.chevron_right_rounded,
+                                ),
                                 onTap: () => Navigator.pop(ctx, d),
                               ),
                             );
@@ -675,7 +691,7 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
 
     if (chosen != null) {
       setState(() {
-        final selectedName = 'د/${chosen.name}';
+        final selectedName = _doctorDisplayName(chosen.name);
         _selectedDoctorId = chosen.id;
         _selectedDoctorName = selectedName;
         _doctorCtrl.text = selectedName;
@@ -690,15 +706,15 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx2, setDlg) => AlertDialog(
-          title: const Text('اختر الطبيب'),
+          title: const LocalizedText('اختر الطبيب'),
           content: SizedBox(
             width: double.maxFinite,
             height: 300,
             child: Column(
               children: [
                 TextField(
-                  decoration: const InputDecoration(
-                    hintText: 'بحث عن الطبيب…',
+                  decoration: InputDecoration(
+                    hintText: context.trRaw('بحث عن الطبيب…'),
                     prefixIcon: Icon(Icons.search),
                   ),
                   onChanged: (v) => setDlg(() => filtered = doctors
@@ -709,7 +725,7 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
                 const SizedBox(height: 10),
                 Expanded(
                   child: filtered.isEmpty
-                      ? const Center(child: Text('لا يوجد نتائج'))
+                      ? const Center(child: LocalizedText('لا يوجد نتائج'))
                       : ListView.builder(
                           itemCount: filtered.length,
                           itemBuilder: (c, i) {
@@ -721,12 +737,18 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
                                   horizontal: 10, vertical: 8),
                               child: ListTile(
                                 contentPadding: EdgeInsets.zero,
-                                title: Text('د/${d.name}',
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.w700)),
+                                title: Text(
+                                  _doctorDisplayName(d.name),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
                                 subtitle: Text(d.specialization),
-                                trailing:
-                                    const Icon(Icons.chevron_left_rounded),
+                                trailing: Icon(
+                                  context.isRtl
+                                      ? Icons.chevron_left_rounded
+                                      : Icons.chevron_right_rounded,
+                                ),
                                 onTap: () => Navigator.pop(ctx, d),
                               ),
                             );
@@ -749,7 +771,7 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
     if (chosen != null) {
       setState(() {
         _selectedDoctorId = chosen.id;
-        _selectedDoctorName = 'د/${chosen.name}';
+        _selectedDoctorName = _doctorDisplayName(chosen.name);
         _doctorCtrl.text = _selectedDoctorName!;
       });
     }
@@ -758,14 +780,14 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
   Future<void> _selectDoctorGeneralService() async {
     if (_selectedDoctorId == null) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('اختر الطبيب أولاً')));
+          .showSnackBar(const SnackBar(content: LocalizedText('اختر الطبيب أولاً')));
       return;
     }
     final svcs =
         await DBService.instance.getDoctorGeneralServices(_selectedDoctorId!);
     if (svcs.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('لا توجد خدمات عامة لهذا الطبيب')));
+          const SnackBar(content: LocalizedText('لا توجد خدمات عامة لهذا الطبيب')));
       return;
     }
 
@@ -776,7 +798,7 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx2, setDlg) => AlertDialog(
-          title: const Text('اختر خدمة الطبيب'),
+          title: const LocalizedText('اختر خدمة الطبيب'),
           content: SizedBox(
             width: double.maxFinite,
             height: 400,
@@ -784,8 +806,8 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
               children: [
                 TextField(
                   controller: searchCtrl,
-                  decoration: const InputDecoration(
-                    hintText: 'بحث عن الخدمة...',
+                  decoration: InputDecoration(
+                    hintText: context.trRaw('بحث عن الخدمة...'),
                     prefixIcon: Icon(Icons.search),
                   ),
                   onChanged: (v) => setDlg(() {
@@ -799,7 +821,7 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
                 const SizedBox(height: 10),
                 Expanded(
                   child: filteredServices.isEmpty
-                      ? const Center(child: Text('لا توجد نتائج'))
+                      ? const Center(child: LocalizedText('لا توجد نتائج'))
                       : ListView.builder(
                           itemCount: filteredServices.length,
                           itemBuilder: (c, i) {
@@ -814,10 +836,12 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
                                 title: Text(s['name'] as String,
                                     style: const TextStyle(
                                         fontWeight: FontWeight.w700)),
-                                subtitle: Text(
-                                    'السعر: ${(s['cost'] as num).toStringAsFixed(2)}'),
-                                trailing:
-                                    const Icon(Icons.chevron_left_rounded),
+                                subtitle: LocalizedText('السعر: ${(s['cost'] as num).toStringAsFixed(2)}'),
+                                trailing: Icon(
+                                  context.isRtl
+                                      ? Icons.chevron_left_rounded
+                                      : Icons.chevron_right_rounded,
+                                ),
                                 onTap: () => Navigator.pop(ctx, s),
                               ),
                             );
@@ -864,8 +888,8 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
       initialDate: _registerDate,
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
-      locale: const Locale('ar', ''),
-      helpText: 'اختر التاريخ',
+      locale: Localizations.localeOf(context),
+      helpText: context.trRaw('اختر التاريخ'),
     );
     if (d != null) {
       final t =
@@ -891,10 +915,9 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('تنبيه تكرار',
+        title: const LocalizedText('تنبيه تكرار',
             style: TextStyle(fontWeight: FontWeight.w800)),
-        content: Text(
-            'هناك سجلات أخرى بنفس رقم الهاتف (${dups.length}). هل ترغب بعرضها قبل المتابعة؟'),
+        content: LocalizedText('هناك سجلات أخرى بنفس رقم الهاتف (${dups.length}). هل ترغب بعرضها قبل المتابعة؟'),
         actions: [
           TPrimaryButton(
             icon: Icons.check_circle_outline,
@@ -931,7 +954,7 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
 
     if (_selectedServiceTypeAr == null) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('اختر نوع الخدمة')));
+          .showSnackBar(const SnackBar(content: LocalizedText('اختر نوع الخدمة')));
       return;
     }
     final needsDoctor = _selectedServiceTypeAr == 'الأشعة' ||
@@ -950,12 +973,12 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
     }
     if (needsDoctor && _selectedDoctorId == null) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('يجب اختيار الطبيب')));
+          .showSnackBar(const SnackBar(content: LocalizedText('يجب اختيار الطبيب')));
       return;
     }
     if (_selectedServices.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('اختر خدمة واحدة على الأقل')));
+          const SnackBar(content: LocalizedText('اختر خدمة واحدة على الأقل')));
       return;
     }
 
@@ -1277,7 +1300,7 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
       if (mounted) context.read<RepositoryProvider>().loadAlerts();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم حفظ التعديلات بنجاح')),
+        const SnackBar(content: LocalizedText('تم حفظ التعديلات بنجاح')),
       );
       Navigator.pushReplacement(
         context,
@@ -1286,7 +1309,7 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('فشل الحفظ: $e')),
+        SnackBar(content: LocalizedText('فشل الحفظ: $e')),
       );
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -1313,13 +1336,13 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
               errorBuilder: (_, __, ___) => const SizedBox.shrink(),
             ),
             const SizedBox(width: 8),
-            const Text('تعديل بيانات المريض'),
+            const LocalizedText('تعديل بيانات المريض'),
           ],
         ),
       ),
       body: SafeArea(
         child: Directionality(
-          textDirection: ui.TextDirection.rtl,
+          textDirection: Directionality.of(context),
           child: Stack(
             children: [
               Form(
@@ -1348,7 +1371,7 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
                           children: [
                             NeuField(
                               controller: _nameCtrl,
-                              labelText: 'اسم المريض',
+                              labelText: context.trRaw('اسم المريض'),
                               validator: (v) => Validators.required(v,
                                   fieldName: 'اسم المريض'),
                             ),
@@ -1358,7 +1381,7 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
                                 Expanded(
                                   child: NeuField(
                                     controller: _ageCtrl,
-                                    labelText: 'العمر',
+                                    labelText: context.trRaw('العمر'),
                                     keyboardType: TextInputType.number,
                                   ),
                                 ),
@@ -1366,7 +1389,7 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
                                 Expanded(
                                   child: NeuField(
                                     controller: _phoneCtrl,
-                                    labelText: 'رقم الهاتف',
+                                    labelText: context.trRaw('رقم الهاتف'),
                                     keyboardType: TextInputType.phone,
                                     validator: (v) => Validators.phone(v),
                                   ),
@@ -1480,22 +1503,22 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
                             horizontal: 12, vertical: 10),
                         child: DropdownButtonFormField<String>(
                           initialValue: _selectedServiceTypeAr,
-                          decoration: const InputDecoration(
-                            labelText: 'اختر نوع الخدمة',
+                          decoration: InputDecoration(
+                            labelText: context.trRaw('اختر نوع الخدمة'),
                             border: InputBorder.none,
                             contentPadding: EdgeInsets.zero,
                           ),
                           items: const [
                             DropdownMenuItem(
-                                value: 'الأشعة', child: Text('الأشعة')),
+                                value: 'الأشعة', child: LocalizedText('الأشعة')),
                             DropdownMenuItem(
-                                value: 'المختبر', child: Text('المختبر')),
+                                value: 'المختبر', child: LocalizedText('المختبر')),
                             DropdownMenuItem(
-                                value: 'طبيب', child: Text('طبيب')),
+                                value: 'طبيب', child: LocalizedText('طبيب')),
                           ],
                           onChanged: _onServiceTypeChanged,
                           validator: (v) =>
-                              v == null ? 'اختر نوع الخدمة' : null,
+                              v == null ? context.trRaw('اختر نوع الخدمة') : null,
                         ),
                       ),
                       const SizedBox(height: 14),
@@ -1508,8 +1531,12 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
                           child: AbsorbPointer(
                             child: NeuField(
                               controller: _doctorCtrl,
-                              labelText: 'الطبيب المختص',
-                              suffix: const Icon(Icons.chevron_left_rounded),
+                              labelText: context.trRaw('الطبيب المختص'),
+                              suffix: Icon(
+                                context.isRtl
+                                    ? Icons.chevron_left_rounded
+                                    : Icons.chevron_right_rounded,
+                              ),
                             ),
                           ),
                         ),
@@ -1522,8 +1549,12 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
                           child: AbsorbPointer(
                             child: NeuField(
                               controller: _doctorCtrl,
-                              labelText: 'عيادة الطبيب',
-                              suffix: const Icon(Icons.chevron_left_rounded),
+                              labelText: context.trRaw('عيادة الطبيب'),
+                              suffix: Icon(
+                                context.isRtl
+                                    ? Icons.chevron_left_rounded
+                                    : Icons.chevron_right_rounded,
+                              ),
                             ),
                           ),
                         ),
@@ -1533,16 +1564,20 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 12, vertical: 12),
                           child: Row(
-                            children: const [
-                              Icon(Icons.add_circle_outline,
+                            children: [
+                              const Icon(Icons.add_circle_outline,
                                   color: kPrimaryColor),
-                              SizedBox(width: 8),
-                              Expanded(
-                                child: Text('إضافة خدمة من عيادة الطبيب',
+                              const SizedBox(width: 8),
+                              const Expanded(
+                                child: LocalizedText('إضافة خدمة من عيادة الطبيب',
                                     style:
                                         TextStyle(fontWeight: FontWeight.w700)),
                               ),
-                              Icon(Icons.chevron_left_rounded),
+                              Icon(
+                                context.isRtl
+                                    ? Icons.chevron_left_rounded
+                                    : Icons.chevron_right_rounded,
+                              ),
                             ],
                           ),
                         ),
@@ -1553,14 +1588,14 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
                               flex: 2,
                               child: NeuField(
                                 controller: _diagnosisCtrl,
-                                labelText: 'خدمة/حالة نصيّة',
+                                labelText: context.trRaw('خدمة/حالة نصيّة'),
                               ),
                             ),
                             const SizedBox(width: 10),
                             Expanded(
                               child: NeuField(
                                 controller: _manualCostCtrl,
-                                labelText: 'تكلفة اليدوية',
+                                labelText: context.trRaw('تكلفة اليدوية'),
                                 keyboardType: TextInputType.number,
                               ),
                             ),
@@ -1617,7 +1652,7 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
                           children: [
                             NeuField(
                               controller: _totalCtrl,
-                              labelText: 'المجموع الكلي للخدمات',
+                              labelText: context.trRaw('المجموع الكلي للخدمات'),
                               enabled: false,
                             ),
                             const SizedBox(height: 10),
@@ -1626,7 +1661,7 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
                                 Expanded(
                                   child: NeuField(
                                     controller: _paidCtrl,
-                                    labelText: 'المبلغ المقدم',
+                                    labelText: context.trRaw('المبلغ المقدم'),
                                     keyboardType: TextInputType.number,
                                     onChanged: _onPaidChanged,
                                   ),
@@ -1635,7 +1670,7 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
                                 Expanded(
                                   child: NeuField(
                                     controller: _remainingCtrl,
-                                    labelText: 'المتبقي (يُحسب تلقائيًا)',
+                                    labelText: context.trRaw('المتبقي (يُحسب تلقائيًا)'),
                                     enabled: false,
                                   ),
                                 ),
@@ -1657,14 +1692,14 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
                       TSectionHeader('الرهن (اختياري)'),
                       NeuField(
                         controller: _collateralCtrl,
-                        labelText: 'مثال: سيارة، ذهب، سند...',
+                        labelText: context.trRaw('مثال: سيارة، ذهب، سند...'),
                         maxLines: 2,
                       ),
                       const SizedBox(height: 14),
                       TSectionHeader('ملاحظات'),
                       NeuField(
                         controller: _notesCtrl,
-                        labelText: 'ملاحظات',
+                        labelText: context.trRaw('ملاحظات'),
                         maxLines: 3,
                       ),
                     ],
@@ -1686,11 +1721,11 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text('الإجمالي: ${_totalCtrl.text}',
+                              LocalizedText('الإجمالي: ${_totalCtrl.text}',
                                   style: const TextStyle(
                                       fontWeight: FontWeight.w800)),
                               const SizedBox(height: 4),
-                              Text('المتبقي: ${_remainingCtrl.text}'),
+                              LocalizedText('المتبقي: ${_remainingCtrl.text}'),
                             ],
                           ),
                         ),
@@ -1729,11 +1764,11 @@ class _EditPatientScreenState extends State<EditPatientScreen> {
     if (_availableServices.isEmpty) {
       return NeuCard(
         padding: const EdgeInsets.all(12),
-        child: const Text('لا توجد خدمات محفوظة لهذا النوع'),
+        child: const LocalizedText('لا توجد خدمات محفوظة لهذا النوع'),
       );
     }
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Wrap(
         alignment: WrapAlignment.start,
         spacing: 8,
@@ -1810,7 +1845,7 @@ class _DateRow extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         Expanded(
-          child: Text(
+          child: LocalizedText(
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -1818,7 +1853,7 @@ class _DateRow extends StatelessWidget {
           ),
         ),
         if (action != null)
-          Text(
+          LocalizedText(
             action!,
             style: TextStyle(
               color: scheme.onSurface.withValues(alpha: .6),

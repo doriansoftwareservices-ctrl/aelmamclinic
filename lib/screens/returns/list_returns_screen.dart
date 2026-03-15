@@ -1,6 +1,5 @@
 // lib/screens/returns/list_returns_screen.dart
 import 'dart:io';
-import 'dart:ui' as ui show TextDirection;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -10,6 +9,7 @@ import 'package:aelmamclinic/utils/toast_utils.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:intl/intl.dart';
+import 'package:aelmamclinic/utils/app_formatters.dart';
 import 'package:timezone/data/latest_all.dart' as tz_data;
 
 /*── تصميم TBIAN ─*/
@@ -24,7 +24,10 @@ import 'package:aelmamclinic/services/save_file_service.dart';
 import 'package:aelmamclinic/providers/appointment_provider.dart';
 import 'package:aelmamclinic/screens/reminders/reminder_screen.dart';
 import 'package:aelmamclinic/services/notification_service.dart';
+import 'package:aelmamclinic/utils/report_localizer.dart';
 import 'view_returns_screen.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class ListReturnsScreen extends StatefulWidget {
   const ListReturnsScreen({super.key});
@@ -42,7 +45,7 @@ class _ListReturnsScreenState extends State<ListReturnsScreen> {
   static const int _pageSize = 50;
   int _visibleCount = 0;
 
-  final _dateOnly = DateFormat('yyyy-MM-dd');
+  DateFormat get _dateOnly => AppFormatters.dateFormat('yyyy-MM-dd');
 
   @override
   void initState() {
@@ -101,7 +104,7 @@ class _ListReturnsScreenState extends State<ListReturnsScreen> {
       initialDate: _startDate ?? DateTime.now(),
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
-      locale: const Locale('ar', ''),
+      locale: AppFormatters.localeOf(context),
       builder: (ctx, child) => Theme(
         data: Theme.of(ctx).copyWith(
           colorScheme: scheme.copyWith(primary: kPrimaryColor),
@@ -119,7 +122,7 @@ class _ListReturnsScreenState extends State<ListReturnsScreen> {
       initialDate: _endDate ?? DateTime.now(),
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
-      locale: const Locale('ar', ''),
+      locale: AppFormatters.localeOf(context),
       builder: (ctx, child) => Theme(
         data: Theme.of(ctx).copyWith(
           colorScheme: scheme.copyWith(primary: kPrimaryColor),
@@ -187,25 +190,28 @@ class _ListReturnsScreenState extends State<ListReturnsScreen> {
   Future<void> _shareFile() async {
     if (_filteredReturns.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('لا توجد عودات للمشاركة')),
+        const SnackBar(content: LocalizedText('لا توجد عودات للمشاركة')),
       );
       return;
     }
     try {
       final bytes = await ExportService.exportReturnsToExcel(_filteredReturns);
       final dir = await getTemporaryDirectory();
-      final file = File('${dir.path}/كشف-العودات.xlsx');
+      final i18n = ReportLocalizer();
+      final file = File(
+        '${dir.path}/${i18n.fileName('كشف العودات', extension: 'xlsx')}',
+      );
       await file.writeAsBytes(bytes);
       await SharePlus.instance.share(
         ShareParams(
           files: [XFile(file.path)],
-          text: 'كشف العودات المحفوظ',
+          text: i18n.tr('كشف العودات المحفوظ'),
         ),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('حدث خطأ أثناء المشاركة: $e')),
+        SnackBar(content: LocalizedText('حدث خطأ أثناء المشاركة: $e')),
       );
     }
   }
@@ -213,17 +219,21 @@ class _ListReturnsScreenState extends State<ListReturnsScreen> {
   Future<void> _downloadFile() async {
     if (_filteredReturns.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('لا توجد عودات للتنزيل')),
+        const SnackBar(content: LocalizedText('لا توجد عودات للتنزيل')),
       );
       return;
     }
     try {
       final bytes = await ExportService.exportReturnsToExcel(_filteredReturns);
-      await saveExcelFile(bytes, 'كشف-العودات.xlsx');
+      final i18n = ReportLocalizer();
+      await saveExcelFile(
+        bytes,
+        i18n.fileName('كشف العودات', extension: 'xlsx'),
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('حدث خطأ أثناء التنزيل: $e')),
+        SnackBar(content: LocalizedText('حدث خطأ أثناء التنزيل: $e')),
       );
     }
   }
@@ -249,7 +259,7 @@ class _ListReturnsScreenState extends State<ListReturnsScreen> {
     final hasMore = _visibleCount < _filteredReturns.length;
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Consumer<AppointmentProvider>(
         builder: (ctx, appt, child) {
           return Scaffold(
@@ -271,19 +281,19 @@ class _ListReturnsScreenState extends State<ListReturnsScreen> {
               actions: [
                 IconButton(
                   icon: const Icon(Icons.share),
-                  tooltip: 'مشاركة العودات كملف Excel',
+                  tooltip: context.trRaw('مشاركة العودات كملف Excel'),
                   onPressed: _shareFile,
                 ),
                 IconButton(
                   icon: const Icon(Icons.download),
-                  tooltip: 'تنزيل العودات كملف Excel',
+                  tooltip: context.trRaw('تنزيل العودات كملف Excel'),
                   onPressed: _downloadFile,
                 ),
                 Stack(
                   alignment: Alignment.center,
                   children: [
                     IconButton(
-                      tooltip: 'التذكيرات',
+                      tooltip: context.trRaw('التذكيرات'),
                       icon: Image.asset(
                         hasDue
                             ? 'assets/images/bell_icon1.png'
@@ -379,7 +389,7 @@ class _ListReturnsScreenState extends State<ListReturnsScreen> {
                       color: Theme.of(context).colorScheme.primary,
                       onRefresh: _loadReturns,
                       child: _filteredReturns.isEmpty
-                          ? const Center(child: Text('لا توجد عودات لعرضها'))
+                          ? const Center(child: LocalizedText('لا توجد عودات لعرضها'))
                           : ListView.builder(
                               physics: const AlwaysScrollableScrollPhysics(),
                               padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -393,8 +403,7 @@ class _ListReturnsScreenState extends State<ListReturnsScreen> {
                                       child: OutlinedButton.icon(
                                         icon:
                                             const Icon(Icons.expand_more_rounded),
-                                        label: Text(
-                                          'تحميل المزيد (${_visibleCount}/${_filteredReturns.length})',
+                                        label: LocalizedText('تحميل المزيد (${_visibleCount}/${_filteredReturns.length})',
                                         ),
                                         onPressed: () {
                                           setState(() {
@@ -453,8 +462,7 @@ class _ListReturnsScreenState extends State<ListReturnsScreen> {
                                           style: const TextStyle(
                                               fontWeight: FontWeight.w800),
                                         ),
-                                        subtitle: Text(
-                                          'الحالة: ${r.diagnosis}\nتاريخ ووقت العود: $formatted',
+                                        subtitle: LocalizedText('الحالة: ${r.diagnosis}\nتاريخ ووقت العود: $formatted',
                                           style: TextStyle(
                                             color: Theme.of(context)
                                                 .colorScheme
@@ -467,7 +475,7 @@ class _ListReturnsScreenState extends State<ListReturnsScreen> {
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
                                             IconButton(
-                                              tooltip: 'اتصال',
+                                              tooltip: context.trRaw('اتصال'),
                                               icon: const Icon(Icons.phone),
                                               color: kPrimaryColor,
                                               onPressed: () async {
@@ -481,7 +489,7 @@ class _ListReturnsScreenState extends State<ListReturnsScreen> {
                                               },
                                             ),
                                             IconButton(
-                                              tooltip: 'حذف',
+                                              tooltip: context.trRaw('حذف'),
                                               icon: const Icon(
                                                   Icons.delete_outline),
                                               color: Colors.red.shade700,

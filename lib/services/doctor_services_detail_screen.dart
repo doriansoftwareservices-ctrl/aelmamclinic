@@ -1,6 +1,5 @@
 // lib/features/doctors/doctor_services_detail_screen.dart
 import 'dart:io';
-import 'dart:ui' as ui show TextDirection;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:excel/excel.dart';
@@ -14,6 +13,8 @@ import 'package:aelmamclinic/core/formatters.dart';
 
 import 'db_service.dart';
 import 'package:aelmamclinic/models/doctor.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class DoctorServicesDetailScreen extends StatefulWidget {
   final Doctor doctor;
@@ -124,7 +125,7 @@ class _DoctorServicesDetailScreenState
 
   void _toast(String msg) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: LocalizedText(msg)));
   }
 
   /*────────────────── تحميل / فلترة ──────────────────*/
@@ -218,7 +219,7 @@ class _DoctorServicesDetailScreenState
       context: context,
       builder: (ctx) {
         return Directionality(
-          textDirection: ui.TextDirection.rtl,
+          textDirection: Directionality.of(context),
           child: AlertDialog(
             title: Text(isEditMode ? 'تعديل خدمة للطبيب' : 'إضافة خدمة للطبيب'),
             content: SingleChildScrollView(
@@ -227,7 +228,7 @@ class _DoctorServicesDetailScreenState
                 children: [
                   NeuField(
                     controller: _serviceNameCtrl,
-                    labelText: 'اسم الخدمة',
+                    labelText: context.trRaw('اسم الخدمة'),
                     prefix: const Icon(Icons.medical_services_outlined),
                   ),
                   const SizedBox(height: 10),
@@ -235,7 +236,7 @@ class _DoctorServicesDetailScreenState
                     controller: _serviceCostCtrl,
                     keyboardType:
                         const TextInputType.numberWithOptions(decimal: true),
-                    labelText: 'مبلغ الخدمة',
+                    labelText: context.trRaw('مبلغ الخدمة'),
                     prefix: const Icon(Icons.attach_money_rounded),
                     textDirection: TextDirection.ltr,
                     textAlign: TextAlign.center,
@@ -245,7 +246,7 @@ class _DoctorServicesDetailScreenState
                     controller: _towerShareCtrl,
                     keyboardType:
                         const TextInputType.numberWithOptions(decimal: true),
-                    labelText: 'نسبة المركز الطبي (%)',
+                    labelText: context.trRaw('نسبة المركز الطبي (%)'),
                     prefix: const Icon(Icons.percent_rounded),
                     textDirection: TextDirection.ltr,
                     textAlign: TextAlign.center,
@@ -256,7 +257,7 @@ class _DoctorServicesDetailScreenState
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx),
-                child: const Text('إلغاء'),
+                child: const LocalizedText('إلغاء'),
               ),
               FilledButton(
                 onPressed: () async {
@@ -276,7 +277,7 @@ class _DoctorServicesDetailScreenState
                   Navigator.pop(ctx);
                   await _loadDoctorServices();
                 },
-                child: const Text('حفظ'),
+                child: const LocalizedText('حفظ'),
               ),
             ],
           ),
@@ -360,7 +361,7 @@ class _DoctorServicesDetailScreenState
     final scheme = Theme.of(context).colorScheme;
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -390,7 +391,7 @@ class _DoctorServicesDetailScreenState
               },
             ),
             IconButton(
-              tooltip: 'استيراد من Excel',
+              tooltip: context.trRaw('استيراد من Excel'),
               icon: const Icon(Icons.upload_file_rounded),
               onPressed: _busy ? null : _importServicesFromExcel,
             ),
@@ -419,8 +420,7 @@ class _DoctorServicesDetailScreenState
                         ),
                         const SizedBox(width: 10),
                         Expanded(
-                          child: Text(
-                            'خدمات د/${widget.doctor.name}',
+                          child: LocalizedText('خدمات د/${widget.doctor.name}',
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
@@ -465,7 +465,7 @@ class _DoctorServicesDetailScreenState
                     const Center(child: CircularProgressIndicator()),
                   ] else if (_filtered.isEmpty) ...[
                     const SizedBox(height: 80),
-                    const Center(child: Text('لا توجد خدمات لهذا الطبيب')),
+                    const Center(child: LocalizedText('لا توجد خدمات لهذا الطبيب')),
                   ] else ...[
                     Wrap(
                       spacing: 12,

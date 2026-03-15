@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/core/tbian_ui.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class FeatureHubItem {
   final IconData icon;
@@ -71,8 +72,8 @@ class FeatureHubBody extends StatelessWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  title,
-                  textAlign: TextAlign.right,
+                  context.trRaw(title),
+                  textAlign: TextAlign.start,
                   style: const TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.w900,
@@ -106,6 +107,9 @@ class _FeatureHubTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final disabled = item.disabled || item.onTap == null;
+    final actionIcon = context.isRtl
+        ? Icons.arrow_back_ios_new_rounded
+        : Icons.arrow_forward_ios_rounded;
 
     final tile = NeuCard(
       onTap: disabled ? null : item.onTap,
@@ -130,7 +134,7 @@ class _FeatureHubTile extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text(
-            item.title,
+            context.trRaw(item.title),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
@@ -142,7 +146,7 @@ class _FeatureHubTile extends StatelessWidget {
           const SizedBox(height: 6),
           Expanded(
             child: Text(
-              item.subtitle,
+              context.trRaw(item.subtitle),
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
@@ -167,7 +171,7 @@ class _FeatureHubTile extends StatelessWidget {
                   ),
                 ),
                 child: Text(
-                  item.badgeText!,
+                  context.trRaw(item.badgeText!),
                   style: TextStyle(
                     color: scheme.error,
                     fontWeight: FontWeight.w700,
@@ -180,8 +184,8 @@ class _FeatureHubTile extends StatelessWidget {
           Align(
             alignment: AlignmentDirectional.centerEnd,
             child: TPrimaryButton(
-              icon: Icons.arrow_back_ios_new_rounded,
-              label: 'فتح',
+              icon: actionIcon,
+              label: context.trRaw('فتح'),
               onPressed: disabled ? null : item.onTap,
             ),
           ),

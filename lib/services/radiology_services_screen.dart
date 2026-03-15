@@ -1,7 +1,6 @@
 // lib/screens/radiology_services_screen.dart
 
 import 'dart:io';
-import 'dart:ui' as ui show TextDirection;
 import 'package:excel/excel.dart' as xls;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -18,6 +17,8 @@ import 'db_service.dart';
 
 /*── شاشة نسب الأطباء لهذه الخدمة ─*/
 import 'service_doctor_share_screen.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class RadiologyServicesScreen extends StatefulWidget {
   const RadiologyServicesScreen({super.key});
@@ -156,7 +157,7 @@ class _RadiologyServicesScreenState extends State<RadiologyServicesScreen> {
               children: [
                 NeuField(
                   controller: _serviceNameCtrl,
-                  labelText: 'نوع الخدمة',
+                  labelText: context.trRaw('نوع الخدمة'),
                   prefix: const Icon(Icons.biotech_outlined),
                 ),
                 const SizedBox(height: 10),
@@ -164,7 +165,7 @@ class _RadiologyServicesScreenState extends State<RadiologyServicesScreen> {
                   controller: _serviceCostCtrl,
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
-                  labelText: 'الكلفة',
+                  labelText: context.trRaw('الكلفة'),
                   prefix: const Icon(Icons.attach_money_rounded),
                   textDirection: TextDirection.ltr,
                   textAlign: TextAlign.center,
@@ -175,7 +176,7 @@ class _RadiologyServicesScreenState extends State<RadiologyServicesScreen> {
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(ctx),
-                child: const Text('إلغاء')),
+                child: const LocalizedText('إلغاء')),
             FilledButton(
               onPressed: () async {
                 final name = _serviceNameCtrl.text.trim();
@@ -185,7 +186,7 @@ class _RadiologyServicesScreenState extends State<RadiologyServicesScreen> {
                 if (name.isEmpty || cost <= 0) {
                   if (!mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('الرجاء إدخال بيانات صحيحة')),
+                    const SnackBar(content: LocalizedText('الرجاء إدخال بيانات صحيحة')),
                   );
                   return;
                 }
@@ -212,7 +213,7 @@ class _RadiologyServicesScreenState extends State<RadiologyServicesScreen> {
                   if (mounted) setState(() => _busy = false);
                 }
               },
-              child: const Text('حفظ'),
+              child: const LocalizedText('حفظ'),
             ),
           ],
         );
@@ -228,15 +229,15 @@ class _RadiologyServicesScreenState extends State<RadiologyServicesScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: scheme.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('تأكيد الحذف'),
-        content: const Text('هل تريد حذف هذه الخدمة؟'),
+        title: const LocalizedText('تأكيد الحذف'),
+        content: const LocalizedText('هل تريد حذف هذه الخدمة؟'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('إلغاء')),
+              child: const LocalizedText('إلغاء')),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('حذف'),
+            child: const LocalizedText('حذف'),
           ),
         ],
       ),
@@ -342,11 +343,11 @@ class _RadiologyServicesScreenState extends State<RadiologyServicesScreen> {
 
       final msg =
           'استيراد: $imported | تحديث: $updated | تخطّي: $skipped${errors.isEmpty ? '' : ' | أخطاء: ${errors.length}'}';
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: LocalizedText(msg)));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('تعذّر الاستيراد: $e')));
+          .showSnackBar(SnackBar(content: LocalizedText('تعذّر الاستيراد: $e')));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -372,12 +373,12 @@ class _RadiologyServicesScreenState extends State<RadiologyServicesScreen> {
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم إنشاء وفتح نموذج Excel')),
+        const SnackBar(content: LocalizedText('تم إنشاء وفتح نموذج Excel')),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذّر إنشاء/فتح الملف: $e')),
+        SnackBar(content: LocalizedText('تعذّر إنشاء/فتح الملف: $e')),
       );
     }
   }
@@ -402,7 +403,7 @@ class _RadiologyServicesScreenState extends State<RadiologyServicesScreen> {
     if (_filtered.isEmpty) {
       return const [
         SizedBox(height: 80),
-        Center(child: Text('لا توجد أي خدمات أشعة محفوظة')),
+        Center(child: LocalizedText('لا توجد أي خدمات أشعة محفوظة')),
       ];
     }
 
@@ -519,7 +520,7 @@ class _RadiologyServicesScreenState extends State<RadiologyServicesScreen> {
     final scheme = Theme.of(context).colorScheme;
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -539,17 +540,17 @@ class _RadiologyServicesScreenState extends State<RadiologyServicesScreen> {
           actions: [
             // ↙️ نفس آلية add_item_screen: استيراد/نموذج + تحديث
             IconButton(
-              tooltip: 'استيراد من Excel',
+              tooltip: context.trRaw('استيراد من Excel'),
               icon: const Icon(Icons.upload_file),
               onPressed: _busy ? null : _importRadiologyServicesFromExcel,
             ),
             IconButton(
-              tooltip: 'تحميل نموذج Excel',
+              tooltip: context.trRaw('تحميل نموذج Excel'),
               icon: const Icon(Icons.download_outlined),
               onPressed: _busy ? null : _downloadExcelTemplate,
             ),
             IconButton(
-              tooltip: 'تحديث',
+              tooltip: context.trRaw('تحديث'),
               icon: const Icon(Icons.refresh_rounded),
               onPressed: _loadRadiologyServices,
             ),
@@ -580,8 +581,7 @@ class _RadiologyServicesScreenState extends State<RadiologyServicesScreen> {
                       ),
                       const SizedBox(width: 10),
                       const Expanded(
-                        child: Text(
-                          'خدمات الأشعة',
+                        child: LocalizedText('خدمات الأشعة',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -673,7 +673,7 @@ class _ErrorCard extends StatelessWidget {
           ElevatedButton.icon(
             onPressed: onRetry,
             icon: const Icon(Icons.refresh, color: Colors.white, size: 18),
-            label: const Text('إعادة المحاولة',
+            label: const LocalizedText('إعادة المحاولة',
                 style: TextStyle(color: Colors.white)),
             style: ElevatedButton.styleFrom(
               backgroundColor: scheme.error,

@@ -4,6 +4,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:aelmamclinic/utils/app_formatters.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
 
 import 'package:aelmamclinic/core/neumorphism.dart';
@@ -12,6 +13,8 @@ import 'package:aelmamclinic/models/support_rating_entry.dart';
 import 'package:aelmamclinic/services/admin_account_members_service.dart';
 import 'package:aelmamclinic/services/support_ratings_service.dart';
 import 'package:aelmamclinic/utils/chat_code_utils.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class SupportRatingsScreen extends StatefulWidget {
   const SupportRatingsScreen({super.key});
@@ -21,8 +24,8 @@ class SupportRatingsScreen extends StatefulWidget {
 }
 
 class _SupportRatingsScreenState extends State<SupportRatingsScreen> {
-  final _dateFmt = DateFormat('yyyy-MM-dd');
-  final _monthFmt = DateFormat('yyyy-MM');
+  DateFormat get _dateFmt => AppFormatters.dateFormat('yyyy-MM-dd');
+  DateFormat get _monthFmt => AppFormatters.dateFormat('yyyy-MM');
   DateTimeRange? _range;
   bool _loading = true;
   String? _error;
@@ -188,8 +191,7 @@ class _SupportRatingsScreenState extends State<SupportRatingsScreen> {
               const Icon(Icons.support_agent_rounded, color: kPrimaryColor),
               const SizedBox(width: 8),
               const Expanded(
-                child: Text(
-                  'تقييمات خدمة العملاء',
+                child: LocalizedText('تقييمات خدمة العملاء',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
                 ),
               ),
@@ -200,7 +202,7 @@ class _SupportRatingsScreenState extends State<SupportRatingsScreen> {
               ),
               const SizedBox(width: 8),
               IconButton(
-                tooltip: 'تحديث',
+                tooltip: context.trRaw('تحديث'),
                 onPressed: _load,
                 icon: const Icon(Icons.refresh_rounded),
               ),
@@ -287,15 +289,14 @@ class _SupportRatingsScreenState extends State<SupportRatingsScreen> {
 
   Widget _buildRatingsList(BuildContext context) {
     if (_ratings.isEmpty) {
-      return const _EmptyCard(message: 'لا توجد تقييمات ضمن الفترة المحددة');
+      return _EmptyCard(message: context.trRaw('لا توجد تقييمات ضمن الفترة المحددة'));
     }
     return NeuCard(
       padding: const EdgeInsets.all(12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'أحدث التقييمات',
+          const LocalizedText('أحدث التقييمات',
             style: TextStyle(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 8),
@@ -316,9 +317,9 @@ class _SupportRatingsScreenState extends State<SupportRatingsScreen> {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      Text(_dateFmt.format(r.submittedAt.toLocal())),
+                      LocalizedText(_dateFmt.format(r.submittedAt.toLocal())),
                       const Spacer(),
-                      Text(
+                      LocalizedText(
                         _accountLabelById[r.accountId ?? ''] ??
                             r.accountId ??
                             '—',

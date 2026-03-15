@@ -1,5 +1,4 @@
 // lib/screens/doctor_imaging_lab_report_screen.dart
-import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -10,9 +9,11 @@ import 'package:aelmamclinic/services/db_service.dart';
 // تصميم TBIAN
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class DoctorImagingLabReportScreen extends StatefulWidget {
-  const DoctorImagingLabReportScreen({Key? key}) : super(key: key);
+  const DoctorImagingLabReportScreen({super.key});
 
   @override
   State<DoctorImagingLabReportScreen> createState() =>
@@ -63,9 +64,9 @@ class _DoctorImagingLabReportScreenState
       position: RelativeRect.fromLTRB(
           pos.dx + box.size.width - 200, pos.dy + kToolbarHeight + 12, 12, 0),
       items: const [
-        PopupMenuItem(value: 'all', child: Text('الكل')),
-        PopupMenuItem(value: 'radiology', child: Text('الأشعة')),
-        PopupMenuItem(value: 'lab', child: Text('المختبر')),
+        PopupMenuItem(value: 'all', child: LocalizedText('الكل')),
+        PopupMenuItem(value: 'radiology', child: LocalizedText('الأشعة')),
+        PopupMenuItem(value: 'lab', child: LocalizedText('المختبر')),
       ],
     );
     if (selected != null) setState(() => _selectedCategory = selected);
@@ -94,9 +95,9 @@ class _DoctorImagingLabReportScreenState
             }
 
             return Directionality(
-              textDirection: ui.TextDirection.rtl,
+              textDirection: Directionality.of(context),
               child: AlertDialog(
-                title: const Text('اختر الطبيب'),
+                title: const LocalizedText('اختر الطبيب'),
                 content: SizedBox(
                   width: 460,
                   height: 420,
@@ -104,8 +105,8 @@ class _DoctorImagingLabReportScreenState
                     children: [
                       TextField(
                         controller: _doctorSearchCtrl,
-                        decoration: const InputDecoration(
-                          hintText: 'بحث بالاسم/التخصص/الهاتف...',
+                        decoration: InputDecoration(
+                          hintText: context.trRaw('بحث بالاسم/التخصص/الهاتف...'),
                           prefixIcon: Icon(Icons.search),
                         ),
                         onChanged: doFilter,
@@ -113,13 +114,13 @@ class _DoctorImagingLabReportScreenState
                       const SizedBox(height: 10),
                       Expanded(
                         child: _filteredDoctors.isEmpty
-                            ? const Center(child: Text('لا توجد نتائج'))
+                            ? const Center(child: LocalizedText('لا توجد نتائج'))
                             : ListView.builder(
                                 itemCount: _filteredDoctors.length,
                                 itemBuilder: (ctx2, index) {
                                   final d = _filteredDoctors[index];
                                   return ListTile(
-                                    title: Text("د/${d.name}"),
+                                    title: LocalizedText("د/${d.name}"),
                                     subtitle: Text(d.specialization),
                                     onTap: () => Navigator.pop(ctx, d),
                                   );
@@ -132,7 +133,7 @@ class _DoctorImagingLabReportScreenState
                 actions: [
                   TextButton(
                     onPressed: () => Navigator.pop(ctx),
-                    child: const Text('إلغاء'),
+                    child: const LocalizedText('إلغاء'),
                   ),
                   OutlinedButton(
                     onPressed: () {
@@ -142,7 +143,7 @@ class _DoctorImagingLabReportScreenState
                         _chooseNoDoctor = true;
                       });
                     },
-                    child: const Text('بدون طبيب'),
+                    child: const LocalizedText('بدون طبيب'),
                   ),
                 ],
               ),
@@ -189,7 +190,7 @@ class _DoctorImagingLabReportScreenState
   Future<void> _generateReport() async {
     if (_startDate == null || _endDate == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('الرجاء اختيار الفترة الزمنية أولاً')),
+        const SnackBar(content: LocalizedText('الرجاء اختيار الفترة الزمنية أولاً')),
       );
       return;
     }
@@ -304,7 +305,7 @@ class _DoctorImagingLabReportScreenState
         borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
       builder: (ctx) => Directionality(
-        textDirection: ui.TextDirection.rtl,
+        textDirection: Directionality.of(context),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
           child: Column(
@@ -316,17 +317,16 @@ class _DoctorImagingLabReportScreenState
                   contentPadding: EdgeInsets.zero,
                   leading: const Icon(Icons.medical_information_rounded,
                       color: kPrimaryColor),
-                  title: Text(
-                    "الخدمة: $serviceName",
+                  title: LocalizedText("الخدمة: $serviceName",
                     style: const TextStyle(fontWeight: FontWeight.w900),
                   ),
-                  subtitle: Text("عدد المرضى: ${filtered.length}"),
+                  subtitle: LocalizedText("عدد المرضى: ${filtered.length}"),
                 ),
               ),
               const SizedBox(height: 10),
               Flexible(
                 child: filtered.isEmpty
-                    ? const Center(child: Text('لا توجد بيانات'))
+                    ? const Center(child: LocalizedText('لا توجد بيانات'))
                     : ListView.separated(
                         shrinkWrap: true,
                         separatorBuilder: (_, __) => const SizedBox(height: 10),
@@ -338,13 +338,11 @@ class _DoctorImagingLabReportScreenState
                                 horizontal: 12, vertical: 10),
                             child: ListTile(
                               contentPadding: EdgeInsets.zero,
-                              title: Text(
-                                "المريض: ${pat.name}",
+                              title: LocalizedText("المريض: ${pat.name}",
                                 style: const TextStyle(
                                     fontWeight: FontWeight.w800),
                               ),
-                              subtitle: Text(
-                                "التكلفة: ${pat.serviceCost?.toStringAsFixed(2) ?? '0.00'}",
+                              subtitle: LocalizedText("التكلفة: ${pat.serviceCost?.toStringAsFixed(2) ?? '0.00'}",
                                 style: TextStyle(
                                   color: Theme.of(context)
                                       .colorScheme
@@ -353,8 +351,7 @@ class _DoctorImagingLabReportScreenState
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
-                              trailing: Text(
-                                "حصة: ${pat.doctorShare.toStringAsFixed(2)}",
+                              trailing: LocalizedText("حصة: ${pat.doctorShare.toStringAsFixed(2)}",
                                 style: const TextStyle(
                                     fontWeight: FontWeight.w900),
                               ),
@@ -394,7 +391,7 @@ class _DoctorImagingLabReportScreenState
         : DateFormat('yyyy-MM-dd').format(_endDate!);
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -406,12 +403,12 @@ class _DoctorImagingLabReportScreenState
                   fit: BoxFit.contain,
                   errorBuilder: (_, __, ___) => const SizedBox.shrink()),
               const SizedBox(width: 8),
-              const Text('تقرير الأشعة والمختبر للأطباء'),
+              const LocalizedText('تقرير الأشعة والمختبر للأطباء'),
             ],
           ),
           actions: [
             IconButton(
-              tooltip: 'إعادة تهيئة',
+              tooltip: context.trRaw('إعادة تهيئة'),
               onPressed: _resetAll,
               icon: const Icon(Icons.refresh_rounded),
             ),
@@ -438,9 +435,8 @@ class _DoctorImagingLabReportScreenState
                       ),
                       const SizedBox(width: 12),
                       const Expanded(
-                        child: Text(
-                          'فلترة وعرض ملخّص الخدمات حسب الطبيب والفترة',
-                          textAlign: TextAlign.right,
+                        child: LocalizedText('فلترة وعرض ملخّص الخدمات حسب الطبيب والفترة',
+                          textAlign: TextAlign.start,
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w900,
@@ -513,8 +509,7 @@ class _DoctorImagingLabReportScreenState
                 else if (_serviceSummaries.isEmpty)
                   Expanded(
                     child: Center(
-                      child: Text(
-                        'لا توجد بيانات',
+                      child: LocalizedText('لا توجد بيانات',
                         style: TextStyle(
                           color: Theme.of(context)
                               .colorScheme
@@ -539,9 +534,8 @@ class _DoctorImagingLabReportScreenState
                                   color: kPrimaryColor),
                               const SizedBox(width: 8),
                               Expanded(
-                                child: Text(
-                                  'الحالات: $_totalCases  •  التكلفة: ${_totalCost.toStringAsFixed(2)}  •  حصة الأطباء: ${_totalShare.toStringAsFixed(2)}',
-                                  textAlign: TextAlign.right,
+                                child: LocalizedText('الحالات: $_totalCases  •  التكلفة: ${_totalCost.toStringAsFixed(2)}  •  حصة الأطباء: ${_totalShare.toStringAsFixed(2)}',
+                                  textAlign: TextAlign.start,
                                   style: const TextStyle(
                                     fontWeight: FontWeight.w800,
                                     fontSize: 14.5,
@@ -589,8 +583,7 @@ class _DoctorImagingLabReportScreenState
                                   ),
                                   subtitle: Padding(
                                     padding: const EdgeInsets.only(top: 3),
-                                    child: Text(
-                                      'عدد الحالات: ${s.count}  •  إجمالي التكلفة: ${s.sumCost.toStringAsFixed(2)}',
+                                    child: LocalizedText('عدد الحالات: ${s.count}  •  إجمالي التكلفة: ${s.sumCost.toStringAsFixed(2)}',
                                       style: TextStyle(
                                         color: Theme.of(context)
                                             .colorScheme
@@ -600,8 +593,7 @@ class _DoctorImagingLabReportScreenState
                                       ),
                                     ),
                                   ),
-                                  trailing: Text(
-                                    'حصة: ${s.sumShare.toStringAsFixed(2)}',
+                                  trailing: LocalizedText('حصة: ${s.sumShare.toStringAsFixed(2)}',
                                     style: const TextStyle(
                                       fontWeight: FontWeight.w900,
                                     ),

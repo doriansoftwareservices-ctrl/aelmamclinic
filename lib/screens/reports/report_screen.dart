@@ -1,8 +1,10 @@
 // lib/screens/reports/report_screen.dart
-import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:aelmamclinic/utils/app_formatters.dart';
 import 'package:aelmamclinic/services/db_service.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class ReportScreen extends StatefulWidget {
   const ReportScreen({super.key});
@@ -25,9 +27,9 @@ class _ReportScreenState extends State<ReportScreen> {
 
   bool _loading = true;
 
-  final _fmtInt = NumberFormat('#,##0', 'ar');
-  final _fmtMoney = NumberFormat('#,##0.00', 'ar');
-  final _dateOnly = DateFormat('yyyy-MM-dd');
+  NumberFormat get _fmtInt => AppFormatters.numberFormat('#,##0');
+  NumberFormat get _fmtMoney => AppFormatters.numberFormat('#,##0.00');
+  DateFormat get _dateOnly => AppFormatters.dateFormat('yyyy-MM-dd');
 
   @override
   void initState() {
@@ -100,47 +102,45 @@ class _ReportScreenState extends State<ReportScreen> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
-    return Directionality(
-      textDirection: ui.TextDirection.rtl,
-      child: Scaffold(
-        appBar: AppBar(
-          centerTitle: true,
-          title: const Text('التقارير والإحصائيات'),
-          flexibleSpace: Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [scheme.primaryContainer, scheme.primary],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-            ),
-          ),
-          actions: [
-            IconButton(
-              tooltip: 'تحديث',
-              icon: const Icon(Icons.refresh_rounded),
-              onPressed: _loadReports,
-            ),
-          ],
-        ),
-        body: Container(
+    return Scaffold(
+      appBar: AppBar(
+        centerTitle: true,
+        title: const LocalizedText('التقارير والإحصائيات'),
+        flexibleSpace: Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [
-                scheme.surfaceContainerHigh,
-                scheme.surface,
-                scheme.surfaceContainerHigh
-              ],
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
+              colors: [scheme.primaryContainer, scheme.primary],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
           ),
-          child: RefreshIndicator(
-            color: scheme.primary,
-            onRefresh: _loadReports,
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
-              children: [
+        ),
+        actions: [
+          IconButton(
+            tooltip: context.trRaw('تحديث'),
+            icon: const Icon(Icons.refresh_rounded),
+            onPressed: _loadReports,
+          ),
+        ],
+      ),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              scheme.surfaceContainerHigh,
+              scheme.surface,
+              scheme.surfaceContainerHigh
+            ],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+        ),
+        child: RefreshIndicator(
+          color: scheme.primary,
+          onRefresh: _loadReports,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+            children: [
                 // نطاق التاريخ (يؤثر على "حصة المركز" فقط)
                 Row(
                   children: [
@@ -215,7 +215,7 @@ class _ReportScreenState extends State<ReportScreen> {
                       _MetricCard(
                         icon: Icons.account_balance_outlined,
                         title: 'حصة المركز ضمن المدى',
-                        subtitle: _rangeLabel,
+                        subtitle: _rangeLabel(context),
                         value: _fmtMoney.format(towerShareTotal),
                         color: scheme.primary,
                       ),
@@ -225,19 +225,18 @@ class _ReportScreenState extends State<ReportScreen> {
 
                 const SizedBox(height: 24),
                 if (_loading) const Center(child: CircularProgressIndicator()),
-              ],
-            ),
+            ],
           ),
         ),
       ),
     );
   }
 
-  String get _rangeLabel {
-    if (_fromDate == null && _toDate == null) return 'كل الفترات';
+  String _rangeLabel(BuildContext context) {
+    if (_fromDate == null && _toDate == null) return context.trRaw('كل الفترات');
     final f = _fromDate != null ? _dateOnly.format(_fromDate!) : '—';
     final t = _toDate != null ? _dateOnly.format(_toDate!) : '—';
-    return '$f → $t';
+    return context.trRaw('الفترة: $f → $t');
   }
 }
 
@@ -287,7 +286,7 @@ class _MetricCard extends StatelessWidget {
             child: Icon(icon, color: color, size: 24),
           ),
           const SizedBox(height: 12),
-          Text(
+          LocalizedText(
             title,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -299,7 +298,7 @@ class _MetricCard extends StatelessWidget {
           ),
           if (subtitle != null) ...[
             const SizedBox(height: 4),
-            Text(
+            LocalizedText(
               subtitle!,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -311,7 +310,7 @@ class _MetricCard extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 6),
-          Text(
+          LocalizedText(
             value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -364,7 +363,7 @@ class _DateChipButton extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             Expanded(
-              child: Text(
+              child: LocalizedText(
                 label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,

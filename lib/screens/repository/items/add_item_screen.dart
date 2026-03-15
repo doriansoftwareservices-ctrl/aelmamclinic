@@ -16,6 +16,9 @@ import 'package:aelmamclinic/providers/repository_provider.dart';
 import 'package:aelmamclinic/services/repository_service.dart';
 import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/core/theme.dart';
+import 'package:aelmamclinic/utils/report_localizer.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 // صفّ خام من ملف Excel.
 // نحتفظ بالقيم كنصوص ثم نحولها عند الإدخال لتقليل الأعطال.
@@ -87,7 +90,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
   }) {
     final scheme = Theme.of(context).colorScheme;
     return InputDecoration(
-      labelText: label,
+      labelText: context.trRaw(label),
       filled: true,
       fillColor: scheme.surface,
       prefixIcon: prefixIcon,
@@ -112,7 +115,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
     if (!_formKey.currentState!.validate() || _selectedTypeId == null) {
       if (_selectedTypeId == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('اختر نوع الصنف')),
+          const SnackBar(content: LocalizedText('اختر نوع الصنف')),
         );
       }
       return;
@@ -136,13 +139,13 @@ class _AddItemScreenState extends State<AddItemScreen> {
           );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم حفظ الصنف بنجاح')),
+        const SnackBar(content: LocalizedText('تم حفظ الصنف بنجاح')),
       );
       Navigator.pop(context);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('خطأ أثناء الحفظ: $e')),
+        SnackBar(content: LocalizedText('خطأ أثناء الحفظ: $e')),
       );
     } finally {
       if (mounted) setState(() => _isSaving = false);
@@ -225,16 +228,16 @@ class _AddItemScreenState extends State<AddItemScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('مراجعة قبل الاستيراد'),
-        content: Text(msg),
+        title: const LocalizedText('مراجعة قبل الاستيراد'),
+        content: LocalizedText(msg),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('إلغاء'),
+            child: const LocalizedText('إلغاء'),
           ),
           ElevatedButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('متابعة'),
+            child: const LocalizedText('متابعة'),
           ),
         ],
       ),
@@ -247,10 +250,10 @@ class _AddItemScreenState extends State<AddItemScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('إنشاء نوع صنف جديد'),
+        title: const LocalizedText('إنشاء نوع صنف جديد'),
         content: TextFormField(
           controller: ctrl,
-          decoration: const InputDecoration(labelText: 'اسم النوع'),
+          decoration: InputDecoration(labelText: context.trRaw('اسم النوع')),
           autofocus: true,
           textInputAction: TextInputAction.done,
           onFieldSubmitted: (_) =>
@@ -259,10 +262,10 @@ class _AddItemScreenState extends State<AddItemScreen> {
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('إلغاء')),
+              child: const LocalizedText('إلغاء')),
           ElevatedButton(
               onPressed: () => Navigator.pop(ctx, ctrl.text.trim().isNotEmpty),
-              child: const Text('إنشاء')),
+              child: const LocalizedText('إنشاء')),
         ],
       ),
     );
@@ -276,7 +279,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
         await repo.bootstrap();
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('هذا النوع موجود بالفعل')),
+          const SnackBar(content: LocalizedText('هذا النوع موجود بالفعل')),
         );
       }
       if (!mounted) return;
@@ -649,8 +652,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            'تم استيراد $imported صنف(ًا) بنجاح'
+          content: LocalizedText('تم استيراد $imported صنف(ًا) بنجاح'
             '${skipped > 0 ? ' (تخطّي $skipped صف/تكرار)' : ''}',
           ),
         ),
@@ -658,7 +660,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذّر الاستيراد: $e')),
+        SnackBar(content: LocalizedText('تعذّر الاستيراد: $e')),
       );
     } finally {
       await _tryResumeSync(auth);
@@ -682,14 +684,16 @@ class _AddItemScreenState extends State<AddItemScreen> {
 
       final bytes = excel.encode()!;
       final dir = await getTemporaryDirectory();
-      final path = '${dir.path}/نموذج_إدخال_أصناف.xlsx';
+      final i18n = ReportLocalizer();
+      final path =
+          '${dir.path}/${i18n.fileName('نموذج إدخال أصناف', extension: 'xlsx')}';
       final file = File(path);
       await file.writeAsBytes(bytes);
       await OpenFile.open(file.path);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذّر إنشاء/فتح الملف: $e')),
+        SnackBar(content: LocalizedText('تعذّر إنشاء/فتح الملف: $e')),
       );
     }
   }
@@ -766,20 +770,20 @@ class _AddItemScreenState extends State<AddItemScreen> {
     }
 
     return Directionality(
-      textDirection: TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('إضافة صنف جديد'),
+          title: const LocalizedText('إضافة صنف جديد'),
           centerTitle: true,
           actions: [
             IconButton(
               icon: const Icon(Icons.upload_file),
-              tooltip: 'استيراد من Excel',
+              tooltip: context.trRaw('استيراد من Excel'),
               onPressed: _isImporting ? null : _importItemsFromExcel,
             ),
             IconButton(
               icon: const Icon(Icons.download_outlined),
-              tooltip: 'تحميل نموذج Excel',
+              tooltip: context.trRaw('تحميل نموذج Excel'),
               onPressed: _downloadExcelTemplate,
             ),
           ],
@@ -836,8 +840,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
                     Icon(Icons.info_outline, color: kPrimaryColor),
                     SizedBox(width: 8),
                     Expanded(
-                      child: Text(
-                        'أضف صنفًا جديدًا أو استورد مجموعة أصناف من ملف Excel. يمكنك إنشاء نوع جديد أثناء الإدخال.',
+                      child: LocalizedText('أضف صنفًا جديدًا أو استورد مجموعة أصناف من ملف Excel. يمكنك إنشاء نوع جديد أثناء الإدخال.',
                         style: TextStyle(fontWeight: FontWeight.w600),
                       ),
                     ),
@@ -865,7 +868,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
                         ),
                         const DropdownMenuItem<int?>(
                           value: null,
-                          child: Text('— إنشاء نوع جديد —'),
+                          child: LocalizedText('— إنشاء نوع جديد —'),
                         ),
                       ],
                       onChanged: (val) async {
@@ -919,7 +922,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
                           child: OutlinedButton.icon(
                             onPressed: _isImporting ? null : _importItemsFromExcel,
                             icon: const Icon(Icons.upload_file),
-                            label: const Text('استيراد Excel'),
+                            label: const LocalizedText('استيراد Excel'),
                             style: OutlinedButton.styleFrom(
                               foregroundColor: scheme.primary,
                               side: BorderSide(
@@ -935,7 +938,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
                           child: OutlinedButton.icon(
                             onPressed: _downloadExcelTemplate,
                             icon: const Icon(Icons.download_outlined),
-                            label: const Text('نموذج Excel'),
+                            label: const LocalizedText('نموذج Excel'),
                             style: OutlinedButton.styleFrom(
                               foregroundColor: scheme.primary,
                               side: BorderSide(
@@ -964,7 +967,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
                               )
                             : const Icon(Icons.save_outlined,
                                 color: Colors.white),
-                        label: const Text('حفظ',
+                        label: const LocalizedText('حفظ',
                             style: TextStyle(color: Colors.white)),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: scheme.primary,

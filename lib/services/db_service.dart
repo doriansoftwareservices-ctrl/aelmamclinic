@@ -5,7 +5,7 @@ library db_service;
 // - Fix generics: Future<int> (not Future[int])
 // - Add `dart:async` import so `Future` is recognized
 // - Enable WAL & add a lightweight change stream for live sync integrations.
-// - Windows path unified via AppPaths (LOCALAPPDATA first + D fallback) with auto-migration from legacy locations
+// - Windows path unified via AppPaths (LOCALAPPDATA only) with auto-migration from legacy locations
 //
 // 🔗 للربط مع SyncService (الدفع المؤجّل لكل جدول):
 // final sync = SyncService(db, accountId, deviceId: deviceId);
@@ -19,6 +19,7 @@ import 'package:path/path.dart' as p;
 import 'package:meta/meta.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:aelmamclinic/core/active_account_store.dart';
+import 'package:aelmamclinic/l10n/raw_string_localizer.dart';
 
 /*─────────────────── موديلات ───────────────────*/
 import 'package:aelmamclinic/models/patient_service.dart';
@@ -39,6 +40,7 @@ import 'package:aelmamclinic/models/inventory_health_report.dart';
 import 'package:aelmamclinic/models/alert_setting.dart';
 import 'package:aelmamclinic/models/attachment.dart';
 import 'package:aelmamclinic/utils/app_paths.dart';
+import 'package:aelmamclinic/utils/app_observability.dart';
 
 /*─────────────── خدمة الإشعارات ───────────────*/
 import 'notification_service.dart';
@@ -100,6 +102,8 @@ const Set<String> _kStatsTables = {
 class DBService {
   DBService._();
   static final DBService instance = DBService._();
+  static String _tr(String raw) =>
+      RawStringLocalizer.translateWithCurrentLocale(raw);
 
   static Database? _db;
   // 🧯 يمنع سباقات الفتح عند استدعاء .database من عدّة أماكن بالتوازي
@@ -107,7 +111,6 @@ class DBService {
   late final PatientLocalRepository patients = PatientLocalRepository(this);
 
   static String? _testDbPathOverride;
-  static String? _windowsDataDirOverride;
 
   /// Stream يبث اسم الجدول عند أي تعديل محلي (مكمل لـ onLocalChange)
   final _changeController = StreamController<String>.broadcast();
@@ -119,6 +122,35 @@ class DBService {
   Future<void>? _ensureAlertSettingsColumnsInFlight;
   Future<void>? _ensureItemTypesNoUniqueNameInFlight;
   bool _patientPaymentBackfillBusy = false;
+
+  String _newDbFlow(String label) => AppObservability.newFlowId('db_$label');
+
+  Map<String, Object?> _dbContext([Map<String, Object?>? extra]) {
+    return <String, Object?>{
+      'cachedAccountId': _cachedAccountId,
+      'cachedDeviceId': _cachedDeviceId,
+      ...?extra,
+    };
+  }
+
+  void _dbWarn(
+    String code,
+    String message, {
+    String? flowId,
+    Map<String, Object?>? context,
+    Object? error,
+    StackTrace? stackTrace,
+  }) {
+    AppObservability.warn(
+      scope: 'DB',
+      code: code,
+      message: message,
+      flowId: flowId,
+      context: _dbContext(context),
+      error: error,
+      stackTrace: stackTrace,
+    );
+  }
 
   Future<T> runQueuedWrite<T>(Future<T> Function() op) {
     if (Zone.current[_writeZoneKey] == true) {
@@ -200,11 +232,19 @@ class DBService {
         _schedulePush(table);
       }
     } catch (_) {
-      // نتجاهل أي خطأ حتى لا يكسر عمليات الكتابة المحلية
+      _dbWarn(
+        ObsCode.dbMarkChangedFailed,
+        'markChanged failed while signaling local table mutation',
+        flowId: _newDbFlow('mark_changed'),
+        context: {
+          'table': table,
+        },
+      );
     }
   }
 
-  Future<Set<String>> _getTableColumns(DatabaseExecutor db, String table) async {
+  Future<Set<String>> _getTableColumns(
+      DatabaseExecutor db, String table) async {
     if (_tableColumnsCache.containsKey(table)) {
       return _tableColumnsCache[table]!;
     }
@@ -216,21 +256,62 @@ class DBService {
           .toSet();
       _tableColumnsCache[table] = cols;
       return cols;
-    } catch (_) {
+    } catch (e, st) {
+      _dbWarn(
+        ObsCode.dbGetTableColumnsFailed,
+        'loading table columns failed',
+        flowId: _newDbFlow('table_columns'),
+        context: {
+          'table': table,
+        },
+        error: e,
+        stackTrace: st,
+      );
       return const <String>{};
     }
   }
 
-  Future<bool> _hasColumn(DatabaseExecutor db, String table, String column) async {
+  Future<bool> _hasColumn(
+      DatabaseExecutor db, String table, String column) async {
     final cols = await _getTableColumns(db, table);
     return cols.contains(column);
   }
 
-  Future<bool> hasColumn(DatabaseExecutor db, String table, String column) async {
+  Future<bool> hasColumn(
+      DatabaseExecutor db, String table, String column) async {
     return _hasColumn(db, table, column);
   }
 
+  Future<bool> _isAccountIsolationPending() async {
+    final snapshot = await ActiveAccountStore.readSnapshot();
+    return snapshot.pendingWipe;
+  }
+
   Future<String?> _currentAccountIdFrom(DatabaseExecutor db) async {
+    if (await _isAccountIsolationPending()) {
+      _cachedAccountId = null;
+      return null;
+    }
+    try {
+      final fromStore = await ActiveAccountStore.readAccountId();
+      if (fromStore != null && fromStore.trim().isNotEmpty) {
+        final candidate = fromStore.trim();
+        if (_cachedAccountId == candidate) {
+          return candidate;
+        }
+        _cachedAccountId = candidate;
+        await _ensureSyncIdentityAccountId(db, candidate);
+        return candidate;
+      }
+    } catch (e, st) {
+      _dbWarn(
+        ObsCode.dbCurrentAccountIdFailed,
+        'reading active account id from ActiveAccountStore failed',
+        flowId: _newDbFlow('current_account_store'),
+        error: e,
+        stackTrace: st,
+      );
+    }
     if (_cachedAccountId != null && _cachedAccountId!.trim().isNotEmpty) {
       return _cachedAccountId;
     }
@@ -243,7 +324,14 @@ class DBService {
       final acc = raw.isEmpty ? null : raw;
       if (acc != null) _cachedAccountId = acc;
       return acc;
-    } catch (_) {
+    } catch (e, st) {
+      _dbWarn(
+        ObsCode.dbCurrentAccountIdFailed,
+        'reading current account id from sync_identity failed',
+        flowId: _newDbFlow('current_account_from'),
+        error: e,
+        stackTrace: st,
+      );
       return null;
     }
   }
@@ -278,7 +366,15 @@ class DBService {
         }
       }
       if (found.length == 1) return found.first;
-    } catch (_) {}
+    } catch (e, st) {
+      _dbWarn(
+        ObsCode.dbFallbackAccountIdFailed,
+        'fallback local account id discovery failed',
+        flowId: _newDbFlow('fallback_account_from_local'),
+        error: e,
+        stackTrace: st,
+      );
+    }
     return null;
   }
 
@@ -288,7 +384,8 @@ class DBService {
   ) async {
     try {
       if (!await _tableExists(db, 'sync_identity')) return;
-      final rows = await db.rawQuery('SELECT account_id FROM sync_identity LIMIT 1');
+      final rows =
+          await db.rawQuery('SELECT account_id FROM sync_identity LIMIT 1');
       if (rows.isEmpty) {
         await db.rawInsert(
           'INSERT INTO sync_identity(account_id, device_id) VALUES (?, COALESCE((SELECT device_id FROM sync_identity LIMIT 1), ""))',
@@ -303,56 +400,51 @@ class DBService {
           [accountId],
         );
       }
-    } catch (_) {}
+    } catch (e, st) {
+      _dbWarn(
+        ObsCode.dbEnsureSyncIdentityFailed,
+        'ensuring sync_identity account id failed',
+        flowId: _newDbFlow('ensure_sync_identity_account'),
+        context: {
+          'accountId': accountId,
+        },
+        error: e,
+        stackTrace: st,
+      );
+    }
   }
 
   Future<String?> _currentAccountId() async {
     final db = await database;
+    if (await _isAccountIsolationPending()) {
+      _cachedAccountId = null;
+      return null;
+    }
     final acc = await _currentAccountIdFrom(db);
     if (acc != null && acc.trim().isNotEmpty) {
-      if (await _hasLocalRowsForAccount(db, acc.trim())) {
-        return acc;
-      }
-      // sync_identity قديم أو غير مطابق لبيانات الجهاز → حاول استنتاج الحساب الصحيح.
+      return acc.trim();
     }
-    try {
-      final fromStore = await ActiveAccountStore.readAccountId();
-      if (fromStore != null && fromStore.trim().isNotEmpty) {
-        final candidate = fromStore.trim();
-        if (await _hasLocalRowsForAccount(db, candidate)) {
-          _cachedAccountId = candidate;
-          await _ensureSyncIdentityAccountId(db, _cachedAccountId!);
-          return _cachedAccountId;
-        }
-      }
-    } catch (_) {}
     final fallback = await _fallbackAccountIdFromLocal(db);
     if (fallback != null && fallback.trim().isNotEmpty) {
       _cachedAccountId = fallback;
       await _ensureSyncIdentityAccountId(db, fallback);
       try {
         await ActiveAccountStore.writeAccountId(fallback);
-      } catch (_) {}
+      } catch (e, st) {
+        _dbWarn(
+          ObsCode.dbCurrentAccountIdFailed,
+          'persisting fallback account id to ActiveAccountStore failed',
+          flowId: _newDbFlow('persist_fallback_account'),
+          context: {
+            'accountId': fallback,
+          },
+          error: e,
+          stackTrace: st,
+        );
+      }
       return fallback;
     }
     return null;
-  }
-
-  Future<bool> _hasLocalRowsForAccount(DatabaseExecutor db, String accountId) async {
-    try {
-      const tables = <String>['patients', 'items', 'purchases', 'consumptions'];
-      for (final table in tables) {
-        if (!await _tableExists(db, table)) continue;
-        if (!await _hasColumn(db, table, 'account_id')) continue;
-        final rows = await db.rawQuery(
-          'SELECT COUNT(*) AS c FROM $table WHERE account_id = ?',
-          [accountId],
-        );
-        final c = (rows.first['c'] as num?)?.toInt() ?? 0;
-        if (c > 0) return true;
-      }
-    } catch (_) {}
-    return false;
   }
 
   Future<String?> currentAccountId() async {
@@ -373,7 +465,14 @@ class DBService {
       final dev = raw.isEmpty ? null : raw;
       if (dev != null) _cachedDeviceId = dev;
       return dev;
-    } catch (_) {
+    } catch (e, st) {
+      _dbWarn(
+        ObsCode.dbCurrentDeviceIdFailed,
+        'reading current device id from sync_identity failed',
+        flowId: _newDbFlow('current_device_from'),
+        error: e,
+        stackTrace: st,
+      );
       return null;
     }
   }
@@ -389,7 +488,7 @@ class DBService {
     if (await _hasColumn(db, table, 'account_id')) {
       final accountId = await _currentAccountIdFrom(db);
       if (accountId == null || accountId.trim().isEmpty) {
-        throw StateError('لا يوجد حساب نشط للحفظ في $table');
+        throw StateError(_tr('لا يوجد حساب نشط للحفظ في $table'));
       }
       prepared.putIfAbsent('account_id', () => accountId);
     }
@@ -422,11 +521,22 @@ class DBService {
     List<Object?>? args,
   }) async {
     if (!await _hasColumn(db, table, 'account_id')) return '';
+    if (await _isAccountIsolationPending()) {
+      return ' AND 1=0';
+    }
     // IMPORTANT: stay on the provided executor (txn) to avoid nested connections.
     var accountId = await _currentAccountIdFrom(db);
     if (accountId == null || accountId.trim().isEmpty) {
-      // في قواعد قديمة بلا account_id، لا نغلق الاستعلام بالكامل.
-      // إن لم توجد أي قيم account_id أصلاً، اعتبرها قاعدة حساب واحد.
+      accountId = await _fallbackAccountIdFromLocal(db);
+      if (accountId != null && accountId.trim().isNotEmpty) {
+        _cachedAccountId = accountId.trim();
+        await _ensureSyncIdentityAccountId(db, _cachedAccountId!);
+        try {
+          await ActiveAccountStore.writeAccountId(_cachedAccountId);
+        } catch (_) {}
+      }
+    }
+    if (accountId == null || accountId.trim().isEmpty) {
       try {
         final rows = await db.rawQuery(
           'SELECT COUNT(*) AS c FROM $table '
@@ -435,37 +545,10 @@ class DBService {
         final c = (rows.first['c'] as num?)?.toInt() ?? 0;
         if (c == 0) return '';
       } catch (_) {
-        // إن تعذر الفحص، لا تحجب كل النتائج
         return '';
       }
       return ' AND 1=0';
     }
-    // إن كان الحساب الحالي لا يملك صفوفًا محليًا، حاول استنتاج حساب وحيد.
-    try {
-      final rows = await db.rawQuery(
-        'SELECT COUNT(*) AS c FROM $table WHERE account_id = ?',
-        [accountId],
-      );
-      final c = (rows.first['c'] as num?)?.toInt() ?? 0;
-      if (c == 0) {
-        final distinct = await db.rawQuery(
-          'SELECT DISTINCT account_id FROM $table '
-          "WHERE account_id IS NOT NULL AND length(trim(account_id)) > 0 "
-          'LIMIT 2',
-        );
-        if (distinct.length == 1) {
-          final only = distinct.first['account_id']?.toString().trim();
-          if (only != null && only.isNotEmpty) {
-            accountId = only;
-            _cachedAccountId = only;
-            await _ensureSyncIdentityAccountId(db, only);
-            try {
-              await ActiveAccountStore.writeAccountId(only);
-            } catch (_) {}
-          }
-        }
-      }
-    } catch (_) {}
     if (args != null) args.add(accountId);
     final col = alias != null ? '$alias.account_id' : 'account_id';
     return ' AND $col = ?';
@@ -884,49 +967,30 @@ class DBService {
         await File(dbPath).parent.create(recursive: true);
       } catch (_) {}
     } else if (Platform.isWindows) {
-      // ✅ توحيد المسار على LOCALAPPDATA أولاً ثم D:\ ثم C:\ مع فحص الصلاحيات
-      final candidates = await _candidateWindowsDataDirs();
-      _logDbOpen('Candidates: ${candidates.join(' | ')}');
-      Database? opened;
-      for (final targetFolder in candidates) {
-        try {
-          final dir = Directory(targetFolder);
-          if (!(await dir.exists())) {
-            await dir.create(recursive: true);
+      // ✅ توحيد المسار على LOCALAPPDATA فقط (بدون Temp)
+      final root = await AppPaths.dataRoot();
+      final targetFolder = root.path;
+      final dir = Directory(targetFolder);
+      if (!(await dir.exists())) {
+        await dir.create(recursive: true);
+      }
+      if (!await _ensureWritable(dir)) {
+        throw StateError('Windows data dir not writable: $targetFolder');
+      }
+      final targetFile = File(p.join(targetFolder, fileName));
+      if (!(await targetFile.exists())) {
+        for (final legacy in _legacyWindowsDataDirs()) {
+          final legacyFile = File(p.join(legacy, fileName));
+          if (await legacyFile.exists()) {
+            try {
+              await targetFile.writeAsBytes(await legacyFile.readAsBytes());
+            } catch (_) {}
+            break;
           }
-          if (!await _ensureWritable(dir)) {
-            _logDbOpen('Not writable: $targetFolder');
-            continue;
-          }
-          final targetFile = File(p.join(targetFolder, fileName));
-          if (!(await targetFile.exists())) {
-            for (final legacy in _legacyWindowsDataDirs()) {
-              final legacyFile = File(p.join(legacy, fileName));
-              if (await legacyFile.exists()) {
-                try {
-                  await targetFile.writeAsBytes(await legacyFile.readAsBytes());
-                } catch (_) {}
-                break;
-              }
-            }
-          }
-          dbPath = targetFile.path;
-          _logDbOpen('Trying open: $dbPath');
-          opened = await _openDatabaseAt(dbPath);
-          break;
-        } catch (e, st) {
-          _logDbOpen('Open failed at $targetFolder -> $e\n$st');
-          // جرّب المسار التالي
         }
       }
-      if (opened != null) {
-        return opened;
-      }
-      // إذا فشلت كل المحاولات، ارجع لمسار AppPaths الآمن
-      final fallbackRoot =
-          await AppPaths.pickWritableWindowsRoot(override: _windowsDataDirOverride);
-      dbPath = p.join(fallbackRoot, fileName);
-      _logDbOpen('Fallback AppPaths: $dbPath');
+      dbPath = targetFile.path;
+      _logDbOpen('Windows data dir: $dbPath');
     } else {
       dbPath = p.join(await getDatabasesPath(), fileName);
     }
@@ -969,49 +1033,32 @@ class DBService {
       return file.path;
     }
     if (Platform.isWindows) {
-      final candidates = await _candidateWindowsDataDirs();
-      _logDbOpen('getDatabasePath candidates: ${candidates.join(' | ')}');
-      for (final targetFolder in candidates) {
-        try {
-          final dir = Directory(targetFolder);
-          if (!(await dir.exists())) {
-            await dir.create(recursive: true);
+      final root = await AppPaths.dataRoot();
+      final targetFolder = root.path;
+      final dir = Directory(targetFolder);
+      if (!(await dir.exists())) {
+        await dir.create(recursive: true);
+      }
+      if (!await _ensureWritable(dir)) {
+        throw StateError('Windows data dir not writable: $targetFolder');
+      }
+      final targetFile = File(p.join(targetFolder, 'clinic.db'));
+      if (!(await targetFile.exists())) {
+        for (final legacy in _legacyWindowsDataDirs()) {
+          final legacyFile = File(p.join(legacy, 'clinic.db'));
+          if (await legacyFile.exists()) {
+            try {
+              await targetFile.writeAsBytes(await legacyFile.readAsBytes());
+            } catch (_) {}
+            break;
           }
-          if (!await _ensureWritable(dir)) {
-            _logDbOpen('getDatabasePath not writable: $targetFolder');
-            continue;
-          }
-          final targetFile = File(p.join(targetFolder, 'clinic.db'));
-          if (!(await targetFile.exists())) {
-            for (final legacy in _legacyWindowsDataDirs()) {
-              final legacyFile = File(p.join(legacy, 'clinic.db'));
-              if (await legacyFile.exists()) {
-                try {
-                  await targetFile.writeAsBytes(await legacyFile.readAsBytes());
-                } catch (_) {}
-                break;
-              }
-            }
-          }
-          _logDbOpen('getDatabasePath selected: ${targetFile.path}');
-          return targetFile.path;
-        } catch (e, st) {
-          _logDbOpen('getDatabasePath failed at $targetFolder -> $e\n$st');
-          // جرّب المسار التالي
         }
       }
-      final fallbackRoot =
-          await AppPaths.pickWritableWindowsRoot(override: _windowsDataDirOverride);
-      final fallback = p.join(fallbackRoot, 'clinic.db');
-      _logDbOpen('getDatabasePath fallback (AppPaths): $fallback');
-      return fallback;
+      _logDbOpen('getDatabasePath selected: ${targetFile.path}');
+      return targetFile.path;
     } else {
       return p.join(await getDatabasesPath(), 'clinic.db');
     }
-  }
-
-  Future<List<String>> _candidateWindowsDataDirs() async {
-    return AppPaths.windowsCandidates(override: _windowsDataDirOverride);
   }
 
   Future<bool> _ensureWritable(Directory dir) async {
@@ -1038,6 +1085,8 @@ class DBService {
   List<String> _legacyWindowsDataDirs() {
     final env = Platform.environment;
     final legacy = <String>[
+      r'C:\ElmamClinic',
+      r'D:\ElmamClinic',
       r'C:\aelmam_clinic',
       r'D:\aelmam_clinic',
     ];
@@ -1226,7 +1275,6 @@ class DBService {
     await notifyTableChanged(ItemType.table);
     return report;
   }
-
 
   /*──────────────── إنشاء بنية stats_dirty ───────────────*/
   Future<void> _createStatsDirtyStructure(Database db) async {
@@ -1535,8 +1583,7 @@ class DBService {
 
   Future<void> _ensureFinancialLogsColumns(Database db) async {
     try {
-      await _addColumnIfMissing(
-          db, 'financial_logs', 'patient_id', 'INTEGER');
+      await _addColumnIfMissing(db, 'financial_logs', 'patient_id', 'INTEGER');
     } catch (_) {}
   }
 
@@ -1569,8 +1616,7 @@ class DBService {
           await _hasColumn(database, 'financial_logs', 'account_id');
       final patientsHasAccCol =
           await _hasColumn(database, 'patients', 'account_id');
-      if ((logsHasAccCol || patientsHasAccCol) &&
-          (accountId.trim().isEmpty)) {
+      if ((logsHasAccCol || patientsHasAccCol) && (accountId.trim().isEmpty)) {
         return;
       }
 
@@ -1636,8 +1682,7 @@ class DBService {
         for (final p in patients) {
           final pid = (p['id'] as num?)?.toInt();
           if (pid == null) continue;
-          final paid =
-              (p['paidAmount'] as num?)?.toDouble() ?? 0.0;
+          final paid = (p['paidAmount'] as num?)?.toDouble() ?? 0.0;
           if (paid <= 0) continue;
 
           var sumWhere =
@@ -1678,8 +1723,7 @@ class DBService {
               'patient_id': pid,
               'description':
                   'Backfill دفعات مريض: ${(p['name'] ?? '').toString()} (ID: $pid)',
-              'modification_details':
-                  'auto backfill to match paidAmount',
+              'modification_details': 'auto backfill to match paidAmount',
               'timestamp': ts.toIso8601String(),
             },
             executor: txn,
@@ -1753,23 +1797,21 @@ class DBService {
     await _addColumnIfMissing(
         db, 'employees_salaries', 'isPaid', 'INTEGER DEFAULT 0');
     await _addColumnIfMissing(db, 'employees_salaries', 'paymentDate', 'TEXT');
-    await _addColumnIfMissing(
-        db, 'employees_salaries', 'periodStart', 'TEXT');
-    await _addColumnIfMissing(
-        db, 'employees_salaries', 'periodEnd', 'TEXT');
+    await _addColumnIfMissing(db, 'employees_salaries', 'periodStart', 'TEXT');
+    await _addColumnIfMissing(db, 'employees_salaries', 'periodEnd', 'TEXT');
     await _addColumnIfMissing(
         db, 'employees_salaries', 'employeeId', 'INTEGER');
   }
 
-  Map<String, dynamic> _normalizeEmployeeSalaryData(
-      Map<String, dynamic> data) {
+  Map<String, dynamic> _normalizeEmployeeSalaryData(Map<String, dynamic> data) {
     final normalized = <String, dynamic>{};
 
     final mapped = Map<String, dynamic>.from(data);
     if (mapped.containsKey('employeeld') && !mapped.containsKey('employeeId')) {
       mapped['employeeId'] = mapped.remove('employeeld');
     }
-    if (mapped.containsKey('employee_id') && !mapped.containsKey('employeeId')) {
+    if (mapped.containsKey('employee_id') &&
+        !mapped.containsKey('employeeId')) {
       mapped['employeeId'] = mapped.remove('employee_id');
     }
     if (mapped.containsKey('final_salary') &&
@@ -1801,8 +1843,7 @@ class DBService {
         !mapped.containsKey('periodStart')) {
       mapped['periodStart'] = mapped.remove('period_start');
     }
-    if (mapped.containsKey('period_end') &&
-        !mapped.containsKey('periodEnd')) {
+    if (mapped.containsKey('period_end') && !mapped.containsKey('periodEnd')) {
       mapped['periodEnd'] = mapped.remove('period_end');
     }
 
@@ -2178,7 +2219,8 @@ class DBService {
       });
       if (!(hasUniqueName || hasAutoUnique)) return;
 
-      final colsInfo = await db.rawQuery("PRAGMA table_info('${ItemType.table}')");
+      final colsInfo =
+          await db.rawQuery("PRAGMA table_info('${ItemType.table}')");
       final existingCols = colsInfo
           .map((c) => (c['name'] ?? '').toString())
           .where((c) => c.isNotEmpty)
@@ -2230,7 +2272,8 @@ class DBService {
       ''');
 
       await db.execute('DROP TABLE ${ItemType.table};');
-      await db.execute('ALTER TABLE item_types_new RENAME TO ${ItemType.table};');
+      await db
+          .execute('ALTER TABLE item_types_new RENAME TO ${ItemType.table};');
     } catch (e) {
       print('ensureItemTypesNoUniqueName: $e');
     }
@@ -2252,6 +2295,12 @@ class DBService {
     await _ensureCommonIndexes(db);
     await _ensureSyncDirtyTable(db);
     await _runPatientPaymentBackfillIfNeeded(db: db);
+    if (Platform.isWindows) {
+      try {
+        final root = await AppPaths.dataRoot();
+        await AppPaths.cleanupLegacyWindowsDirs(activeRoot: root.path);
+      } catch (_) {}
+    }
   }
 
   /*──────────────── إنشاء الجداول ───────────────*/
@@ -3006,11 +3055,11 @@ class DBService {
     final db = await database;
     final name = t.name.trim();
     if (name.isEmpty) {
-      throw ArgumentError('اسم نوع الصنف فارغ');
+      throw ArgumentError(_tr('اسم نوع الصنف فارغ'));
     }
     final accountId = await _currentAccountId();
     if (accountId == null || accountId.trim().isEmpty) {
-      throw StateError('لا يوجد حساب نشط لحفظ نوع الصنف');
+      throw StateError(_tr('لا يوجد حساب نشط لحفظ نوع الصنف'));
     }
     // إن وُجد نوع بنفس الاسم: استرجع/أعد استخدامه
     final exists = await db.query(
@@ -3070,7 +3119,7 @@ class DBService {
     final db = await database;
     final sanitized = name.trim();
     if (sanitized.isEmpty) {
-      throw ArgumentError('اسم نوع الصنف فارغ');
+      throw ArgumentError(_tr('اسم نوع الصنف فارغ'));
     }
     final rows = await db.update(ItemType.table, {'name': sanitized},
         where: 'id = ?', whereArgs: [id]);
@@ -3106,7 +3155,7 @@ class DBService {
          LIMIT 1
       ''', itemArgs);
       if (hasPurchases.isNotEmpty) {
-        throw StateError('لا يمكن حذف نوع الصنف لوجود مشتريات مرتبطة به');
+        throw StateError(_tr('لا يمكن حذف نوع الصنف لوجود مشتريات مرتبطة به'));
       }
 
       final hasConsumptions = await db.rawQuery('''
@@ -3117,7 +3166,8 @@ class DBService {
          LIMIT 1
       ''', itemArgs);
       if (hasConsumptions.isNotEmpty) {
-        throw StateError('لا يمكن حذف نوع الصنف لوجود استهلاكات مرتبطة به');
+        throw StateError(
+            _tr('لا يمكن حذف نوع الصنف لوجود استهلاكات مرتبطة به'));
       }
 
       final args = List<Object?>.filled(itemIds.length, 0);
@@ -3150,11 +3200,11 @@ class DBService {
     final db = await database;
     final name = i.name.trim();
     if (name.isEmpty) {
-      throw ArgumentError('اسم الصنف فارغ');
+      throw ArgumentError(_tr('اسم الصنف فارغ'));
     }
     final accountId = await _currentAccountId();
     if (accountId == null || accountId.trim().isEmpty) {
-      throw StateError('لا يوجد حساب نشط لحفظ الصنف');
+      throw StateError(_tr('لا يوجد حساب نشط لحفظ الصنف'));
     }
     // إن وُجد صنف بنفس (type_id + name): استرجعه/أعد استخدامه
     final exists = await db.query(
@@ -3262,7 +3312,7 @@ class DBService {
     final data = i.toMap();
     final name = (data['name'] ?? '').toString().trim();
     if (name.isEmpty) {
-      throw ArgumentError('اسم الصنف فارغ');
+      throw ArgumentError(_tr('اسم الصنف فارغ'));
     }
     data['name'] = name;
     final rows =
@@ -3287,7 +3337,7 @@ class DBService {
        LIMIT 1
     ''', itemArgs);
     if (hasPurchases.isNotEmpty) {
-      throw StateError('لا يمكن حذف الصنف لوجود مشتريات مرتبطة به');
+      throw StateError(_tr('لا يمكن حذف الصنف لوجود مشتريات مرتبطة به'));
     }
 
     final hasConsumptions = await db.rawQuery('''
@@ -3298,7 +3348,7 @@ class DBService {
        LIMIT 1
     ''', itemArgs);
     if (hasConsumptions.isNotEmpty) {
-      throw StateError('لا يمكن حذف الصنف لوجود استهلاكات مرتبطة به');
+      throw StateError(_tr('لا يمكن حذف الصنف لوجود استهلاكات مرتبطة به'));
     }
 
     // احذف أي تنبيهات مرتبطة بالصنف
@@ -3327,8 +3377,8 @@ class DBService {
   Future<List<PatientService>> getPatientServices(int patientId) async {
     final db = await database;
     final args = <Object?>[patientId];
-    final psAccount =
-        await _accountFilterClause(db, PatientService.table, alias: 'ps', args: args);
+    final psAccount = await _accountFilterClause(db, PatientService.table,
+        alias: 'ps', args: args);
     String msAccount = '';
     if (await _hasColumn(db, 'medical_services', 'account_id')) {
       final accountId = await _currentAccountId();
@@ -3601,7 +3651,7 @@ class DBService {
     final accountId = await _currentAccountId();
     final hasAccCol = await _hasColumn(db, 'patients', 'account_id');
     if (hasAccCol && (accountId == null || accountId.trim().isEmpty)) {
-      throw StateError('لا يوجد حساب نشط لتسجيل الدفعة');
+      throw StateError(_tr('لا يوجد حساب نشط لتسجيل الدفعة'));
     }
 
     final args = <Object?>[patientId];
@@ -3615,7 +3665,7 @@ class DBService {
       final rows =
           await txn.query('patients', where: where, whereArgs: args, limit: 1);
       if (rows.isEmpty) {
-        throw StateError('المريض غير موجود أو غير تابع للحساب');
+        throw StateError(_tr('المريض غير موجود أو غير تابع للحساب'));
       }
 
       final p = Patient.fromMap(Map<String, dynamic>.from(rows.first));
@@ -3722,8 +3772,7 @@ class DBService {
     return rows;
   }
 
-  Future<void> setReturnsAttendedBulk(
-      List<int> ids, bool attended) async {
+  Future<void> setReturnsAttendedBulk(List<int> ids, bool attended) async {
     if (ids.isEmpty) return;
     final db = await database;
     final batch = db.batch();
@@ -3973,8 +4022,8 @@ class DBService {
       where += ' AND account_id = ?';
       whereArgs.add(accountId);
     }
-    final res =
-        await db.query('doctors', where: where, whereArgs: whereArgs, orderBy: 'id DESC');
+    final res = await db.query('doctors',
+        where: where, whereArgs: whereArgs, orderBy: 'id DESC');
     return res.map((row) => Doctor.fromMap(row)).toList();
   }
 
@@ -4136,8 +4185,8 @@ class DBService {
     if (await _hasColumn(db, 'medical_services', 'updated_at')) {
       data['updated_at'] = DateTime.now().toIso8601String();
     }
-    final rows =
-        await db.update('medical_services', data, where: 'id = ?', whereArgs: [id]);
+    final rows = await db
+        .update('medical_services', data, where: 'id = ?', whereArgs: [id]);
     await _markChanged('medical_services');
     return rows;
   }
@@ -4223,6 +4272,7 @@ class DBService {
       if (v > 100) return 100.0;
       return v;
     }
+
     final db = await database;
     final data = await prepareInsert(
       'service_doctor_share',
@@ -4243,7 +4293,8 @@ class DBService {
       int serviceId) async {
     final db = await database;
     final accountId = await _currentAccountId();
-    final hasAccCol = await _hasColumn(db, 'service_doctor_share', 'account_id');
+    final hasAccCol =
+        await _hasColumn(db, 'service_doctor_share', 'account_id');
     if (hasAccCol && (accountId == null || accountId.trim().isEmpty)) {
       return const [];
     }
@@ -4266,7 +4317,8 @@ class DBService {
   }) async {
     final db = await database;
     final accountId = await _currentAccountId();
-    final hasAccCol = await _hasColumn(db, 'service_doctor_share', 'account_id');
+    final hasAccCol =
+        await _hasColumn(db, 'service_doctor_share', 'account_id');
     if (hasAccCol && (accountId == null || accountId.trim().isEmpty)) {
       return null;
     }
@@ -4299,6 +4351,7 @@ class DBService {
       if (v > 100) return 100.0;
       return v;
     }
+
     final db = await database;
     final updateData = <String, dynamic>{};
     if (sharePercentage != null) {
@@ -4337,10 +4390,10 @@ class DBService {
       int doctorId) async {
     final db = await database;
     final args = <Object?>[doctorId];
-    final msAccount =
-        await _accountFilterClause(db, 'medical_services', alias: 'ms', args: args);
-    final sdsAccount =
-        await _accountFilterClause(db, 'service_doctor_share', alias: 'sds', args: args);
+    final msAccount = await _accountFilterClause(db, 'medical_services',
+        alias: 'ms', args: args);
+    final sdsAccount = await _accountFilterClause(db, 'service_doctor_share',
+        alias: 'sds', args: args);
     return db.rawQuery('''
     SELECT ms.id, ms.name, ms.cost
     FROM medical_services ms
@@ -4372,10 +4425,10 @@ class DBService {
       int doctorId) async {
     final db = await database;
     final args = <Object?>[doctorId];
-    final sdsAccount =
-        await _accountFilterClause(db, 'service_doctor_share', alias: 'sds', args: args);
-    final msAccount =
-        await _accountFilterClause(db, 'medical_services', alias: 'ms', args: args);
+    final sdsAccount = await _accountFilterClause(db, 'service_doctor_share',
+        alias: 'sds', args: args);
+    final msAccount = await _accountFilterClause(db, 'medical_services',
+        alias: 'ms', args: args);
     return db.rawQuery('''
       SELECT 
         ms.id   AS serviceId,
@@ -4417,10 +4470,10 @@ class DBService {
       from.toIso8601String(),
       to.toIso8601String(),
     ];
-    final sdsAccount =
-        await _accountFilterClause(db, 'service_doctor_share', alias: 'sds', args: args);
-    final msAccount =
-        await _accountFilterClause(db, 'medical_services', alias: 'ms', args: args);
+    final sdsAccount = await _accountFilterClause(db, 'service_doctor_share',
+        alias: 'sds', args: args);
+    final msAccount = await _accountFilterClause(db, 'medical_services',
+        alias: 'ms', args: args);
     String psAccount = '';
     if (await _hasColumn(db, PatientService.table, 'account_id')) {
       final accountId = await _currentAccountId();
@@ -4493,10 +4546,10 @@ class DBService {
   }) async {
     final db = await database;
     final args = <Object?>[doctorId, serviceId];
-    final sdsAccount =
-        await _accountFilterClause(db, 'service_doctor_share', alias: 'sds', args: args);
-    final msAccount =
-        await _accountFilterClause(db, 'medical_services', alias: 'ms', args: args);
+    final sdsAccount = await _accountFilterClause(db, 'service_doctor_share',
+        alias: 'sds', args: args);
+    final msAccount = await _accountFilterClause(db, 'medical_services',
+        alias: 'ms', args: args);
     final rows = await db.rawQuery('''
       SELECT 
         ms.serviceType,
@@ -4671,7 +4724,8 @@ class DBService {
       final db = await database;
       Map<String, dynamic>? emp = dataHint;
       if (emp == null ||
-          !(emp.containsKey('isDoctor') || emp.containsKey('isDoctor'.toLowerCase()))) {
+          !(emp.containsKey('isDoctor') ||
+              emp.containsKey('isDoctor'.toLowerCase()))) {
         final rows = await db.query(
           'employees',
           where: 'id = ? AND ifnull(isDeleted,0)=0',
@@ -4708,7 +4762,8 @@ class DBService {
           specialization: specialization.isEmpty
               ? row['specialization']?.toString() ?? 'عام'
               : specialization,
-          phoneNumber: phone.isEmpty ? row['phoneNumber']?.toString() ?? '' : phone,
+          phoneNumber:
+              phone.isEmpty ? row['phoneNumber']?.toString() ?? '' : phone,
         );
         await updateDoctor(doc);
         return;
@@ -5102,8 +5157,7 @@ class DBService {
       return;
     }
     final logsWhereArgs = <Object?>['Loan', 'Discount'];
-    var logsWhere =
-        'employee_id IS NOT NULL AND transaction_type IN (?,?)';
+    var logsWhere = 'employee_id IS NOT NULL AND transaction_type IN (?,?)';
     if (logsHasAccCol && accountId != null) {
       logsWhere += ' AND account_id = ?';
       logsWhereArgs.add(accountId);
@@ -5137,7 +5191,8 @@ class DBService {
       }
     }
 
-    final loansHasAccCol = await _hasColumn(db, 'employees_loans', 'account_id');
+    final loansHasAccCol =
+        await _hasColumn(db, 'employees_loans', 'account_id');
     if (loansHasAccCol && (accountId == null || accountId.trim().isEmpty)) {
       return;
     }
@@ -5190,8 +5245,7 @@ class DBService {
 
     final discountsHasAccCol =
         await _hasColumn(db, 'employees_discounts', 'account_id');
-    if (discountsHasAccCol &&
-        (accountId == null || accountId.trim().isEmpty)) {
+    if (discountsHasAccCol && (accountId == null || accountId.trim().isEmpty)) {
       return;
     }
     final missingDiscountsWhereArgs = <Object?>[];
@@ -5248,8 +5302,7 @@ class DBService {
   Future<List<Map<String, dynamic>>> getDiscountsByEmployee(int empId) async {
     final db = await database;
     final accountId = await _currentAccountId();
-    final hasAccCol =
-        await _hasColumn(db, 'employees_discounts', 'account_id');
+    final hasAccCol = await _hasColumn(db, 'employees_discounts', 'account_id');
     if (hasAccCol && (accountId == null || accountId.trim().isEmpty)) {
       return const [];
     }
@@ -5286,7 +5339,8 @@ class DBService {
   Future<int> getTotalPatients() async {
     final db = await database;
     final args = <Object?>[];
-    final accountClause = await _accountFilterClause(db, 'patients', args: args);
+    final accountClause =
+        await _accountFilterClause(db, 'patients', args: args);
     final res = await db.rawQuery(
       'SELECT COUNT(*) as count FROM patients WHERE ifnull(isDeleted,0)=0$accountClause',
       args,
@@ -5321,7 +5375,8 @@ class DBService {
   Future<double> getFinancialTotal() async {
     final db = await database;
     final args = <Object?>[];
-    final accountClause = await _accountFilterClause(db, 'patients', args: args);
+    final accountClause =
+        await _accountFilterClause(db, 'patients', args: args);
     final res = await db.rawQuery(
       'SELECT SUM(paidAmount) as total FROM patients WHERE ifnull(isDeleted,0)=0$accountClause',
       args,
@@ -5349,6 +5404,19 @@ class DBService {
     await flushAndClose();
     setTestDatabasePath(databasePath);
     _opening = null;
+    _cachedAccountId = null;
+    _cachedDeviceId = null;
+    _tableColumnsCache.clear();
+  }
+
+  @visibleForTesting
+  Future<String> debugAccountFilterClause(
+    String table, {
+    String? alias,
+  }) async {
+    final db = await database;
+    final args = <Object?>[];
+    return _accountFilterClause(db, table, alias: alias, args: args);
   }
 
   /// مسح كل الجداول المحلية (لما تغيّر الحساب) ثم تعليم الإحصاءات كـ Dirty.
@@ -5448,7 +5516,8 @@ class DBService {
   Future<double> getSumPatientsBetween(DateTime from, DateTime to) async {
     final db = await database;
     final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
-    final accountClause = await _accountFilterClause(db, 'patients', args: args);
+    final accountClause =
+        await _accountFilterClause(db, 'patients', args: args);
     final res = await db.rawQuery('''
         SELECT SUM(paidAmount) as total
         FROM patients
@@ -5479,8 +5548,7 @@ class DBService {
     return (res.first['total'] as num?)?.toDouble() ?? 0.0;
   }
 
-  Future<bool> _hasPatientPaymentsBetween(
-      DateTime from, DateTime to) async {
+  Future<bool> _hasPatientPaymentsBetween(DateTime from, DateTime to) async {
     final db = await database;
     final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
     final accountClause =
@@ -5502,8 +5570,8 @@ class DBService {
       DateTime from, DateTime to) async {
     final db = await database;
     final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
-    final psAccount =
-        await _accountFilterClause(db, PatientService.table, alias: 'ps', args: args);
+    final psAccount = await _accountFilterClause(db, PatientService.table,
+        alias: 'ps', args: args);
     final pAccount =
         await _accountFilterClause(db, 'patients', alias: 'p', args: args);
     String msAccount = '';
@@ -5659,10 +5727,12 @@ class DBService {
   }
 
   /// إجمالي المبالغ المتبقية على المرضى خلال الفترة.
-  Future<double> getSumPatientsRemainingBetween(DateTime from, DateTime to) async {
+  Future<double> getSumPatientsRemainingBetween(
+      DateTime from, DateTime to) async {
     final db = await database;
     final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
-    final accountClause = await _accountFilterClause(db, 'patients', args: args);
+    final accountClause =
+        await _accountFilterClause(db, 'patients', args: args);
     final res = await db.rawQuery('''
         SELECT COALESCE(SUM(remaining), 0) as total
         FROM patients
@@ -5674,11 +5744,12 @@ class DBService {
   }
 
   /// إجمالي قيمة الخدمات المقدمة خلال الفترة (يُستخدم كدخل عند عدم تسجيل الدفعات).
-  Future<double> getSumPatientServicesBetween(DateTime from, DateTime to) async {
+  Future<double> getSumPatientServicesBetween(
+      DateTime from, DateTime to) async {
     final db = await database;
     final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
-    final psAccount =
-        await _accountFilterClause(db, PatientService.table, alias: 'ps', args: args);
+    final psAccount = await _accountFilterClause(db, PatientService.table,
+        alias: 'ps', args: args);
     final pAccount =
         await _accountFilterClause(db, 'patients', alias: 'p', args: args);
     String msAccount = '';
@@ -5784,12 +5855,12 @@ class DBService {
       from.toIso8601String(),
       to.toIso8601String(),
     ];
-    final psAccount =
-        await _accountFilterClause(db, PatientService.table, alias: 'ps', args: args);
+    final psAccount = await _accountFilterClause(db, PatientService.table,
+        alias: 'ps', args: args);
     final pAccount =
         await _accountFilterClause(db, 'patients', alias: 'p', args: args);
-    final msAccount =
-        await _accountFilterClause(db, 'medical_services', alias: 'ms', args: args);
+    final msAccount = await _accountFilterClause(db, 'medical_services',
+        alias: 'ms', args: args);
     String sdsAccount = '';
     if (await _hasColumn(db, 'service_doctor_share', 'account_id')) {
       final accountId = await _currentAccountId();
@@ -5828,8 +5899,8 @@ class DBService {
       from.toIso8601String(),
       to.toIso8601String(),
     ];
-    final psAccount =
-        await _accountFilterClause(db, PatientService.table, alias: 'ps', args: args);
+    final psAccount = await _accountFilterClause(db, PatientService.table,
+        alias: 'ps', args: args);
     final pAccount =
         await _accountFilterClause(db, 'patients', alias: 'p', args: args);
     String msAccount = '';
@@ -5883,8 +5954,8 @@ class DBService {
       from.toIso8601String(),
       to.toIso8601String(),
     ];
-    final psAccount =
-        await _accountFilterClause(db, PatientService.table, alias: 'ps', args: args);
+    final psAccount = await _accountFilterClause(db, PatientService.table,
+        alias: 'ps', args: args);
     final pAccount =
         await _accountFilterClause(db, 'patients', alias: 'p', args: args);
     String msAccount = '';
@@ -5933,8 +6004,8 @@ class DBService {
       DateTime from, DateTime to) async {
     final db = await database;
     final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
-    final psAccount =
-        await _accountFilterClause(db, PatientService.table, alias: 'ps', args: args);
+    final psAccount = await _accountFilterClause(db, PatientService.table,
+        alias: 'ps', args: args);
     final pAccount =
         await _accountFilterClause(db, 'patients', alias: 'p', args: args);
     String msAccount = '';
@@ -5986,12 +6057,12 @@ class DBService {
   Future<double> getSumAllDoctorShareBetween(DateTime from, DateTime to) async {
     final db = await database;
     final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
-    final psAccount =
-        await _accountFilterClause(db, PatientService.table, alias: 'ps', args: args);
+    final psAccount = await _accountFilterClause(db, PatientService.table,
+        alias: 'ps', args: args);
     final pAccount =
         await _accountFilterClause(db, 'patients', alias: 'p', args: args);
-    final msAccount =
-        await _accountFilterClause(db, 'medical_services', alias: 'ms', args: args);
+    final msAccount = await _accountFilterClause(db, 'medical_services',
+        alias: 'ms', args: args);
     String sdsAccount = '';
     if (await _hasColumn(db, 'service_doctor_share', 'account_id')) {
       final accountId = await _currentAccountId();
@@ -6026,8 +6097,8 @@ class DBService {
   Future<double> getSumAllTowerShareBetween(DateTime from, DateTime to) async {
     final db = await database;
     final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
-    final psAccount =
-        await _accountFilterClause(db, PatientService.table, alias: 'ps', args: args);
+    final psAccount = await _accountFilterClause(db, PatientService.table,
+        alias: 'ps', args: args);
     final pAccount =
         await _accountFilterClause(db, 'patients', alias: 'p', args: args);
     String msAccount = '';
@@ -6073,12 +6144,12 @@ class DBService {
       DateTime from, DateTime to) async {
     final db = await database;
     final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
-    final psAccount =
-        await _accountFilterClause(db, PatientService.table, alias: 'ps', args: args);
+    final psAccount = await _accountFilterClause(db, PatientService.table,
+        alias: 'ps', args: args);
     final pAccount =
         await _accountFilterClause(db, 'patients', alias: 'p', args: args);
-    final msAccount =
-        await _accountFilterClause(db, 'medical_services', alias: 'ms', args: args);
+    final msAccount = await _accountFilterClause(db, 'medical_services',
+        alias: 'ms', args: args);
     String sdsAccount = '';
     if (await _hasColumn(db, 'service_doctor_share', 'account_id')) {
       final accountId = await _currentAccountId();
@@ -6155,8 +6226,9 @@ class DBService {
       final doctorId = d.id;
       if (doctorId == null) continue;
       final employeeId = await resolveEmployeeId(d);
-      final lastPaidAt =
-          employeeId == null ? null : await getLastSalaryPaymentDate(employeeId);
+      final lastPaidAt = employeeId == null
+          ? null
+          : await getLastSalaryPaymentDate(employeeId);
       var from = monthStart;
       if (lastPaidAt != null) {
         final after = lastPaidAt.add(const Duration(seconds: 1));
@@ -6219,8 +6291,8 @@ class DBService {
       DateTime from, DateTime to) async {
     final db = await database;
     final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
-    final psAccount =
-        await _accountFilterClause(db, PatientService.table, alias: 'ps', args: args);
+    final psAccount = await _accountFilterClause(db, PatientService.table,
+        alias: 'ps', args: args);
     final pAccount =
         await _accountFilterClause(db, 'patients', alias: 'p', args: args);
     String msAccount = '';
@@ -6277,6 +6349,88 @@ class DBService {
     return out;
   }
 
+  Future<Map<String, double>> getConsumptionByDateBetween(
+      DateTime from, DateTime to) async {
+    final db = await database;
+    final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
+    final consumptionAccount = await _accountFilterClause(db, 'consumptions',
+        alias: 'c', args: args);
+    String itemsAccount = '';
+    if (await _hasColumn(db, 'items', 'account_id')) {
+      final accountId = await _currentAccountIdFrom(db);
+      if (accountId == null || accountId.trim().isEmpty) return {};
+      itemsAccount = ' AND (i.account_id = ? OR i.id IS NULL)';
+      args.add(accountId);
+    }
+
+    final rows = await db.rawQuery('''
+      SELECT date(c.date) AS dayKey,
+             COALESCE(SUM(
+               CASE
+                 WHEN (c.amount IS NULL OR c.amount = 0)
+                   THEN COALESCE(i.price, 0) * COALESCE(c.quantity, 0)
+                 ELSE c.amount
+               END
+             ), 0) AS total
+      FROM consumptions c
+      LEFT JOIN items i ON i.id = c.itemId
+      WHERE date(c.date) BETWEEN date(?) AND date(?)
+        AND ifnull(c.isDeleted,0)=0
+        $consumptionAccount$itemsAccount
+      GROUP BY date(c.date)
+      ORDER BY dayKey ASC
+    ''', args);
+
+    final out = <String, double>{};
+    for (final row in rows) {
+      final key = row['dayKey']?.toString() ?? '';
+      if (key.isEmpty) continue;
+      out[key] = (row['total'] as num?)?.toDouble() ?? 0.0;
+    }
+    return out;
+  }
+
+  Future<Map<String, double>> getConsumptionByTypeBetween(
+      DateTime from, DateTime to) async {
+    final db = await database;
+    final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
+    final consumptionAccount = await _accountFilterClause(db, 'consumptions',
+        alias: 'c', args: args);
+    String itemsAccount = '';
+    if (await _hasColumn(db, 'items', 'account_id')) {
+      final accountId = await _currentAccountIdFrom(db);
+      if (accountId == null || accountId.trim().isEmpty) return {};
+      itemsAccount = ' AND (i.account_id = ? OR i.id IS NULL)';
+      args.add(accountId);
+    }
+
+    final rows = await db.rawQuery('''
+      SELECT COALESCE(NULLIF(TRIM(c.note), ''), 'غير محدد') AS typeKey,
+             COALESCE(SUM(
+               CASE
+                 WHEN (c.amount IS NULL OR c.amount = 0)
+                   THEN COALESCE(i.price, 0) * COALESCE(c.quantity, 0)
+                 ELSE c.amount
+               END
+             ), 0) AS total
+      FROM consumptions c
+      LEFT JOIN items i ON i.id = c.itemId
+      WHERE date(c.date) BETWEEN date(?) AND date(?)
+        AND ifnull(c.isDeleted,0)=0
+        $consumptionAccount$itemsAccount
+      GROUP BY typeKey
+      ORDER BY total DESC, typeKey ASC
+    ''', args);
+
+    final out = <String, double>{};
+    for (final row in rows) {
+      final key = row['typeKey']?.toString() ?? '';
+      if (key.isEmpty) continue;
+      out[key] = (row['total'] as num?)?.toDouble() ?? 0.0;
+    }
+    return out;
+  }
+
   Future<Map<String, double>> getNetProfitByDateBetween(
       DateTime from, DateTime to) async {
     final db = await database;
@@ -6297,9 +6451,12 @@ class DBService {
       GROUP BY date(created_at)
     ''', consArgs);
 
-    final facilityArgs = <Object?>[from.toIso8601String(), to.toIso8601String()];
-    final consumptionAccount =
-        await _accountFilterClause(db, 'consumptions', alias: 'c', args: facilityArgs);
+    final facilityArgs = <Object?>[
+      from.toIso8601String(),
+      to.toIso8601String()
+    ];
+    final consumptionAccount = await _accountFilterClause(db, 'consumptions',
+        alias: 'c', args: facilityArgs);
     String itemsAccount = '';
     if (await _hasColumn(db, 'items', 'account_id')) {
       final accountId = await _currentAccountIdFrom(db);
@@ -6366,8 +6523,7 @@ class DBService {
     return net;
   }
 
-  Future<double> getNetProfitTotalBetween(
-      DateTime from, DateTime to) async {
+  Future<double> getNetProfitTotalBetween(DateTime from, DateTime to) async {
     final map = await getNetProfitByDateBetween(from, to);
     return map.values.fold<double>(0.0, (sum, v) => sum + v);
   }

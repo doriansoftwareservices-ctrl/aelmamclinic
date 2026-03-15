@@ -29,12 +29,14 @@ import 'package:aelmamclinic/services/device_id_service.dart';
 import 'package:aelmamclinic/services/notification_service.dart';
 import 'package:aelmamclinic/services/network_status_service.dart';
 import 'package:aelmamclinic/services/nhost_graphql_service.dart';
+import 'package:aelmamclinic/services/push_notifications_service.dart';
 import 'package:aelmamclinic/services/sync_service.dart';
 import 'package:aelmamclinic/services/backup_restore_service.dart';
 import 'package:aelmamclinic/core/active_account_store.dart';
 import 'package:aelmamclinic/local/chat_local_store.dart';
 import 'package:aelmamclinic/services/attachment_cache.dart';
 import 'package:aelmamclinic/models/storage_type.dart';
+import 'package:aelmamclinic/utils/app_observability.dart';
 import 'package:aelmamclinic/utils/app_error_reporter.dart';
 import 'package:aelmamclinic/utils/logger.dart';
 
@@ -122,6 +124,7 @@ enum AuthAccountGuardResult {
 /// حالة التحقق بعد تحديث بيانات المستخدم من الشبكة وحراسة الحساب.
 enum AuthSessionStatus {
   success,
+  isolationRequired,
   disabled,
   accountFrozen,
   noAccount,
@@ -140,6 +143,8 @@ class AuthSessionResult {
   const AuthSessionResult._(this.status, {this.error, this.stackTrace});
 
   const AuthSessionResult.success() : this._(AuthSessionStatus.success);
+  const AuthSessionResult.isolationRequired()
+      : this._(AuthSessionStatus.isolationRequired);
   const AuthSessionResult.disabled() : this._(AuthSessionStatus.disabled);
   const AuthSessionResult.accountFrozen()
       : this._(AuthSessionStatus.accountFrozen);
@@ -178,6 +183,7 @@ class AuthProvider extends ChangeNotifier {
   bool _allowAutoCreateAccount = false;
   bool _pendingLocalWipe = false;
   String? _pendingWipeAccountId;
+  String? _lastBackfilledSyncAccountId;
   StreamSubscription<QueryResult>? _planSub;
   String? _planSubUid;
 
@@ -214,15 +220,24 @@ class AuthProvider extends ChangeNotifier {
   DateTime? _lastRefreshAttemptAt;
   bool _lastRefreshSuccess = false;
   bool _offlineSession = false;
+  bool? _debugHasNhostSessionOverride;
   StreamSubscription<bool>? _netSub;
   DateTime? _lastOnlineSyncAt;
   bool _authFlowRunning = false;
   DateTime? _lastGuardOkAt;
   bool _lastGuardOk = false;
   DateTime? _lastSessionRestoreAttemptAt;
+  Future<AuthSessionResult>? _sessionReconcileInFlight;
+  Future<void>? _initInFlight;
+  bool _initComplete = false;
+  Object? _initError;
 
   /*──────── Getters ────────*/
   bool get isLoggedIn => currentUser != null;
+  bool get isInitializing => _initInFlight != null && !_initComplete;
+  bool get isInitComplete => _initComplete;
+  Object? get initError => _initError;
+  bool get hasLocalSession => currentUser != null;
   String? get accessToken => _auth.accessToken;
   String? get uid => currentUser?['uid'] as String?;
   String? get email => currentUser?['email'] as String?;
@@ -236,11 +251,13 @@ class AuthProvider extends ChangeNotifier {
     final trimmed = value.trim();
     return trimmed.isEmpty ? null : trimmed;
   }
+
   SyncService? get sync => _auth.sync;
 
   Future<void> pauseSync() => _auth.pauseSync();
   Future<void> resumeSync() => _auth.resumeSync();
-  Future<void> waitForSyncIdle({Duration timeout = const Duration(seconds: 10)}) =>
+  Future<void> waitForSyncIdle(
+          {Duration timeout = const Duration(seconds: 10)}) =>
       _auth.waitForSyncIdle(timeout: timeout);
   String get planCode =>
       (currentUser?['planCode'] as String?)?.toLowerCase() ?? 'free';
@@ -249,14 +266,180 @@ class AuthProvider extends ChangeNotifier {
   bool get isDisabled => (currentUser?['disabled'] as bool?) ?? false;
   bool get isSuperAdmin => currentUser?['isSuperAdmin'] == true;
   bool get isOffline => _offlineSession;
-  bool get hasNhostSession => _auth.currentUser != null;
+  bool get hasNhostSession =>
+      _debugHasNhostSessionOverride ?? _auth.currentUser != null;
+  bool get hasSuperAdminSessionRole {
+    final user = _auth.currentUser;
+    if (user == null) return false;
+    final roles = user.roles.map((r) => r.toLowerCase()).toList();
+    return roles.contains('superadmin') ||
+        user.defaultRole.toLowerCase() == 'superadmin';
+  }
+  bool get requiresLocalIsolationWipe => _pendingLocalWipe;
+  bool get hasAccountContext =>
+      (currentUser?['accountId'] ?? '').toString().trim().isNotEmpty;
+  bool get needsRemoteSessionRecovery => hasLocalSession && !hasNhostSession;
+  bool get needsAccountContextResolution =>
+      hasLocalSession &&
+      !requiresLocalIsolationWipe &&
+      !isSuperAdmin &&
+      !hasAccountContext;
+  bool get canEnterClinicShell =>
+      hasLocalSession &&
+      !requiresLocalIsolationWipe &&
+      !isSuperAdmin &&
+      hasAccountContext;
+  bool get canEnterRemoteAdminShell =>
+      hasLocalSession &&
+      !requiresLocalIsolationWipe &&
+      isSuperAdmin &&
+      hasNhostSession &&
+      hasSuperAdminSessionRole;
+  bool get hasReadyAppShell => canEnterClinicShell || canEnterRemoteAdminShell;
+  bool get canRunRemoteBoundServices =>
+      !requiresLocalIsolationWipe &&
+      hasNhostSession &&
+      (isSuperAdmin || hasAccountContext);
+  String get sessionTopologyState {
+    if (!hasLocalSession) return 'signed_out';
+    if (requiresLocalIsolationWipe) return 'local_waiting_isolation_wipe';
+    if (canEnterRemoteAdminShell) return 'superadmin_remote_ready';
+    if (canEnterClinicShell && hasNhostSession) return 'clinic_remote_ready';
+    if (canEnterClinicShell) return 'clinic_local_only';
+    if (needsRemoteSessionRecovery) return 'local_waiting_remote_restore';
+    if (needsAccountContextResolution) return 'local_waiting_account_context';
+    return 'local_unclassified';
+  }
+
   bool get isOwnerOrAdmin {
     if (isSuperAdmin) return true;
     final r = role?.toLowerCase();
     return r == 'owner' || r == 'admin';
   }
+
   bool get hasPendingLocalWipe => _pendingLocalWipe;
+
+  String _newAuthFlow(String label) =>
+      AppObservability.newFlowId('auth_$label');
+
+  Map<String, Object?> _authObsContext([Map<String, Object?>? extra]) {
+    return <String, Object?>{
+      'uid': currentUser?['uid'],
+      'accountId': currentUser?['accountId'],
+      'role': currentUser?['role'],
+      'isOffline': _offlineSession,
+      if (deviceId != null && deviceId!.isNotEmpty) 'deviceId': deviceId,
+      ...?extra,
+    };
+  }
+
+  void _authObsWarn(
+    String code,
+    String message, {
+    String? flowId,
+    Map<String, Object?>? context,
+    Object? error,
+    StackTrace? stackTrace,
+  }) {
+    AppObservability.warn(
+      scope: 'AUTH',
+      code: code,
+      message: message,
+      flowId: flowId,
+      context: _authObsContext(context),
+      error: error,
+      stackTrace: stackTrace,
+    );
+  }
+
+  void _authObsError(
+    String code,
+    String message, {
+    String? flowId,
+    Map<String, Object?>? context,
+    Object? error,
+    StackTrace? stackTrace,
+  }) {
+    AppObservability.error(
+      scope: 'AUTH',
+      code: code,
+      message: message,
+      flowId: flowId,
+      context: _authObsContext(context),
+      error: error,
+      stackTrace: stackTrace,
+    );
+  }
+
   String? get pendingWipeAccountId => _pendingWipeAccountId;
+
+  Future<void> _applyPendingLocalWipeState({
+    required String reason,
+    String? accountId,
+    bool notify = true,
+  }) async {
+    final normalized = accountId?.trim();
+    final targetAccountId =
+        (normalized == null || normalized.isEmpty) ? null : normalized;
+    await ActiveAccountStore.setPendingWipe(targetAccountId);
+    _pendingLocalWipe = true;
+    _pendingWipeAccountId = targetAccountId;
+    _resetPermissionsInMemory();
+    _lastBackfilledSyncAccountId = null;
+    await _suspendAccountBoundRuntimeForIsolation(reason: reason);
+    if (notify) {
+      notifyListeners();
+    }
+  }
+
+  Future<void> _suspendAccountBoundRuntimeForIsolation({
+    required String reason,
+  }) async {
+    await _stopDoctorPatientAlerts();
+    await _stopPlanRealtime();
+    try {
+      await PushNotificationsService.instance.dispose();
+    } catch (e, st) {
+      _authObsWarn(
+        ObsCode.authSignOutPushDisposeFailed,
+        'push notification dispose failed while entering isolation mode',
+        flowId: _newAuthFlow('isolation_push_dispose'),
+        context: {
+          'reason': reason,
+        },
+        error: e,
+        stackTrace: st,
+      );
+    }
+    try {
+      await pauseSync();
+    } catch (e, st) {
+      _authObsWarn(
+        ObsCode.authPauseSyncFailed,
+        'pauseSync failed while entering isolation mode',
+        flowId: _newAuthFlow('isolation_pause_sync'),
+        context: {
+          'reason': reason,
+        },
+        error: e,
+        stackTrace: st,
+      );
+    }
+    try {
+      await _auth.suspendRuntimeBindings();
+    } catch (e, st) {
+      _authObsWarn(
+        ObsCode.authBootstrapSyncFailed,
+        'runtime suspension failed while entering isolation mode',
+        flowId: _newAuthFlow('isolation_suspend_runtime'),
+        context: {
+          'reason': reason,
+        },
+        error: e,
+        stackTrace: st,
+      );
+    }
+  }
 
   AuthProvider({NhostAuthService? authService, bool listenAuthChanges = true})
       : _auth = authService ?? NhostAuthService() {
@@ -271,8 +454,15 @@ class AuthProvider extends ChangeNotifier {
           AuthRoleState.clear();
           _lastGuardOk = false;
           _lastGuardOkAt = null;
+          _lastBackfilledSyncAccountId = null;
+          _sessionReconcileInFlight = null;
           NhostGraphqlService.refreshClient();
           await _stopDoctorPatientAlerts();
+          await _stopPlanRealtime();
+          await PushNotificationsService.instance.dispose();
+          await ActiveAccountStore.clearPendingWipe();
+          _pendingLocalWipe = false;
+          _pendingWipeAccountId = null;
           await _clearStorage();
           notifyListeners();
           return;
@@ -286,56 +476,75 @@ class AuthProvider extends ChangeNotifier {
         }
         _authFlowRunning = true;
         try {
-        // لأي حدث آخر: نحدّث من الشبكة عند الدخول أو عند حلول موعد الفحص
-        final due = await _isNetCheckDue();
-        if (event == AuthenticationState.signedIn) {
-          // Reset role header before any post-login GraphQL requests.
-          AuthRoleState.clear();
-          NhostGraphqlService.refreshClient();
-          await _networkRefreshAndMark();
-        } else if (due) {
-          await _networkRefreshAndMark();
-        } else {
-          await _loadFromStorage();
-          // إن كان accountId مفقودًا من التخزين، حاول حسمه سريعًا من الشبكة
-          if ((currentUser?['accountId'] ?? '').toString().isEmpty) {
-            try {
-              final acc = await _auth.resolveAccountId();
-              if (acc != null && acc.isNotEmpty) {
-                currentUser ??= {};
-                currentUser!['accountId'] = acc;
-                await _persistUser();
+          // لأي حدث آخر: نحدّث من الشبكة عند الدخول أو عند حلول موعد الفحص
+          final due = await _isNetCheckDue();
+          if (event == AuthenticationState.signedIn) {
+            // Reset role header before any post-login GraphQL requests.
+            AuthRoleState.clear();
+            NhostGraphqlService.refreshClient();
+            await _networkRefreshAndMark();
+          } else if (due) {
+            await _networkRefreshAndMark();
+          } else {
+            await _loadFromStorage();
+            // إن كان accountId مفقودًا من التخزين، حاول حسمه سريعًا من الشبكة
+            if ((currentUser?['accountId'] ?? '').toString().isEmpty) {
+              try {
+                final acc = await _auth.resolveAccountId();
+                if (acc != null && acc.isNotEmpty) {
+                  currentUser ??= {};
+                  currentUser!['accountId'] = acc;
+                  await _persistUser();
+                }
+              } catch (e, st) {
+                _authObsWarn(
+                  ObsCode.authResolveAccountIdFailed,
+                  'resolveAccountId failed during auth flow reconciliation',
+                  flowId: _newAuthFlow('auth_state_resolve_account'),
+                  context: {
+                    'source': 'auth_state_listener',
+                  },
+                  error: e,
+                  stackTrace: st,
+                );
               }
-            } catch (_) {}
+            }
           }
-        }
 
-        // تحقّق من الحساب الفعّال (غير مجمّد/غير معطّل)
-        final guard = await _ensureActiveAccountOrSignOut();
-        if (isDisabled) {
-          await _auth.signOut();
-          return;
-        }
-        if (guard != AuthAccountGuardResult.ok) {
-          // لا نفعّل مزامنة أو صلاحيات إذا الحساب غير صالح أو الشبكة متذبذبة
+          // تحقّق من الحساب الفعّال (غير مجمّد/غير معطّل)
+          final guard = await _ensureActiveAccountOrSignOut();
+          if (isDisabled) {
+            await signOut();
+            return;
+          }
+          if (guard != AuthAccountGuardResult.ok) {
+            // لا نفعّل مزامنة أو صلاحيات إذا الحساب غير صالح أو الشبكة متذبذبة
+            notifyListeners();
+            return;
+          }
+
+          if (requiresLocalIsolationWipe) {
+            await _suspendAccountBoundRuntimeForIsolation(
+              reason: 'auth_state_listener',
+            );
+            notifyListeners();
+            return;
+          }
+
+          // تأكيد deviceId
+          await _ensureDeviceId();
+
+          // جلب صلاحيات الميزات + CRUD للحساب الحالي (إن وُجد)
+          if (accountId != null && accountId!.isNotEmpty && !isSuperAdmin) {
+            await _refreshFeaturePermissions();
+          }
+
+          // Bootstrap للمزامنة/Realtime عبر الخدمة (idempotent نسبيًا)
+          if (isLoggedIn) {
+            unawaited(bootstrapSync());
+          }
+
           notifyListeners();
-          return;
-        }
-
-        // تأكيد deviceId
-        await _ensureDeviceId();
-
-        // جلب صلاحيات الميزات + CRUD للحساب الحالي (إن وُجد)
-        if (accountId != null && accountId!.isNotEmpty && !isSuperAdmin) {
-          await _refreshFeaturePermissions();
-        }
-
-        // Bootstrap للمزامنة/Realtime عبر الخدمة (idempotent نسبيًا)
-        if (isLoggedIn) {
-          unawaited(bootstrapSync());
-        }
-
-        notifyListeners();
         } finally {
           _authFlowRunning = false;
         }
@@ -344,69 +553,113 @@ class AuthProvider extends ChangeNotifier {
   }
 
   /// نادِها في main() بعد تهيئة Nhost.
-  Future<void> init() async {
+  Future<void> init() {
+    final inFlight = _initInFlight;
+    if (inFlight != null) {
+      return inFlight;
+    }
+    final future = _initInternal();
+    _initInFlight = future;
+    return future;
+  }
+
+  Future<void> _initInternal() async {
+    _initComplete = false;
+    _initError = null;
+    notifyListeners();
     final user = _auth.currentUser;
-    if (user != null) {
-      final due = await _isNetCheckDue();
-      if (due) {
-        await _networkRefreshAndMark();
+    try {
+      if (user != null) {
+        final due = await _isNetCheckDue();
+        if (due) {
+          await _networkRefreshAndMark();
+        } else {
+          await _loadFromStorage();
+          // تأكيد accountId إن كان مفقودًا
+          if ((currentUser?['accountId'] ?? '').toString().isEmpty) {
+            try {
+              final acc = await _auth.resolveAccountId();
+              if (acc != null && acc.isNotEmpty) {
+                currentUser ??= {};
+                currentUser!['accountId'] = acc;
+                await _persistUser();
+              }
+            } catch (e, st) {
+              _authObsWarn(
+                ObsCode.authResolveAccountIdFailed,
+                'resolveAccountId failed during init reconciliation',
+                flowId: _newAuthFlow('init_resolve_account'),
+                context: {
+                  'source': 'init',
+                },
+                error: e,
+                stackTrace: st,
+              );
+            }
+          }
+        }
       } else {
         await _loadFromStorage();
-        // تأكيد accountId إن كان مفقودًا
-        if ((currentUser?['accountId'] ?? '').toString().isEmpty) {
-          try {
-            final acc = await _auth.resolveAccountId();
-            if (acc != null && acc.isNotEmpty) {
-              currentUser ??= {};
-              currentUser!['accountId'] = acc;
-              await _persistUser();
-            }
-          } catch (_) {}
+        if (currentUser != null) {
+          // نحاول استعادة جلسة Nhost إن كانت موجودة في التخزين الآمن.
+          final restored =
+              await _tryRestoreNhostSessionIfNeeded(reason: 'init');
+          if (restored) {
+            _offlineSession = false;
+            await _networkRefreshAndMark();
+          } else if (_auth.currentUser == null) {
+            _offlineSession = true;
+          }
+        } else {
+          // لا يوجد مستخدم على Nhost ولا بيانات محلية.
+          currentUser = null;
+          _resetPermissionsInMemory();
+          await _clearStorage();
         }
       }
-    } else {
-      await _loadFromStorage();
-      if (currentUser != null) {
-        // نحاول استعادة جلسة Nhost إن كانت موجودة في التخزين الآمن.
-        final restored =
-            await _tryRestoreNhostSessionIfNeeded(reason: 'init');
-        if (restored) {
-          _offlineSession = false;
-          await _networkRefreshAndMark();
-        } else if (_auth.currentUser == null) {
-          _offlineSession = true;
+
+      if (isLoggedIn) {
+        // تأكيد الحساب الفعّال
+        await _ensureActiveAccountOrSignOut();
+
+        if (requiresLocalIsolationWipe) {
+          await _suspendAccountBoundRuntimeForIsolation(reason: 'init');
+          _startNetworkMonitor();
+          return;
         }
-      } else {
-        // لا يوجد مستخدم على Nhost ولا بيانات محلية.
-        currentUser = null;
-        _resetPermissionsInMemory();
-        await _clearStorage();
+
+        await _ensureDeviceId();
+
+        // تحميل الصلاحيات من التخزين (إن وُجدت) ثم محاولة تحديثها من الشبكة
+        await _loadPermissionsFromStorage();
+        if (accountId != null &&
+            accountId!.isNotEmpty &&
+            !isSuperAdmin &&
+            _auth.currentUser != null) {
+          unawaited(_refreshFeaturePermissions());
+        }
+
+        if (!_offlineSession) {
+          unawaited(bootstrapSync());
+        }
       }
+
+      _startNetworkMonitor();
+    } catch (e, st) {
+      _initError = e;
+      _authObsError(
+        ObsCode.authProviderInitFailed,
+        'AuthProvider.init failed',
+        flowId: _newAuthFlow('provider_init'),
+        error: e,
+        stackTrace: st,
+      );
+      rethrow;
+    } finally {
+      _initComplete = true;
+      _initInFlight = null;
+      notifyListeners();
     }
-
-    if (isLoggedIn) {
-      // تأكيد الحساب الفعّال
-      await _ensureActiveAccountOrSignOut();
-
-      await _ensureDeviceId();
-
-      // تحميل الصلاحيات من التخزين (إن وُجدت) ثم محاولة تحديثها من الشبكة
-      await _loadPermissionsFromStorage();
-      if (accountId != null &&
-          accountId!.isNotEmpty &&
-          !isSuperAdmin &&
-          _auth.currentUser != null) {
-        unawaited(_refreshFeaturePermissions());
-      }
-
-      if (!_offlineSession) {
-        unawaited(bootstrapSync());
-      }
-    }
-
-    _startNetworkMonitor();
-
-    notifyListeners();
   }
 
   void _startNetworkMonitor() {
@@ -418,7 +671,18 @@ class AuthProvider extends ChangeNotifier {
         _offlineSession = true;
         try {
           await pauseSync();
-        } catch (_) {}
+        } catch (e, st) {
+          _authObsWarn(
+            ObsCode.authPauseSyncFailed,
+            'pauseSync failed after network disconnect',
+            flowId: _newAuthFlow('network_offline'),
+            context: {
+              'online': online,
+            },
+            error: e,
+            stackTrace: st,
+          );
+        }
         return;
       }
       final now = DateTime.now();
@@ -428,19 +692,31 @@ class AuthProvider extends ChangeNotifier {
       }
       _lastOnlineSyncAt = now;
       try {
-        await ensureNhostSessionReady(reason: 'netBackOnline');
-        final result = await refreshAndValidateCurrentUser();
+        final wasOffline = _offlineSession;
+        final result = await reconcileAuthenticatedSession(
+          reason: 'netBackOnline',
+          bootstrapOnSuccess: true,
+          bootstrapPull: true,
+          resumeSyncOnSuccess: true,
+        );
         if (result.isSuccess) {
-          try {
-            await resumeSync();
-          } catch (_) {}
-          await bootstrapSync();
-          if (_offlineSession) {
+          if (wasOffline) {
             AppErrorReporter.info('تم استعادة الاتصال وتمت المزامنة بنجاح');
           }
           _offlineSession = false;
         }
-      } catch (_) {}
+      } catch (e, st) {
+        _authObsWarn(
+          ObsCode.authNetworkMonitorFailed,
+          'network monitor refresh flow failed',
+          flowId: _newAuthFlow('network_monitor'),
+          context: {
+            'online': online,
+          },
+          error: e,
+          stackTrace: st,
+        );
+      }
     });
   }
 
@@ -462,10 +738,15 @@ class AuthProvider extends ChangeNotifier {
     );
   }
 
-  Future<AuthResponse> signUp(String email, String password) {
+  Future<AuthResponse> signUp(
+    String email,
+    String password, {
+    String? locale,
+  }) {
     return _auth.signUpWithEmailPassword(
       email: email,
       password: password,
+      locale: locale,
     );
   }
 
@@ -479,15 +760,51 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> signOut() async {
     try {
+      await PushNotificationsService.instance.deactivateCurrentToken();
+    } catch (e, st) {
+      _authObsWarn(
+        ObsCode.authSignOutPushDeactivateFailed,
+        'deactivateCurrentToken failed during signOut',
+        flowId: _newAuthFlow('sign_out'),
+        error: e,
+        stackTrace: st,
+      );
+    }
+
+    try {
       await _auth.signOut(); // يوقف المزامنة/الحراسة داخليًا
-    } catch (_) {}
+    } catch (e, st) {
+      _authObsWarn(
+        ObsCode.authSignOutRemoteFailed,
+        'remote signOut failed',
+        flowId: _newAuthFlow('sign_out'),
+        error: e,
+        stackTrace: st,
+      );
+    }
+
+    try {
+      await PushNotificationsService.instance.dispose();
+    } catch (e, st) {
+      _authObsWarn(
+        ObsCode.authSignOutPushDisposeFailed,
+        'push notification dispose failed during signOut',
+        flowId: _newAuthFlow('sign_out'),
+        error: e,
+        stackTrace: st,
+      );
+    }
 
     currentUser = null;
+    AuthRoleState.clear();
+    NhostGraphqlService.refreshClient();
     _resetPermissionsInMemory();
     _autoCreateAttempted = false;
     _pendingClinicProfile = null;
     _lastGuardOk = false;
     _lastGuardOkAt = null;
+    _lastBackfilledSyncAccountId = null;
+    _sessionReconcileInFlight = null;
 
     final sp = await SharedPreferences.getInstance();
     await _clearStorage();
@@ -519,8 +836,7 @@ class AuthProvider extends ChangeNotifier {
             if (isSuper) {
               currentUser ??= {};
               currentUser!['uid'] = nhostUser?.id ?? currentUser?['uid'];
-              currentUser!['email'] =
-                  nhostUser?.email ?? currentUser?['email'];
+              currentUser!['email'] = nhostUser?.email ?? currentUser?['email'];
               currentUser!['role'] = 'superadmin';
               currentUser!['isSuperAdmin'] = true;
               currentUser!['accountId'] = null;
@@ -580,25 +896,23 @@ class AuthProvider extends ChangeNotifier {
 
     _planSub = NhostGraphqlService.client
         .subscribe(
-          SubscriptionOptions(
-            document: gql(doc),
-            variables: {'uid': uid},
-          ),
-        )
+      SubscriptionOptions(
+        document: gql(doc),
+        variables: {'uid': uid},
+      ),
+    )
         .listen((result) async {
       if (result.hasException) return;
       final rows = result.data?['account_users'] as List?;
       if (rows == null || rows.isEmpty) return;
       final row = rows.first as Map;
-      final planCode =
-          (row['plan_code'] ?? 'free').toString().toLowerCase();
+      final planCode = (row['plan_code'] ?? 'free').toString().toLowerCase();
       final planEndAt = _readPlanEndAt(row['plan_end_at']);
-      final chatCode = row['chat_code']?.toString();
+      final chatCode = row['chat_code']?.toString().trim() ?? '';
 
       var changed = false;
-      final currentPlan = (currentUser?['planCode'] ?? 'free')
-          .toString()
-          .toLowerCase();
+      final currentPlan =
+          (currentUser?['planCode'] ?? 'free').toString().toLowerCase();
       if (currentPlan != planCode) {
         currentUser ??= {};
         currentUser!['planCode'] = planCode;
@@ -611,13 +925,17 @@ class AuthProvider extends ChangeNotifier {
         currentUser!['planEndAt'] = planEndAt;
         changed = true;
       }
-      if (chatCode != null && chatCode.isNotEmpty) {
+      if (chatCode.isNotEmpty) {
         final currentChat = (currentUser?['chatCode'] ?? '').toString();
         if (currentChat != chatCode) {
           currentUser ??= {};
           currentUser!['chatCode'] = chatCode;
           changed = true;
         }
+      } else if ((currentUser?['chatCode'] ?? '').toString().isNotEmpty) {
+        currentUser ??= {};
+        currentUser!.remove('chatCode');
+        changed = true;
       }
 
       if (changed) {
@@ -636,33 +954,44 @@ class AuthProvider extends ChangeNotifier {
   /// تغيير سياق الحساب (مثلاً المالك يبدّل بين عيادات)
   Future<void> setAccountContext(String newAccountId) async {
     if (currentUser == null) return;
-    currentUser!['accountId'] = newAccountId;
+    final normalized = newAccountId.trim();
+    if (normalized.isEmpty) return;
+    currentUser!['accountId'] = normalized;
     await _persistUser();
+    final hasForeignRows =
+        await DBService.instance.hasRowsForOtherAccount(normalized);
+    if (hasForeignRows) {
+      await _applyPendingLocalWipeState(
+        reason: 'setAccountContext',
+        accountId: normalized,
+      );
+      return;
+    }
 
-    // لا نمسح تلقائيًا: نطلب تأكيدًا يدويًا لتجنّب فقدان البيانات
-    await ActiveAccountStore.setPendingWipe(newAccountId);
-    _pendingLocalWipe = true;
-    _pendingWipeAccountId = newAccountId;
+    await ActiveAccountStore.clearPendingWipe();
+    _pendingLocalWipe = false;
+    _pendingWipeAccountId = null;
 
-    // تحديث الصلاحيات للحساب الجديد
     await _refreshFeaturePermissions();
     await _refreshClinicProfileCache();
-
-    // إعادة Bootstrap للمزامنة على الحساب الجديد
-    unawaited(_auth.bootstrapSyncForCurrentUser(
+    await bootstrapSync(
       pull: true,
       realtime: true,
       enableLogs: true,
-      wipeLocalFirst: false, // قمنا بالتصفير مسبقًا
-    ));
-
+      wipeLocalFirst: false,
+    );
     notifyListeners();
   }
 
   Future<void> refreshPendingLocalWipeState() async {
     _pendingLocalWipe = await ActiveAccountStore.hasPendingWipe();
-    _pendingWipeAccountId =
-        await ActiveAccountStore.readPendingWipeAccountId();
+    _pendingWipeAccountId = await ActiveAccountStore.readPendingWipeAccountId();
+    if (_pendingLocalWipe) {
+      await _suspendAccountBoundRuntimeForIsolation(
+        reason: 'refreshPendingLocalWipeState',
+      );
+      _resetPermissionsInMemory();
+    }
     notifyListeners();
   }
 
@@ -672,6 +1001,8 @@ class AuthProvider extends ChangeNotifier {
   }) async {
     if (!_pendingLocalWipe) return true;
     try {
+      await _suspendAccountBoundRuntimeForIsolation(
+          reason: 'performPendingWipe');
       if (createBackup) {
         await BackupRestoreService.backupDatabase(
           storageType: StorageType.local,
@@ -682,11 +1013,30 @@ class AuthProvider extends ChangeNotifier {
       await ChatLocalStore.instance.clearAllData();
       try {
         await AttachmentCache.instance.purgeAll();
-      } catch (_) {}
+      } catch (e, st) {
+        _authObsWarn(
+          ObsCode.authPendingWipeAttachmentPurgeFailed,
+          'attachment cache purge failed during pending local wipe',
+          flowId: _newAuthFlow('pending_wipe'),
+          context: {
+            'createBackup': createBackup,
+            'rebootstrap': rebootstrap,
+          },
+          error: e,
+          stackTrace: st,
+        );
+      }
       await ActiveAccountStore.clearPendingWipe();
       _pendingLocalWipe = false;
       _pendingWipeAccountId = null;
+      if (hasAccountContext) {
+        await ActiveAccountStore.writeAccountId(accountId);
+      }
+      _resetPermissionsInMemory();
       if (rebootstrap) {
+        if (hasAccountContext && !isSuperAdmin) {
+          await _refreshFeaturePermissions();
+        }
         await bootstrapSync(
           pull: true,
           realtime: true,
@@ -711,6 +1061,35 @@ class AuthProvider extends ChangeNotifier {
       _auth.requestPasswordReset(email, redirectTo: redirectTo);
   Future<void> refreshSession() => _auth.refreshSession();
 
+  Future<AuthSessionResult> reconcileAuthenticatedSession({
+    String reason = 'guard',
+    bool bootstrapOnSuccess = false,
+    bool bootstrapPull = false,
+    bool resumeSyncOnSuccess = false,
+  }) async {
+    if (!hasLocalSession) {
+      return const AuthSessionResult.signedOut();
+    }
+    if (_sessionReconcileInFlight != null) {
+      return _sessionReconcileInFlight!;
+    }
+
+    final future = _reconcileAuthenticatedSessionInternal(
+      reason: reason,
+      bootstrapOnSuccess: bootstrapOnSuccess,
+      bootstrapPull: bootstrapPull,
+      resumeSyncOnSuccess: resumeSyncOnSuccess,
+    );
+    _sessionReconcileInFlight = future;
+    try {
+      return await future;
+    } finally {
+      if (identical(_sessionReconcileInFlight, future)) {
+        _sessionReconcileInFlight = null;
+      }
+    }
+  }
+
   /*──────── Internals ────────*/
 
   @visibleForTesting
@@ -733,6 +1112,22 @@ class AuthProvider extends ChangeNotifier {
     _canDelete = canDelete;
     _permissionsLoaded = loaded;
     _permissionsError = error;
+  }
+
+  @visibleForTesting
+  void debugSetPendingLocalWipe({
+    required bool pending,
+    String? accountId,
+  }) {
+    _pendingLocalWipe = pending;
+    final normalized = accountId?.trim();
+    _pendingWipeAccountId =
+        normalized == null || normalized.isEmpty ? null : normalized;
+  }
+
+  @visibleForTesting
+  void debugSetHasNhostSession(bool? value) {
+    _debugHasNhostSessionOverride = value;
   }
 
   Future<bool> _networkRefreshAndMark() async {
@@ -803,7 +1198,15 @@ class AuthProvider extends ChangeNotifier {
               context: {'source': 'resolveAccountId', 'accountId': acc},
             );
           }
-        } catch (_) {}
+        } catch (e, st) {
+          _authObsWarn(
+            ObsCode.authResolveAccountIdFailed,
+            'resolveAccountId failed during network refresh',
+            flowId: _newAuthFlow('network_refresh_resolve_account'),
+            error: e,
+            stackTrace: st,
+          );
+        }
       }
 
       if (((currentUser?['accountId'] ?? '').toString().isEmpty) ||
@@ -860,6 +1263,98 @@ class AuthProvider extends ChangeNotifier {
     return success;
   }
 
+  Future<AuthSessionResult> _reconcileAuthenticatedSessionInternal({
+    required String reason,
+    required bool bootstrapOnSuccess,
+    required bool bootstrapPull,
+    required bool resumeSyncOnSuccess,
+  }) async {
+    _authDiag('_reconcileAuthenticatedSession:start', context: {
+      'reason': reason,
+      'topology': sessionTopologyState,
+      'bootstrapOnSuccess': bootstrapOnSuccess,
+      'bootstrapPull': bootstrapPull,
+      'resumeSyncOnSuccess': resumeSyncOnSuccess,
+    });
+
+    if (!hasLocalSession) {
+      return const AuthSessionResult.signedOut();
+    }
+
+    if (requiresLocalIsolationWipe) {
+      await _suspendAccountBoundRuntimeForIsolation(reason: reason);
+      _authDiagWarn('_reconcileAuthenticatedSession:isolationRequired',
+          context: {
+            'reason': reason,
+            'pendingWipeAccountId': _pendingWipeAccountId,
+          });
+      return const AuthSessionResult.isolationRequired();
+    }
+
+    if (!hasNhostSession) {
+      final restored = await ensureNhostSessionReady(reason: reason);
+      if (!restored && !hasNhostSession) {
+        if (!hasLocalSession) {
+          return const AuthSessionResult.signedOut();
+        }
+        _offlineSession = true;
+        notifyListeners();
+        _authDiagWarn('_reconcileAuthenticatedSession:remoteMissing', context: {
+          'reason': reason,
+          'topology': sessionTopologyState,
+        });
+        return const AuthSessionResult.networkError();
+      }
+    }
+
+    final result = await refreshAndValidateCurrentUser();
+    if (!result.isSuccess) {
+      _authDiagWarn('_reconcileAuthenticatedSession:nonSuccess', context: {
+        'reason': reason,
+        'status': result.status.name,
+        'topology': sessionTopologyState,
+      });
+      return result;
+    }
+
+    if (requiresLocalIsolationWipe) {
+      await _suspendAccountBoundRuntimeForIsolation(reason: reason);
+      return const AuthSessionResult.isolationRequired();
+    }
+
+    if (resumeSyncOnSuccess && !isSuperAdmin) {
+      try {
+        await resumeSync();
+      } catch (e, st) {
+        _authObsWarn(
+          ObsCode.authResumeSyncFailed,
+          'resumeSync failed during authenticated session reconciliation',
+          flowId: _newAuthFlow('reconcile_resume_sync'),
+          context: {
+            'reason': reason,
+          },
+          error: e,
+          stackTrace: st,
+        );
+      }
+    }
+
+    if (bootstrapOnSuccess && canEnterClinicShell) {
+      await bootstrapSync(
+        pull: bootstrapPull,
+        realtime: true,
+        enableLogs: kDebugMode,
+        debounce: const Duration(seconds: 1),
+      );
+    }
+
+    _authDiag('_reconcileAuthenticatedSession:ok', context: {
+      'reason': reason,
+      'topology': sessionTopologyState,
+    });
+    return result;
+  }
+
   bool _isTransientNetworkError(Object error) {
     if (error is SocketException || error is TimeoutException) return true;
     if (error is OperationException) {
@@ -907,12 +1402,20 @@ class AuthProvider extends ChangeNotifier {
     }
 
     final prevAccountId = currentUser?['accountId']?.toString();
+    final prevChatCode = currentUser?['chatCode']?.toString().trim();
     final prevIsSuper = currentUser?['isSuperAdmin'] == true;
     Map<String, dynamic>? info;
     try {
       info = await _auth
           .fetchCurrentUser(); // { uid,email,accountId,role,isSuperAdmin }
-    } catch (_) {
+    } catch (e, st) {
+      _authObsWarn(
+        ObsCode.authRefreshFetchUserFailed,
+        'fetchCurrentUser failed during refresh',
+        flowId: _newAuthFlow('refresh_user'),
+        error: e,
+        stackTrace: st,
+      );
       info = null;
     }
 
@@ -924,7 +1427,15 @@ class AuthProvider extends ChangeNotifier {
     if (accId == null || accId.isEmpty) {
       try {
         accId = await _auth.resolveAccountId();
-      } catch (_) {}
+      } catch (e, st) {
+        _authObsWarn(
+          ObsCode.authResolveAccountIdFailed,
+          'resolveAccountId failed during user refresh fallback',
+          flowId: _newAuthFlow('refresh_user_resolve_account'),
+          error: e,
+          stackTrace: st,
+        );
+      }
     }
     // لا نستدعي resolveActiveAccountOrThrow هنا لتجنب تكرار الشبكة.
 
@@ -933,8 +1444,21 @@ class AuthProvider extends ChangeNotifier {
     final infoIsSuper = info?['isSuperAdmin'] == true;
     final infoPlan = (info?['planCode'] as String?)?.toLowerCase();
     final infoPlanEndAt = _readPlanEndAt(info?['planEndAt']);
-    final infoChatCode = info?['chatCode'] as String?;
+    final infoChatCode = (info?['chatCode'] as String?)?.trim();
     final prevPlanEndAt = _readPlanEndAt(currentUser?['planEndAt']);
+    if ((accId == null || accId.isEmpty) &&
+        info == null &&
+        prevAccountId != null &&
+        prevAccountId.trim().isNotEmpty) {
+      accId = prevAccountId.trim();
+    }
+    var effectiveChatCode = infoChatCode;
+    if ((effectiveChatCode == null || effectiveChatCode.isEmpty) &&
+        info == null &&
+        prevChatCode != null &&
+        prevChatCode.isNotEmpty) {
+      effectiveChatCode = prevChatCode;
+    }
     final role = infoIsSuper ? 'superadmin' : (infoRole ?? 'employee');
     final isSuper = infoIsSuper;
 
@@ -947,8 +1471,8 @@ class AuthProvider extends ChangeNotifier {
       'isSuperAdmin': isSuper,
       'planCode': infoPlan ?? 'free',
       'planEndAt': infoPlanEndAt ?? prevPlanEndAt,
-      if (infoChatCode != null && infoChatCode.isNotEmpty)
-        'chatCode': infoChatCode,
+      if (effectiveChatCode != null && effectiveChatCode.isNotEmpty)
+        'chatCode': effectiveChatCode,
       if (deviceId != null) _kDeviceId: deviceId,
     };
 
@@ -1244,11 +1768,21 @@ class AuthProvider extends ChangeNotifier {
         _authDiag('_restoreSession:ok', context: {'reason': '$reason/local'});
         return true;
       }
-    } catch (e) {
+    } catch (e, st) {
       if (_isInvalidRefreshToken(e)) {
         await _forceSignOutFromInvalidToken();
         return false;
       }
+      _authObsWarn(
+        ObsCode.authSessionRestoreLocalFailed,
+        'restoreSessionLocal failed during session restore',
+        flowId: _newAuthFlow('restore_session_local'),
+        context: {
+          'reason': reason,
+        },
+        error: e,
+        stackTrace: st,
+      );
     }
     if (!NetworkStatusService.instance.isOnline) return false;
     final now = DateTime.now();
@@ -1264,10 +1798,12 @@ class AuthProvider extends ChangeNotifier {
         await _forceSignOutFromInvalidToken();
         return false;
       }
-      _authDiagWarn('_restoreSession:failed', context: {
-        'reason': reason,
-        'error': e.runtimeType.toString(),
-      }, stackTrace: st);
+      _authDiagWarn('_restoreSession:failed',
+          context: {
+            'reason': reason,
+            'error': e.runtimeType.toString(),
+          },
+          stackTrace: st);
     }
     if (_auth.currentUser != null) {
       _authDiag('_restoreSession:ok', context: {'reason': reason});
@@ -1280,7 +1816,9 @@ class AuthProvider extends ChangeNotifier {
     final msg = error.toString().toLowerCase();
     return msg.contains('invalid-refresh-token') ||
         (msg.contains('refresh token') && msg.contains('401')) ||
-        (msg.contains('invalid') && msg.contains('refresh') && msg.contains('401'));
+        (msg.contains('invalid') &&
+            msg.contains('refresh') &&
+            msg.contains('401'));
   }
 
   Future<void> _forceSignOutFromInvalidToken() async {
@@ -1313,7 +1851,15 @@ class AuthProvider extends ChangeNotifier {
         logoPath: existing?.logoPath,
       );
       await DBService.instance.saveClinicProfile(profile);
-    } catch (_) {}
+    } catch (e, st) {
+      _authObsWarn(
+        ObsCode.authRefreshClinicProfileFailed,
+        'refreshClinicProfileCache failed',
+        flowId: _newAuthFlow('refresh_clinic_profile'),
+        error: e,
+        stackTrace: st,
+      );
+    }
   }
 
   /// يسمح لمحاولة واحدة فقط لإنشاء حساب تلقائي (مسار onboarding المالك).
@@ -1364,13 +1910,24 @@ class AuthProvider extends ChangeNotifier {
       await _persistPermissions();
     } catch (e, st) {
       dev.log('refreshFeaturePermissions failed', error: e, stackTrace: st);
-      _permissionsLoaded = false;
+      _authObsWarn(
+        ObsCode.authRefreshPermissionsFailed,
+        'refreshFeaturePermissions failed',
+        flowId: _newAuthFlow('refresh_permissions'),
+        error: e,
+        stackTrace: st,
+      );
+      final fallback = e is FeaturePermissionsFetchException
+          ? (e.fallback ?? _defaultPermissionsForRole())
+          : _defaultPermissionsForRole();
+      _permissionsLoaded = true;
       _permissionsError = '${e}';
-      _allowAllFeatures = false;
-      _allowedFeatures = <String>{};
-      _canCreate = false;
-      _canUpdate = false;
-      _canDelete = false;
+      _allowAllFeatures = fallback.allowAll;
+      _allowedFeatures = fallback.allowedFeatures;
+      _canCreate = fallback.canCreate;
+      _canUpdate = fallback.canUpdate;
+      _canDelete = fallback.canDelete;
+      await _persistPermissions();
     }
     notifyListeners();
   }
@@ -1426,30 +1983,39 @@ class AuthProvider extends ChangeNotifier {
     }
     final sp = await SharedPreferences.getInstance();
     final oldUid = sp.getString(_kUid);
+    final oldAccountId = await ActiveAccountStore.readAccountId(
+      allowPendingWipe: true,
+    );
     final newUid = (currentUser!['uid'] ?? '').toString();
-    if (oldUid != null && oldUid.isNotEmpty && oldUid != newUid) {
-      final acc = (currentUser!['accountId'] ?? '').toString().trim();
-      await ActiveAccountStore.setPendingWipe(acc);
-      _pendingLocalWipe = true;
-      _pendingWipeAccountId = acc.isEmpty ? null : acc;
+    final newAccountId = (currentUser!['accountId'] ?? '').toString().trim();
+    final uidChanged = oldUid != null && oldUid.isNotEmpty && oldUid != newUid;
+    final accountChanged = oldAccountId != null &&
+        oldAccountId.isNotEmpty &&
+        newAccountId.isNotEmpty &&
+        oldAccountId != newAccountId;
+    if (uidChanged || accountChanged) {
+      await _applyPendingLocalWipeState(
+        reason: uidChanged
+            ? 'persist_user_uid_change'
+            : 'persist_user_account_change',
+        accountId: newAccountId.isEmpty ? oldAccountId : newAccountId,
+        notify: false,
+      );
     }
     await sp.setString(_kUid, currentUser!['uid'] ?? '');
     await sp.setString(_kEmail, currentUser!['email'] ?? '');
-    final acc = (currentUser!['accountId'] ?? '').toString().trim();
-    if (acc.isNotEmpty) {
-      await sp.setString(_kAccountId, acc);
-    } else {
-      if (NetworkStatusService.instance.isOnline) {
-        await sp.setString(_kAccountId, '');
-      }
-    }
+    final acc = newAccountId;
+    await ActiveAccountStore.writeAccountId(acc.isEmpty ? null : acc);
     await sp.setString(
         _kRole, (currentUser!['role'] ?? '').toString().toLowerCase());
     await sp.setBool(_kDisabled, currentUser!['disabled'] ?? false);
     await sp.setString(_kPlanCode,
         (currentUser!['planCode'] ?? 'free').toString().toLowerCase());
-    if ((currentUser?['chatCode'] ?? '').toString().isNotEmpty) {
-      await sp.setString(_kChatCode, currentUser!['chatCode'] ?? '');
+    final chatCode = (currentUser?['chatCode'] ?? '').toString().trim();
+    if (chatCode.isNotEmpty) {
+      await sp.setString(_kChatCode, chatCode);
+    } else {
+      await sp.remove(_kChatCode);
     }
     final storedPlanEnd = _readPlanEndAt(currentUser?['planEndAt']);
     if (storedPlanEnd != null) {
@@ -1498,6 +2064,9 @@ class AuthProvider extends ChangeNotifier {
       _pendingLocalWipe = await ActiveAccountStore.hasPendingWipe();
       _pendingWipeAccountId =
           await ActiveAccountStore.readPendingWipeAccountId();
+      if (_pendingLocalWipe) {
+        _resetPermissionsInMemory();
+      }
     } else {
       currentUser = null;
       _resetPermissionsInMemory();
@@ -1510,11 +2079,12 @@ class AuthProvider extends ChangeNotifier {
     final sp = await SharedPreferences.getInstance();
     await sp.remove(_kUid);
     await sp.remove(_kEmail);
-    await sp.remove(_kAccountId);
+    await ActiveAccountStore.clearAccountId();
     await sp.remove(_kRole);
     await sp.remove(_kDisabled);
     await sp.remove(_kPlanCode);
     await sp.remove(_kPlanEndAt);
+    await sp.remove(_kChatCode);
     // لا نحذف _kDeviceId لأنه مُعرّف جهاز ثابت على مستوى الجهاز.
 
     // نظّف أيضًا الصلاحيات المخزّنة
@@ -1630,7 +2200,7 @@ class AuthProvider extends ChangeNotifier {
     bool wipeLocalFirst = false,
   }) async {
     if (_bootstrapBusy) return;
-    if (!isLoggedIn || isSuperAdmin) {
+    if (!isLoggedIn || isSuperAdmin || requiresLocalIsolationWipe) {
       await _stopDoctorPatientAlerts();
       return;
     }
@@ -1644,7 +2214,9 @@ class AuthProvider extends ChangeNotifier {
         wipeLocalFirst: wipeLocalFirst,
       );
       final accId = accountId;
-      if (accId != null && accId.trim().isNotEmpty) {
+      if (accId != null &&
+          accId.trim().isNotEmpty &&
+          _lastBackfilledSyncAccountId != accId.trim()) {
         await DBService.instance.backfillAccountForTables(const [
           'patients',
           'returns',
@@ -1669,12 +2241,29 @@ class AuthProvider extends ChangeNotifier {
           'financial_logs',
           'patient_services',
         ], accId);
+        _lastBackfilledSyncAccountId = accId.trim();
       }
       await refreshPendingLocalWipeState();
+      if (requiresLocalIsolationWipe) {
+        await _stopDoctorPatientAlerts();
+        return;
+      }
       await _restartDoctorPatientAlerts();
     } catch (e, st) {
       await _stopDoctorPatientAlerts();
       dev.log('AuthProvider.bootstrapSync failed', error: e, stackTrace: st);
+      _authObsError(
+        ObsCode.authBootstrapSyncFailed,
+        'bootstrapSync failed',
+        flowId: _newAuthFlow('bootstrap_sync'),
+        context: {
+          'pull': pull,
+          'realtime': realtime,
+          'wipeLocalFirst': wipeLocalFirst,
+        },
+        error: e,
+        stackTrace: st,
+      );
     } finally {
       _bootstrapBusy = false;
     }

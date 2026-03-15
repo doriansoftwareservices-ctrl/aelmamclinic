@@ -1,5 +1,4 @@
 // lib/screens/repository/items/view_items_screen.dart
-import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -10,6 +9,8 @@ import 'package:aelmamclinic/providers/repository_provider.dart';
 import 'package:aelmamclinic/services/repository_service.dart';
 import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/core/theme.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class ViewItemsScreen extends StatefulWidget {
   const ViewItemsScreen({super.key});
@@ -107,8 +108,7 @@ class _ViewItemsScreenState extends State<ViewItemsScreen> {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.amber.withValues(alpha: .4)),
       ),
-      child: const Text(
-        'تنبيه: بعض البيانات قد تكون مخفية حسب صلاحيات الحساب.',
+      child: const LocalizedText('تنبيه: بعض البيانات قد تكون مخفية حسب صلاحيات الحساب.',
         style: TextStyle(fontWeight: FontWeight.w700),
       ),
     );
@@ -135,15 +135,15 @@ class _ViewItemsScreenState extends State<ViewItemsScreen> {
     final statsFuture = _loadPurchaseStats(allItems);
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
-          title: const Text('الأصناف المضافة',
+          title: const LocalizedText('الأصناف المضافة',
               style: TextStyle(fontWeight: FontWeight.bold)),
           actions: [
             IconButton(
-              tooltip: 'إضافة صنف',
+              tooltip: context.trRaw('إضافة صنف'),
               icon: const Icon(Icons.add),
               onPressed: () =>
                   Navigator.pushNamed(context, '/repository/items/add'),
@@ -212,9 +212,9 @@ class _ViewItemsScreenState extends State<ViewItemsScreen> {
                     const SizedBox(height: 10),
 
                     if (allItems.isEmpty)
-                      _EmptyCard(message: 'لا توجد أصناف بعد.')
+                      _EmptyCard(message: context.trRaw('لا توجد أصناف بعد.'))
                     else if (items.isEmpty)
-                      _EmptyCard(message: 'لا نتائج مطابقة للمرشّحات.')
+                      _EmptyCard(message: context.trRaw('لا نتائج مطابقة للمرشّحات.'))
                     else
                       // نجمع العناصر حسب النوع بعد الفلترة
                       ..._groupByType(items, types).entries.map((entry) {
@@ -345,9 +345,9 @@ class _ItemTileTBIAN extends StatelessWidget {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => Directionality(
-        textDirection: ui.TextDirection.rtl,
+        textDirection: Directionality.of(context),
         child: AlertDialog(
-          title: const Text('تعديل الصنف'),
+          title: const LocalizedText('تعديل الصنف'),
           content: Form(
             key: formKey,
             child: Column(
@@ -355,14 +355,14 @@ class _ItemTileTBIAN extends StatelessWidget {
               children: [
                 TextFormField(
                   controller: nameCtrl,
-                  decoration: const InputDecoration(labelText: 'الاسم'),
+                  decoration: InputDecoration(labelText: context.trRaw('الاسم')),
                   validator: (v) =>
                       (v == null || v.trim().isEmpty) ? 'أدخل الاسم' : null,
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: priceCtrl,
-                  decoration: const InputDecoration(labelText: 'السعر'),
+                  decoration: InputDecoration(labelText: context.trRaw('السعر')),
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
                   validator: (v) => double.tryParse(v ?? '') == null
@@ -375,7 +375,7 @@ class _ItemTileTBIAN extends StatelessWidget {
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('إلغاء')),
+                child: const LocalizedText('إلغاء')),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: Theme.of(context).colorScheme.primary,
@@ -383,7 +383,7 @@ class _ItemTileTBIAN extends StatelessWidget {
               onPressed: () {
                 if (formKey.currentState!.validate()) Navigator.pop(ctx, true);
               },
-              child: const Text('حفظ', style: TextStyle(color: Colors.white)),
+              child: const LocalizedText('حفظ', style: TextStyle(color: Colors.white)),
             ),
           ],
         ),
@@ -396,7 +396,7 @@ class _ItemTileTBIAN extends StatelessWidget {
         price: double.parse(priceCtrl.text),
       ));
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم تحديث الصنف')),
+        const SnackBar(content: LocalizedText('تم تحديث الصنف')),
       );
     }
   }
@@ -406,18 +406,18 @@ class _ItemTileTBIAN extends StatelessWidget {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => Directionality(
-        textDirection: ui.TextDirection.rtl,
+        textDirection: Directionality.of(context),
         child: AlertDialog(
-          title: const Text('حذف الصنف'),
-          content: Text('هل أنت متأكد من حذف "${item.name}"؟ لا يمكن التراجع.'),
+          title: const LocalizedText('حذف الصنف'),
+          content: LocalizedText('هل أنت متأكد من حذف "${item.name}"؟ لا يمكن التراجع.'),
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('إلغاء')),
+                child: const LocalizedText('إلغاء')),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('حذف', style: TextStyle(color: Colors.white)),
+              child: const LocalizedText('حذف', style: TextStyle(color: Colors.white)),
             ),
           ],
         ),
@@ -426,7 +426,7 @@ class _ItemTileTBIAN extends StatelessWidget {
     if (confirm == true) {
       await repo.deleteItem(item);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم حذف الصنف')),
+        const SnackBar(content: LocalizedText('تم حذف الصنف')),
       );
     }
   }
@@ -438,21 +438,21 @@ class _ItemTileTBIAN extends StatelessWidget {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => Directionality(
-        textDirection: ui.TextDirection.rtl,
+        textDirection: Directionality.of(context),
         child: AlertDialog(
-          title: const Text('كمية الاستهلاك'),
+          title: const LocalizedText('كمية الاستهلاك'),
           content: TextField(
             controller: ctrl,
             keyboardType: TextInputType.number,
-            decoration: InputDecoration(labelText: 'أدخل كمية أقل من $stock'),
+            decoration: InputDecoration(labelText: context.trRaw('أدخل كمية أقل من $stock')),
           ),
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('إلغاء')),
+                child: const LocalizedText('إلغاء')),
             ElevatedButton(
                 onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('تأكيد')),
+                child: const LocalizedText('تأكيد')),
           ],
         ),
       ),
@@ -463,7 +463,7 @@ class _ItemTileTBIAN extends StatelessWidget {
     if (qty == null || qty <= 0 || qty > stock) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text('الكمية يجب أن تكون رقمًا موجبًا ولا تتجاوز $stock')),
+            content: LocalizedText('الكمية يجب أن تكون رقمًا موجبًا ولا تتجاوز $stock')),
       );
       return;
     }
@@ -471,7 +471,7 @@ class _ItemTileTBIAN extends StatelessWidget {
     await repo.consumeItem(itemId: itemId, quantity: qty);
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('تم خصم $qty من المخزون')),
+      SnackBar(content: LocalizedText('تم خصم $qty من المخزون')),
     );
   }
 
@@ -533,16 +533,14 @@ class _ItemTileTBIAN extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'المتبقي: $stock',
+              LocalizedText('المتبقي: $stock',
                 style: TextStyle(
                   color: critical ? Colors.red.shade700 : Colors.grey.shade800,
                   fontWeight: FontWeight.w700,
                 ),
               ),
               const SizedBox(height: 2),
-              Text(
-                'مشتراة: $boughtQty  •  تكلفة المشتريات: ${totalCost.toStringAsFixed(2)}',
+              LocalizedText('مشتراة: $boughtQty  •  تكلفة المشتريات: ${totalCost.toStringAsFixed(2)}',
                 style: TextStyle(
                   color: scheme.onSurface.withValues(alpha: .7),
                 ),
@@ -551,7 +549,7 @@ class _ItemTileTBIAN extends StatelessWidget {
           ),
         ),
         trailing: PopupMenuButton<String>(
-          tooltip: 'خيارات',
+          tooltip: context.trRaw('خيارات'),
           onSelected: (val) {
             switch (val) {
               case 'edit':
@@ -572,7 +570,7 @@ class _ItemTileTBIAN extends StatelessWidget {
                 children: [
                   Icon(Icons.edit, color: scheme.primary),
                   SizedBox(width: 8),
-                  Text('تعديل'),
+                  LocalizedText('تعديل'),
                 ],
               ),
             ),
@@ -582,7 +580,7 @@ class _ItemTileTBIAN extends StatelessWidget {
                 children: [
                   Icon(Icons.move_down, color: Colors.orange),
                   SizedBox(width: 8),
-                  Text('إضافة استهلاك'),
+                  LocalizedText('إضافة استهلاك'),
                 ],
               ),
             ),
@@ -592,7 +590,7 @@ class _ItemTileTBIAN extends StatelessWidget {
                 children: [
                   Icon(Icons.delete_outline, color: Colors.red),
                   SizedBox(width: 8),
-                  Text('حذف'),
+                  LocalizedText('حذف'),
                 ],
               ),
             ),
@@ -703,8 +701,10 @@ class _StatChip extends StatelessWidget {
           children: [
             Icon(icon, size: 18, color: c),
             const SizedBox(width: 6),
-            Text('$label: ',
-                style: TextStyle(color: c, fontWeight: FontWeight.w800)),
+            LocalizedText(
+              '$label: ',
+              style: TextStyle(color: c, fontWeight: FontWeight.w800),
+            ),
             Text(value,
                 style: TextStyle(color: c, fontWeight: FontWeight.w900)),
           ],
@@ -750,7 +750,7 @@ class _FiltersBar extends StatelessWidget {
         TextField(
           controller: searchCtrl,
           decoration: InputDecoration(
-            hintText: 'ابحث باسم الصنف…',
+            hintText: context.trRaw('ابحث باسم الصنف…'),
             prefixIcon: const Icon(Icons.search),
             suffixIcon: searchCtrl.text.isEmpty
                 ? null
@@ -788,7 +788,7 @@ class _FiltersBar extends StatelessWidget {
               label: typeFilter?.name ?? 'كل الأنواع',
               items: [
                 const DropdownMenuItem<ItemType?>(
-                    value: null, child: Text('كل الأنواع')),
+                    value: null, child: LocalizedText('كل الأنواع')),
                 ...types.map((t) =>
                     DropdownMenuItem<ItemType?>(value: t, child: Text(t.name))),
               ],
@@ -800,18 +800,18 @@ class _FiltersBar extends StatelessWidget {
               value: sortKey,
               label: _sortLabel(sortKey),
               items: const [
-                DropdownMenuItem(value: 'name_asc', child: Text('الاسم (أ-ي)')),
+                DropdownMenuItem(value: 'name_asc', child: LocalizedText('الاسم (أ-ي)')),
                 DropdownMenuItem(
-                    value: 'stock_asc', child: Text('المخزون (تصاعدي)')),
+                    value: 'stock_asc', child: LocalizedText('المخزون (تصاعدي)')),
                 DropdownMenuItem(
-                    value: 'stock_desc', child: Text('المخزون (تنازلي)')),
+                    value: 'stock_desc', child: LocalizedText('المخزون (تنازلي)')),
               ],
               onChanged: onSortChanged,
               icon: Icons.sort_outlined,
             ),
             // منتهية فقط
             FilterChip(
-              label: const Text('المنتهية فقط'),
+              label: const LocalizedText('المنتهية فقط'),
               selected: showOutOfStockOnly,
               onSelected: onToggleOutOfStock,
               selectedColor: scheme.primary.withValues(alpha: .12),
@@ -896,8 +896,10 @@ class _Pill extends StatelessWidget {
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: color.withValues(alpha: .55)),
       ),
-      child: Text(text,
-          style: TextStyle(color: textColor, fontWeight: FontWeight.w800)),
+      child: LocalizedText(
+        text,
+        style: TextStyle(color: textColor, fontWeight: FontWeight.w800),
+      ),
     );
   }
 }
@@ -917,7 +919,10 @@ class _EmptyCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: scheme.outlineVariant.withValues(alpha: .5)),
       ),
-      child: Text(message, style: const TextStyle(fontWeight: FontWeight.w700)),
+      child: LocalizedText(
+        message,
+        style: const TextStyle(fontWeight: FontWeight.w700),
+      ),
     );
   }
 }

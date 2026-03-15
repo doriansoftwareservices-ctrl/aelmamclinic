@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 
 import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:aelmamclinic/services/nhost_employee_accounts_service.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 /// نتيجة اختيار حساب مستخدم.
 class UserAccountSelection {
@@ -144,7 +146,7 @@ class _UserAccountPickerDialogState extends State<UserAccountPickerDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('اختيار حساب الموظف'),
+      title: const LocalizedText('اختيار حساب الموظف'),
       content: SizedBox(
         width: 420,
         child: Column(
@@ -152,9 +154,9 @@ class _UserAccountPickerDialogState extends State<UserAccountPickerDialog> {
           children: [
             TextField(
               controller: _searchCtrl,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 prefixIcon: Icon(Icons.search_rounded),
-                hintText: 'ابحث بالبريد أو المعرّف',
+                hintText: context.trRaw('ابحث بالبريد أو المعرّف'),
               ),
             ),
             const SizedBox(height: 12),
@@ -174,7 +176,7 @@ class _UserAccountPickerDialogState extends State<UserAccountPickerDialog> {
             else if (_filtered.isEmpty)
               const Padding(
                 padding: EdgeInsets.all(12),
-                child: Text('لا توجد حسابات متاحة للربط'),
+                child: LocalizedText('لا توجد حسابات متاحة للربط'),
               )
             else
               ConstrainedBox(
@@ -204,7 +206,7 @@ class _UserAccountPickerDialogState extends State<UserAccountPickerDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('إلغاء'),
+          child: const LocalizedText('إلغاء'),
         ),
       ],
     );

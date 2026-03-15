@@ -13,15 +13,30 @@ import 'package:aelmamclinic/core/auth_role_state.dart';
 import 'package:aelmamclinic/core/nhost_manager.dart';
 import 'package:aelmamclinic/services/clinic_profile_service.dart';
 import 'package:aelmamclinic/services/nhost_graphql_service.dart';
+import 'package:aelmamclinic/services/network_status_service.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
+import 'package:aelmamclinic/utils/network_error_classifier.dart';
+import 'package:aelmamclinic/widgets/language_switch_button.dart';
 
 // تصميم TBIAN
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
-import 'package:aelmamclinic/core/constants.dart';
 
 // 👇 إضافات مهمة
 import 'package:aelmamclinic/screens/admin/admin_dashboard_screen.dart';
 import 'package:aelmamclinic/screens/statistics/statistics_overview_screen.dart';
+
+enum _PendingLocalWipeAction {
+  wipe,
+  signOut,
+}
+
+enum _PendingLocalWipeOutcome {
+  notNeeded,
+  wiped,
+  signedOut,
+  failed,
+}
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -60,7 +75,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!ok && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تعذر فتح تطبيق الاتصال.')),
+        SnackBar(content: Text(context.tr('auth_open_dialer_failed'))),
       );
     }
   }
@@ -71,7 +86,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!ok && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تعذر فتح واتساب.')),
+        SnackBar(content: Text(context.tr('auth_open_whatsapp_failed'))),
       );
     }
   }
@@ -85,52 +100,51 @@ class _LoginScreenState extends State<LoginScreen> {
       builder: (ctx) {
         final scheme = Theme.of(ctx).colorScheme;
 
-        return Directionality(
-          textDirection: TextDirection.rtl,
-          child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        whatsapp ? Icons.chat_rounded : Icons.phone_rounded,
-                        color: whatsapp ? scheme.secondary : scheme.primary,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          whatsapp ? 'اختيار رقم واتساب' : 'اختيار رقم الاتصال',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w900,
-                            fontSize: 15,
-                            color: scheme.onSurface,
-                          ),
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      whatsapp ? Icons.chat_rounded : Icons.phone_rounded,
+                      color: whatsapp ? scheme.secondary : scheme.primary,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        whatsapp
+                            ? ctx.tr('auth_pick_whatsapp_number')
+                            : ctx.tr('auth_pick_call_number'),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 15,
+                          color: scheme.onSurface,
                         ),
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  const Divider(height: 1),
-                  const SizedBox(height: 6),
-                  ..._supportNumbers.map((n) {
-                    return ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(
-                        whatsapp ? Icons.chat_rounded : Icons.phone_rounded,
-                        color: whatsapp ? scheme.secondary : scheme.primary,
-                      ),
-                      title: Text(
-                        n,
-                        style: const TextStyle(fontWeight: FontWeight.w900),
-                      ),
-                      onTap: () => Navigator.of(ctx).pop(n),
-                    );
-                  }),
-                ],
-              ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                const Divider(height: 1),
+                const SizedBox(height: 6),
+                ..._supportNumbers.map((n) {
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(
+                      whatsapp ? Icons.chat_rounded : Icons.phone_rounded,
+                      color: whatsapp ? scheme.secondary : scheme.primary,
+                    ),
+                    title: Text(
+                      n,
+                      style: const TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                    onTap: () => Navigator.of(ctx).pop(n),
+                  );
+                }),
+              ],
             ),
           ),
         );
@@ -166,33 +180,29 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _loadRememberedCredentials() async {
     try {
       final sp = await SharedPreferences.getInstance();
+      await sp.remove(_rememberPassKey);
       final remember = sp.getBool(_rememberMeKey) ?? false;
-      if (!remember) return;
-      final email = sp.getString(_rememberEmailKey) ?? '';
-      final pass = sp.getString(_rememberPassKey) ?? '';
-      if (email.isEmpty || pass.isEmpty) return;
       if (!mounted) return;
+      final email = remember ? (sp.getString(_rememberEmailKey) ?? '') : '';
       setState(() {
-        _rememberMe = true;
+        _rememberMe = remember;
         _email.text = email;
-        _pass.text = pass;
+        _pass.clear();
       });
     } catch (_) {}
   }
 
   Future<void> _persistRememberedCredentials({
     required String email,
-    required String password,
   }) async {
     try {
       final sp = await SharedPreferences.getInstance();
       await sp.setBool(_rememberMeKey, _rememberMe);
+      await sp.remove(_rememberPassKey);
       if (_rememberMe) {
         await sp.setString(_rememberEmailKey, email);
-        await sp.setString(_rememberPassKey, password);
       } else {
         await sp.remove(_rememberEmailKey);
-        await sp.remove(_rememberPassKey);
       }
     } catch (_) {}
   }
@@ -229,9 +239,7 @@ class _LoginScreenState extends State<LoginScreen> {
       final role = auth.role?.toLowerCase() ?? '';
       if (expectOwnerOrAdmin &&
           (role.isEmpty ||
-              (role != 'owner' &&
-                  role != 'admin' &&
-                  role != 'superadmin'))) {
+              (role != 'owner' && role != 'admin' && role != 'superadmin'))) {
         // انتظار تحديث الدور بعد إنشاء الحساب
         await Future.delayed(const Duration(milliseconds: 400));
         result = await auth.refreshAndValidateCurrentUser();
@@ -251,35 +259,292 @@ class _LoginScreenState extends State<LoginScreen> {
     return result;
   }
 
+  bool _canRouteIntoAppShell(AuthProvider auth) => auth.hasReadyAppShell;
+
+  String _serverUnavailableMessage() =>
+      context.trRaw('تعذر الوصول إلى الخادم حاليًا. حاول مرة أخرى بعد قليل.');
+
+  String _postLoginFallbackMessage(AuthProvider auth) {
+    if (auth.hasPendingLocalWipe) {
+      return _messageForStatus(AuthSessionStatus.isolationRequired) ??
+          context.tr('auth_error_account_verification_failed');
+    }
+    if (auth.needsAccountContextResolution) {
+      return context.tr('auth_error_account_create_failed_plain');
+    }
+    if (auth.isOffline ||
+        !NetworkStatusService.instance.isOnline ||
+        auth.needsRemoteSessionRecovery) {
+      return context.tr('auth_status_network_issue');
+    }
+    return context.tr('auth_error_account_verification_failed');
+  }
+
+  bool _shouldShowAuthenticatedRecovery(AuthProvider auth) =>
+      auth.isLoggedIn && !_canRouteIntoAppShell(auth);
+
+  bool _isIsolationRecovery(AuthProvider auth) => auth.hasPendingLocalWipe;
+
+  String _recoveryTitle(AuthProvider auth) {
+    if (_isIsolationRecovery(auth)) {
+      return context.tr('auth_recovery_isolation_title');
+    }
+    if (auth.hasSuperAdminSessionRole) {
+      return 'استعادة جلسة الإدارة';
+    }
+    if (auth.needsAccountContextResolution) {
+      return 'إكمال ربط الحساب';
+    }
+    return 'استعادة الجلسة';
+  }
+
+  String _recoverySubtitle(AuthProvider auth) {
+    if (_isIsolationRecovery(auth)) {
+      return context.tr('auth_recovery_isolation_subtitle');
+    }
+    if (auth.hasSuperAdminSessionRole) {
+      return 'تم العثور على جلسة محلية للمشرف، لكن لوحة الإدارة تحتاج جلسة خادم صالحة قبل المتابعة.';
+    }
+    if (auth.needsAccountContextResolution) {
+      return 'تم تسجيل الدخول، لكن لم يتم تثبيت حساب العيادة الحالي بعد. يمكنك إعادة التحقق أو إكمال بيانات المرفق الصحي.';
+    }
+    if (auth.needsRemoteSessionRecovery) {
+      return 'الجلسة المحلية ما زالت موجودة، وسيتم استعادة جلسة الخادم في الخلفية عند توفر الاتصال.';
+    }
+    return 'هناك تحقق إضافي مطلوب قبل فتح التطبيق بالكامل.';
+  }
+
+  IconData _recoveryIcon(AuthProvider auth) {
+    if (_isIsolationRecovery(auth)) {
+      return Icons.delete_sweep_rounded;
+    }
+    if (auth.needsAccountContextResolution) {
+      return Icons.domain_verification_rounded;
+    }
+    return Icons.sync_problem_rounded;
+  }
+
+  Future<_PendingLocalWipeOutcome> _resolvePendingLocalWipe(
+    AuthProvider auth, {
+    bool refreshState = true,
+    bool rebootstrap = true,
+  }) async {
+    if (refreshState) {
+      await auth.refreshPendingLocalWipeState();
+    }
+    if (!mounted || !auth.hasPendingLocalWipe) {
+      return _PendingLocalWipeOutcome.notNeeded;
+    }
+
+    final pendingAcc = auth.pendingWipeAccountId ?? '';
+    final currentAcc = auth.accountId ?? '';
+    final different = pendingAcc.isNotEmpty &&
+        currentAcc.isNotEmpty &&
+        pendingAcc != currentAcc;
+    final message = different
+        ? context.tr('auth_confirm_switch_different_account')
+        : context.tr('auth_confirm_switch_stale_local_data');
+
+    final action = await showDialog<_PendingLocalWipeAction>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: Text(context.tr('auth_confirm_switch_title')),
+        content: Text(message, textAlign: TextAlign.start),
+        actions: [
+          TextButton(
+            onPressed: () =>
+                Navigator.of(ctx).pop(_PendingLocalWipeAction.signOut),
+            child: Text(context.tr('common_logout')),
+          ),
+          ElevatedButton(
+            onPressed: () =>
+                Navigator.of(ctx).pop(_PendingLocalWipeAction.wipe),
+            child: Text(context.tr('auth_action_backup_and_wipe_now')),
+          ),
+        ],
+      ),
+    );
+
+    if (action == _PendingLocalWipeAction.signOut) {
+      await auth.signOut();
+      return _PendingLocalWipeOutcome.signedOut;
+    }
+    if (action != _PendingLocalWipeAction.wipe) {
+      return _PendingLocalWipeOutcome.failed;
+    }
+
+    final ok = await auth.performPendingLocalWipe(
+      createBackup: true,
+      rebootstrap: rebootstrap,
+    );
+    if (!mounted) {
+      return ok
+          ? _PendingLocalWipeOutcome.wiped
+          : _PendingLocalWipeOutcome.failed;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          context.tr(
+            ok ? 'auth_pending_wipe_success' : 'auth_pending_wipe_failed',
+          ),
+        ),
+      ),
+    );
+    if (!ok) {
+      setState(() {
+        _error = context.tr('auth_status_local_isolation_required');
+      });
+    }
+    return ok
+        ? _PendingLocalWipeOutcome.wiped
+        : _PendingLocalWipeOutcome.failed;
+  }
+
+  Future<void> _retryAuthenticatedRecovery(AuthProvider auth) async {
+    if (_loading) return;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      if (auth.hasPendingLocalWipe) {
+        final outcome =
+            await _resolvePendingLocalWipe(auth, refreshState: false);
+        if (!mounted) return;
+        if (outcome == _PendingLocalWipeOutcome.wiped) {
+          await _checkAndRouteIfSignedIn(force: true);
+        }
+        return;
+      }
+      final result = await auth.reconcileAuthenticatedSession(
+        reason: 'login_recovery',
+        bootstrapOnSuccess: true,
+        bootstrapPull: true,
+        resumeSyncOnSuccess: true,
+      );
+      if (!mounted) return;
+      if (result.status == AuthSessionStatus.isolationRequired ||
+          auth.hasPendingLocalWipe) {
+        final outcome =
+            await _resolvePendingLocalWipe(auth, refreshState: false);
+        if (!mounted) return;
+        if (outcome == _PendingLocalWipeOutcome.wiped) {
+          await _checkAndRouteIfSignedIn(force: true);
+        }
+        return;
+      }
+      if (result.isSuccess) {
+        await _checkAndRouteIfSignedIn(force: true);
+        return;
+      }
+      setState(() {
+        _error = _messageForStatus(result.status) ??
+            context.tr('auth_error_account_verification_failed');
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = _mapLoginError(e));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _completeAuthenticatedAccountSetup(AuthProvider auth) async {
+    if (_loading || auth.isSuperAdmin) return;
+    final clinicProfile = await _askClinicProfile();
+    if (clinicProfile == null) {
+      if (!mounted) return;
+      setState(() => _error = context.tr('auth_error_clinic_name_required'));
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    Object? createError;
+    try {
+      auth.setPendingClinicProfile(clinicProfile);
+      try {
+        await auth.selfCreateAccount(clinicProfile);
+      } catch (e) {
+        createError = e;
+      }
+      await auth.refreshSession();
+      final result = await auth.reconcileAuthenticatedSession(
+        reason: 'login_complete_account',
+        bootstrapOnSuccess: true,
+        bootstrapPull: true,
+        resumeSyncOnSuccess: true,
+      );
+      if (!mounted) return;
+      if (result.status == AuthSessionStatus.isolationRequired ||
+          auth.hasPendingLocalWipe) {
+        final outcome =
+            await _resolvePendingLocalWipe(auth, refreshState: false);
+        if (!mounted) return;
+        if (outcome == _PendingLocalWipeOutcome.wiped) {
+          await _checkAndRouteIfSignedIn(force: true);
+        }
+        return;
+      }
+      if (!result.isSuccess) {
+        final fallback = _messageForStatus(result.status) ??
+            context.tr('auth_error_account_verification_failed');
+        setState(() {
+          _error = createError != null
+              ? context.tr(
+                  'auth_error_account_create_failed_with_reason',
+                  params: {'reason': _mapLoginError(createError)},
+                )
+              : fallback;
+        });
+        return;
+      }
+      await _ensureClinicProfileComplete(auth);
+      await _checkAndRouteIfSignedIn(force: true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = context.tr(
+          'auth_error_account_create_failed_with_reason',
+          params: {'reason': _mapLoginError(e)},
+        );
+      });
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
   /// يقرر التوجيه حسب المستخدم الحالي (سوبر أدمن أو لا) ويضمن تشغيل المزامنة.
   Future<void> _checkAndRouteIfSignedIn({bool force = false}) async {
     if (_navigating || (!force && _loading) || !mounted) return;
 
     final authProv = context.read<AuthProvider>();
-    final user = NhostManager.client.auth.currentUser;
-    if (user == null) return;
+    if (!authProv.isLoggedIn) return;
 
-    if (force ||
-        !authProv.isLoggedIn ||
-        (authProv.accountId ?? '').isEmpty) {
-      final result = await _ensurePostLoginState(authProv);
+    if (force || !_canRouteIntoAppShell(authProv)) {
+      final result = await authProv.reconcileAuthenticatedSession(
+        reason: force ? 'login_route_force' : 'login_route',
+        bootstrapOnSuccess: true,
+        bootstrapPull: false,
+        resumeSyncOnSuccess: true,
+      );
       if (!mounted) return;
       if (!result.isSuccess) {
-        var allowContinue = false;
-        if (result.status == AuthSessionStatus.planUpgradeRequired) {
-          final role = authProv.role?.toLowerCase();
-          if (role == 'owner' || role == 'admin') {
-            allowContinue = true;
-          } else {
-            await authProv.signOut();
-          }
-        } else if (result.status == AuthSessionStatus.noAccount) {
-          await authProv.signOut();
-        }
+        final allowContinue =
+            result.status == AuthSessionStatus.planUpgradeRequired &&
+                (() {
+                  final role = authProv.role?.toLowerCase();
+                  return role == 'owner' || role == 'admin';
+                })();
         if (!allowContinue) {
           final message = _messageForStatus(result.status);
           if (message != null) {
-            if (!mounted) return;
             setState(() {
               _error = message;
               _loading = false;
@@ -288,37 +553,53 @@ class _LoginScreenState extends State<LoginScreen> {
           return;
         }
       }
+
+      if (result.status == AuthSessionStatus.isolationRequired ||
+          authProv.hasPendingLocalWipe) {
+        setState(() {
+          _error = _messageForStatus(AuthSessionStatus.isolationRequired);
+          _loading = false;
+        });
+        return;
+      }
     }
 
-    final isSuper = authProv.isSuperAdmin;
-    final hasAccount = (authProv.accountId ?? '').isNotEmpty;
-    if (!isSuper && !hasAccount) {
-      await authProv.signOut();
+    final hasReadyShell = _canRouteIntoAppShell(authProv);
+    if (!hasReadyShell) {
       if (!mounted) return;
       setState(() {
-        _error = 'فشل إنشاء الحساب.';
+        _error = _postLoginFallbackMessage(authProv);
         _loading = false;
       });
       return;
     }
 
     if (!_bootstrappedOnce) {
-      if (!isSuper) {
+      if (authProv.canEnterClinicShell) {
         await _ensureClinicProfileComplete(authProv);
+        await authProv.bootstrapSync(
+          pull: false,
+          realtime: true,
+          enableLogs: kDebugMode,
+          debounce: const Duration(seconds: 1),
+        );
       }
-      await authProv.bootstrapSync(
-        pull: false,
-        realtime: true,
-        enableLogs: kDebugMode,
-        debounce: const Duration(seconds: 1),
-      );
       _bootstrappedOnce = true;
+    }
+
+    if (authProv.hasPendingLocalWipe || !_canRouteIntoAppShell(authProv)) {
+      if (!mounted) return;
+      setState(() {
+        _error = _postLoginFallbackMessage(authProv);
+        _loading = false;
+      });
+      return;
     }
 
     _navigating = true;
     if (!mounted) return;
 
-    if (isSuper) {
+    if (authProv.canEnterRemoteAdminShell) {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const AdminDashboardScreen()),
       );
@@ -338,14 +619,12 @@ class _LoginScreenState extends State<LoginScreen> {
     final pass = _pass.text.trim();
 
     if (email.isEmpty || pass.isEmpty) {
-      setState(() => _error = 'من فضلك أدخل البريد الإلكتروني وكلمة المرور.');
+      setState(
+          () => _error = context.tr('auth_error_enter_email_and_password'));
       return;
     }
     if (!_isValidEmail(email) || pass.length < 9) {
-      setState(
-        () => _error =
-            '⚠️ كلمة السر يجب ان تتكون من 9 خانات وتاكد من انك تملك البريد',
-      );
+      setState(() => _error = context.tr('auth_error_password_policy'));
       return;
     }
 
@@ -361,13 +640,12 @@ class _LoginScreenState extends State<LoginScreen> {
         final token = auth.accessToken;
         if (token == null || token.isEmpty) {
           setState(
-            () => _error =
-                'تعذّر تسجيل الدخول. تأكد من البريد وكلمة المرور أو فعّل حسابك عبر البريد.',
+            () => _error = context.tr('auth_error_login_activation_needed'),
           );
           return;
         }
       }
-      await _persistRememberedCredentials(email: email, password: pass);
+      await _persistRememberedCredentials(email: email);
 
       // Ensure stale superadmin header does not leak into user session.
       AuthRoleState.clear();
@@ -393,30 +671,35 @@ class _LoginScreenState extends State<LoginScreen> {
         } else {
           final clinicProfile = await _askClinicProfile();
           if (clinicProfile == null) {
-            await auth.signOut();
-            setState(() => _error = 'اسم العيادة مطلوب لإكمال إنشاء الحساب.');
+            setState(
+                () => _error = context.tr('auth_error_clinic_name_required'));
             return;
           }
           auth.setPendingClinicProfile(clinicProfile);
           Object? createError;
           try {
             await auth.selfCreateAccount(clinicProfile);
-            await auth.refreshSession();
           } catch (e) {
             createError = e;
+          }
+          try {
+            await auth.refreshSession();
+          } catch (e) {
+            createError ??= e;
           }
           final recheck = await _ensurePostLoginState(auth);
           if (!mounted) return;
           if (!recheck.isSuccess) {
-            if (recheck.status == AuthSessionStatus.noAccount ||
-                recheck.status == AuthSessionStatus.planUpgradeRequired) {
-              await auth.signOut();
-            }
             final base = _messageForStatus(recheck.status) ??
-                'تعذّر التحقق من الحساب. حاول مرة أخرى.';
+                context.tr('auth_error_account_verification_failed');
             if (createError != null) {
               final mapped = _mapLoginError(createError);
-              setState(() => _error = 'تعذّر إنشاء الحساب: $mapped');
+              setState(
+                () => _error = context.tr(
+                  'auth_error_account_create_failed_with_reason',
+                  params: {'reason': mapped},
+                ),
+              );
             } else {
               setState(() => _error = base);
             }
@@ -434,27 +717,36 @@ class _LoginScreenState extends State<LoginScreen> {
           } else {
             await auth.signOut();
             final message = _messageForStatus(result.status) ??
-                'تعذّر التحقق من الحساب. حاول مرة أخرى.';
+                context.tr('auth_error_account_verification_failed');
             setState(() => _error = message);
             return;
           }
         } else if (result.status == AuthSessionStatus.noAccount) {
-          await auth.signOut();
           final message = _messageForStatus(result.status) ??
-              'تعذّر التحقق من الحساب. حاول مرة أخرى.';
+              context.tr('auth_error_account_verification_failed');
           setState(() => _error = message);
           return;
         } else {
           final message = _messageForStatus(result.status) ??
-              'تعذّر التحقق من الحساب. حاول مرة أخرى.';
+              context.tr('auth_error_account_verification_failed');
           setState(() => _error = message);
           return;
         }
       }
 
       if (!auth.isSuperAdmin && (auth.accountId ?? '').isEmpty) {
-        await auth.signOut();
-        setState(() => _error = 'فشل إنشاء الحساب.');
+        setState(() =>
+            _error = context.tr('auth_error_account_create_failed_plain'));
+        return;
+      }
+
+      final preBootstrapIsolation = await _resolvePendingLocalWipe(
+        auth,
+        rebootstrap: false,
+      );
+      if (!mounted) return;
+      if (preBootstrapIsolation == _PendingLocalWipeOutcome.signedOut ||
+          preBootstrapIsolation == _PendingLocalWipeOutcome.failed) {
         return;
       }
 
@@ -470,21 +762,19 @@ class _LoginScreenState extends State<LoginScreen> {
         _bootstrappedOnce = true;
       }
 
-      // إذا كان الحساب مختلفًا عن البيانات المحلية: اطلب تأكيد المسح.
-      await auth.refreshPendingLocalWipeState();
+      final postBootstrapIsolation = await _resolvePendingLocalWipe(auth);
       if (!mounted) return;
-      if (auth.hasPendingLocalWipe) {
-        final ok = await _confirmLocalWipe(auth);
-        if (!ok) {
-          await auth.signOut();
-          setState(() => _error = 'تم إلغاء تسجيل الدخول للحفاظ على بياناتك المحلية.');
-          return;
-        }
+      if (postBootstrapIsolation == _PendingLocalWipeOutcome.signedOut ||
+          postBootstrapIsolation == _PendingLocalWipeOutcome.failed) {
+        return;
       }
 
       await _checkAndRouteIfSignedIn(force: true);
     } catch (e) {
       if (!mounted) return;
+      if (kDebugMode) {
+        debugPrint('[LOGIN] signIn failed: $e');
+      }
       setState(() => _error = _mapLoginError(e));
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -498,14 +788,12 @@ class _LoginScreenState extends State<LoginScreen> {
     final email = _email.text.trim();
     final pass = _pass.text.trim();
     if (email.isEmpty || pass.isEmpty) {
-      setState(() => _error = 'أدخل البريد وكلمة المرور أولًا.');
+      setState(() =>
+          _error = context.tr('auth_error_enter_email_and_password_first'));
       return;
     }
     if (!_isValidEmail(email) || pass.length < 9) {
-      setState(
-        () => _error =
-            '⚠️ كلمة السر يجب ان تتكون من 9 خانات وتاكد من انك تملك البريد',
-      );
+      setState(() => _error = context.tr('auth_error_password_policy'));
       return;
     }
 
@@ -520,9 +808,18 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
+      if (auth.hasLocalSession || auth.hasNhostSession) {
+        await auth.signOut();
+        AuthRoleState.clear();
+        NhostGraphqlService.refreshClient();
+      }
       auth.setPendingClinicProfile(clinicProfile);
       auth.allowAutoCreateAccountOnce();
-      var signUpResp = await auth.signUp(email, pass);
+      var signUpResp = await auth.signUp(
+        email,
+        pass,
+        locale: context.currentLocaleCode,
+      );
       if (signUpResp.session == null) {
         try {
           signUpResp = await auth.signIn(email, pass);
@@ -533,14 +830,13 @@ class _LoginScreenState extends State<LoginScreen> {
             // Continue; token exists even if session is null.
           } else {
             setState(
-              () => _error =
-                  'تم إنشاء الحساب. يرجى تأكيد البريد الإلكتروني ثم تسجيل الدخول.',
+              () => _error = context.tr('auth_error_signup_verify_email'),
             );
             return;
           }
         }
       }
-      await _persistRememberedCredentials(email: email, password: pass);
+      await _persistRememberedCredentials(email: email);
       // Ensure stale superadmin header does not leak into user session.
       AuthRoleState.clear();
       NhostGraphqlService.refreshClient();
@@ -560,14 +856,26 @@ class _LoginScreenState extends State<LoginScreen> {
           role != 'owner' &&
           role != 'admin' &&
           role != 'superadmin') {
-        setState(() => _error = 'تعذّر تحديد نوع الحساب. حاول تسجيل الدخول مرة أخرى.');
+        setState(
+            () => _error = context.tr('auth_error_account_type_undetermined'));
         return;
       }
       if (!auth.isSuperAdmin && (auth.accountId ?? '').isEmpty) {
-        await auth.signOut();
-        setState(() => _error = 'فشل إنشاء الحساب.');
+        setState(() =>
+            _error = context.tr('auth_error_account_create_failed_plain'));
         return;
       }
+
+      final preBootstrapIsolation = await _resolvePendingLocalWipe(
+        auth,
+        rebootstrap: false,
+      );
+      if (!mounted) return;
+      if (preBootstrapIsolation == _PendingLocalWipeOutcome.signedOut ||
+          preBootstrapIsolation == _PendingLocalWipeOutcome.failed) {
+        return;
+      }
+
       await auth.bootstrapSync(
         pull: true,
         realtime: true,
@@ -575,54 +883,26 @@ class _LoginScreenState extends State<LoginScreen> {
         debounce: const Duration(seconds: 1),
       );
       _bootstrappedOnce = true;
+
+      final postBootstrapIsolation = await _resolvePendingLocalWipe(auth);
+      if (!mounted) return;
+      if (postBootstrapIsolation == _PendingLocalWipeOutcome.signedOut ||
+          postBootstrapIsolation == _PendingLocalWipeOutcome.failed) {
+        return;
+      }
+
       await _checkAndRouteIfSignedIn(force: true);
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = 'تعذّر إنشاء الحساب: $e');
+      setState(
+        () => _error = context.tr(
+          'auth_error_signup_failed_with_reason',
+          params: {'reason': e},
+        ),
+      );
     } finally {
       if (mounted) setState(() => _loading = false);
     }
-  }
-
-  Future<bool> _confirmLocalWipe(AuthProvider auth) async {
-    final pendingAcc = auth.pendingWipeAccountId ?? '';
-    final currentAcc = auth.accountId ?? '';
-    final different =
-        pendingAcc.isNotEmpty && currentAcc.isNotEmpty && pendingAcc != currentAcc;
-    final title = 'تأكيد تبديل الحساب';
-    final message = different
-        ? 'تم اكتشاف أن بيانات الجهاز تخص حسابًا مختلفًا.\n'
-            'المتابعة ستؤدي إلى حذف جميع البيانات المحلية والدردشات الحالية لتجهيز التطبيق للحساب الجديد.\n\n'
-            'هل تريد المتابعة؟'
-        : 'تم اكتشاف بيانات محلية قديمة.\n'
-            'المتابعة ستؤدي إلى حذف جميع البيانات المحلية والدردشات الحالية لتجهيز التطبيق.\n\n'
-            'هل تريد المتابعة؟';
-
-    final res = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: Text(title),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('إلغاء'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('متابعة'),
-          ),
-        ],
-      ),
-    );
-    if (res == true) {
-      return await auth.performPendingLocalWipe(
-        createBackup: true,
-        rebootstrap: true,
-      );
-    }
-    return false;
   }
 
   Future<ClinicProfileInput?> _askClinicProfile() async {
@@ -939,65 +1219,79 @@ class _LoginScreenState extends State<LoginScreen> {
     switch (status) {
       case AuthSessionStatus.success:
         return null;
+      case AuthSessionStatus.isolationRequired:
+        return context.tr('auth_status_local_isolation_required');
       case AuthSessionStatus.disabled:
-        return 'قم بمراجعة الإدارة.';
+        return context.tr('auth_status_disabled_contact_admin');
       case AuthSessionStatus.accountFrozen:
-        return 'تم تجميد حساب العيادة. تواصل مع الإدارة لاستعادة الوصول.';
+        return context.tr('auth_status_account_frozen');
       case AuthSessionStatus.noAccount:
-        return 'للأسف تم اقصائك من الإدارة للمرفق الصحي';
+        return context.tr('auth_status_removed_from_management');
       case AuthSessionStatus.planUpgradeRequired:
-        return 'ناسف فالخطة الحالية للمرفق الصحي هي FREE يجب تجديد الاشتراك';
+        return context.tr('auth_status_plan_upgrade_required');
       case AuthSessionStatus.signedOut:
-        return 'انتهت الجلسة أثناء التحقق من الحساب. حاول تسجيل الدخول مجددًا.';
+        return context.tr('auth_status_session_ended');
       case AuthSessionStatus.networkError:
-        return 'تعذّر التحقق من الحساب بسبب مشكلة في الاتصال. حاول مرة أخرى.';
+        return context.tr('auth_status_network_issue');
       case AuthSessionStatus.unknown:
-        return 'حدث خطأ غير متوقع أثناء التحقق من الحساب. حاول لاحقًا.';
+        return context.tr('auth_status_unknown');
     }
   }
 
   String _mapLoginError(Object error) {
+    if (error is ApiException) {
+      final status = error.statusCode;
+      final body = (error.responseBody ?? '').toString().toLowerCase();
+      if (status == 401 ||
+          body.contains('invalid-email-password') ||
+          body.contains('incorrect email or password')) {
+        return context.tr('auth_error_invalid_credentials');
+      }
+      if (body.contains('invalid-email') ||
+          body.contains('email format') ||
+          body.contains('bad email')) {
+        return context.tr('auth_error_invalid_email');
+      }
+      if (status >= 500 ||
+          NetworkErrorClassifier.isServerUnavailableLikeMessage(
+            error.toString(),
+          )) {
+        return _serverUnavailableMessage();
+      }
+    }
+    if (NetworkErrorClassifier.isTransportError(error)) {
+      return context.tr('auth_error_network_unstable');
+    }
     final msg = error.toString();
     final lower = msg.toLowerCase();
     if (lower.contains('invalid-email-password') ||
         lower.contains('incorrect email or password') ||
         lower.contains('statuscode=401') ||
         lower.contains('status: 401')) {
-      return 'البريد الإلكتروني أو كلمة المرور غير صحيحة.';
+      return context.tr('auth_error_invalid_credentials');
     }
     if (lower.contains('invalid-email') ||
         lower.contains('email format') ||
         lower.contains('bad email')) {
-      return 'صيغة البريد الإلكتروني غير صحيحة.';
+      return context.tr('auth_error_invalid_email');
     }
-    if (lower.contains('socketexception') ||
-        lower.contains('failed host lookup') ||
-        lower.contains('network') ||
-        lower.contains('connection') ||
-        lower.contains('semaphore timeout') ||
-        lower.contains('semaphore')) {
-      return 'يبدو ان الشبكة غير مستقرة لديك';
+    if (NetworkErrorClassifier.isTransportLikeMessage(lower)) {
+      return context.tr('auth_error_network_unstable');
     }
-    if (lower.contains('timeout') ||
-        lower.contains('timed out') ||
-        lower.contains('no stream event') ||
-        lower.contains('503') ||
-        lower.contains('bad gateway') ||
-        lower.contains('semaphore timeout') ||
-        lower.contains('semaphore') ||
-        lower.contains('temporarily unavailable') ||
-        lower.contains('service unavailable')) {
-      return 'يبدو ان الشبكة غير مستقرة لديك';
+    if (lower.contains('no stream event') ||
+        NetworkErrorClassifier.isServerUnavailableLikeMessage(lower)) {
+      return _serverUnavailableMessage();
     }
-    return 'فشل تسجيل الدخول. حاول مرة أخرى.';
+    return context.tr('auth_error_login_failed');
   }
 
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final scheme = Theme.of(context).colorScheme;
+    final showRecovery = _shouldShowAuthenticatedRecovery(auth);
 
-    if (!_routeCheckScheduled && auth.isLoggedIn && auth.isSuperAdmin) {
+    if (!_routeCheckScheduled && _canRouteIntoAppShell(auth)) {
       _routeCheckScheduled = true;
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) return;
@@ -1009,108 +1303,176 @@ class _LoginScreenState extends State<LoginScreen> {
       });
     }
 
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
+    return Scaffold(
+      backgroundColor: scheme.surface,
+      appBar: AppBar(
+        centerTitle: true,
+        elevation: 0,
         backgroundColor: scheme.surface,
-        appBar: AppBar(
-          centerTitle: true,
-          elevation: 0,
-          backgroundColor: scheme.surface,
-          surfaceTintColor: scheme.surface,
-          title: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Image.asset(
-                'assets/images/logo.png',
-                height: 22,
-                fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-              ),
-              const SizedBox(width: 8),
-              const Text('تسجيل الدخول'),
-            ],
-          ),
-        ),
-        body: Stack(
+        surfaceTintColor: scheme.surface,
+        actions: const [
+          LanguageSwitchButton(),
+          SizedBox(width: 8),
+        ],
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            _AnimatedBubbleBackdrop(scheme: scheme),
-            SafeArea(
-              child: Center(
-                child: SingleChildScrollView(
-                  padding: kScreenPadding,
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 420),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Card(
-                          elevation: 0,
-                          color: Colors.transparent,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(18),
-                            side: BorderSide(
-                              color:
-                                  scheme.outlineVariant.withValues(alpha: 0.25),
-                              width: 0.7,
-                            ),
+            Image.asset(
+              'assets/images/logo.png',
+              height: 22,
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+            ),
+            const SizedBox(width: 8),
+            Text(context.tr('auth_login_title')),
+          ],
+        ),
+      ),
+      body: Stack(
+        children: [
+          _AnimatedBubbleBackdrop(scheme: scheme),
+          SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: kScreenPadding,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 420),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Card(
+                        elevation: 0,
+                        color: Colors.transparent,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18),
+                          side: BorderSide(
+                            color:
+                                scheme.outlineVariant.withValues(alpha: 0.25),
+                            width: 0.7,
                           ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                Center(
-                                  child: Image.asset(
-                                    'assets/images/logo.png',
-                                    height: 56,
-                                    fit: BoxFit.contain,
-                                    errorBuilder: (_, __, ___) =>
-                                        const SizedBox.shrink(),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Center(
+                                child: Image.asset(
+                                  'assets/images/logo.png',
+                                  height: 56,
+                                  fit: BoxFit.contain,
+                                  errorBuilder: (_, __, ___) =>
+                                      const SizedBox.shrink(),
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                context.tr('app_name'),
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 18,
+                                  color: scheme.onSurface,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                showRecovery
+                                    ? _recoverySubtitle(auth)
+                                    : context.tr('auth_login_subtitle'),
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12.5,
+                                  color:
+                                      scheme.onSurface.withValues(alpha: 0.65),
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              if (showRecovery) ...[
+                                Container(
+                                  padding: const EdgeInsets.all(14),
+                                  decoration: BoxDecoration(
+                                    color: scheme.surfaceContainerHighest
+                                        .withValues(alpha: 0.45),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color: scheme.outlineVariant
+                                          .withValues(alpha: 0.35),
+                                    ),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Icon(
+                                            _recoveryIcon(auth),
+                                            color: scheme.primary,
+                                          ),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: Text(
+                                              _recoveryTitle(auth),
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.w900,
+                                                fontSize: 14.5,
+                                                color: scheme.onSurface,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 10),
+                                      if ((auth.email ?? '').trim().isNotEmpty)
+                                        Text(
+                                          auth.email!.trim(),
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w800,
+                                            color: scheme.onSurface
+                                                .withValues(alpha: 0.82),
+                                          ),
+                                        ),
+                                      if ((auth.email ?? '').trim().isNotEmpty)
+                                        const SizedBox(height: 8),
+                                      Text(
+                                        'حالة الجلسة: ${auth.sessionTopologyState}',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          fontSize: 11.5,
+                                          fontWeight: FontWeight.w700,
+                                          color: scheme.onSurface
+                                              .withValues(alpha: 0.58),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                const SizedBox(height: 10),
-                                Text(
-                                  AppConstants.appName,
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w900,
-                                    fontSize: 18,
-                                    color: scheme.onSurface,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  'أدخل بيانات الدخول للمتابعة',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 12.5,
-                                    color: scheme.onSurface
-                                        .withValues(alpha: 0.65),
-                                  ),
-                                ),
-                                const SizedBox(height: 14),
+                              ] else ...[
                                 NeuField(
                                   controller: _email,
-                                  labelText: 'البريد الإلكتروني',
+                                  labelText: context.tr('auth_email_label'),
                                   keyboardType: TextInputType.emailAddress,
                                   textInputAction: TextInputAction.next,
                                   prefix:
                                       const Icon(Icons.alternate_email_rounded),
                                   onChanged: (_) {
-                                    if (_error != null)
+                                    if (_error != null) {
                                       setState(() => _error = null);
+                                    }
                                   },
                                 ),
                                 const SizedBox(height: 12),
                                 NeuField(
                                   controller: _pass,
-                                  labelText: 'كلمة المرور',
+                                  labelText: context.tr('auth_password_label'),
                                   obscureText: _obscure,
                                   textInputAction: TextInputAction.done,
                                   onSubmitted: (_) => _submit(auth),
-                                  prefix: const Icon(Icons.lock_outline_rounded),
+                                  prefix:
+                                      const Icon(Icons.lock_outline_rounded),
                                   suffix: IconButton(
                                     icon: Icon(
                                       _obscure
@@ -1119,16 +1481,19 @@ class _LoginScreenState extends State<LoginScreen> {
                                     ),
                                     onPressed: () =>
                                         setState(() => _obscure = !_obscure),
-                                    tooltip: _obscure ? 'إظهار' : 'إخفاء',
+                                    tooltip: _obscure
+                                        ? context.tr('common_show')
+                                        : context.tr('common_hide'),
                                   ),
                                   onChanged: (_) {
-                                    if (_error != null)
+                                    if (_error != null) {
                                       setState(() => _error = null);
+                                    }
                                   },
                                 ),
                                 const SizedBox(height: 6),
                                 Text(
-                                  '⚠️ كلمة السر يجب ان تتكون من 9 خانات وتاكد من انك تملك البريد',
+                                  context.tr('auth_password_policy_hint'),
                                   style: TextStyle(
                                     fontWeight: FontWeight.w600,
                                     fontSize: 11,
@@ -1147,7 +1512,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     const SizedBox(width: 6),
                                     Expanded(
                                       child: Text(
-                                        'تذكرني على هذا الجهاز',
+                                        context.tr('auth_remember_me'),
                                         style: TextStyle(
                                           fontWeight: FontWeight.w700,
                                           color: scheme.onSurface
@@ -1157,15 +1522,144 @@ class _LoginScreenState extends State<LoginScreen> {
                                     ),
                                   ],
                                 ),
-                                if (_error != null) ...[
-                                  const SizedBox(height: 8),
-                                  _ErrorBanner(text: _error!),
+                              ],
+                              if (_error != null) ...[
+                                const SizedBox(height: 8),
+                                _ErrorBanner(text: _error!),
+                              ],
+                              const SizedBox(height: 12),
+                              if (showRecovery) ...[
+                                if (auth.hasPendingLocalWipe) ...[
+                                  const SizedBox(height: 10),
+                                  SizedBox(
+                                    width: double.infinity,
+                                    child: NeuButton.primary(
+                                      label: context.tr(
+                                        'auth_action_backup_and_wipe_now',
+                                      ),
+                                      leading: _loading
+                                          ? const SizedBox(
+                                              width: 18,
+                                              height: 18,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2.4,
+                                                valueColor:
+                                                    AlwaysStoppedAnimation<
+                                                        Color>(
+                                                  Colors.white,
+                                                ),
+                                              ),
+                                            )
+                                          : const Icon(
+                                              Icons.delete_sweep_rounded,
+                                              color: Colors.white,
+                                              size: 20,
+                                            ),
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      mainAxisSize: MainAxisSize.max,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 20,
+                                        vertical: 16,
+                                      ),
+                                      onPressed: _loading
+                                          ? null
+                                          : () async {
+                                              final outcome =
+                                                  await _resolvePendingLocalWipe(
+                                                auth,
+                                                refreshState: false,
+                                              );
+                                              if (!mounted) return;
+                                              if (outcome ==
+                                                  _PendingLocalWipeOutcome
+                                                      .wiped) {
+                                                await _checkAndRouteIfSignedIn(
+                                                  force: true,
+                                                );
+                                              }
+                                            },
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  TextButton(
+                                    onPressed:
+                                        _loading ? null : () => auth.signOut(),
+                                    child: Text(context.tr('common_logout')),
+                                  ),
+                                ] else ...[
+                                  SizedBox(
+                                    width: double.infinity,
+                                    child: NeuButton.primary(
+                                      label: auth.needsAccountContextResolution
+                                          ? 'إعادة التحقق من الحساب'
+                                          : context.tr('common_retry_now'),
+                                      leading: _loading
+                                          ? const SizedBox(
+                                              width: 18,
+                                              height: 18,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2.4,
+                                                valueColor:
+                                                    AlwaysStoppedAnimation<
+                                                        Color>(
+                                                  Colors.white,
+                                                ),
+                                              ),
+                                            )
+                                          : const Icon(
+                                              Icons.sync_rounded,
+                                              color: Colors.white,
+                                              size: 20,
+                                            ),
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      mainAxisSize: MainAxisSize.max,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 20,
+                                        vertical: 16,
+                                      ),
+                                      onPressed: _loading
+                                          ? null
+                                          : () =>
+                                              _retryAuthenticatedRecovery(auth),
+                                    ),
+                                  ),
+                                  if (!auth.isSuperAdmin &&
+                                      auth.needsAccountContextResolution) ...[
+                                    const SizedBox(height: 10),
+                                    SizedBox(
+                                      width: double.infinity,
+                                      child: NeuButton.flat(
+                                        label: 'إكمال إنشاء الحساب',
+                                        icon: Icons.apartment_rounded,
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        mainAxisSize: MainAxisSize.max,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 20,
+                                          vertical: 14,
+                                        ),
+                                        onPressed: _loading
+                                            ? null
+                                            : () =>
+                                                _completeAuthenticatedAccountSetup(
+                                                    auth),
+                                      ),
+                                    ),
+                                  ],
+                                  const SizedBox(height: 10),
+                                  TextButton(
+                                    onPressed:
+                                        _loading ? null : () => auth.signOut(),
+                                    child: Text(context.tr('common_logout')),
+                                  ),
                                 ],
-                                const SizedBox(height: 12),
+                              ] else ...[
                                 SizedBox(
                                   width: double.infinity,
                                   child: NeuButton.primary(
-                                    label: 'تسجيل الدخول',
+                                    label: context.tr('auth_login_button'),
                                     leading: _loading
                                         ? const SizedBox(
                                             width: 18,
@@ -1178,8 +1672,11 @@ class _LoginScreenState extends State<LoginScreen> {
                                               ),
                                             ),
                                           )
-                                        : const Icon(Icons.login_rounded,
-                                            color: Colors.white, size: 20),
+                                        : const Icon(
+                                            Icons.login_rounded,
+                                            color: Colors.white,
+                                            size: 20,
+                                          ),
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     mainAxisSize: MainAxisSize.max,
                                     padding: const EdgeInsets.symmetric(
@@ -1194,10 +1691,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                 SizedBox(
                                   width: double.infinity,
                                   child: NeuButton.flat(
-                                    label: 'إنشاء حساب جديد',
+                                    label: context.tr('auth_signup_button'),
                                     icon: Icons.person_add_alt_1_rounded,
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.center,
+                                    mainAxisAlignment: MainAxisAlignment.center,
                                     mainAxisSize: MainAxisSize.max,
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 20,
@@ -1208,26 +1704,26 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                 ),
                               ],
-                            ),
+                            ],
                           ),
                         ),
-                        const SizedBox(height: 14),
-                        _SupportBar(
-                          onCall: _loading
-                              ? null
-                              : () => _openContactPicker(whatsapp: false),
-                          onWhatsApp: _loading
-                              ? null
-                              : () => _openContactPicker(whatsapp: true),
-                        ),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(height: 14),
+                      _SupportBar(
+                        onCall: _loading
+                            ? null
+                            : () => _openContactPicker(whatsapp: false),
+                        onWhatsApp: _loading
+                            ? null
+                            : () => _openContactPicker(whatsapp: true),
+                      ),
+                    ],
                   ),
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -1394,8 +1890,10 @@ class _AnimatedBubbleBackdropState extends State<_AnimatedBubbleBackdrop>
         final overlap = minDist - dist;
         if (overlap > 0) {
           final correction = overlap / 2;
-          a.pos = Offset(a.pos.dx - nx * correction, a.pos.dy - ny * correction);
-          b.pos = Offset(b.pos.dx + nx * correction, b.pos.dy + ny * correction);
+          a.pos =
+              Offset(a.pos.dx - nx * correction, a.pos.dy - ny * correction);
+          b.pos =
+              Offset(b.pos.dx + nx * correction, b.pos.dy + ny * correction);
         }
       }
     }
@@ -1581,7 +2079,7 @@ class _SupportBar extends StatelessWidget {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                'الدعم الفني',
+                context.tr('auth_support_title'),
                 style: TextStyle(
                   fontWeight: FontWeight.w900,
                   color: scheme.onSurface,
@@ -1589,13 +2087,13 @@ class _SupportBar extends StatelessWidget {
               ),
             ),
             _SupportIconButton(
-              tooltip: 'اتصال',
+              tooltip: context.tr('auth_support_call_tooltip'),
               icon: Icons.phone_rounded,
               onTap: onCall,
             ),
             const SizedBox(width: 10),
             _SupportIconButton(
-              tooltip: 'واتساب',
+              tooltip: context.tr('auth_support_whatsapp_tooltip'),
               icon: Icons.chat_rounded,
               onTap: onWhatsApp,
             ),

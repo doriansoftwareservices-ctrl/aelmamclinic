@@ -1,6 +1,5 @@
 // lib/screens/lab_and_radiology_home_screen.dart
 
-import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 
 /*── تصميم TBIAN ─*/
@@ -13,6 +12,7 @@ import 'lab_services_screen.dart';
 
 /*── شاشة تقرير الطبيب للأشعة والمختبر (كما في كودك) ─*/
 import 'package:aelmamclinic/screens/doctors/doctor_imaging_lab_report_screen.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class LabAndRadiologyHomeScreen extends StatelessWidget {
   const LabAndRadiologyHomeScreen({super.key});
@@ -41,7 +41,7 @@ class LabAndRadiologyHomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -69,7 +69,7 @@ class LabAndRadiologyHomeScreen extends StatelessWidget {
                   icon: Icons.biotech_rounded,
                   title: 'الأشعة',
                   subtitle: 'إدارة خدمات قسم الأشعة',
-                  badgeText: 'تحت التطوير',
+                  badgeText: context.trRaw('تحت التطوير'),
                   disabled: true,
                   onTap: () => _openRadiology(context),
                 ),
@@ -77,7 +77,7 @@ class LabAndRadiologyHomeScreen extends StatelessWidget {
                   icon: Icons.science_rounded,
                   title: 'المختبر',
                   subtitle: 'إدارة خدمات قسم المختبر',
-                  badgeText: 'تحت التطوير',
+                  badgeText: context.trRaw('تحت التطوير'),
                   disabled: true,
                   onTap: () => _openLab(context),
                 ),
@@ -85,7 +85,7 @@ class LabAndRadiologyHomeScreen extends StatelessWidget {
                   icon: Icons.assignment_rounded,
                   title: 'تقرير الطبيب',
                   subtitle: 'تقرير الطبيب للأشعة والمختبر',
-                  badgeText: 'تحت التطوير',
+                  badgeText: context.trRaw('تحت التطوير'),
                   disabled: true,
                   onTap: () => _openDoctorReport(context),
                 ),

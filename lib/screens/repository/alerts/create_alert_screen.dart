@@ -1,5 +1,4 @@
 // lib/screens/repository/alerts/create_alert_screen.dart
-import 'dart:ui' as ui show TextDirection;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -11,6 +10,8 @@ import 'package:aelmamclinic/core/tbian_ui.dart';
 import 'package:aelmamclinic/models/item.dart';
 import 'package:aelmamclinic/models/item_type.dart';
 import 'package:aelmamclinic/providers/repository_provider.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 /// شاشة «إنشاء / تعديل تنبيه قرب النفاد» بنمط TBIAN.
 class CreateAlertScreen extends StatefulWidget {
@@ -56,13 +57,13 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
           );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم حفظ التنبيه بنجاح')),
+        const SnackBar(content: LocalizedText('تم حفظ التنبيه بنجاح')),
       );
       Navigator.pop(context);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('خطأ: $e')),
+        SnackBar(content: LocalizedText('خطأ: $e')),
       );
     } finally {
       if (mounted) setState(() => _isSaving = false);
@@ -78,11 +79,11 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
         _selectedType == null ? <Item>[] : repo.itemsOf(_selectedType!.id!);
 
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
-          title: const Text('إنشاء تنبيه'),
+          title: const LocalizedText('إنشاء تنبيه'),
           flexibleSpace: Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -127,10 +128,8 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                     child: const Icon(Icons.notifications_active_outlined,
                         color: kPrimaryColor),
                   ),
-                  title: const Text(
-                      'اضبط تنبيهًا يظهر عند نزول مخزون الصنف إلى حد معيّن'),
-                  subtitle: Text(
-                    'اختر نوع الصنف ثم الصنف، وحدّد العتبة التي عندها يتم إشعارك.',
+                  title: const LocalizedText('اضبط تنبيهًا يظهر عند نزول مخزون الصنف إلى حد معيّن'),
+                  subtitle: LocalizedText('اختر نوع الصنف ثم الصنف، وحدّد العتبة التي عندها يتم إشعارك.',
                     style: TextStyle(
                         color: scheme.onSurface.withValues(alpha: .75)),
                   ),
@@ -149,9 +148,9 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                           horizontal: 12, vertical: 6),
                       child: DropdownButtonFormField<ItemType>(
                         initialValue: _selectedType,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           border: InputBorder.none,
-                          labelText: 'نوع الصنف',
+                          labelText: context.trRaw('نوع الصنف'),
                         ),
                         items: types
                             .map((t) => DropdownMenuItem<ItemType>(
@@ -176,9 +175,9 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                           horizontal: 12, vertical: 6),
                       child: DropdownButtonFormField<Item>(
                         initialValue: _selectedItem,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           border: InputBorder.none,
-                          labelText: 'اسم الصنف',
+                          labelText: context.trRaw('اسم الصنف'),
                         ),
                         items: items
                             .map((it) => DropdownMenuItem<Item>(
@@ -211,7 +210,7 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                     // العتبة
                     NeuField(
                       controller: _thresholdCtrl,
-                      labelText: 'العدد الذي عنده يصدر التنبيه',
+                      labelText: context.trRaw('العدد الذي عنده يصدر التنبيه'),
                       keyboardType:
                           const TextInputType.numberWithOptions(decimal: true),
                       validator: (v) {

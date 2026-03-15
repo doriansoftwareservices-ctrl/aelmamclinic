@@ -1,0 +1,99 @@
+PHASE1_BASELINE_REPORT
+generated_at_utc=2026-03-09T03:09:13Z
+repo_root=/mnt/c/Users/zidan/AndroidStudioProjects/aelmamclinic
+
+=== LIB CHECK ===
+LIB_BASELINE_DART_FILES=277
+LIB_BASELINE_SILENT_CATCH=459
+LIB_BASELINE_TIMER_PERIODIC=10
+LIB_BASELINE_WHILE_TRUE=16
+LIB_BASELINE_TOP_SILENT_CATCH_FILES_BEGIN
+     99 lib/providers/chat_provider.dart
+     49 lib/services/chat_service.dart
+     48 lib/services/db_service.dart
+     21 lib/services/attachment_cache.dart
+     20 lib/services/nhost_auth_service.dart
+     13 lib/services/sync_service.dart
+     13 lib/screens/chat/chat_room_screen.dart
+     13 lib/providers/auth_provider.dart
+      8 lib/services/device_id_service.dart
+      7 lib/widgets/chat/message_bubble.dart
+LIB_BASELINE_TOP_SILENT_CATCH_FILES_END
+LIB_BASELINE_TOP_LARGEST_FILES_BEGIN
+ 120613 total
+   6537 lib/services/db_service.dart
+   5117 lib/services/sync_service.dart
+   4706 lib/screens/admin/admin_dashboard_screen.dart
+   4072 lib/screens/statistics/statistics_screen.dart
+   4064 lib/providers/chat_provider.dart
+   3653 lib/services/chat_service.dart
+   2701 lib/screens/chat/chat_room_screen.dart
+   1979 lib/screens/statistics/statistics_overview_screen.dart
+   1880 lib/screens/patients/edit_patient_screen.dart
+   1741 lib/providers/auth_provider.dart
+   1660 lib/screens/auth/login_screen.dart
+LIB_BASELINE_TOP_LARGEST_FILES_END
+
+=== FUNCTIONS CHECK ===
+FUNCTIONS_BASELINE_NODE_CHECK_BEGIN
+FUNCTIONS_BASELINE_NODE_CHECK_END
+FUNCTIONS_BASELINE_JWT_PARSE_PATTERNS=8
+FUNCTIONS_BASELINE_NOTIFY_200_ON_ERROR=3
+FUNCTIONS_BASELINE_NOTIFY_SECRET_CHECK_MATCHES=0
+FUNCTIONS_BASELINE_LEGACY_FCM_PATTERNS=2
+FUNCTIONS_BASELINE_CRITICAL_HITS_BEGIN
+functions/admin-create-superadmin/index.js:156:const parseJwtSub = (authHeader) => {
+functions/admin-create-superadmin/index.js:236:    const callerUid = parseJwtSub(authHeader);
+functions/admin-reset-superadmin-password/index.js:112:const parseJwtSub = (authHeader) => {
+functions/admin-reset-superadmin-password/index.js:181:    const callerUid = parseJwtSub(authHeader);
+functions/notify-new-patient/index.js:142:    res.status(200).json({ ok: false, error: `${e}` });
+functions/notify-chat-message/index.js:213:    res.status(200).json({ ok: false, error: `${e}` });
+functions/notify-plan-request/index.js:181:    res.status(200).json({ ok: false, error: `${error}` });
+functions/_shared/notify_utils.js:246:    Authorization: `key=${key}`,
+functions/_shared/notify_utils.js:265:      const res = await fetch('https://fcm.googleapis.com/fcm/send', {
+FUNCTIONS_BASELINE_CRITICAL_HITS_END
+
+=== NHOST CHECK ===
+NHOST_BASELINE_HARDCODED_WEBHOOKS=5
+NHOST_BASELINE_MIGRATION_DIRS=328
+NHOST_BASELINE_MIGRATION_CHURN_MARKERS=137
+NHOST_BASELINE_METADATA_JSON_EXISTS=1
+NHOST_BASELINE_CRON_YAML_ENTRIES=1
+NHOST_BASELINE_CRON_JSON_MARKERS=1
+NHOST_BASELINE_HARDCODED_WEBHOOK_HITS_BEGIN
+nhost/metadata/cron_triggers.yaml:2:  webhook: https://ujxbrdbrjbujvlylpbbn.graphql.ap-southeast-1.nhost.run/v1
+nhost/metadata/databases/default/tables/public_subscription_requests.yaml:90:    webhook: https://ujxbrdbrjbujvlylpbbn.functions.ap-southeast-1.nhost.run/v1/notify-plan-request
+nhost/metadata/databases/default/tables/public_patients.yaml:338:    webhook: https://ujxbrdbrjbujvlylpbbn.functions.ap-southeast-1.nhost.run/v1/notify-new-patient
+nhost/metadata/databases/default/tables/public_chat_messages.yaml:311:    webhook: https://ujxbrdbrjbujvlylpbbn.functions.ap-southeast-1.nhost.run/v1/notify-chat-message
+nhost/metadata/databases/default/tables/public_employee_seat_requests.yaml:57:    webhook: https://ujxbrdbrjbujvlylpbbn.functions.ap-southeast-1.nhost.run/v1/notify-plan-request
+NHOST_BASELINE_HARDCODED_WEBHOOK_HITS_END
+
+=== TRACEABILITY CHECK ===
+CRITICAL_MAPPING_STATUS=pass
+
+=== TOOLCHAIN CHECK ===
+DART_STATUS=blocked
+/mnt/c/Users/zidan/fvm/versions/3.35.3/bin/cache/dart-sdk/bin/dart: line 12: /mnt/c/Users/zidan/fvm/versions/3.35.3/bin/cache/dart-sdk/bin/dart.exe: Permission denied
+FLUTTER_STATUS=blocked
+Building flutter tool...
+/mnt/c/Users/zidan/fvm/versions/3.35.3/bin/cache/dart-sdk/bin/dart: line 12: /mnt/c/Users/zidan/fvm/versions/3.35.3/bin/cache/dart-sdk/bin/dart.exe: Permission denied
+Error: Unable to 'pub upgrade' flutter tool. Retrying in five seconds... (9 tries left)
+/mnt/c/Users/zidan/fvm/versions/3.35.3/bin/cache/dart-sdk/bin/dart: line 12: /mnt/c/Users/zidan/fvm/versions/3.35.3/bin/cache/dart-sdk/bin/dart.exe: Permission denied
+Error: Unable to 'pub upgrade' flutter tool. Retrying in five seconds... (8 tries left)
+/mnt/c/Users/zidan/fvm/versions/3.35.3/bin/cache/dart-sdk/bin/dart: line 12: /mnt/c/Users/zidan/fvm/versions/3.35.3/bin/cache/dart-sdk/bin/dart.exe: Permission denied
+Error: Unable to 'pub upgrade' flutter tool. Retrying in five seconds... (7 tries left)
+/mnt/c/Users/zidan/fvm/versions/3.35.3/bin/cache/dart-sdk/bin/dart: line 12: /mnt/c/Users/zidan/fvm/versions/3.35.3/bin/cache/dart-sdk/bin/dart.exe: Permission denied
+Error: Unable to 'pub upgrade' flutter tool. Retrying in five seconds... (6 tries left)
+/mnt/c/Users/zidan/fvm/versions/3.35.3/bin/cache/dart-sdk/bin/dart: line 12: /mnt/c/Users/zidan/fvm/versions/3.35.3/bin/cache/dart-sdk/bin/dart.exe: Permission denied
+Error: Unable to 'pub upgrade' flutter tool. Retrying in five seconds... (5 tries left)
+/mnt/c/Users/zidan/fvm/versions/3.35.3/bin/cache/dart-sdk/bin/dart: line 12: /mnt/c/Users/zidan/fvm/versions/3.35.3/bin/cache/dart-sdk/bin/dart.exe: Permission denied
+Error: Unable to 'pub upgrade' flutter tool. Retrying in five seconds... (4 tries left)
+/mnt/c/Users/zidan/fvm/versions/3.35.3/bin/cache/dart-sdk/bin/dart: line 12: /mnt/c/Users/zidan/fvm/versions/3.35.3/bin/cache/dart-sdk/bin/dart.exe: Permission denied
+Error: Unable to 'pub upgrade' flutter tool. Retrying in five seconds... (3 tries left)
+/mnt/c/Users/zidan/fvm/versions/3.35.3/bin/cache/dart-sdk/bin/dart: line 12: /mnt/c/Users/zidan/fvm/versions/3.35.3/bin/cache/dart-sdk/bin/dart.exe: Permission denied
+Error: Unable to 'pub upgrade' flutter tool. Retrying in five seconds... (2 tries left)
+/mnt/c/Users/zidan/fvm/versions/3.35.3/bin/cache/dart-sdk/bin/dart: line 12: /mnt/c/Users/zidan/fvm/versions/3.35.3/bin/cache/dart-sdk/bin/dart.exe: Permission denied
+Error: Unable to 'pub upgrade' flutter tool. Retrying in five seconds... (1 tries left)
+Command 'pub upgrade' still failed after 10 tries, giving up.
+ANALYZE_STATUS=blocked_by_toolchain
+TEST_STATUS=blocked_by_toolchain

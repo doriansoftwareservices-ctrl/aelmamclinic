@@ -4,6 +4,8 @@ import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/models/patient.dart';
 import 'package:aelmamclinic/models/patient_report.dart';
 import 'package:aelmamclinic/services/patient_report_pdf_service.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class ReportViewScreen extends StatelessWidget {
   final Patient patient;
@@ -29,13 +31,13 @@ class ReportViewScreen extends StatelessWidget {
     }
 
     return Directionality(
-      textDirection: TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('استعراض التقرير'),
+          title: const LocalizedText('استعراض التقرير'),
           actions: [
             IconButton(
-              tooltip: 'طباعة PDF',
+              tooltip: context.trRaw('طباعة PDF'),
               icon: const Icon(Icons.picture_as_pdf),
               onPressed: () async {
                 await PatientReportPdfService.sharePdf(
@@ -53,8 +55,7 @@ class ReportViewScreen extends StatelessWidget {
               if (title.isNotEmpty)
                 NeuCard(
                   padding: const EdgeInsets.all(12),
-                  child: Text(
-                    'ما يعاني منه المريض: $title',
+                  child: LocalizedText('ما يعاني منه المريض: $title',
                     style: const TextStyle(
                         fontWeight: FontWeight.bold, fontSize: 15),
                   ),
@@ -65,8 +66,7 @@ class ReportViewScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'نص التقرير',
+                    const LocalizedText('نص التقرير',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 15,
@@ -85,8 +85,7 @@ class ReportViewScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'الأسئلة والإجابات',
+                    const LocalizedText('الأسئلة والإجابات',
                       style:
                           TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                     ),
@@ -105,8 +104,8 @@ class ReportViewScreen extends StatelessWidget {
                                 style:
                                     const TextStyle(fontWeight: FontWeight.w700)),
                             const SizedBox(height: 4),
-                            Text('الإجابة: $ans'),
-                            if (note.trim().isNotEmpty) Text('ملاحظة: $note'),
+                            LocalizedText('الإجابة: $ans'),
+                            if (note.trim().isNotEmpty) LocalizedText('ملاحظة: $note'),
                             const Divider(height: 16),
                           ],
                         ),

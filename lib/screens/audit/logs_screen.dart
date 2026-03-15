@@ -11,6 +11,7 @@ import 'dart:ui' as ui show TextDirection;
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:aelmamclinic/utils/app_formatters.dart';
 import 'package:provider/provider.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 
@@ -20,6 +21,8 @@ import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:aelmamclinic/services/nhost_graphql_service.dart';
 import 'package:aelmamclinic/utils/chat_code_utils.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class AuditLogsScreen extends StatefulWidget {
   const AuditLogsScreen({super.key});
@@ -47,8 +50,8 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
   int _offset = 0;
   static const _pageSize = 30;
 
-  final _dateFmt = DateFormat('yyyy-MM-dd');
-  final _dateTimeFmt = DateFormat('yyyy-MM-dd HH:mm');
+  DateFormat get _dateFmt => AppFormatters.dateFormat('yyyy-MM-dd');
+  DateFormat get _dateTimeFmt => AppFormatters.dateFormat('yyyy-MM-dd HH:mm');
 
   @override
   void initState() {
@@ -72,7 +75,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
     if (accId == null || accId.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('لا يوجد حساب فعّال لعرض السجلات.')),
+          const SnackBar(content: LocalizedText('لا يوجد حساب فعّال لعرض السجلات.')),
         );
       }
       return;
@@ -189,7 +192,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('حدث خطأ غير متوقع: $e')),
+          SnackBar(content: LocalizedText('حدث خطأ غير متوقع: $e')),
         );
       }
     } finally {
@@ -282,7 +285,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
       initialDate: init,
       firstDate: DateTime(2000),
       lastDate: DateTime.now(),
-      locale: const Locale('ar', ''),
+      locale: AppFormatters.localeOf(context),
       helpText: 'اختر تاريخ البداية',
     );
     if (picked != null) {
@@ -297,7 +300,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
       initialDate: init,
       firstDate: DateTime(2000),
       lastDate: DateTime.now(),
-      locale: const Locale('ar', ''),
+      locale: AppFormatters.localeOf(context),
       helpText: 'اختر تاريخ النهاية',
     );
     if (picked != null) {
@@ -385,8 +388,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
                       ],
                     ),
                     const SizedBox(height: 8),
-                    Text(
-                      'المنفّذ: ${_actorLabel(e)}',
+                    LocalizedText('المنفّذ: ${_actorLabel(e)}',
                       style: TextStyle(
                         color: scheme.onSurface.withValues(alpha: .7),
                         fontWeight: FontWeight.w700,
@@ -438,7 +440,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
-          title: const Text('سجلات التدقيق'),
+          title: const LocalizedText('سجلات التدقيق'),
         ),
         body: SafeArea(
           child: Padding(
@@ -463,7 +465,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
                             onPressed:
                                 _loading ? null : () => _refresh(reset: true),
                             icon: const Icon(Icons.refresh_rounded),
-                            label: const Text('تحديث'),
+                            label: const LocalizedText('تحديث'),
                           ),
                         ],
                       ),
@@ -576,7 +578,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
             isExpanded: true,
             value: _op,
             items: const [
-              DropdownMenuItem(value: 'all', child: Text('كل العمليات')),
+              DropdownMenuItem(value: 'all', child: LocalizedText('كل العمليات')),
               DropdownMenuItem(value: 'insert', child: Text('INSERT')),
               DropdownMenuItem(value: 'update', child: Text('UPDATE')),
               DropdownMenuItem(value: 'delete', child: Text('DELETE')),
@@ -596,10 +598,10 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
         child: TextField(
           controller: _tableCtrl,
           textInputAction: TextInputAction.search,
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             isDense: true,
             border: InputBorder.none,
-            hintText: 'اسم الجدول…',
+            hintText: context.trRaw('اسم الجدول…'),
             prefixIcon: Icon(Icons.table_chart_outlined),
           ),
           onSubmitted: (_) => _refresh(reset: true),
@@ -616,10 +618,10 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
         child: TextField(
           controller: _actorCtrl,
           textInputAction: TextInputAction.search,
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             isDense: true,
             border: InputBorder.none,
-          hintText: 'رقم الحساب أو البريد…',
+          hintText: context.trRaw('رقم الحساب أو البريد…'),
             prefixIcon: Icon(Icons.person_search_outlined),
           ),
           onSubmitted: (_) => _refresh(reset: true),
@@ -637,14 +639,12 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
           children: [
             Icon(Icons.lock_outline_rounded, color: scheme.error, size: 32),
             const SizedBox(height: 12),
-            const Text(
-              'لا تملك صلاحية عرض سجلات التدقيق.',
+            const LocalizedText('لا تملك صلاحية عرض سجلات التدقيق.',
               textAlign: TextAlign.center,
               style: TextStyle(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 6),
-            const Text(
-              'اطلب من المالك أو السوبر أدمن منحك صلاحية "audit.logs".',
+            const LocalizedText('اطلب من المالك أو السوبر أدمن منحك صلاحية "audit.logs".',
               textAlign: TextAlign.center,
             ),
           ],
@@ -664,8 +664,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
         return const Center(child: CircularProgressIndicator());
       }
       return const Center(
-        child: Text(
-          'لا توجد سجلات مطابقة للفلتر الحالي.',
+        child: LocalizedText('لا توجد سجلات مطابقة للفلتر الحالي.',
           style: TextStyle(fontWeight: FontWeight.w700),
         ),
       );
@@ -820,7 +819,7 @@ class _AuditLogTile extends StatelessWidget {
                   '${entry.tableName} • ${entry.rowPk ?? '-'}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.right,
+                  textAlign: TextAlign.start,
                   style: TextStyle(
                     color: scheme.onSurface,
                     fontWeight: FontWeight.w900,
@@ -828,11 +827,10 @@ class _AuditLogTile extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  'المنفّذ: $actorLabel',
+                LocalizedText('المنفّذ: $actorLabel',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.right,
+                  textAlign: TextAlign.start,
                   style: TextStyle(
                     color: scheme.onSurface.withValues(alpha: .7),
                     fontWeight: FontWeight.w700,
@@ -898,7 +896,7 @@ class _JsonBlock extends StatelessWidget {
         children: [
           Text(
             title,
-            textAlign: TextAlign.right,
+            textAlign: TextAlign.start,
             style: TextStyle(
               color: scheme.onSurface.withValues(alpha: .85),
               fontWeight: FontWeight.w900,

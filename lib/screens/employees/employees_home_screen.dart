@@ -10,6 +10,7 @@ import 'package:aelmamclinic/core/tbian_ui.dart';
 import 'package:aelmamclinic/screens/doctors/doctors_home_screen.dart';
 import 'new_employee_screen.dart';
 import 'list_employees_screen.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
 
 /// الشاشة الرئيسية لإدارة الموظفين بنمط TBIAN (RTL + نيومورفيزم + AppBar موحّد)
 class EmployeesHomeScreen extends StatelessWidget {
@@ -32,7 +33,7 @@ class EmployeesHomeScreen extends StatelessWidget {
             : 1.05;
 
     return Directionality(
-      textDirection: TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -76,9 +77,8 @@ class EmployeesHomeScreen extends StatelessWidget {
                       ),
                       const SizedBox(width: 12),
                       const Expanded(
-                        child: Text(
-                          'إدارة الموظفين',
-                          textAlign: TextAlign.right,
+                        child: LocalizedText('إدارة الموظفين',
+                          textAlign: TextAlign.start,
                           style: TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.w900,
@@ -186,7 +186,7 @@ class _ActionTile extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          Text(
+          LocalizedText(
             title,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -198,7 +198,7 @@ class _ActionTile extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Expanded(
-            child: Text(
+            child: LocalizedText(
               subtitle,
               maxLines: 3,
               overflow: TextOverflow.ellipsis,

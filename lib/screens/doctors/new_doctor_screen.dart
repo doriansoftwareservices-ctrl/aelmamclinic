@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'dart:ui' as ui show TextDirection;
 
 import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
@@ -8,6 +7,8 @@ import 'package:aelmamclinic/core/neumorphism.dart';
 import 'package:aelmamclinic/models/doctor.dart';
 import 'package:aelmamclinic/services/db_service.dart';
 import 'employee_search_dialog.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class NewDoctorScreen extends StatefulWidget {
   const NewDoctorScreen({super.key});
@@ -75,7 +76,7 @@ class _NewDoctorScreenState extends State<NewDoctorScreen> {
     if (_selectedEmployeeId == null) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('يرجى اختيار الموظف المرتبط بالطبيب أولًا.')),
+        const SnackBar(content: LocalizedText('يرجى اختيار الموظف المرتبط بالطبيب أولًا.')),
       );
       return;
     }
@@ -94,7 +95,7 @@ class _NewDoctorScreenState extends State<NewDoctorScreen> {
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('تم حفظ بيانات الطبيب بنجاح')),
+      const SnackBar(content: LocalizedText('تم حفظ بيانات الطبيب بنجاح')),
     );
     Navigator.of(context).pop();
   }
@@ -102,7 +103,7 @@ class _NewDoctorScreenState extends State<NewDoctorScreen> {
   @override
   Widget build(BuildContext context) {
     return Directionality(
-      textDirection: ui.TextDirection.rtl,
+      textDirection: Directionality.of(context),
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -116,7 +117,7 @@ class _NewDoctorScreenState extends State<NewDoctorScreen> {
                 errorBuilder: (_, __, ___) => const SizedBox.shrink(),
               ),
               const SizedBox(width: 8),
-              const Text('إضافة طبيب جديد'),
+              const LocalizedText('إضافة طبيب جديد'),
             ],
           ),
         ),
@@ -149,8 +150,7 @@ class _NewDoctorScreenState extends State<NewDoctorScreen> {
                             : 'اختر الموظف المرتبط بالطبيب',
                         style: const TextStyle(fontWeight: FontWeight.w800),
                       ),
-                      subtitle: const Text(
-                        'اضغط لاختيار الموظف من القائمة',
+                      subtitle: const LocalizedText('اضغط لاختيار الموظف من القائمة',
                         style: TextStyle(fontWeight: FontWeight.w600),
                       ),
                       trailing: const Icon(Icons.chevron_left_rounded),
@@ -161,7 +161,7 @@ class _NewDoctorScreenState extends State<NewDoctorScreen> {
                   // اسم الطبيب
                   NeuField(
                     controller: _doctorNameCtrl,
-                    hintText: 'اسم الطبيب',
+                    hintText: context.trRaw('اسم الطبيب'),
                     prefix: const Icon(Icons.person_rounded),
                     validator: (v) {
                       if (v == null || v.trim().isEmpty) {
@@ -175,7 +175,7 @@ class _NewDoctorScreenState extends State<NewDoctorScreen> {
                   // التخصص
                   NeuField(
                     controller: _specializationCtrl,
-                    hintText: 'التخصص',
+                    hintText: context.trRaw('التخصص'),
                     prefix: const Icon(Icons.work_outline_rounded),
                     validator: (v) {
                       if (v == null || v.trim().isEmpty) {
@@ -189,7 +189,7 @@ class _NewDoctorScreenState extends State<NewDoctorScreen> {
                   // رقم الهاتف
                   NeuField(
                     controller: _phoneCtrl,
-                    hintText: 'رقم الهاتف',
+                    hintText: context.trRaw('رقم الهاتف'),
                     keyboardType: TextInputType.phone,
                     prefix: const Icon(Icons.call_rounded),
                   ),
@@ -225,7 +225,7 @@ class _NewDoctorScreenState extends State<NewDoctorScreen> {
                     child: FilledButton.icon(
                       onPressed: _saveDoctor,
                       icon: const Icon(Icons.save_rounded),
-                      label: const Text('حفظ'),
+                      label: const LocalizedText('حفظ'),
                     ),
                   ),
                 ],

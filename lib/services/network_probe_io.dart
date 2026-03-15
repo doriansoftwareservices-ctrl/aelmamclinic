@@ -1,35 +1,47 @@
 import 'dart:io';
 
+import 'package:aelmamclinic/core/nhost_config.dart';
+
 Future<bool> probeHasRealInternet() async {
-  final probes = <String>[
-    'https://clients3.google.com/generate_204',
-    'https://www.cloudflare.com/cdn-cgi/trace',
-  ];
-  for (final url in probes) {
-    if (await _httpProbe(url)) return true;
+  final targets = _backendTargets();
+  for (final uri in targets) {
+    if (await _probeBackend(uri)) {
+      return true;
+    }
   }
-  if (await _socketProbe('1.1.1.1', 443)) return true;
-  if (await _socketProbe('8.8.8.8', 443)) return true;
   return false;
 }
 
-Future<bool> _httpProbe(String url) async {
+List<Uri> _backendTargets() {
+  final targets = <Uri>[];
+  for (final raw in <String>[
+    NhostConfig.authUrl,
+    NhostConfig.graphqlUrl,
+    NhostConfig.functionsUrl,
+  ]) {
+    final uri = Uri.tryParse(raw.trim());
+    if (uri == null || !uri.hasScheme || uri.host.trim().isEmpty) {
+      continue;
+    }
+    if (targets.any((existing) => existing.toString() == uri.toString())) {
+      continue;
+    }
+    targets.add(uri);
+  }
+  return targets;
+}
+
+Future<bool> _probeBackend(Uri uri) async {
+  if (await _socketProbe(uri)) return true;
+  return _httpProbe(uri);
+}
+
+Future<bool> _httpProbe(Uri uri) async {
   final client = HttpClient()
-    ..connectionTimeout = const Duration(seconds: 2);
+    ..connectionTimeout = const Duration(seconds: 3);
   try {
-    final uri = Uri.parse(url);
-    final req = await client.getUrl(uri);
-    req.followRedirects = false;
-    final res = await req.close().timeout(const Duration(seconds: 2));
-    if (url.contains('generate_204')) {
-      return res.statusCode == 204;
-    }
-    if (url.contains('cdn-cgi/trace')) {
-      if (res.statusCode < 200 || res.statusCode >= 300) return false;
-      final body = await res.transform(SystemEncoding().decoder).join();
-      return body.contains('ip=');
-    }
-    return false;
+    if (await _request(client, uri, method: 'HEAD')) return true;
+    return _request(client, uri, method: 'GET');
   } catch (_) {
     return false;
   } finally {
@@ -37,16 +49,35 @@ Future<bool> _httpProbe(String url) async {
   }
 }
 
-Future<bool> _socketProbe(String host, int port) async {
-  Socket? s;
+Future<bool> _request(
+  HttpClient client,
+  Uri uri, {
+  required String method,
+}) async {
+  final req = await client.openUrl(method, uri);
+  req.followRedirects = false;
+  req.headers.set(HttpHeaders.acceptHeader, 'application/json');
+  final res = await req.close().timeout(const Duration(seconds: 3));
+  return res.statusCode >= 200 && res.statusCode < 500;
+}
+
+Future<bool> _socketProbe(Uri uri) async {
+  Socket? socket;
   try {
-    s = await Socket.connect(host, port, timeout: const Duration(seconds: 2));
+    final port = uri.hasPort
+        ? uri.port
+        : (uri.scheme.toLowerCase() == 'http' ? 80 : 443);
+    socket = await Socket.connect(
+      uri.host,
+      port,
+      timeout: const Duration(seconds: 2),
+    );
     return true;
   } catch (_) {
     return false;
   } finally {
     try {
-      s?.destroy();
+      socket?.destroy();
     } catch (_) {}
   }
 }

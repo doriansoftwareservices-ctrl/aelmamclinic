@@ -70,7 +70,7 @@ class HeroStatCard extends StatelessWidget {
               ),
               FittedBox(
                 fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
+                alignment: AlignmentDirectional.centerEnd,
                 child: Text(
                   value,
                   style: theme.textTheme.titleLarge!

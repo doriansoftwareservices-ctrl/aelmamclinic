@@ -31,6 +31,9 @@ import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/services/export_service.dart';
 import 'package:aelmamclinic/services/save_file_service.dart';
 import 'package:aelmamclinic/services/patient_questions_service.dart';
+import 'package:aelmamclinic/utils/report_localizer.dart';
+import 'package:aelmamclinic/widgets/localized_text.dart';
+import 'package:aelmamclinic/utils/l10n_extensions.dart';
 
 class ListPatientsScreen extends StatefulWidget {
   const ListPatientsScreen({super.key});
@@ -176,7 +179,7 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('فشل تحميل البيانات: $e')),
+        SnackBar(content: LocalizedText('فشل تحميل البيانات: $e')),
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -225,7 +228,7 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
     if (remoteId == null || remoteId.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('المريض غير مزامن على الخادم بعد.')),
+        const SnackBar(content: LocalizedText('المريض غير مزامن على الخادم بعد.')),
       );
       return;
     }
@@ -240,7 +243,7 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
       if (complaints.isEmpty) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('لا توجد شكاوى مرتبطة بهذا المريض.')),
+          const SnackBar(content: LocalizedText('لا توجد شكاوى مرتبطة بهذا المريض.')),
         );
         return;
       }
@@ -250,7 +253,7 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
           context: context,
           builder: (ctx) {
             return SimpleDialog(
-              title: const Text('اختر الشكوى'),
+              title: const LocalizedText('اختر الشكوى'),
               children: complaints
                   .map(
                     (c) => SimpleDialogOption(
@@ -283,7 +286,7 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذر فتح التقرير: $e')),
+        SnackBar(content: LocalizedText('تعذر فتح التقرير: $e')),
       );
     }
   }
@@ -294,7 +297,7 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
     if (remoteId == null || remoteId.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('المريض غير مزامن على الخادم بعد.')),
+        const SnackBar(content: LocalizedText('المريض غير مزامن على الخادم بعد.')),
       );
       return;
     }
@@ -394,16 +397,16 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('تأكيد الحذف'),
-        content: const Text('هل تريد حذف سجل المريض؟'),
+        title: const LocalizedText('تأكيد الحذف'),
+        content: const LocalizedText('هل تريد حذف سجل المريض؟'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('إلغاء'),
+            child: const LocalizedText('إلغاء'),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('حذف'),
+            child: const LocalizedText('حذف'),
           ),
         ],
       ),
@@ -414,13 +417,13 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
       await DBService.instance.deletePatient(id);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم الحذف بنجاح')),
+        const SnackBar(content: LocalizedText('تم الحذف بنجاح')),
       );
       await _loadPatients();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذّر الحذف: $e')),
+        SnackBar(content: LocalizedText('تعذّر الحذف: $e')),
       );
     }
   }
@@ -428,18 +431,21 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
   Future<void> _shareFile() async {
     if (_filteredPatients.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('لا توجد بيانات للمشاركة')),
+        const SnackBar(content: LocalizedText('لا توجد بيانات للمشاركة')),
       );
       return;
     }
     final bytes = await ExportService.exportPatientsToExcel(_filteredPatients);
     final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/كشف-اسماء-المرضى.xlsx');
+    final i18n = ReportLocalizer();
+    final file = File(
+      '${dir.path}/${i18n.fileName('كشف أسماء المرضى', extension: 'xlsx')}',
+    );
     await file.writeAsBytes(bytes);
     await SharePlus.instance.share(
       ShareParams(
         files: [XFile(file.path)],
-        text: 'ملف المرضى المحفوظ',
+        text: i18n.tr('ملف المرضى المحفوظ'),
       ),
     );
   }
@@ -447,12 +453,16 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
   Future<void> _downloadFile() async {
     if (_filteredPatients.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('لا توجد بيانات للتنزيل')),
+        const SnackBar(content: LocalizedText('لا توجد بيانات للتنزيل')),
       );
       return;
     }
     final bytes = await ExportService.exportPatientsToExcel(_filteredPatients);
-    await saveExcelFile(bytes, 'كشف-اسماء-المرضى.xlsx');
+    final i18n = ReportLocalizer();
+    await saveExcelFile(
+      bytes,
+      i18n.fileName('كشف أسماء المرضى', extension: 'xlsx'),
+    );
   }
 
   void _makePhoneCall(String number) async {
@@ -463,7 +473,7 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
     } else {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('لا يمكن إجراء المكالمة')),
+        const SnackBar(content: LocalizedText('لا يمكن إجراء المكالمة')),
       );
     }
   }
@@ -519,7 +529,7 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
     return Scaffold(
       appBar: AppBar(
         centerTitle: true,
-        title: const Text('قائمة المرضى'),
+        title: const LocalizedText('قائمة المرضى'),
         actions: [
           IconButton(
             icon: const Icon(Icons.account_balance_wallet_outlined),
@@ -531,17 +541,17 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
                 ),
               );
             },
-            tooltip: 'مستحقات المرضى',
+            tooltip: context.trRaw('مستحقات المرضى'),
           ),
           IconButton(
             icon: const Icon(Icons.share),
             onPressed: _shareFile,
-            tooltip: 'مشاركة',
+            tooltip: context.trRaw('مشاركة'),
           ),
           IconButton(
             icon: const Icon(Icons.download),
             onPressed: _downloadFile,
-            tooltip: 'تنزيل',
+            tooltip: context.trRaw('تنزيل'),
           ),
         ],
       ),
@@ -556,7 +566,7 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
           await _loadPatients();
         },
         icon: const Icon(Icons.add),
-        label: const Text('مريض جديد'),
+        label: const LocalizedText('مريض جديد'),
       ),
       body: SafeArea(
         child: RefreshIndicator(
@@ -621,8 +631,7 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    Text(
-                      'عدد المرضى: $uniqueCount',
+                    LocalizedText('عدد المرضى: $uniqueCount',
                       style: TextStyle(
                         fontSize: 15.5,
                         fontWeight: FontWeight.w800,
@@ -631,8 +640,7 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
                         ),
                       ),
                     ),
-                    Text(
-                      'عدد الحالات: $casesCount',
+                    LocalizedText('عدد الحالات: $casesCount',
                       style: TextStyle(
                         fontSize: 15.5,
                         fontWeight: FontWeight.w800,
@@ -652,7 +660,7 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
                 const Center(child: CircularProgressIndicator()),
               ] else if (groups.isEmpty) ...[
                 const SizedBox(height: 120),
-                const Center(child: Text('لا توجد بيانات')),
+                const Center(child: LocalizedText('لا توجد بيانات')),
               ] else ...[
                 ...List.generate(visibleGroups.length, (i) {
                   final grp = visibleGroups[i];
@@ -775,8 +783,7 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
-                            subtitle: Text(
-                              '$diagnosis  •  خدمات: $svcSummary  •  الإجمالي: ${totalCost.toStringAsFixed(2)}$pendingLabel',
+                            subtitle: LocalizedText('$diagnosis  •  خدمات: $svcSummary  •  الإجمالي: ${totalCost.toStringAsFixed(2)}$pendingLabel',
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
@@ -798,7 +805,7 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
                                     } else {
                                       ScaffoldMessenger.of(context).showSnackBar(
                                         const SnackBar(
-                                          content: Text('لا يوجد رقم هاتف'),
+                                          content: LocalizedText('لا يوجد رقم هاتف'),
                                         ),
                                       );
                                     }
@@ -841,14 +848,14 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
                                     value: 'call',
                                     child: ListTile(
                                       leading: Icon(Icons.phone),
-                                      title: Text('اتصال'),
+                                      title: LocalizedText('اتصال'),
                                     ),
                                   ),
                                   const PopupMenuItem(
                                     value: 'add',
                                     child: ListTile(
                                       leading: Icon(Icons.add),
-                                      title: Text('إضافة سجل جديد'),
+                                      title: LocalizedText('إضافة سجل جديد'),
                                     ),
                                   ),
                                 ];
@@ -858,7 +865,7 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
                                       value: 'edit',
                                       child: ListTile(
                                         leading: Icon(Icons.edit),
-                                        title: Text('تعديل'),
+                                        title: LocalizedText('تعديل'),
                                       ),
                                     ),
                                   );
@@ -869,7 +876,7 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
                                     child: ListTile(
                                       leading:
                                           Icon(Icons.delete, color: Colors.red),
-                                      title: Text('حذف'),
+                                      title: LocalizedText('حذف'),
                                     ),
                                   ),
                                 );
@@ -887,7 +894,7 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
                                         ? () => _openReportEditor(p)
                                         : null,
                                     icon: const Icon(Icons.note_add_outlined),
-                                    label: const Text('إنشاء تقرير'),
+                                    label: const LocalizedText('إنشاء تقرير'),
                                   ),
                                 ),
                                 const SizedBox(width: 8),
@@ -897,8 +904,7 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
                                         ? () => _openReportsList(p)
                                         : null,
                                     icon: const Icon(Icons.article_outlined),
-                                    label: Text(
-                                      'استعرض التقرير'
+                                    label: LocalizedText('استعرض التقرير'
                                       '${reportCount > 0 ? ' ($reportCount)' : ''}',
                                     ),
                                   ),
@@ -917,8 +923,7 @@ class _ListPatientsScreenState extends State<ListPatientsScreen> {
                     child: Center(
                       child: OutlinedButton.icon(
                         icon: const Icon(Icons.expand_more_rounded),
-                        label: Text(
-                          'تحميل المزيد (${_visibleGroups}/${groups.length})',
+                        label: LocalizedText('تحميل المزيد (${_visibleGroups}/${groups.length})',
                         ),
                         onPressed: () {
                           setState(() {
