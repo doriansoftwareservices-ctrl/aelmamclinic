@@ -17,6 +17,7 @@ import 'package:aelmamclinic/models/feature_permissions.dart';
 import 'package:aelmamclinic/services/db_parity_v3.dart';
 import 'package:aelmamclinic/services/db_service.dart';
 import 'package:aelmamclinic/services/device_id_service.dart';
+import 'package:aelmamclinic/services/nhost_api_client.dart';
 import 'package:aelmamclinic/services/nhost_graphql_service.dart';
 import 'package:aelmamclinic/services/sync_service.dart';
 
@@ -43,6 +44,7 @@ class NhostAuthService {
 
   SyncService? _sync;
   String? _boundAccountId;
+  String? _boundDeviceId;
   static const Duration _kGraphqlTimeout = Duration(seconds: 20);
 
   NhostClient get client => _client;
@@ -74,7 +76,13 @@ class NhostAuthService {
     await _sync?.resumeSync();
   }
 
-  Future<void> waitForSyncIdle({Duration timeout = const Duration(seconds: 10)}) async {
+  Future<void> suspendRuntimeBindings() async {
+    DBService.instance.clearCachedSyncIdentity();
+    await _disposeSync();
+  }
+
+  Future<void> waitForSyncIdle(
+      {Duration timeout = const Duration(seconds: 10)}) async {
     await _sync?.waitForIdle(timeout: timeout);
   }
 
@@ -211,14 +219,15 @@ class NhostAuthService {
     String doc,
     Map<String, dynamic> variables,
   ) async {
+    final safeVariables = Map<String, dynamic>.from(variables);
     final result = await _gql
         .query(
-      QueryOptions(
-        document: gql(doc),
-        variables: variables,
-        fetchPolicy: FetchPolicy.noCache,
-      ),
-    )
+          QueryOptions(
+            document: gql(doc),
+            variables: safeVariables,
+            fetchPolicy: FetchPolicy.noCache,
+          ),
+        )
         .timeout(_kGraphqlTimeout);
     if (result.hasException) {
       final ex = result.exception!;
@@ -233,15 +242,24 @@ class NhostAuthService {
   Future<Map<String, dynamic>> _runMutation(
     String doc,
     Map<String, dynamic> variables,
+    {String? role}
   ) async {
+    final safeVariables = Map<String, dynamic>.from(variables);
     final result = await _gql
         .mutate(
-      MutationOptions(
-        document: gql(doc),
-        variables: variables,
-        fetchPolicy: FetchPolicy.noCache,
-      ),
-    )
+          MutationOptions(
+            document: gql(doc),
+            variables: safeVariables,
+            fetchPolicy: FetchPolicy.noCache,
+            context: (role == null || role.trim().isEmpty)
+                ? Context()
+                : Context.fromList([
+                    HttpLinkHeaders(
+                      headers: {'x-hasura-role': role.trim()},
+                    ),
+                  ]),
+          ),
+        )
         .timeout(_kGraphqlTimeout);
     if (result.hasException) {
       final ex = result.exception!;
@@ -265,11 +283,171 @@ class NhostAuthService {
         msg.contains('connection');
   }
 
+  bool _isNoMutationsGraphqlError(Object error) {
+    final msg = error.toString().toLowerCase();
+    return msg.contains('no mutations exist') ||
+        msg.contains('mutation_root') && msg.contains('not found') ||
+        msg.contains('mutation') && msg.contains('validation-failed');
+  }
+
+  bool _isLegacySelfCreateAccountSignatureError(Object error) {
+    final msg = error.toString().toLowerCase();
+    return msg.contains('p_city_ar') ||
+        msg.contains('p_street_ar') ||
+        msg.contains('p_near_ar') ||
+        msg.contains('p_clinic_name_en') ||
+        msg.contains('p_city_en') ||
+        msg.contains('p_street_en') ||
+        msg.contains('p_near_en') ||
+        msg.contains('p_phone');
+  }
+
+  List<String> _orderedSessionRoles(List<String> preferredRoles) {
+    final user = currentUser;
+    final sessionRoles = <String>{
+      ...preferredRoles.map((e) => e.toLowerCase().trim()),
+      ...(user?.roles ?? const <String>[]).map((e) => e.toLowerCase().trim()),
+      (user?.defaultRole ?? '').toLowerCase().trim(),
+    };
+    sessionRoles.removeWhere((role) => role.isEmpty);
+
+    final ordered = <String>[];
+    for (final role in preferredRoles.map((e) => e.toLowerCase().trim())) {
+      if (sessionRoles.remove(role)) {
+        ordered.add(role);
+      }
+    }
+    ordered.addAll(sessionRoles);
+    return ordered;
+  }
+
+  Future<Map<String, dynamic>> _runMutationWithRoleFallback(
+    String doc,
+    Map<String, dynamic> variables, {
+    required List<String> preferredRoles,
+  }) async {
+    Object? lastError;
+    for (final role in _orderedSessionRoles(preferredRoles)) {
+      try {
+        return await _runMutation(doc, variables, role: role);
+      } catch (e) {
+        lastError = e;
+        if (_isNoMutationsGraphqlError(e)) {
+          continue;
+        }
+        rethrow;
+      }
+    }
+    if (lastError != null) {
+      throw lastError;
+    }
+    return await _runMutation(doc, variables);
+  }
+
+  Future<Map<String, dynamic>> _runMutationWithAuthRecovery(
+    String doc,
+    Map<String, dynamic> variables, {
+    required List<String> preferredRoles,
+  }) async {
+    try {
+      return await _runMutation(doc, variables);
+    } catch (e) {
+      if (_isNoMutationsGraphqlError(e)) {
+        try {
+          await refreshSession();
+        } catch (_) {}
+        return await _runMutationWithRoleFallback(
+          doc,
+          variables,
+          preferredRoles: preferredRoles,
+        );
+      }
+      rethrow;
+    }
+  }
+
+  Uri _functionUri(String path) {
+    final base = NhostConfig.functionsUrl.replaceAll(RegExp(r'/+$'), '');
+    final cleanPath = path.replaceFirst(RegExp(r'^/+'), '');
+    return Uri.parse('$base/$cleanPath');
+  }
+
+  bool _hasCompleteClinicProfile(ClinicProfileInput profile) {
+    return profile.nameAr.trim().isNotEmpty &&
+        profile.cityAr.trim().isNotEmpty &&
+        profile.streetAr.trim().isNotEmpty &&
+        profile.nearAr.trim().isNotEmpty &&
+        profile.nameEn.trim().isNotEmpty &&
+        profile.cityEn.trim().isNotEmpty &&
+        profile.streetEn.trim().isNotEmpty &&
+        profile.nearEn.trim().isNotEmpty &&
+        profile.phone.trim().isNotEmpty;
+  }
+
+  Future<String> _selfCreateAccountViaFunction({
+    required ClinicProfileInput profile,
+  }) async {
+    final api = NhostApiClient();
+    try {
+      final data = await api.postJson(
+        _functionUri('self-create-owner'),
+        <String, dynamic>{
+          'clinic_name': profile.nameAr.trim(),
+          'city_ar': profile.cityAr.trim(),
+          'street_ar': profile.streetAr.trim(),
+          'near_ar': profile.nearAr.trim(),
+          'name_en': profile.nameEn.trim(),
+          'city_en': profile.cityEn.trim(),
+          'street_en': profile.streetEn.trim(),
+          'near_en': profile.nearEn.trim(),
+          'phone': profile.phone.trim(),
+          'phone2': (profile.phone2 ?? '').trim().isEmpty
+              ? null
+              : profile.phone2!.trim(),
+        },
+      );
+      final ok = data['ok'] == true;
+      final accountId = '${data['account_id'] ?? ''}'.trim();
+      if (!ok || accountId.isEmpty) {
+        final message = '${data['error'] ?? 'self-create-owner failed'}'.trim();
+        throw StateError(message.isEmpty ? 'self-create-owner failed' : message);
+      }
+      return accountId;
+    } finally {
+      api.dispose();
+    }
+  }
+
+  Future<void> _refreshSessionAfterAccountMutation() async {
+    for (var attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        await refreshSession();
+        return;
+      } catch (_) {
+        if (attempt >= 2) return;
+        await Future<void>.delayed(
+          Duration(milliseconds: 350 * (attempt + 1)),
+        );
+      }
+    }
+  }
+
   Future<String> selfCreateAccount({
     required ClinicProfileInput profile,
   }) async {
-    const mutation = r'''
-      mutation SelfCreateAccount(
+    const modernMutation = r'''
+      mutation SelfCreateAccountModern($clinic_name: String!) {
+        self_create_account(
+          args: {
+            p_clinic_name: $clinic_name
+          }
+        ) {
+          id
+        }
+      }
+    ''';
+    const legacyMutation = r'''
+      mutation SelfCreateAccountLegacy(
         $name_ar: String!
         $city_ar: String!
         $street_ar: String!
@@ -299,7 +477,7 @@ class NhostAuthService {
         }
       }
     ''';
-    final vars = <String, dynamic>{
+    final legacyVars = <String, dynamic>{
       'name_ar': profile.nameAr.trim(),
       'city_ar': profile.cityAr.trim(),
       'street_ar': profile.streetAr.trim(),
@@ -309,16 +487,55 @@ class NhostAuthService {
       'street_en': profile.streetEn.trim(),
       'near_en': profile.nearEn.trim(),
       'phone': profile.phone.trim(),
-      'phone2': (profile.phone2 ?? '').trim().isEmpty
-          ? null
-          : profile.phone2!.trim(),
+      'phone2':
+          (profile.phone2 ?? '').trim().isEmpty ? null : profile.phone2!.trim(),
+    };
+    final modernVars = <String, dynamic>{
+      'clinic_name': profile.nameAr.trim(),
     };
     for (var attempt = 0; attempt < 2; attempt += 1) {
       try {
-        final data = await _runMutation(mutation, vars);
+        final data = await _runMutationWithAuthRecovery(
+          modernMutation,
+          modernVars,
+          preferredRoles: const ['user', 'me'],
+        );
         final rows = _rowsFromData(data, 'self_create_account');
+        try {
+          await updateClinicProfile(profile: profile);
+        } catch (_) {}
+        await _refreshSessionAfterAccountMutation();
         return rows.isEmpty ? '' : (rows.first['id']?.toString() ?? '');
       } catch (e) {
+        if (_isLegacySelfCreateAccountSignatureError(e)) {
+          try {
+            final data = await _runMutationWithAuthRecovery(
+              legacyMutation,
+              legacyVars,
+              preferredRoles: const ['user', 'me'],
+            );
+            final rows = _rowsFromData(data, 'self_create_account');
+            try {
+              await updateClinicProfile(profile: profile);
+            } catch (_) {}
+            await _refreshSessionAfterAccountMutation();
+            return rows.isEmpty ? '' : (rows.first['id']?.toString() ?? '');
+          } catch (legacyError) {
+            if (_isNoMutationsGraphqlError(legacyError)) {
+              final accountId = await _selfCreateAccountViaFunction(
+                profile: profile,
+              );
+              await _refreshSessionAfterAccountMutation();
+              return accountId;
+            }
+            rethrow;
+          }
+        }
+        if (_isNoMutationsGraphqlError(e)) {
+          final accountId = await _selfCreateAccountViaFunction(profile: profile);
+          await _refreshSessionAfterAccountMutation();
+          return accountId;
+        }
         if (attempt == 0 && _isTransientGraphqlError(e)) {
           await Future<void>.delayed(const Duration(milliseconds: 400));
           continue;
@@ -360,6 +577,9 @@ class NhostAuthService {
   Future<void> updateClinicProfile({
     required ClinicProfileInput profile,
   }) async {
+    if (!_hasCompleteClinicProfile(profile)) {
+      return;
+    }
     const mutation = r'''
       mutation UpdateClinicProfile(
         $name_ar: String!
@@ -402,11 +622,14 @@ class NhostAuthService {
       'street_en': profile.streetEn.trim(),
       'near_en': profile.nearEn.trim(),
       'phone': profile.phone.trim(),
-      'phone2': (profile.phone2 ?? '').trim().isEmpty
-          ? null
-          : profile.phone2!.trim(),
+      'phone2':
+          (profile.phone2 ?? '').trim().isEmpty ? null : profile.phone2!.trim(),
     };
-    final data = await _runMutation(mutation, vars);
+    final data = await _runMutationWithAuthRecovery(
+      mutation,
+      vars,
+      preferredRoles: const ['user', 'me', 'owner'],
+    );
     final rows = _rowsFromData(data, 'update_clinic_profile');
     final ok = rows.isNotEmpty ? rows.first['ok'] == true : false;
     if (!ok) {
@@ -1039,6 +1262,18 @@ class NhostAuthService {
     final devId = await DeviceIdService.getId();
     final db = await DBService.instance.database;
 
+    if (_sync != null && _boundAccountId == acc.id && _boundDeviceId == devId) {
+      final sync = _sync!;
+      _bindDbPush(sync);
+      DBService.instance.setCachedSyncIdentity(
+        accountId: acc.id,
+        deviceId: devId,
+      );
+      await sync.bootstrap(pull: pull, realtime: realtime);
+      await _flushLocalChangesIfNeeded(sync, initialPullAlreadyDone: pull);
+      return;
+    }
+
     try {
       final lastAcc = await _readLastSyncedAccountId(db);
       final accountChangedBetweenLaunches =
@@ -1051,6 +1286,9 @@ class NhostAuthService {
             'Account change detected → pending local wipe (manual confirmation required).',
           );
           await ActiveAccountStore.setPendingWipe(acc.id);
+          DBService.instance.clearCachedSyncIdentity();
+          await _disposeSync();
+          return;
         } else {
           dev.log(
             'Account change detected but no foreign-account rows found → skip local wipe.',
@@ -1069,6 +1307,9 @@ class NhostAuthService {
           'wipeLocalFirst requested → pending local wipe (manual confirmation required).',
         );
         await ActiveAccountStore.setPendingWipe(acc.id);
+        DBService.instance.clearCachedSyncIdentity();
+        await _disposeSync();
+        return;
       }
       await _disposeSync();
     }
@@ -1098,19 +1339,13 @@ class NhostAuthService {
       canSync: _canSyncGuard,
     );
     _boundAccountId = acc.id;
+    _boundDeviceId = devId;
 
     final sync = _sync;
     if (sync != null) {
       _bindDbPush(sync);
       await sync.bootstrap(pull: pull, realtime: realtime);
-      // ادفع التغييرات المحلية ثم اسحب لتوحيد الحالة عبر الأجهزة.
-      unawaited(() async {
-        try {
-          await sync.pushAll();
-        } finally {
-          await sync.pullAll();
-        }
-      }());
+      await _flushLocalChangesIfNeeded(sync, initialPullAlreadyDone: pull);
     }
   }
 
@@ -1159,10 +1394,24 @@ class NhostAuthService {
     final sync = _sync;
     if (sync == null) return;
     _sync = null;
+    _boundAccountId = null;
+    _boundDeviceId = null;
     DBService.instance.onLocalChange = null;
     try {
-      await sync.stopRealtime();
+      await sync.dispose();
     } catch (_) {}
+  }
+
+  Future<void> _flushLocalChangesIfNeeded(
+    SyncService sync, {
+    required bool initialPullAlreadyDone,
+  }) async {
+    final dirty = await DBService.instance.getDirtySyncTables();
+    if (dirty.isEmpty) return;
+    await sync.pushAll();
+    if (initialPullAlreadyDone || dirty.isNotEmpty) {
+      await sync.pullAll(reason: 'bootstrap_dirty_flush');
+    }
   }
 
   Future<void> _upsertSyncIdentity(
