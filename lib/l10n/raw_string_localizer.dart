@@ -240,7 +240,319 @@ abstract final class RawStringLocalizer {
     return output;
   }
 
+  static final Map<String, String> _exactSupplemental = <String, String>{
+    'القائمة': 'Menu',
+    'الدردشة': 'Chat',
+    'تسجيل الخروج': 'Log out',
+    'لاحقًا': 'Later',
+    'فتح الإعدادات': 'Open settings',
+    'سماح الآن': 'Allow now',
+    'إعادة المحاولة الآن': 'Retry now',
+    'إظهار': 'Show',
+    'إخفاء': 'Hide',
+    'يبدو أن الشبكة غير مستقرة لديك': 'Your network connection appears unstable.',
+    'تشغيل الإشعارات في الخلفية': 'Keep notifications running in background',
+    'لضمان وصول الإشعارات حتى عند إغلاق التطبيق، يرجى السماح بتجاهل قيود تحسين البطارية لهذا التطبيق.':
+        'To keep notifications working even after the app is closed, allow this app to ignore battery optimization restrictions.',
+    'هذا التطبيق يحتاج إلى إذن الإشعارات لتذكيرك بالمواعيد.':
+        'This app needs notification permission to remind you about appointments.',
+    'يرجى تمكين الإشعارات من إعدادات التطبيق.':
+        'Please enable notifications from the app settings.',
+    'تسجيل الدخول': 'Log in',
+    'أدخل بيانات الدخول للمتابعة': 'Enter your credentials to continue',
+    '⚠️ كلمة السر يجب أن تتكون من 9 خانات وتأكد من أنك تملك البريد':
+        'Password must be at least 9 characters and linked to an email you control.',
+    'تذكرني على هذا الجهاز': 'Remember me on this device',
+    'إنشاء حساب جديد': 'Create new account',
+    'الدعم الفني': 'Technical support',
+    'واتساب': 'WhatsApp',
+    'تعذر فتح تطبيق الاتصال.': 'Unable to open the phone app.',
+    'تعذر فتح واتساب.': 'Unable to open WhatsApp.',
+    'اختيار رقم واتساب': 'Choose a WhatsApp number',
+    'اختيار رقم الاتصال': 'Choose a phone number',
+    'من فضلك أدخل البريد الإلكتروني وكلمة المرور.':
+        'Please enter your email and password.',
+    'أدخل البريد وكلمة المرور أولًا.':
+        'Enter your email and password first.',
+    'تعذر تسجيل الدخول. تأكد من البريد وكلمة المرور أو فعّل حسابك عبر البريد.':
+        'Unable to log in. Check your email and password, or verify your account from email first.',
+    'اسم العيادة مطلوب لإكمال إنشاء الحساب.':
+        'Clinic name is required to finish account setup.',
+    'تعذر التحقق من الحساب. حاول مرة أخرى.':
+        'Account validation failed. Please try again.',
+    'فشل إنشاء الحساب.': 'Account creation failed.',
+    'تعذر إنشاء الحساب: {reason}': 'Unable to create the account: {reason}',
+    'تم إلغاء تسجيل الدخول للحفاظ على بياناتك المحلية.':
+        'Login was canceled to preserve your local data.',
+    'تم إنشاء الحساب. يرجى تأكيد البريد الإلكتروني ثم تسجيل الدخول.':
+        'Your account was created. Please verify your email, then log in.',
+    'تعذر تحديد نوع الحساب. حاول تسجيل الدخول مرة أخرى.':
+        'Unable to determine account type. Please log in again.',
+    'تأكيد تبديل الحساب': 'Confirm account switch',
+    'تم اكتشاف أن بيانات الجهاز تخص حسابًا مختلفًا.\nالمتابعة ستؤدي إلى حذف جميع البيانات المحلية والدردشات الحالية لتجهيز التطبيق للحساب الجديد.\n\nهل تريد المتابعة؟':
+        'This device contains local data for a different account.\nContinuing will delete all local data and chats to prepare the app for the new account.\n\nDo you want to continue?',
+    'تم اكتشاف بيانات محلية قديمة.\nالمتابعة ستؤدي إلى حذف جميع البيانات المحلية والدردشات الحالية لتجهيز التطبيق.\n\nهل تريد المتابعة؟':
+        'Old local data was detected.\nContinuing will delete all local data and chats to prepare the app.\n\nDo you want to continue?',
+    'عزل البيانات المحلية': 'Local data isolation',
+    'تم اكتشاف بيانات محلية تخص حسابًا آخر أو جلسة قديمة. يجب إنشاء نسخة احتياطية ومسح البيانات المحلية قبل متابعة استخدام هذا الحساب.':
+        'Local data from another account or an old session was detected. A backup and local wipe are required before this account can continue.',
+    'نسخ احتياطي ومسح الآن': 'Back up and wipe now',
+    'لا يمكن متابعة استخدام التطبيق بهذه الجلسة قبل عزل البيانات المحلية. سيتم إنشاء نسخة احتياطية ثم حذف البيانات المحلية الحالية لتجنب اختلاط بيانات الحسابات.':
+        'This session cannot continue until local data isolation is completed. The app will create a backup, then remove the current local data to prevent cross-account leakage.',
+    'تم إنشاء نسخة احتياطية ومسح البيانات المحلية بنجاح.':
+        'A backup was created and the local data was cleared successfully.',
+    'فشل تنفيذ النسخ الاحتياطي أو المسح المحلي. حاول مرة أخرى.':
+        'Backup or local wipe failed. Please try again.',
+    'قم بمراجعة الإدارة.': 'Please contact administration.',
+    'تم تجميد حساب العيادة. تواصل مع الإدارة لاستعادة الوصول.':
+        'The clinic account has been frozen. Contact administration to restore access.',
+    'للأسف تم إقصاؤك من إدارة المرفق الصحي.':
+        "You have been removed from this clinic's management.",
+    'الخطة الحالية للمرفق الصحي هي FREE ويجب تجديد الاشتراك.':
+        'The current clinic plan is FREE and needs to be renewed.',
+    'انتهت الجلسة أثناء التحقق من الحساب. حاول تسجيل الدخول مجددًا.':
+        'Your session ended while validating the account. Please log in again.',
+    'يلزم عزل البيانات المحلية لهذا الجهاز قبل متابعة استخدام الحساب الحالي.':
+        'Local data isolation is required on this device before continuing with the current account.',
+    'تعذر التحقق من الحساب بسبب مشكلة في الاتصال. حاول مرة أخرى.':
+        'Account validation failed because of a connection issue. Please try again.',
+    'حدث خطأ غير متوقع أثناء التحقق من الحساب. حاول لاحقًا.':
+        'An unexpected error occurred while validating the account. Please try again later.',
+    'البريد الإلكتروني أو كلمة المرور غير صحيحة.':
+        'Incorrect email or password.',
+    'صيغة البريد الإلكتروني غير صحيحة.':
+        'The email address format is invalid.',
+    'فشل تسجيل الدخول. حاول مرة أخرى.': 'Login failed. Please try again.',
+    'تسجيل مريض جديد': 'Register patient',
+    'أسئلة التشخيص للمرضى': 'Patient diagnosis questions',
+    'شؤون الموظفين': 'Employees',
+    'العودات': 'Returns',
+    'الشؤون المالية': 'Financials',
+    'الأشعة والمختبرات': 'Labs and radiology',
+    'استخراج البيانات محليًا': 'Export local data',
+    'هذا القسم تحت التطوير حاليًا': 'This section is currently under development.',
+    'مرحبًا بك في إلمام كلينك': 'Welcome to Elmam Clinic',
+    'مرحبًا بعودتك': 'Welcome back',
+    'هذه هي زيارتك الأولى على هذا الجهاز بحسابك. قد تكون بعض الأقسام مخفية إلى أن يتم منحك الصلاحيات من الإدارة.':
+        'This is your first visit on this device with your account. Some sections may stay hidden until administration grants your permissions.',
+    'تم التعرف عليك. لديك وصول محدود حسب صلاحيات الإدارة. إذا احتجت رؤية الإحصاءات، اطلب من الإدارة تفعيل ميزة "لوحة الإحصاءات".':
+        'Your account was recognized. You currently have limited access based on administration permissions. If you need dashboard access, ask administration to enable the Dashboard feature.',
+    'لا يمكنك مشاهدة لوحة الإحصاءات حاليًا. يتطلب ذلك منح صلاحية "لوحة الإحصاءات" من الإدارة.':
+        'You cannot view the dashboard right now. Administration must grant the Dashboard permission first.',
+    'لوحة تحكم المشرف العام': 'Super Admin Dashboard',
+    'هذه الشاشة مخصّصة للسوبر أدمن فقط.':
+        'This screen is available to super admins only.',
+    'تحميل التبويبات...': 'Loading tabs...',
+    'لا توجد تبويبات متاحة.': 'No tabs are currently available.',
+    'لا يوجد إنترنت لتجهيز الحساب الآن. سيتم الانتظار حتى يعود الاتصال…':
+        'No internet connection is available to prepare the account right now. The app will wait until connectivity returns…',
+    'تجهيز الحساب يحتاج إنترنت. سيتم المتابعة تلقائيًا عند رجوع الاتصال…':
+        'Account preparation requires internet access. The app will continue automatically when connectivity returns…',
+    'تعذر تجهيز الحساب حاليًا. سيتم إعادة المحاولة تلقائيًا.':
+        'Unable to prepare the account right now. The app will retry automatically.',
+    'جارٍ تجهيز الحساب...': 'Preparing your account...',
+    'لا يوجد إنترنت لاستعادة الجلسة. سيتم الانتظار حتى يعود الاتصال…':
+        'No internet connection is available to restore the session. The app will wait until connectivity returns…',
+    'جارٍ استعادة الجلسة...': 'Restoring your session...',
+    'تعذر استعادة الجلسة. سيتم إعادة المحاولة تلقائيًا.':
+        'Unable to restore the session. The app will retry automatically.',
+    'يجب تسجيل الدخول لفتح المحادثة.':
+        'You must log in to open this chat.',
+    'لا يوجد معرّف محادثة في الطلب.':
+        'No conversation identifier was supplied.',
+    'لم أجد المحادثة أو لا تملك صلاحية الوصول.':
+        'The conversation was not found or you do not have access to it.',
+    'تعذر فتح المحادثة: {reason}':
+        'Unable to open the conversation: {reason}',
+    'المحادثة': 'Conversation',
+    'تعذر فتح المحادثة.': 'Unable to open the conversation.',
+    'استعادة جلسة الإدارة': 'Restore admin session',
+    'إكمال ربط الحساب': 'Complete account linking',
+    'استعادة الجلسة': 'Restore session',
+    'تم العثور على جلسة محلية للمشرف، لكن لوحة الإدارة تحتاج جلسة خادم صالحة قبل المتابعة.':
+        'A local admin session was found, but the admin dashboard requires a valid server session before continuing.',
+    'تم تسجيل الدخول، لكن لم يتم تثبيت حساب العيادة الحالي بعد. يمكنك إعادة التحقق أو إكمال بيانات المرفق الصحي.':
+        'You are signed in, but the current clinic account has not been finalized yet. You can revalidate the account or complete the clinic profile.',
+    'الجلسة المحلية ما زالت موجودة، وسيتم استعادة جلسة الخادم في الخلفية عند توفر الاتصال.':
+        'The local session is still present. The server session will be restored in the background when connectivity returns.',
+    'هناك تحقق إضافي مطلوب قبل فتح التطبيق بالكامل.':
+        'Additional verification is required before opening the full app.',
+    'بيانات المرفق الصحي (عربي)': 'Clinic profile (Arabic)',
+    'يرجى تعبئة جميع الحقول لإكمال إنشاء الحساب.':
+        'Please fill in all fields to complete account setup.',
+    'يرجى تعبئة جميع الحقول.': 'Please fill in all fields.',
+    'إعادة التحقق من الحساب': 'Revalidate account',
+    'إكمال إنشاء الحساب': 'Complete account setup',
+    'تم نسخ السيريال بنجاح': 'Serial copied successfully',
+    'لا يوجد نص في الحافظة': 'There is no text in the clipboard',
+    'تم اللصق': 'Pasted',
+    'السيريال الخاص بي': 'My serial',
+    'مشاركة السيريال': 'Share serial',
+    'رمز الجهاز (Serial)': 'Device serial',
+    'السيريال الخاص بك': 'Your serial',
+    'تفعيل التطبيق': 'Activate app',
+    'أدخل رمز التفعيل': 'Enter activation code',
+    'لصق': 'Paste',
+    'جارٍ التفعيل…': 'Activating...',
+    'تحديث السيريال': 'Refresh serial',
+    'تم تحديث السيريال': 'Serial refreshed',
+    'الرجاء إدخال رمز التفعيل': 'Please enter the activation code',
+    'تم استخدام هذا الرمز مسبقاً': 'This code has already been used',
+    'رمز التفعيل غير صالح': 'Invalid activation code',
+    'تعذر إجراء المكالمة.': 'Unable to place the call.',
+    'تعذر فتح الواتساب.': 'Unable to open WhatsApp.',
+    'سيتم إنشاء سيريال جديد، ولن تعمل أكواد التفعيل المرتبطة بالسيريال السابق.\nهل تريد المتابعة؟':
+        'A new serial will be generated. Activation codes linked to the previous serial will stop working. Do you want to continue?',
+    'للحصول على الباقة المجانية أو لتجديد باقتك':
+        'To get the free plan or renew your subscription',
+    'تواصل معنا وسنسعد بخدمتكم.':
+        'Contact us and we will be happy to help you.',
+    'لا يمكن استخدام نفس رمز التفعيل أكثر من مرة':
+        'The same activation code cannot be used more than once',
+    'المحادثات': 'Chats',
+    'اختر محادثة لعرضها هنا.': 'Select a conversation to view it here.',
+    'جارٍ الكتابة...': 'Typing...',
+    'خدمة العملاء غير مفعّلة بعد.':
+        'Customer support is not enabled yet.',
+    'أرشفة المحادثة': 'Archive conversation',
+    'إلغاء الأرشفة': 'Unarchive',
+    'عرض المحادثة': 'View conversation',
+    'تحديد اسم بديل': 'Set alias',
+    'اكتب الاسم الذي تريد إظهاره':
+        'Type the name you want to display',
+    'سيظهر البريد الأصلي إذا تُرك الحقل فارغاً':
+        'The original email will be shown if the field is left empty',
+    'تعيين كمقروء': 'Mark as read',
+    'حذف المحادثة من جهازي': 'Delete conversation from my device',
+    'أدخل رقم الحساب لبدء دردشة معه':
+        'Enter the account number to start a chat',
+    'بدء': 'Start',
+    'تعذر إنشاء المحادثة': 'Unable to create the conversation',
+    'ما مدى رضاك عن الخدمة المقدمه من خدمة العملاء':
+        'How satisfied are you with the customer support service?',
+    'لا يمكن الإغلاق قبل استلام تقييم العميل.':
+        'The conversation cannot be closed before receiving the customer rating.',
+    'تم إغلاق المحادثة.': 'The conversation was closed.',
+    'إنهاء الجلسة وإرسال الاستمارة':
+        'End session and send form',
+    'إغلاق المحادثة': 'Close conversation',
+    'تم استلام تقييم العميل.': 'The customer rating was received.',
+    'تم إرسال تقييمك.': 'Your rating was sent.',
+    'بانتظار رد العميل على الاستمارة.':
+        'Waiting for the customer to respond to the form.',
+    'إرسال التقييم': 'Send rating',
+    'تقييم العميل': 'Customer rating',
+    'لا توجد رسائل بعد': 'No messages yet',
+    'ابدأ بكتابة رسالتك في الأسفل':
+        'Start typing your message below',
+    'يكتبون الآن': 'Typing now',
+    'تعذّر تحميل التبويبات أو لم يتم تحديد تبويبات للحساب.':
+        'Unable to load tabs, or no tabs were assigned to this account.',
+    'تعذّر تحميل التبويبات. يرجى إعادة المحاولة.':
+        'Unable to load tabs. Please try again.',
+    'إنشاء العيادة': 'Create clinic',
+    'إنشاء الموظف': 'Create employee',
+    'موظف جديد': 'New employee',
+    'الاشتراكات': 'Subscriptions',
+    'طرق الدفع': 'Payment methods',
+    'الشكاوى': 'Complaints',
+    'الإحصاءات': 'Statistics',
+    'حسابات السوبر أدمن': 'Super admin accounts',
+    'إنشاء': 'Create',
+    'مجمّد': 'Frozen',
+    'الحساب': 'Account',
+    'الحالة': 'Status',
+    'التبويبات': 'Tabs',
+    'سوبر أدمن': 'Super admin',
+    'حالة الجلسة': 'Session status',
+    'تعذّر تحميل التبويبات': 'Unable to load tabs',
+    'تعذّر تحميل العيادات': 'Unable to load clinics',
+    'تعذّر تحميل طلبات الاشتراك': 'Unable to load subscription requests',
+    'تعذّر تحميل طلبات الموظفين': 'Unable to load employee requests',
+    'تعذّر تحميل دخل المقاعد الإضافية':
+        'Unable to load extra seat revenue',
+    'تعذّر تحميل سعر المقعد الافتراضي':
+        'Unable to load the default seat price',
+    'تعذّر تحميل وسائل الدفع':
+        'Unable to load payment methods',
+    'تعذّر تحميل الشكاوى': 'Unable to load complaints',
+    'تعذّر تحميل الإحصاءات': 'Unable to load statistics',
+    'تعذّر تحميل صحة النظام': 'Unable to load system health',
+    'تعذّر تحميل سجل الأوامر': 'Unable to load the action log',
+    'تعذّر تحميل مؤشرات الاستخدام': 'Unable to load usage metrics',
+    'تعذّر تحميل التنبيهات': 'Unable to load alerts',
+    'تعذّر تحميل ملخص التدقيق': 'Unable to load the audit summary',
+    'تعذّر تحميل أكثر الحسابات نشاطًا':
+        'Unable to load the most active accounts',
+    'تعذّر تحميل حركة الاستخدام اليومية':
+        'Unable to load daily usage activity',
+    'تعذّر تحميل إحصاءات الأعضاء':
+        'Unable to load member statistics',
+    'تعذّر تحميل حسابات السوبر أدمن':
+        'Unable to load super admin accounts',
+    'تعذّر الإنشاء': 'Unable to create',
+    'خطأ في الإنشاء': 'Creation error',
+    'تعذّر إنشاء الموظف': 'Unable to create the employee',
+    'تعذّر تغيير الحالة': 'Unable to update the status',
+    'تعذّر تحديث الحالة': 'Unable to update the status',
+    'تعذّر تحديث التبويبات': 'Unable to update tabs',
+    'تعذّر تغيير كلمة المرور': 'Unable to change the password',
+    'تعذّر الحذف': 'Unable to delete',
+    'تعذر اعتماد الطلب': 'Unable to approve the request',
+    'تعذر رفض الطلب': 'Unable to reject the request',
+    'بلا بريد': 'No email',
+    'غير معروف': 'Unknown',
+    'شهري': 'Monthly',
+    'يومي': 'Daily',
+    'وسائل الدفع': 'Payment methods',
+    'اسم الخدمة': 'Service name',
+    'المدفوعات': 'Payments',
+    'قائمة الأعضاء': 'Member list',
+    'تاريخ الإضافة': 'Added on',
+    'كل الفترة': 'All time',
+    'تقييمات خدمة العملاء': 'Customer support ratings',
+    'المتوسط العام': 'Overall average',
+    'نسبة الرضا (4+)': 'Satisfaction rate (4+)',
+    'متوسط التقييم الشهري': 'Average monthly rating',
+    'لا توجد بيانات شهرية كافية': 'Not enough monthly data',
+    'عدد التقييمات الشهري': 'Monthly ratings count',
+    'توزيع النجوم': 'Star distribution',
+    'لا توجد تقييمات بعد': 'No ratings yet',
+    'لا توجد تقييمات ضمن الفترة المحددة':
+        'No ratings in the selected period',
+    'أحدث التقييمات': 'Latest ratings',
+    'سجلات التدقيق': 'Audit logs',
+    'منذ البداية': 'From the beginning',
+    'حتى اليوم': 'Until today',
+    'كل العمليات': 'All actions',
+    'اسم الجدول…': 'Table name...',
+    'رقم الحساب أو البريد…': 'Account number or email...',
+    'لا يوجد حساب فعّال لعرض السجلات.':
+        'There is no active account to show logs.',
+    'قبل التعديل': 'Before changes',
+    'بعد التعديل': 'After changes',
+    'المنفّذ': 'Actor',
+    'طلبات اشتراك جديدة بانتظار الاعتماد.':
+        'New subscription requests are awaiting approval.',
+    'طلبات موظفين جديدة بانتظار المراجعة.':
+        'New employee requests are awaiting review.',
+    'شكاوى جديدة بانتظار المراجعة.':
+        'New complaints are awaiting review.',
+    'تم حذف العيادة': 'The clinic was deleted',
+    'سيتم تعطيل الحساب': 'The account will be disabled',
+    'سيتم تفعيل الحساب': 'The account will be activated',
+    'هل تريد حذف الحساب': 'Do you want to delete the account',
+    'تجريبية شهرية': 'Monthly trial',
+    'شهرية قديمة': 'Legacy monthly',
+    'شهرية بلس قديمة': 'Legacy monthly plus',
+    'شهرية برو قديمة': 'Legacy monthly pro',
+    'سنوية': 'Annual',
+    'سنوية بلس': 'Annual Plus',
+    'سنوية برو': 'Annual Pro',
+  };
+
   static final Map<String, String> _exact = <String, String>{
+    ..._exactSupplemental,
     'إلغاء': 'Cancel',
     'حذف': 'Delete',
     'حفظ': 'Save',
@@ -1371,6 +1683,40 @@ abstract final class RawStringLocalizer {
 
   static final List<MapEntry<String, String>> _containedGlossary =
       <MapEntry<String, String>>[
+    const MapEntry<String, String>('تعذّر تحميل ', 'Unable to load '),
+    const MapEntry<String, String>('تعذر تحميل ', 'Unable to load '),
+    const MapEntry<String, String>('تعذّر تصدير ', 'Unable to export '),
+    const MapEntry<String, String>('تعذر تصدير ', 'Unable to export '),
+    const MapEntry<String, String>('تعذّر إنشاء ', 'Unable to create '),
+    const MapEntry<String, String>('تعذر إنشاء ', 'Unable to create '),
+    const MapEntry<String, String>('تعذّر تحديث ', 'Unable to update '),
+    const MapEntry<String, String>('تعذر تحديث ', 'Unable to update '),
+    const MapEntry<String, String>('تعذّر تغيير ', 'Unable to change '),
+    const MapEntry<String, String>('تعذر تغيير ', 'Unable to change '),
+    const MapEntry<String, String>('تعذّر حذف ', 'Unable to delete '),
+    const MapEntry<String, String>('تعذر حذف ', 'Unable to delete '),
+    const MapEntry<String, String>('تعذّر عرض ', 'Unable to display '),
+    const MapEntry<String, String>('تعذر عرض ', 'Unable to display '),
+    const MapEntry<String, String>('تعذّر اعتماد ', 'Unable to approve '),
+    const MapEntry<String, String>('تعذر اعتماد ', 'Unable to approve '),
+    const MapEntry<String, String>('تعذّر رفض ', 'Unable to reject '),
+    const MapEntry<String, String>('تعذر رفض ', 'Unable to reject '),
+    const MapEntry<String, String>('تعذّر فتح ', 'Unable to open '),
+    const MapEntry<String, String>('تعذر فتح ', 'Unable to open '),
+    const MapEntry<String, String>('سيتم حذف ', 'Will delete '),
+    const MapEntry<String, String>('سيتم تفعيل ', 'Will activate '),
+    const MapEntry<String, String>('سيتم تعطيل ', 'Will disable '),
+    const MapEntry<String, String>('الحالة: ', 'Status: '),
+    const MapEntry<String, String>('الخطة: ', 'Plan: '),
+    const MapEntry<String, String>('الدور: ', 'Role: '),
+    const MapEntry<String, String>('الاسم: ', 'Name: '),
+    const MapEntry<String, String>('البريد: ', 'Email: '),
+    const MapEntry<String, String>('الرقم: ', 'Number: '),
+    const MapEntry<String, String>('تاريخ الإضافة: ', 'Added on: '),
+    const MapEntry<String, String>('الانتهاء: ', 'Ends on: '),
+    const MapEntry<String, String>('المدفوعات: ', 'Payments: '),
+    const MapEntry<String, String>('الحسابات: ', 'Accounts: '),
+    const MapEntry<String, String>('رد الإدارة: ', 'Admin reply: '),
     const MapEntry<String, String>('عدد المرضى: ', 'Patients: '),
     const MapEntry<String, String>('عدد الحالات: ', 'Cases: '),
     const MapEntry<String, String>('النتائج: ', 'Results: '),

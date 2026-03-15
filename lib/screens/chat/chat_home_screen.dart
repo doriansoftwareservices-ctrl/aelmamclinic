@@ -271,7 +271,9 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
                     final lastMessage =
                         _latestMessageFor(chat, conversation.id);
                     final subtitleOverride =
-                        typing.isNotEmpty ? 'جارٍ الكتابة...' : null;
+                        typing.isNotEmpty
+                            ? context.trRaw('جارٍ الكتابة...')
+                            : null;
                     final isOpen = chat.openedConversationId == conversation.id;
 
                     return Padding(
@@ -596,7 +598,9 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
                 leading: Icon(
                   archived ? Icons.unarchive_rounded : Icons.archive_rounded,
                 ),
-                title: Text(archived ? 'إلغاء الأرشفة' : 'أرشفة المحادثة'),
+                title: LocalizedText(
+                  archived ? 'إلغاء الأرشفة' : 'أرشفة المحادثة',
+                ),
                 onTap: () async {
                   Navigator.of(context).pop();
                   await chat.setConversationArchived(

@@ -445,8 +445,10 @@ class ChatRealtimeNotifier {
           chat_participants(
             where: {
               user_uid: {_eq: $uid},
-              account_id: {_eq: $accountId},
-              _or: [{is_deleted: {_eq: false}}, {is_deleted: {_is_null: true}}]
+              _and: [
+                {_or: [{account_id: {_eq: $accountId}}, {account_id: {_is_null: true}}]},
+                {_or: [{is_deleted: {_eq: false}}, {is_deleted: {_is_null: true}}]}
+              ]
             }
           ) {
             conversation_id
@@ -512,8 +514,10 @@ class ChatRealtimeNotifier {
         chat_participants(
           where: {
             user_uid: {_eq: $uid},
-            account_id: {_eq: $accountId},
-            _or: [{is_deleted: {_eq: false}}, {is_deleted: {_is_null: true}}]
+            _and: [
+              {_or: [{account_id: {_eq: $accountId}}, {account_id: {_is_null: true}}]},
+              {_or: [{is_deleted: {_eq: false}}, {is_deleted: {_is_null: true}}]}
+            ]
           }
         ) {
           conversation_id

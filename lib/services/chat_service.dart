@@ -2293,7 +2293,6 @@ class ChatService {
     for (final m in messages) {
       if (m.senderUid == uid) continue;
       if (m.id.isEmpty || m.id.startsWith('local-')) continue;
-      if (m.attachments.isNotEmpty) continue;
       if (lastIncoming == null || m.createdAt.isAfter(lastIncoming.createdAt)) {
         lastIncoming = m;
       }

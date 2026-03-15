@@ -103,22 +103,47 @@ async function runSql(sql, readOnly = false) {
   if (!url || !adminSecret) {
     throw new Error('Missing HASURA admin secret for SQL');
   }
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-hasura-admin-secret': adminSecret,
-    },
-    body: JSON.stringify({
-      type: 'run_sql',
-      args: { source: 'default', read_only: readOnly, sql },
-    }),
-  });
-  if (!res.ok) {
-    const txt = await res.text();
-    throw new Error(`run_sql failed: ${res.status} ${txt}`);
-  }
-  return res.json();
+  const execute = async (includeSource) => {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-hasura-admin-secret': adminSecret,
+      },
+      body: JSON.stringify({
+        type: 'run_sql',
+        args: {
+          ...(includeSource ? { source: 'default' } : {}),
+          read_only: !!readOnly,
+          sql,
+        },
+      }),
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      if (
+        includeSource &&
+        text.includes('source with name "default" does not exist')
+      ) {
+        return execute(false);
+      }
+      throw new Error(`run_sql failed: ${res.status} ${text}`);
+    }
+    let json;
+    try {
+      json = text ? JSON.parse(text) : {};
+    } catch (_) {
+      throw new Error(`run_sql returned invalid JSON: ${text}`);
+    }
+    if (
+      includeSource &&
+      `${json?.error ?? ''}`.includes('source with name "default" does not exist')
+    ) {
+      return execute(false);
+    }
+    return json;
+  };
+  return execute(true);
 }
 
 async function lookupAuthUserId(email) {
@@ -152,10 +177,26 @@ async function ensureAuthUser(email, password) {
   if (!userId) {
     userId = await lookupAuthUserId(email);
   }
-  if (!userId) {
-    throw new Error('Auth user not found after signup');
+  if (userId) return userId;
+  for (let i = 0; i < 6; i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    userId = await lookupAuthUserId(email);
+    if (userId) return userId;
   }
-  return userId;
+  throw new Error('Auth user not found after signup');
+}
+
+async function createOrGetUser(email, password) {
+  let userId = await signUpUser(email, password);
+  if (userId) {
+    return { id: userId, existed: false };
+  }
+  userId = await lookupAuthUserId(email);
+  if (userId) {
+    return { id: userId, existed: true };
+  }
+  userId = await ensureAuthUser(email, password);
+  return { id: userId, existed: true };
 }
 
 const sanitizeTabs = (tabs) => {
@@ -167,6 +208,38 @@ const sanitizeTabs = (tabs) => {
 };
 
 const escapeLiteral = (value) => `${value}`.replace(/'/g, "''");
+
+const adminUserEndpoints = (authUrl) => {
+  if (!authUrl) return [];
+  const raw = authUrl.replace(/\/+$/, '');
+  const root = raw.replace(/\/v1$/i, '');
+  const endpoints = [
+    `${raw}/admin/users`,
+    `${root}/admin/users`,
+    `${root}/v1/admin/users`,
+  ];
+  return [...new Set(endpoints)];
+};
+
+async function deleteUser(userId) {
+  const authUrl = resolveAuthUrl();
+  const adminSecret =
+    process.env.GRAPHQL_ADMIN_SECRET ||
+    process.env.NHOST_ADMIN_SECRET ||
+    process.env.HASURA_GRAPHQL_ADMIN_SECRET;
+  if (!authUrl || !adminSecret || !userId) return;
+  const headers = {
+    'x-hasura-admin-secret': adminSecret,
+    Authorization: `Bearer ${adminSecret}`,
+  };
+  for (const endpoint of adminUserEndpoints(authUrl)) {
+    const res = await fetch(`${endpoint}/${userId}`, {
+      method: 'DELETE',
+      headers,
+    });
+    if (res.status !== 404) break;
+  }
+}
 
 const isUuid = (value) => /^[0-9a-f-]{36}$/i.test(`${value ?? ''}`);
 
@@ -207,6 +280,7 @@ async function ensureWhitelistEmail(email) {
 }
 
 module.exports = async function handler(req, res) {
+  let created = null;
   try {
     const body = await readBody(req);
     const authHeader = req.headers?.authorization;
@@ -239,7 +313,8 @@ module.exports = async function handler(req, res) {
     }
 
     const allowedTabs = sanitizeTabs(body.allowed_tabs);
-    const userId = await ensureAuthUser(email, password);
+    created = await createOrGetUser(email, password);
+    const userId = created.id;
 
     await ensureWhitelistEmail(email);
 
@@ -276,6 +351,9 @@ module.exports = async function handler(req, res) {
       allowed_tabs: allowedTabs,
     });
   } catch (err) {
+    if (created && created.id && created.existed === false) {
+      await deleteUser(created.id);
+    }
     const code = err?.statusCode ?? 500;
     res.status(code).json({ ok: false, error: err?.message ?? 'Failed' });
   }

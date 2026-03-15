@@ -290,12 +290,12 @@ class _LoginScreenState extends State<LoginScreen> {
       return context.tr('auth_recovery_isolation_title');
     }
     if (auth.hasSuperAdminSessionRole) {
-      return 'استعادة جلسة الإدارة';
+      return context.trRaw('استعادة جلسة الإدارة');
     }
     if (auth.needsAccountContextResolution) {
-      return 'إكمال ربط الحساب';
+      return context.trRaw('إكمال ربط الحساب');
     }
-    return 'استعادة الجلسة';
+    return context.trRaw('استعادة الجلسة');
   }
 
   String _recoverySubtitle(AuthProvider auth) {
@@ -303,15 +303,21 @@ class _LoginScreenState extends State<LoginScreen> {
       return context.tr('auth_recovery_isolation_subtitle');
     }
     if (auth.hasSuperAdminSessionRole) {
-      return 'تم العثور على جلسة محلية للمشرف، لكن لوحة الإدارة تحتاج جلسة خادم صالحة قبل المتابعة.';
+      return context.trRaw(
+        'تم العثور على جلسة محلية للمشرف، لكن لوحة الإدارة تحتاج جلسة خادم صالحة قبل المتابعة.',
+      );
     }
     if (auth.needsAccountContextResolution) {
-      return 'تم تسجيل الدخول، لكن لم يتم تثبيت حساب العيادة الحالي بعد. يمكنك إعادة التحقق أو إكمال بيانات المرفق الصحي.';
+      return context.trRaw(
+        'تم تسجيل الدخول، لكن لم يتم تثبيت حساب العيادة الحالي بعد. يمكنك إعادة التحقق أو إكمال بيانات المرفق الصحي.',
+      );
     }
     if (auth.needsRemoteSessionRecovery) {
-      return 'الجلسة المحلية ما زالت موجودة، وسيتم استعادة جلسة الخادم في الخلفية عند توفر الاتصال.';
+      return context.trRaw(
+        'الجلسة المحلية ما زالت موجودة، وسيتم استعادة جلسة الخادم في الخلفية عند توفر الاتصال.',
+      );
     }
-    return 'هناك تحقق إضافي مطلوب قبل فتح التطبيق بالكامل.';
+    return context.trRaw('هناك تحقق إضافي مطلوب قبل فتح التطبيق بالكامل.');
   }
 
   IconData _recoveryIcon(AuthProvider auth) {
@@ -807,6 +813,8 @@ class _LoginScreenState extends State<LoginScreen> {
       _error = null;
     });
 
+    var shouldCleanupAuthSession = false;
+    var signupCompleted = false;
     try {
       if (auth.hasLocalSession || auth.hasNhostSession) {
         await auth.signOut();
@@ -836,6 +844,9 @@ class _LoginScreenState extends State<LoginScreen> {
           }
         }
       }
+      shouldCleanupAuthSession = auth.hasLocalSession ||
+          auth.hasNhostSession ||
+          ((auth.accessToken ?? '').isNotEmpty);
       await _persistRememberedCredentials(email: email);
       // Ensure stale superadmin header does not leak into user session.
       AuthRoleState.clear();
@@ -892,6 +903,7 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       await _checkAndRouteIfSignedIn(force: true);
+      signupCompleted = true;
     } catch (e) {
       if (!mounted) return;
       setState(
@@ -901,19 +913,32 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       );
     } finally {
+      if (!signupCompleted && shouldCleanupAuthSession) {
+        try {
+          await auth.signOut();
+        } catch (_) {}
+        AuthRoleState.clear();
+        NhostGraphqlService.refreshClient();
+      }
       if (mounted) setState(() => _loading = false);
     }
   }
 
   Future<ClinicProfileInput?> _askClinicProfile() async {
+    final isEnglish =
+        Localizations.localeOf(context).languageCode.toLowerCase().startsWith(
+              'en',
+            );
     final arStep = await _askClinicProfileStep(
-      title: 'بيانات المرفق الصحي (عربي)',
-      nameLabel: 'اسم المرفق الصحي',
-      cityLabel: 'المدينة',
-      streetLabel: 'الشارع',
-      nearLabel: 'بجوار',
-      phoneLabel: 'رقم الهاتف',
-      phone2Label: 'رقم هاتف إضافي (اختياري)',
+      title: context.trRaw('بيانات المرفق الصحي (عربي)'),
+      nameLabel:
+          isEnglish ? 'Clinic name (Arabic)' : 'اسم المرفق الصحي',
+      cityLabel: isEnglish ? 'City (Arabic)' : 'المدينة',
+      streetLabel: isEnglish ? 'Street (Arabic)' : 'الشارع',
+      nearLabel: isEnglish ? 'Near (Arabic)' : 'بجوار',
+      phoneLabel: isEnglish ? 'Phone number' : 'رقم الهاتف',
+      phone2Label:
+          isEnglish ? 'Additional phone (optional)' : 'رقم هاتف إضافي (اختياري)',
       prefillPhone: null,
       prefillPhone2: null,
     );
@@ -1157,17 +1182,19 @@ class _LoginScreenState extends State<LoginScreen> {
                                   final near = nearCtrl.text.trim();
                                   final phone = phoneCtrl.text.trim();
                                   final phone2 = phone2Ctrl.text.trim();
-                                  if (name.isEmpty ||
-                                      city.isEmpty ||
-                                      street.isEmpty ||
-                                      near.isEmpty ||
-                                      phone.isEmpty) {
+                                      if (name.isEmpty ||
+                                          city.isEmpty ||
+                                          street.isEmpty ||
+                                          near.isEmpty ||
+                                          phone.isEmpty) {
                                     ScaffoldMessenger.of(ctx).showSnackBar(
                                       SnackBar(
                                         content: Text(
                                           isEnglish
                                               ? 'Please fill all fields.'
-                                              : 'يرجى تعبئة جميع الحقول.',
+                                              : context.trRaw(
+                                                  'يرجى تعبئة جميع الحقول.',
+                                                ),
                                         ),
                                       ),
                                     );
@@ -1438,7 +1465,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                       if ((auth.email ?? '').trim().isNotEmpty)
                                         const SizedBox(height: 8),
                                       Text(
-                                        'حالة الجلسة: ${auth.sessionTopologyState}',
+                                        '${context.trRaw('حالة الجلسة')}: ${auth.sessionTopologyState}',
                                         textAlign: TextAlign.center,
                                         style: TextStyle(
                                           fontSize: 11.5,
@@ -1592,7 +1619,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                     width: double.infinity,
                                     child: NeuButton.primary(
                                       label: auth.needsAccountContextResolution
-                                          ? 'إعادة التحقق من الحساب'
+                                          ? context.trRaw(
+                                              'إعادة التحقق من الحساب',
+                                            )
                                           : context.tr('common_retry_now'),
                                       leading: _loading
                                           ? const SizedBox(
@@ -1631,7 +1660,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                     SizedBox(
                                       width: double.infinity,
                                       child: NeuButton.flat(
-                                        label: 'إكمال إنشاء الحساب',
+                                        label: context.trRaw(
+                                          'إكمال إنشاء الحساب',
+                                        ),
                                         icon: Icons.apartment_rounded,
                                         mainAxisAlignment:
                                             MainAxisAlignment.center,

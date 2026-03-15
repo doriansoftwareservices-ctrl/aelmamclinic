@@ -62,7 +62,7 @@ class NhostConfig {
   );
   static String? _overrideRootSuperAdminEmail;
 
-  /// Nhost project subdomain (e.g. `mergrgclboxflnucehgb`).
+  /// Nhost project subdomain (e.g. `ujxbrdbrjbujvlylpbbn`).
   static String get subdomain =>
       _overrideSubdomain ??
       _normalizeOrFallback(_defaultSubdomain, _fallbackSubdomain);

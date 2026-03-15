@@ -85,29 +85,74 @@ const resolveRunSqlUrl = () => {
   return `${base}/v2/query`;
 };
 
-async function runSql(sql) {
+async function runSql(sql, readOnly = true) {
   const url = resolveRunSqlUrl();
   const adminSecret =
     process.env.GRAPHQL_ADMIN_SECRET || process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
   if (!url || !adminSecret) {
     throw new Error('Missing HASURA admin secret for SQL');
   }
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-hasura-admin-secret': adminSecret,
-    },
-    body: JSON.stringify({
-      type: 'run_sql',
-      args: { source: 'default', read_only: true, sql },
-    }),
+  const execute = async (includeSource) => {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-hasura-admin-secret': adminSecret,
+      },
+      body: JSON.stringify({
+        type: 'run_sql',
+        args: {
+          ...(includeSource ? { source: 'default' } : {}),
+          read_only: !!readOnly,
+          sql,
+        },
+      }),
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      if (
+        includeSource &&
+        text.includes('source with name "default" does not exist')
+      ) {
+        return execute(false);
+      }
+      throw new Error(`run_sql failed: ${res.status} ${text}`);
+    }
+    let json;
+    try {
+      json = text ? JSON.parse(text) : {};
+    } catch (_) {
+      throw new Error(`run_sql returned invalid JSON: ${text}`);
+    }
+    if (
+      includeSource &&
+      `${json?.error ?? ''}`.includes('source with name "default" does not exist')
+    ) {
+      return execute(false);
+    }
+    return json;
+  };
+  return execute(true);
+}
+
+function normalizeSqlCell(value) {
+  if (value === null || value === undefined || value === 'NULL') return null;
+  if (value === 't') return true;
+  if (value === 'f') return false;
+  return value;
+}
+
+function firstResultObject(json) {
+  const rows = Array.isArray(json?.result) ? json.result : null;
+  if (!rows || rows.length < 2) return null;
+  const headers = Array.isArray(rows[0]) ? rows[0] : null;
+  const values = Array.isArray(rows[1]) ? rows[1] : null;
+  if (!headers || !values) return null;
+  const out = {};
+  headers.forEach((header, index) => {
+    out[header] = normalizeSqlCell(values[index]);
   });
-  if (!res.ok) {
-    const txt = await res.text();
-    throw new Error(`run_sql failed: ${res.status} ${txt}`);
-  }
-  return res.json();
+  return out;
 }
 
 async function lookupAuthUserId(email) {
@@ -204,91 +249,23 @@ async function callAdminCreateEmployee(
   accountId,
   email,
   password,
-  authHeader,
-  superUserId,
 ) {
-  const gqlUrl = process.env.NHOST_GRAPHQL_URL;
-  const adminSecret =
-    process.env.GRAPHQL_ADMIN_SECRET || process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
-  if (!gqlUrl) {
-    throw new Error('Missing NHOST_GRAPHQL_URL');
-  }
-  if (!authHeader) {
-    throw new Error('Missing authorization');
-  }
-  const query = `
-    mutation CreateEmployee($account: uuid!, $email: String!, $password: String!) {
-      admin_create_employee_full(
-        args: {p_account: $account, p_email: $email, p_password: $password}
-      ) {
-        ok
-        error
-        account_id
-        user_uid
-        role
-      }
-    }
+  const sql = `
+    select set_config('request.jwt.claim.role', 'service_role', true);
+    select *
+    from public.admin_create_employee_full(
+      '${String(accountId).replace(/'/g, "''")}'::uuid,
+      '${String(email).replace(/'/g, "''")}',
+      '${String(password).replace(/'/g, "''")}'
+    );
   `;
-  const payload = {
-    query,
-    variables: { account: accountId, email, password },
-  };
-  const baseHeaders = {
-    'Content-Type': 'application/json',
-    'x-hasura-role': 'superadmin',
-  };
-  if (superUserId) {
-    baseHeaders['x-hasura-user-id'] = superUserId;
-  }
-  const run = async (headers) => {
-    const res = await fetch(gqlUrl, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      const txt = await res.text();
-      throw new Error(`GraphQL failed: ${res.status} ${txt}`);
-    }
-    const json = await res.json();
-    if (json.errors?.length) {
-      const details = json.errors.map((e) =>
-        JSON.stringify({
-          message: e.message,
-          internal: e.extensions?.internal,
-          path: e.path,
-        }),
-      );
-      throw new Error(details.join(' | '));
-    }
-    const rows = json.data?.admin_create_employee_full;
-    if (Array.isArray(rows) && rows.length > 0) {
-      return rows[0];
-    }
-    if (rows && typeof rows === 'object') {
-      return rows;
-    }
-    return { ok: false, error: 'No data' };
-  };
   const attempt = async () => {
-    try {
-      return await run({
-        ...baseHeaders,
-        Authorization: authHeader,
-      });
-    } catch (err) {
-      if (!adminSecret) {
-        throw err;
-      }
-      return run({
-        ...baseHeaders,
-        'x-hasura-admin-secret': adminSecret,
-        'x-hasura-role': 'service_role',
-      });
+    const row = firstResultObject(await runSql(sql, false));
+    if (!row) {
+      throw new Error('admin_create_employee_full returned no data');
     }
+    return row;
   };
-
-  // Retry once if auth user replication hasn't landed yet.
   try {
     return await attempt();
   } catch (err) {
@@ -300,88 +277,30 @@ async function callAdminCreateEmployee(
   return attempt();
 }
 
-async function ensureSuperAdmin(authHeader) {
-  const gqlUrl = process.env.NHOST_GRAPHQL_URL;
-  if (!gqlUrl) {
-    throw new Error('Missing NHOST_GRAPHQL_URL');
-  }
-  const query = 'query { fn_is_super_admin_gql { is_super_admin } }';
-  const res = await fetch(gqlUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: authHeader,
-    },
-    body: JSON.stringify({ query }),
-  });
-  if (!res.ok) {
-    throw new Error(`Auth check failed: ${res.status}`);
-  }
-  const json = await res.json();
-  if (json.errors?.length) {
-    throw new Error(json.errors.map((e) => e.message).join(' | '));
-  }
-  const rows = json.data?.fn_is_super_admin_gql;
-  const isSuper =
-    Array.isArray(rows) && rows.length > 0 && rows[0]?.is_super_admin === true;
-  if (!isSuper) {
-    const err = new Error('forbidden');
-    err.statusCode = 403;
-    throw err;
-  }
+async function lookupAuthEmailById(userId) {
+  const safeId = String(userId || '').replace(/'/g, "''");
+  const sql = `select email from auth.users where id='${safeId}' limit 1;`;
+  const json = await runSql(sql);
+  const row = Array.isArray(json?.result) ? json.result[1] : null;
+  return row ? `${row[0] ?? ''}`.toLowerCase().trim() : '';
 }
 
-async function ensureAccountPaid(accountId, authHeader) {
-  const gqlUrl = process.env.NHOST_GRAPHQL_URL;
-  const adminSecret =
-    process.env.GRAPHQL_ADMIN_SECRET || process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
-  if (!gqlUrl) {
-    throw new Error('Missing NHOST_GRAPHQL_URL');
-  }
-  const query = `
-    query AccountPaid($account: uuid!) {
-      account_is_paid_gql(args: {p_account: $account}) {
-        account_is_paid
-      }
-    }
+async function isSuperAdminUser(userId, email) {
+  const safeId = String(userId || '').replace(/'/g, "''");
+  const safeEmail = String(email || '').replace(/'/g, "''");
+  const sql = `
+    select 1
+    from auth.user_roles
+    where user_id='${safeId}' and role='superadmin'
+    union all
+    select 1
+    from public.super_admins
+    where user_uid='${safeId}' or lower(email)=lower('${safeEmail}')
+    limit 1;
   `;
-  const payload = { query, variables: { account: accountId } };
-  const run = async (headers) => {
-    const res = await fetch(gqlUrl, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      throw new Error(`Plan check failed: ${res.status}`);
-    }
-    const json = await res.json();
-    if (json.errors?.length) {
-      throw new Error(json.errors.map((e) => e.message).join(' | '));
-    }
-    const raw = json.data?.account_is_paid_gql;
-    if (Array.isArray(raw) && raw.length > 0) {
-      return raw[0]?.account_is_paid === true;
-    }
-    return false;
-  };
-
-  try {
-    return await run({
-      'Content-Type': 'application/json',
-      Authorization: authHeader,
-      'x-hasura-role': 'superadmin',
-    });
-  } catch (err) {
-    if (!adminSecret) {
-      throw err;
-    }
-    return run({
-      'Content-Type': 'application/json',
-      'x-hasura-admin-secret': adminSecret,
-      'x-hasura-role': 'service_role',
-    });
-  }
+  const json = await runSql(sql);
+  const row = Array.isArray(json?.result) ? json.result[1] : null;
+  return !!row;
 }
 
 module.exports = async function handler(req, res) {
@@ -393,7 +312,6 @@ module.exports = async function handler(req, res) {
       res.status(401).json({ ok: false, error: 'Missing authorization' });
       return;
     }
-    await ensureSuperAdmin(authHeader);
     const accountId = `${body.account_id ?? ''}`.trim();
     const email = `${body.email ?? ''}`.trim().toLowerCase();
     const password = `${body.password ?? ''}`;
@@ -408,10 +326,9 @@ module.exports = async function handler(req, res) {
       res.status(401).json({ ok: false, error: 'Invalid token' });
       return;
     }
-
-    const paid = await ensureAccountPaid(accountId, authHeader);
-    if (!paid) {
-      res.status(403).json({ ok: false, error: 'plan is free' });
+    const callerEmail = await lookupAuthEmailById(superUserId);
+    if (!(await isSuperAdminUser(superUserId, callerEmail))) {
+      res.status(403).json({ ok: false, error: 'forbidden' });
       return;
     }
 
@@ -420,8 +337,6 @@ module.exports = async function handler(req, res) {
       accountId,
       email,
       password,
-      authHeader,
-      superUserId,
     );
     res.json(result);
   } catch (err) {

@@ -87,22 +87,47 @@ async function runSql(sql) {
   if (!url || !adminSecret) {
     throw new Error('Missing HASURA admin secret for SQL');
   }
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-hasura-admin-secret': adminSecret,
-    },
-    body: JSON.stringify({
-      type: 'run_sql',
-      args: { source: 'default', read_only: true, sql },
-    }),
-  });
-  if (!res.ok) {
-    const txt = await res.text();
-    throw new Error(`run_sql failed: ${res.status} ${txt}`);
-  }
-  return res.json();
+  const execute = async (includeSource) => {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-hasura-admin-secret': adminSecret,
+      },
+      body: JSON.stringify({
+        type: 'run_sql',
+        args: {
+          ...(includeSource ? { source: 'default' } : {}),
+          read_only: true,
+          sql,
+        },
+      }),
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      if (
+        includeSource &&
+        text.includes('source with name "default" does not exist')
+      ) {
+        return execute(false);
+      }
+      throw new Error(`run_sql failed: ${res.status} ${text}`);
+    }
+    let json;
+    try {
+      json = text ? JSON.parse(text) : {};
+    } catch (_) {
+      throw new Error(`run_sql returned invalid JSON: ${text}`);
+    }
+    if (
+      includeSource &&
+      `${json?.error ?? ''}`.includes('source with name "default" does not exist')
+    ) {
+      return execute(false);
+    }
+    return json;
+  };
+  return execute(true);
 }
 
 const escapeLiteral = (value) => `${value}`.replace(/'/g, "''");

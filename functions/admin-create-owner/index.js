@@ -1,3 +1,8 @@
+const {
+  extractBearer,
+  resolveUserIdFromToken,
+} = require('../_shared/storage_utils');
+
 const readBody = (req) =>
   new Promise((resolve) => {
     if (req.body && typeof req.body === 'object') {
@@ -80,32 +85,77 @@ const resolveRunSqlUrl = () => {
   return `${base}/v2/query`;
 };
 
-async function runSql(sql) {
+async function runSql(sql, readOnly = true) {
   const url = resolveRunSqlUrl();
   const adminSecret =
     process.env.GRAPHQL_ADMIN_SECRET || process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
   if (!url || !adminSecret) {
     throw new Error('Missing HASURA admin secret for SQL');
   }
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-hasura-admin-secret': adminSecret,
-    },
-    body: JSON.stringify({
-      type: 'run_sql',
-      args: { source: 'default', read_only: true, sql },
-    }),
-  });
-  if (!res.ok) {
-    const txt = await res.text();
-    throw new Error(`run_sql failed: ${res.status} ${txt}`);
-  }
-  return res.json();
+  const execute = async (includeSource) => {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-hasura-admin-secret': adminSecret,
+      },
+      body: JSON.stringify({
+        type: 'run_sql',
+        args: {
+          ...(includeSource ? { source: 'default' } : {}),
+          read_only: !!readOnly,
+          sql,
+        },
+      }),
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      if (
+        includeSource &&
+        text.includes('source with name "default" does not exist')
+      ) {
+        return execute(false);
+      }
+      throw new Error(`run_sql failed: ${res.status} ${text}`);
+    }
+    let json;
+    try {
+      json = text ? JSON.parse(text) : {};
+    } catch (_) {
+      throw new Error(`run_sql returned invalid JSON: ${text}`);
+    }
+    if (
+      includeSource &&
+      `${json?.error ?? ''}`.includes('source with name "default" does not exist')
+    ) {
+      return execute(false);
+    }
+    return json;
+  };
+  return execute(true);
 }
 
 const escapeLiteral = (value) => `${value}`.replace(/'/g, "''");
+
+function normalizeSqlCell(value) {
+  if (value === null || value === undefined || value === 'NULL') return null;
+  if (value === 't') return true;
+  if (value === 'f') return false;
+  return value;
+}
+
+function firstResultObject(json) {
+  const rows = Array.isArray(json?.result) ? json.result : null;
+  if (!rows || rows.length < 2) return null;
+  const headers = Array.isArray(rows[0]) ? rows[0] : null;
+  const values = Array.isArray(rows[1]) ? rows[1] : null;
+  if (!headers || !values) return null;
+  const out = {};
+  headers.forEach((header, index) => {
+    out[header] = normalizeSqlCell(values[index]);
+  });
+  return out;
+}
 
 async function lookupAuthUserId(email) {
   const safeEmail = escapeLiteral(email);
@@ -113,6 +163,32 @@ async function lookupAuthUserId(email) {
   const json = await runSql(sql);
   const row = Array.isArray(json?.result) ? json.result[1] : null;
   return row ? row[0] : null;
+}
+
+async function lookupAuthEmailById(userId) {
+  const safeId = escapeLiteral(userId);
+  const sql = `select email from auth.users where id='${safeId}' limit 1;`;
+  const json = await runSql(sql, true);
+  const row = Array.isArray(json?.result) ? json.result[1] : null;
+  return row ? `${row[0] ?? ''}`.toLowerCase().trim() : '';
+}
+
+async function isSuperAdminUser(userId, email) {
+  const safeId = escapeLiteral(userId);
+  const safeEmail = escapeLiteral(email);
+  const sql = `
+    select 1
+    from auth.user_roles
+    where user_id='${safeId}' and role='superadmin'
+    union all
+    select 1
+    from public.super_admins
+    where user_uid='${safeId}' or lower(email)=lower('${safeEmail}')
+    limit 1;
+  `;
+  const json = await runSql(sql, true);
+  const row = Array.isArray(json?.result) ? json.result[1] : null;
+  return !!row;
 }
 
 async function signUpUser(email, password) {
@@ -138,6 +214,12 @@ async function ensureAuthUser(email, password) {
   if (!userId) {
     userId = await lookupAuthUserId(email);
   }
+  if (userId) return userId;
+  for (let i = 0; i < 6; i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    userId = await lookupAuthUserId(email);
+    if (userId) return userId;
+  }
   if (!userId) {
     throw new Error('Auth user not found after signup');
   }
@@ -157,8 +239,22 @@ const adminUserEndpoints = (authUrl) => {
 };
 
 async function createOrGetUser(email, password) {
-  const userId = await ensureAuthUser(email, password);
-  return { id: userId, existed: true };
+  let userId = await signUpUser(email, password);
+  if (userId) {
+    return { id: userId, existed: false };
+  }
+  userId = await lookupAuthUserId(email);
+  if (userId) {
+    return { id: userId, existed: true };
+  }
+  for (let i = 0; i < 6; i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    userId = await lookupAuthUserId(email);
+    if (userId) {
+      return { id: userId, existed: true };
+    }
+  }
+  throw new Error('Auth user not found after signup');
 }
 
 async function deleteUser(userId) {
@@ -183,105 +279,21 @@ async function callAdminCreateOwner(
   clinicName,
   ownerEmail,
   ownerPassword,
-  authHeader,
 ) {
-  const gqlUrl = process.env.NHOST_GRAPHQL_URL;
-  const adminSecret =
-    process.env.GRAPHQL_ADMIN_SECRET || process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
-  if (!gqlUrl) {
-    throw new Error('Missing NHOST_GRAPHQL_URL');
-  }
-  if (!authHeader) {
-    throw new Error('Missing authorization');
-  }
-  const query = `
-    mutation CreateOwner($clinic: String!, $email: String!, $password: String!) {
-      admin_create_owner_full(
-        args: {p_clinic_name: $clinic, p_owner_email: $email, p_owner_password: $password}
-      ) {
-        ok
-        error
-        account_id
-        owner_uid
-        user_uid
-        role
-      }
-    }
+  const sql = `
+    select set_config('request.jwt.claim.role', 'service_role', true);
+    select *
+    from public.admin_create_owner_full(
+      '${escapeLiteral(clinicName)}',
+      '${escapeLiteral(ownerEmail)}',
+      '${escapeLiteral(ownerPassword)}'
+    );
   `;
-  const payload = {
-    query,
-    variables: { clinic: clinicName, email: ownerEmail, password: ownerPassword },
-  };
-  const run = async (headers) => {
-    const res = await fetch(gqlUrl, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      const txt = await res.text();
-      throw new Error(`GraphQL failed: ${res.status} ${txt}`);
-    }
-    const json = await res.json();
-    if (json.errors?.length) {
-      throw new Error(json.errors.map((e) => e.message).join(' | '));
-    }
-    const rows = json.data?.admin_create_owner_full;
-    if (Array.isArray(rows) && rows.length > 0) {
-      return rows[0];
-    }
-    if (rows && typeof rows === 'object') {
-      return rows;
-    }
-    return { ok: false, error: 'No data' };
-  };
-  try {
-    return await run({
-      'Content-Type': 'application/json',
-      Authorization: authHeader,
-      'x-hasura-role': 'superadmin',
-    });
-  } catch (err) {
-    if (!adminSecret) {
-      throw err;
-    }
-    return run({
-      'Content-Type': 'application/json',
-      'x-hasura-admin-secret': adminSecret,
-      'x-hasura-role': 'service_role',
-    });
+  const row = firstResultObject(await runSql(sql, false));
+  if (!row) {
+    throw new Error('admin_create_owner_full returned no data');
   }
-}
-
-async function ensureSuperAdmin(authHeader) {
-  const gqlUrl = process.env.NHOST_GRAPHQL_URL;
-  if (!gqlUrl) {
-    throw new Error('Missing NHOST_GRAPHQL_URL');
-  }
-  const query = 'query { fn_is_super_admin_gql { is_super_admin } }';
-  const res = await fetch(gqlUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: authHeader,
-    },
-    body: JSON.stringify({ query }),
-  });
-  if (!res.ok) {
-    throw new Error(`Auth check failed: ${res.status}`);
-  }
-  const json = await res.json();
-  if (json.errors?.length) {
-    throw new Error(json.errors.map((e) => e.message).join(' | '));
-  }
-  const rows = json.data?.fn_is_super_admin_gql;
-  const isSuper =
-    Array.isArray(rows) && rows.length > 0 && rows[0]?.is_super_admin === true;
-  if (!isSuper) {
-    const err = new Error('forbidden');
-    err.statusCode = 403;
-    throw err;
-  }
+  return row;
 }
 
 module.exports = async function handler(req, res) {
@@ -293,7 +305,17 @@ module.exports = async function handler(req, res) {
       res.status(401).json({ ok: false, error: 'Missing authorization' });
       return;
     }
-    await ensureSuperAdmin(authHeader);
+    const token = extractBearer(req);
+    const callerUid = token ? await resolveUserIdFromToken(token) : '';
+    if (!callerUid) {
+      res.status(401).json({ ok: false, error: 'Invalid token' });
+      return;
+    }
+    const callerEmail = await lookupAuthEmailById(callerUid);
+    if (!(await isSuperAdminUser(callerUid, callerEmail))) {
+      res.status(403).json({ ok: false, error: 'forbidden' });
+      return;
+    }
     const clinicName = `${body.clinic_name ?? ''}`.trim();
     const ownerEmail = `${body.owner_email ?? ''}`.trim().toLowerCase();
     const ownerPassword = `${body.owner_password ?? ''}`;
@@ -308,7 +330,6 @@ module.exports = async function handler(req, res) {
       clinicName,
       ownerEmail,
       ownerPassword,
-      authHeader,
     );
     res.json(result);
   } catch (err) {

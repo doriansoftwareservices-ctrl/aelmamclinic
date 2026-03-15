@@ -2090,6 +2090,22 @@ class ChatProvider extends ChangeNotifier {
       fromUid: senderUid,
     );
 
+    if (senderUid.isNotEmpty &&
+        senderUid != currentUid &&
+        _openedConversationId != cid) {
+      final messageId = (rec['id'] ?? '').toString();
+      if (messageId.isNotEmpty && createdAt != null) {
+        unawaited(
+          _maybeMarkDeliveredOnIncoming(
+            conversationId: cid,
+            messageId: messageId,
+            createdAt: createdAt,
+            senderUid: senderUid,
+          ),
+        );
+      }
+    }
+
     if (!(kind == 'system' && _isSupportRatingResponseBody(body))) {
       unawaited(_maybeSetPendingOnIncoming(cid, senderUid));
     } else {
@@ -2102,6 +2118,65 @@ class ChatProvider extends ChangeNotifier {
         ),
       );
     }
+  }
+
+  Future<void> _maybeMarkDeliveredOnIncoming({
+    required String conversationId,
+    required String messageId,
+    required DateTime createdAt,
+    required String senderUid,
+  }) async {
+    if (!_isOnline || _disposed) return;
+    final uid = currentUid;
+    if (uid.isEmpty || senderUid.isEmpty || senderUid == uid) return;
+    if (conversationId.isEmpty ||
+        messageId.isEmpty ||
+        messageId.startsWith('local-')) {
+      return;
+    }
+
+    final existingStates =
+        _readStatesByConv[conversationId] ?? const <CM.ChatReadState>[];
+    final existing = existingStates.firstWhere(
+      (s) => s.userUid == uid,
+      orElse: () => const CM.ChatReadState(conversationId: '', userUid: ''),
+    );
+    final prior = existing.userUid.isEmpty ? null : existing;
+    final deliveredAt = prior?.lastDeliveredAt;
+    if (deliveredAt != null && !deliveredAt.isBefore(createdAt)) {
+      return;
+    }
+
+    try {
+      await _chat.markDeliveredUpTo(
+        conversationId: conversationId,
+        messageId: messageId,
+        createdAt: createdAt,
+      );
+    } catch (_) {
+      return;
+    }
+
+    final states = List<CM.ChatReadState>.from(existingStates);
+    final updated = CM.ChatReadState(
+      conversationId: conversationId,
+      userUid: uid,
+      lastDeliveredAt: createdAt,
+      lastDeliveredMessageId: messageId,
+      lastReadAt: prior?.lastReadAt,
+      lastReadMessageId: prior?.lastReadMessageId,
+    );
+    final idx = states.indexWhere((s) => s.userUid == uid);
+    if (idx == -1) {
+      states.add(updated);
+    } else {
+      states[idx] = updated;
+    }
+    _readStatesByConv[conversationId] = states;
+    try {
+      await _local.upsertReadStates([updated]);
+    } catch (_) {}
+    unawaited(_applyReadsToOutgoing(conversationId));
   }
 
   String? _supportSnippetFromBody(String body) {

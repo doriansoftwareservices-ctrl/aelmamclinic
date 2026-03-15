@@ -94,24 +94,27 @@ class _ActivationScreenState extends State<ActivationScreen> {
   /*────────────────── إجراءات السيريال ──────────────────*/
   Future<void> _copyCode() async {
     await Clipboard.setData(ClipboardData(text: serialCode));
-    await ToastUtils.show("تم نسخ السيريال بنجاح");
+    if (!mounted) return;
+    await ToastUtils.show(context.trRaw('تم نسخ السيريال بنجاح'));
   }
 
   Future<void> _pasteCode() async {
     final data = await Clipboard.getData('text/plain');
     final txt = (data?.text ?? '').trim();
     if (txt.isEmpty) {
-      await ToastUtils.show("لا يوجد نص في الحافظة");
+      if (!mounted) return;
+      await ToastUtils.show(context.trRaw('لا يوجد نص في الحافظة'));
       return;
     }
     setState(() => codeController.text = txt);
-    await ToastUtils.show("تم اللصق");
+    if (!mounted) return;
+    await ToastUtils.show(context.trRaw('تم اللصق'));
   }
 
   Future<void> _shareCode() async {
     await SharePlus.instance.share(
       ShareParams(
-        text: 'السيريال الخاص بي: $serialCode',
+        text: '${context.trRaw('السيريال الخاص بي')}: $serialCode',
       ),
     );
   }
@@ -146,7 +149,7 @@ class _ActivationScreenState extends State<ActivationScreen> {
       _isLoading = false;
     });
 
-    await ToastUtils.show("تم تحديث السيريال");
+    await ToastUtils.show(context.trRaw('تم تحديث السيريال'));
   }
 
   /*────────────────── التفعيل ──────────────────*/
@@ -224,7 +227,8 @@ class _ActivationScreenState extends State<ActivationScreen> {
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);
     } else {
-      await ToastUtils.show("تعذر إجراء المكالمة.");
+      if (!mounted) return;
+      await ToastUtils.show(context.trRaw('تعذر إجراء المكالمة.'));
     }
   }
 
@@ -233,7 +237,8 @@ class _ActivationScreenState extends State<ActivationScreen> {
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } else {
-      await ToastUtils.show("تعذر فتح الواتساب.");
+      if (!mounted) return;
+      await ToastUtils.show(context.trRaw('تعذر فتح الواتساب.'));
     }
   }
 
@@ -274,7 +279,7 @@ class _ActivationScreenState extends State<ActivationScreen> {
               ListView(
                 padding: const EdgeInsets.fromLTRB(16, 14, 16, 120),
                 children: [
-                  const TSectionHeader('رمز الجهاز (Serial)'),
+                  TSectionHeader(context.trRaw('رمز الجهاز (Serial)')),
 
                   // عرض السيريال
                   NeuCard(
@@ -282,7 +287,8 @@ class _ActivationScreenState extends State<ActivationScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        LocalizedText('السيريال الخاص بك',
+                        LocalizedText(
+                          'السيريال الخاص بك',
                           style: TextStyle(
                             color: scheme.onSurface.withValues(alpha: .85),
                             fontWeight: FontWeight.w800,
@@ -313,7 +319,7 @@ class _ActivationScreenState extends State<ActivationScreen> {
                             Expanded(
                               child: TOutlinedButton(
                                 icon: Icons.copy_rounded,
-                                label: 'نسخ',
+                                label: context.trRaw('نسخ'),
                                 onPressed: _copyCode,
                               ),
                             ),
@@ -321,7 +327,7 @@ class _ActivationScreenState extends State<ActivationScreen> {
                             Expanded(
                               child: NeuButton.flat(
                                 icon: Icons.refresh_rounded,
-                                label: 'تحديث السيريال',
+                                label: context.trRaw('تحديث السيريال'),
                                 onPressed:
                                     _isLoading ? null : _refreshSerialCode,
                               ),
@@ -333,7 +339,7 @@ class _ActivationScreenState extends State<ActivationScreen> {
                   ),
 
                   const SizedBox(height: 18),
-                  const TSectionHeader('تفعيل التطبيق'),
+                  TSectionHeader(context.trRaw('تفعيل التطبيق')),
 
                   // إدخال رمز التفعيل
                   NeuCard(
@@ -353,7 +359,7 @@ class _ActivationScreenState extends State<ActivationScreen> {
                             Expanded(
                               child: TOutlinedButton(
                                 icon: Icons.paste_rounded,
-                                label: 'لصق',
+                                label: context.trRaw('لصق'),
                                 onPressed: _pasteCode,
                               ),
                             ),
@@ -362,7 +368,9 @@ class _ActivationScreenState extends State<ActivationScreen> {
                               icon: _isLoading
                                   ? Icons.hourglass_top_rounded
                                   : Icons.check_circle_rounded,
-                              label: _isLoading ? 'جارٍ التفعيل…' : 'تفعيل',
+                              label: _isLoading
+                                  ? context.trRaw('جارٍ التفعيل…')
+                                  : context.trRaw('تفعيل'),
                               onPressed: _isLoading ? null : _activateApp,
                             ),
                           ],
@@ -372,7 +380,7 @@ class _ActivationScreenState extends State<ActivationScreen> {
                   ),
 
                   const SizedBox(height: 18),
-                  const TSectionHeader('معلومات'),
+                  TSectionHeader(context.trRaw('معلومات')),
 
                   NeuCard(
                     padding: const EdgeInsets.symmetric(
@@ -424,14 +432,14 @@ class _ActivationScreenState extends State<ActivationScreen> {
                         Expanded(
                           child: TOutlinedButton(
                             icon: Icons.phone_rounded,
-                            label: 'اتصال',
+                            label: context.trRaw('اتصال'),
                             onPressed: _makePhoneCall,
                           ),
                         ),
                         const SizedBox(width: 10),
                         NeuButton.flat(
                           icon: FontAwesomeIcons.whatsapp,
-                          label: 'واتساب',
+                          label: context.trRaw('واتساب'),
                           onPressed: _launchWhatsApp,
                         ),
                       ],
