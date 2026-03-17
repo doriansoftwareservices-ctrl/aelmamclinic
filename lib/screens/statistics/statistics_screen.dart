@@ -25,6 +25,7 @@ import 'package:aelmamclinic/services/save_file_service.dart';
 import 'package:aelmamclinic/models/consumption.dart';
 import 'package:aelmamclinic/utils/pdf_fonts.dart';
 import 'package:aelmamclinic/utils/report_localizer.dart';
+import 'package:aelmamclinic/utils/pdf_text.dart';
 import 'package:aelmamclinic/providers/statistics_provider.dart';
 import 'package:aelmamclinic/providers/auth_provider.dart';
 import 'package:aelmamclinic/widgets/localized_text.dart';
@@ -112,98 +113,92 @@ class _PdfUtils {
       children: [
         if (clinic != null)
           pw.Row(
-            children: i18n.isRtl
-                ? <pw.Widget>[
-                    pw.Expanded(
-                      child: pw.Column(
-                        crossAxisAlignment: pw.CrossAxisAlignment.end,
-                        children: [
-                          pw.Text(i18n.pdf(i18n.clinicName(clinic)),
-                              textAlign: i18n.startAlign,
-                              style: pw.TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: pw.FontWeight.bold)),
-                          pw.Text(i18n.pdf(i18n.clinicAddress(clinic)),
-                              textAlign: i18n.startAlign,
-                              style: pw.TextStyle(
-                                  fontSize: 9, color: PdfColors.grey700)),
-                          pw.Text(
-                              i18n.pdf(i18n.withLabel('الهاتف', _clinicPhones(clinic))),
-                              textAlign: i18n.startAlign,
-                              style: pw.TextStyle(
-                                  fontSize: 9, color: PdfColors.grey700)),
-                        ],
-                      ),
-                    ),
-                    _logoBox(logo),
-                  ]
-                : <pw.Widget>[
-                    _logoBox(logo),
-                    pw.SizedBox(width: 12),
-                    pw.Expanded(
-                      child: pw.Column(
-                        crossAxisAlignment: pw.CrossAxisAlignment.start,
-                        children: [
-                          pw.Text(i18n.pdf(i18n.clinicName(clinic)),
-                              textAlign: i18n.startAlign,
-                              style: pw.TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: pw.FontWeight.bold)),
-                          pw.Text(i18n.pdf(i18n.clinicAddress(clinic)),
-                              textAlign: i18n.startAlign,
-                              style: pw.TextStyle(
-                                  fontSize: 9, color: PdfColors.grey700)),
-                          pw.Text(
-                              i18n.pdf(i18n.withLabel('الهاتف', _clinicPhones(clinic))),
-                              textAlign: i18n.startAlign,
-                              style: pw.TextStyle(
-                                  fontSize: 9, color: PdfColors.grey700)),
-                        ],
-                      ),
-                    ),
-                  ],
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Expanded(
+                child: _clinicInfoBlock(
+                  title: _clinicNameEn(clinic),
+                  address: _clinicAddressEn(clinic),
+                  phoneLabel: 'Phone',
+                  phoneValue: _clinicPhones(clinic),
+                  align: pw.TextAlign.left,
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                ),
+              ),
+              pw.SizedBox(width: 12),
+              _logoBox(logo),
+              pw.SizedBox(width: 12),
+              pw.Expanded(
+                child: _clinicInfoBlock(
+                  title: _clinicNameAr(clinic),
+                  address: _clinicAddressAr(clinic),
+                  phoneLabel: 'الهاتف',
+                  phoneValue: _clinicPhones(clinic),
+                  align: pw.TextAlign.right,
+                  crossAxisAlignment: pw.CrossAxisAlignment.end,
+                ),
+              ),
+            ],
           )
         else
           pw.Row(
-          children: [
-            _logoBox(logo),
-            pw.SizedBox(width: 12),
-            pw.Expanded(
-              child: pw.Column(
-                crossAxisAlignment:
-                    i18n.isRtl ? pw.CrossAxisAlignment.end : pw.CrossAxisAlignment.start,
-                children: [
-                  pw.Text(
+            children: [
+              _logoBox(logo),
+              pw.SizedBox(width: 12),
+              pw.Expanded(
+                child: pw.Column(
+                  crossAxisAlignment: i18n.isRtl
+                      ? pw.CrossAxisAlignment.end
+                      : pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
                       i18n.pdf(i18n.isRtl ? 'إلمام كلينك' : 'Elmam Clinic'),
                       textAlign: i18n.startAlign,
                       style: pw.TextStyle(
-                          fontSize: 16, fontWeight: pw.FontWeight.bold)),
-                  pw.Text(i18n.pdf(title),
+                        fontSize: 16,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
+                    pw.Text(
+                      i18n.pdf(title),
                       textAlign: i18n.startAlign,
-                      style: const pw.TextStyle(fontSize: 12)),
-                  if (subtitle != null)
-                    pw.Text(i18n.pdf(subtitle),
+                      style: const pw.TextStyle(fontSize: 12),
+                    ),
+                    if (subtitle != null)
+                      pw.Text(
+                        i18n.pdf(subtitle),
                         textAlign: i18n.startAlign,
                         style: pw.TextStyle(
-                            fontSize: 10, color: PdfColors.grey700)),
-                ],
+                          fontSize: 10,
+                          color: PdfColors.grey700,
+                        ),
+                      ),
+                  ],
+                ),
               ),
-            ),
             ],
           ),
         if (clinic != null)
           pw.Column(
             children: [
               pw.SizedBox(height: 6),
-              pw.Text(i18n.pdf(title),
+              pw.Text(
+                i18n.pdf(title),
+                textAlign: pw.TextAlign.center,
+                style: pw.TextStyle(
+                  fontSize: 12,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+              if (subtitle != null)
+                pw.Text(
+                  i18n.pdf(subtitle),
                   textAlign: pw.TextAlign.center,
                   style: pw.TextStyle(
-                      fontSize: 12, fontWeight: pw.FontWeight.bold)),
-              if (subtitle != null)
-                pw.Text(i18n.pdf(subtitle),
-                    textAlign: pw.TextAlign.center,
-                    style: pw.TextStyle(
-                        fontSize: 10, color: PdfColors.grey700)),
+                    fontSize: 10,
+                    color: PdfColors.grey700,
+                  ),
+                ),
             ],
           ),
         pw.SizedBox(height: 8),
@@ -508,6 +503,76 @@ class _PdfUtils {
     final p2 = (map['phone2'] ?? '').toString().trim();
     return p2.isEmpty ? p1 : '$p1 / $p2';
   }
+
+  static String _resolveBilingualText(String primary, String fallback) {
+    final p = primary.trim();
+    if (p.isNotEmpty) return p;
+    final f = fallback.trim();
+    return f.isNotEmpty ? f : '—';
+  }
+
+  static String _clinicNameAr(ClinicProfile clinic) {
+    return _resolveBilingualText(clinic.nameAr, clinic.nameEn);
+  }
+
+  static String _clinicNameEn(ClinicProfile clinic) {
+    return _resolveBilingualText(clinic.nameEn, clinic.nameAr);
+  }
+
+  static String _clinicAddressAr(ClinicProfile clinic) {
+    return _resolveBilingualText(clinic.addressAr, clinic.addressEn);
+  }
+
+  static String _clinicAddressEn(ClinicProfile clinic) {
+    return _resolveBilingualText(clinic.addressEn, clinic.addressAr);
+  }
+
+  static pw.Widget _clinicInfoBlock({
+    required String title,
+    required String address,
+    required String phoneLabel,
+    required String phoneValue,
+    required pw.TextAlign align,
+    required pw.CrossAxisAlignment crossAxisAlignment,
+  }) {
+    final renderedPhone = phoneValue.trim();
+    final phoneLine = renderedPhone.isEmpty ? phoneLabel : '$phoneLabel: $renderedPhone';
+    return pw.Column(
+      crossAxisAlignment: crossAxisAlignment,
+      children: [
+        pw.Text(
+          pdfText(title.trim().isEmpty ? '—' : title),
+          textAlign: align,
+          style: pw.TextStyle(
+            fontSize: 12.5,
+            fontWeight: pw.FontWeight.bold,
+            color: PdfColors.blueGrey,
+          ),
+        ),
+        pw.SizedBox(height: 2),
+        pw.Text(
+          pdfText(address.trim().isEmpty ? '—' : address),
+          textAlign: align,
+          style: pw.TextStyle(
+            fontSize: 8.8,
+            color: PdfColors.grey700,
+            height: 1.25,
+          ),
+        ),
+        pw.SizedBox(height: 2),
+        pw.Text(
+          pdfText(phoneLine),
+          textAlign: align,
+          style: pw.TextStyle(
+            fontSize: 8.8,
+            color: PdfColors.grey700,
+            height: 1.25,
+          ),
+        ),
+      ],
+    );
+  }
+
 
   static pw.Widget _logoBox(pw.ImageProvider? logo) {
     return pw.Container(

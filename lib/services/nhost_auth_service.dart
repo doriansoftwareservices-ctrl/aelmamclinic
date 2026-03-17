@@ -432,6 +432,28 @@ class NhostAuthService {
     }
   }
 
+  String _requireCreatedAccountId(List<Map<String, dynamic>> rows) {
+    final accountId = rows.isEmpty ? '' : (rows.first['id']?.toString() ?? '').trim();
+    if (accountId.isEmpty) {
+      throw StateError('self_create_account returned empty account id');
+    }
+    return accountId;
+  }
+
+  Future<void> _finalizeSelfCreateAccount({
+    required ClinicProfileInput profile,
+  }) async {
+    await _refreshSessionAfterAccountMutation();
+    if (!_hasCompleteClinicProfile(profile)) {
+      return;
+    }
+    try {
+      await updateClinicProfile(profile: profile);
+    } catch (e) {
+      throw StateError('Account created but clinic profile update failed: $e');
+    }
+  }
+
   Future<String> selfCreateAccount({
     required ClinicProfileInput profile,
   }) async {
@@ -501,11 +523,9 @@ class NhostAuthService {
           preferredRoles: const ['user', 'me'],
         );
         final rows = _rowsFromData(data, 'self_create_account');
-        try {
-          await updateClinicProfile(profile: profile);
-        } catch (_) {}
-        await _refreshSessionAfterAccountMutation();
-        return rows.isEmpty ? '' : (rows.first['id']?.toString() ?? '');
+        final accountId = _requireCreatedAccountId(rows);
+        await _finalizeSelfCreateAccount(profile: profile);
+        return accountId;
       } catch (e) {
         if (_isLegacySelfCreateAccountSignatureError(e)) {
           try {
@@ -515,17 +535,15 @@ class NhostAuthService {
               preferredRoles: const ['user', 'me'],
             );
             final rows = _rowsFromData(data, 'self_create_account');
-            try {
-              await updateClinicProfile(profile: profile);
-            } catch (_) {}
-            await _refreshSessionAfterAccountMutation();
-            return rows.isEmpty ? '' : (rows.first['id']?.toString() ?? '');
+            final accountId = _requireCreatedAccountId(rows);
+            await _finalizeSelfCreateAccount(profile: profile);
+            return accountId;
           } catch (legacyError) {
             if (_isNoMutationsGraphqlError(legacyError)) {
               final accountId = await _selfCreateAccountViaFunction(
                 profile: profile,
               );
-              await _refreshSessionAfterAccountMutation();
+              await _finalizeSelfCreateAccount(profile: profile);
               return accountId;
             }
             rethrow;
@@ -533,7 +551,7 @@ class NhostAuthService {
         }
         if (_isNoMutationsGraphqlError(e)) {
           final accountId = await _selfCreateAccountViaFunction(profile: profile);
-          await _refreshSessionAfterAccountMutation();
+          await _finalizeSelfCreateAccount(profile: profile);
           return accountId;
         }
         if (attempt == 0 && _isTransientGraphqlError(e)) {

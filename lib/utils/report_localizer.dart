@@ -156,51 +156,105 @@ class ReportLocalizer {
     required pw.Font bold,
     Uint8List? logoData,
   }) {
-    final details = pw.Expanded(
-      child: pw.Column(
-        crossAxisAlignment: crossAxisStart,
+    String resolveText(String primary, String fallback) {
+      final p = primary.trim();
+      if (p.isNotEmpty) return p;
+      final f = fallback.trim();
+      return f.isNotEmpty ? f : '—';
+    }
+
+    String renderText(String value) => pdfText(value.trim().isEmpty ? '—' : value);
+
+    pw.Widget clinicBlock({
+      required String title,
+      required String address,
+      required String phoneLabel,
+      required pw.TextAlign align,
+      required pw.CrossAxisAlignment crossAxisAlignment,
+    }) {
+      final phoneValue = clinicPhones(clinic).trim();
+      final phoneLine = phoneValue.isEmpty ? phoneLabel : '$phoneLabel: $phoneValue';
+      return pw.Column(
+        crossAxisAlignment: crossAxisAlignment,
         children: [
           pw.Text(
-            pdf(clinicName(clinic)),
-            textAlign: startAlign,
+            renderText(title),
+            textAlign: align,
             style: pw.TextStyle(
               font: bold,
-              fontSize: 14,
+              fontSize: 12.5,
               color: PdfColors.blueGrey,
             ),
           ),
+          pw.SizedBox(height: 2),
           pw.Text(
-            pdf(clinicAddress(clinic)),
-            textAlign: startAlign,
-            style: pw.TextStyle(font: regular, fontSize: 9),
+            renderText(address),
+            textAlign: align,
+            style: pw.TextStyle(
+              font: regular,
+              fontSize: 8.8,
+              height: 1.25,
+            ),
           ),
+          pw.SizedBox(height: 2),
           pw.Text(
-            pdf(withLabel('الهاتف', clinicPhones(clinic))),
-            textAlign: startAlign,
-            style: pw.TextStyle(font: regular, fontSize: 9),
+            renderText(phoneLine),
+            textAlign: align,
+            style: pw.TextStyle(
+              font: regular,
+              fontSize: 8.8,
+              height: 1.25,
+            ),
           ),
         ],
+      );
+    }
+
+    final englishBlock = pw.Expanded(
+      child: clinicBlock(
+        title: resolveText(clinic.nameEn, clinic.nameAr),
+        address: resolveText(clinic.addressEn, clinic.addressAr),
+        phoneLabel: 'Phone',
+        align: pw.TextAlign.left,
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+      ),
+    );
+
+    final arabicBlock = pw.Expanded(
+      child: clinicBlock(
+        title: resolveText(clinic.nameAr, clinic.nameEn),
+        address: resolveText(clinic.addressAr, clinic.addressEn),
+        phoneLabel: 'الهاتف',
+        align: pw.TextAlign.right,
+        crossAxisAlignment: pw.CrossAxisAlignment.end,
       ),
     );
 
     final logo = pw.Container(
-      width: 100,
-      height: 60,
+      width: 92,
+      height: 64,
       alignment: pw.Alignment.topCenter,
       child: logoData == null
           ? pw.SizedBox()
-          : pw.Image(pw.MemoryImage(logoData), width: 56, height: 56),
+          : pw.Image(
+              pw.MemoryImage(logoData),
+              width: 60,
+              height: 60,
+              fit: pw.BoxFit.contain,
+            ),
     );
-
-    final children = isRtl
-        ? <pw.Widget>[details, logo]
-        : <pw.Widget>[logo, pw.SizedBox(width: 12), details];
 
     return pw.Column(
       children: [
         pw.Row(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: children,
+          children: [
+            englishBlock,
+            pw.SizedBox(width: 12),
+            logo,
+            pw.SizedBox(width: 12),
+            arabicBlock,
+          ],
         ),
         pw.SizedBox(height: 8),
         pw.Container(height: 1, color: PdfColors.grey500),

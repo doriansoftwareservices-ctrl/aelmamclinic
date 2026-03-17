@@ -168,15 +168,26 @@ module.exports = async function handler(req, res) {
       };
     }
 
-    try {
-      await updateClinicProfileAsUser(userId, profile);
-    } catch (_) {}
+    let profileUpdated = false;
+    let profileUpdateError = null;
+    if (!hasCompleteClinicProfile(profile)) {
+      profileUpdateError = 'complete clinic profile is required';
+    } else {
+      try {
+        await updateClinicProfileAsUser(userId, profile);
+        profileUpdated = true;
+      } catch (profileErr) {
+        profileUpdateError = profileErr?.message || 'update_clinic_profile failed';
+      }
+    }
 
     res.json({
       ok: true,
       created,
       account_id: membership?.account_id || null,
       role: `${membership?.role ?? 'owner'}`.trim().toLowerCase(),
+      profile_updated: profileUpdated,
+      profile_update_error: profileUpdateError,
     });
   } catch (err) {
     res.status(err?.statusCode || 500).json({

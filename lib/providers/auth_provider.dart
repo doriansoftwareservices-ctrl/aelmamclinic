@@ -450,7 +450,7 @@ class AuthProvider extends ChangeNotifier {
           // هذه الإشارة تأتي بعد signOut — نظّف الحالة المحلية فقط.
           currentUser = null;
           _resetPermissionsInMemory();
-          _allowAutoCreateAccount = false;
+          clearOwnerOnboardingState();
           AuthRoleState.clear();
           _lastGuardOk = false;
           _lastGuardOkAt = null;
@@ -750,8 +750,12 @@ class AuthProvider extends ChangeNotifier {
     );
   }
 
-  Future<String> selfCreateAccount(ClinicProfileInput profile) {
-    return _auth.selfCreateAccount(profile: profile);
+  Future<String> selfCreateAccount(ClinicProfileInput profile) async {
+    final accountId = await _auth.selfCreateAccount(profile: profile);
+    if (accountId.trim().isEmpty) {
+      throw StateError('self_create_account returned empty account id');
+    }
+    return accountId;
   }
 
   Future<void> updateClinicProfile(ClinicProfileInput profile) {
@@ -799,8 +803,7 @@ class AuthProvider extends ChangeNotifier {
     AuthRoleState.clear();
     NhostGraphqlService.refreshClient();
     _resetPermissionsInMemory();
-    _autoCreateAttempted = false;
-    _pendingClinicProfile = null;
+    clearOwnerOnboardingState();
     _lastGuardOk = false;
     _lastGuardOkAt = null;
     _lastBackfilledSyncAccountId = null;
@@ -1658,6 +1661,7 @@ class AuthProvider extends ChangeNotifier {
             _allowAutoCreateAccount = false;
             final pendingProfile = _pendingClinicProfile;
             if (pendingProfile == null) {
+              clearOwnerOnboardingState();
               _authDiagWarn(
                 '_ensureActiveAccountOrSignOut:autoCreate:skipped',
                 context: {'reason': 'missing clinic profile'},
@@ -1675,7 +1679,7 @@ class AuthProvider extends ChangeNotifier {
                 return result;
               }
               await selfCreateAccount(pendingProfile);
-              _pendingClinicProfile = null;
+              clearOwnerOnboardingState();
               final aa = await _auth.resolveActiveAccountOrThrow();
               currentUser ??= {};
               currentUser!['accountId'] = aa.id;
@@ -1827,6 +1831,15 @@ class AuthProvider extends ChangeNotifier {
 
   void setPendingClinicProfile(ClinicProfileInput? profile) {
     _pendingClinicProfile = profile;
+    if (profile == null) {
+      clearOwnerOnboardingState();
+    }
+  }
+
+  void clearOwnerOnboardingState() {
+    _pendingClinicProfile = null;
+    _allowAutoCreateAccount = false;
+    _autoCreateAttempted = false;
   }
 
   Future<void> _refreshClinicProfileCache() async {

@@ -477,7 +477,9 @@ class _LoginScreenState extends State<LoginScreen> {
       auth.setPendingClinicProfile(clinicProfile);
       try {
         await auth.selfCreateAccount(clinicProfile);
+        auth.clearOwnerOnboardingState();
       } catch (e) {
+        auth.clearOwnerOnboardingState();
         createError = e;
       }
       await auth.refreshSession();
@@ -685,7 +687,9 @@ class _LoginScreenState extends State<LoginScreen> {
           Object? createError;
           try {
             await auth.selfCreateAccount(clinicProfile);
+            auth.clearOwnerOnboardingState();
           } catch (e) {
+            auth.clearOwnerOnboardingState();
             createError = e;
           }
           try {
@@ -851,7 +855,14 @@ class _LoginScreenState extends State<LoginScreen> {
       // Ensure stale superadmin header does not leak into user session.
       AuthRoleState.clear();
       NhostGraphqlService.refreshClient();
-      await auth.selfCreateAccount(clinicProfile);
+      Object? createError;
+      try {
+        await auth.selfCreateAccount(clinicProfile);
+        auth.clearOwnerOnboardingState();
+      } catch (e) {
+        auth.clearOwnerOnboardingState();
+        createError = e;
+      }
       await auth.refreshSession();
       final result = await _ensurePostLoginState(
         auth,
@@ -859,7 +870,13 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       if (!mounted) return;
       if (!result.isSuccess) {
-        setState(() => _error = _messageForStatus(result.status));
+        final message = createError != null
+            ? context.tr(
+                'auth_error_account_create_failed_with_reason',
+                params: {'reason': _mapLoginError(createError)},
+              )
+            : _messageForStatus(result.status);
+        setState(() => _error = message);
         return;
       }
       final role = auth.role?.toLowerCase() ?? '';
@@ -913,6 +930,9 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       );
     } finally {
+      if (!signupCompleted) {
+        auth.clearOwnerOnboardingState();
+      }
       if (!signupCompleted && shouldCleanupAuthSession) {
         try {
           await auth.signOut();
