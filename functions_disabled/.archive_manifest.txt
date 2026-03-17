@@ -1,0 +1,5 @@
+# Archived duplicates intentionally retained for reference only.
+# Authoritative deployable copies live under functions/
+
+admin-upload-subscription-proof
+notify-plan-request
