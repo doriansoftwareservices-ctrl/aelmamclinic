@@ -10,13 +10,11 @@ import 'nhost_dns_http_client.dart';
 /// Thin HTTP helper that injects Nhost auth headers for REST endpoints.
 class NhostApiClient {
   NhostApiClient({http.Client? client})
-      : _client = client ?? NhostDnsHttpClient.createClient();
+    : _client = client ?? NhostDnsHttpClient.createClient();
 
   final http.Client _client;
 
-  Future<Map<String, String>> _authHeaders({
-    Map<String, String>? extra,
-  }) async {
+  Future<Map<String, String>> _authHeaders({Map<String, String>? extra}) async {
     final headers = <String, String>{};
     final token = NhostManager.client.auth.accessToken;
     if (token != null && token.isNotEmpty) {
@@ -28,9 +26,7 @@ class NhostApiClient {
     return headers;
   }
 
-  Future<Map<String, String>> authHeaders({
-    Map<String, String>? extra,
-  }) async {
+  Future<Map<String, String>> authHeaders({Map<String, String>? extra}) async {
     return _authHeaders(extra: extra);
   }
 
@@ -83,7 +79,11 @@ class NhostApiClient {
         try {
           final decoded = jsonDecode(response.body);
           if (decoded is Map<String, dynamic>) {
-            final err = decoded['error'] ?? decoded['message'];
+            final err =
+                decoded['error'] ??
+                decoded['message'] ??
+                decoded['user_message'] ??
+                decoded['error_code'];
             if (err != null && err.toString().trim().isNotEmpty) {
               buffer.write(' - ${err.toString()}');
             } else {
