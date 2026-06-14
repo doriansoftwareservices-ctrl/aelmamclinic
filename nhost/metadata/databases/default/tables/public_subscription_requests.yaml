@@ -34,10 +34,6 @@ insert_permissions:
         - status
         - note
 select_permissions:
-  - role: superadmin
-    permission:
-      columns: '*'
-      filter: {}
   - role: owner
     permission:
       columns:
@@ -67,6 +63,10 @@ select_permissions:
               _ceq: account_id
             user_uid:
               _eq: X-Hasura-User-Id
+  - role: superadmin
+    permission:
+      columns: '*'
+      filter: {}
   - role: user
     permission:
       columns:
@@ -112,11 +112,11 @@ event_triggers:
       enable_manual: false
       insert:
         columns: '*'
-    headers:
-      - name: x-hasura-event-secret
-        value_from_env: NHOST_WEBHOOK_SECRET
     retry_conf:
       interval_sec: 10
       num_retries: 3
       timeout_sec: 60
-    webhook_from_env: NHOST_FUNCTION_NOTIFY_PLAN_REQUEST_URL
+    webhook: https://nbbywmmebvxegshrvgic.functions.ap-southeast-1.nhost.run/v1/notify-plan-request
+    headers:
+      - name: x-hasura-event-secret
+        value_from_env: NHOST_WEBHOOK_SECRET
