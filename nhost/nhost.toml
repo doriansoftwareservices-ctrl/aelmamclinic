@@ -8,11 +8,9 @@ webhookSecret = '{{ secrets.NHOST_WEBHOOK_SECRET }}'
 [[hasura.jwtSecrets]]
 type = 'HS256'
 key = '{{ secrets.HASURA_GRAPHQL_JWT_SECRET }}'
-claims_namespace = 'https://hasura.io/jwt/claims'
 claims_format = 'json'
+claims_namespace = 'https://hasura.io/jwt/claims'
 
-
-# Added to force Hasura session vars mapping from JWT payload
 [[hasura.jwtSecrets.claims_map]]
 claim = 'x-hasura-user-id'
 path = '$.sub'
@@ -24,8 +22,9 @@ path = '$["https://hasura.io/jwt/claims"]["x-hasura-default-role"]'
 [[hasura.jwtSecrets.claims_map]]
 claim = 'x-hasura-allowed-roles'
 path = '$["https://hasura.io/jwt/claims"]["x-hasura-allowed-roles"]'
+
 [hasura.settings]
-corsDomain = ['https://ujxbrdbrjbujvlylpbbn.nhost.run', 'http://localhost:3000']
+corsDomain = ['https://nbbywmmebvxegshrvgic.nhost.run', 'http://localhost:3000']
 devMode = false
 enableAllowList = false
 enableConsole = true
