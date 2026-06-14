@@ -81,6 +81,7 @@ class ObsCode {
   static const syncPullScheduled = 'SYNC_PULL_SCHEDULED';
   static const syncPullSkipped = 'SYNC_PULL_SKIPPED';
   static const syncPullFailed = 'SYNC_PULL_FAILED';
+  static const syncPushFailed = 'SYNC_PUSH_FAILED';
   static const syncRetryScheduled = 'SYNC_RETRY_SCHEDULED';
   static const syncResumeDirtyTablesFailed = 'SYNC_RESUME_DIRTY_TABLES_FAILED';
   static const syncStampLocalMetaReadFailed =
@@ -216,12 +217,7 @@ class AppObservability {
         log.i(logMessage, tag: normalizedScope, data: logData);
         break;
       case 'warn':
-        log.w(
-          logMessage,
-          tag: normalizedScope,
-          data: logData,
-          st: stackTrace,
-        );
+        log.w(logMessage, tag: normalizedScope, data: logData, st: stackTrace);
         break;
       default:
         log.e(
@@ -240,10 +236,7 @@ class AppObservability {
     try {
       final dir = await AppPaths.logsDir();
       final file = File(p.join(dir.path, 'app_runtime_events.jsonl'));
-      await file.writeAsString(
-        '${jsonEncode(event)}\n',
-        mode: FileMode.append,
-      );
+      await file.writeAsString('${jsonEncode(event)}\n', mode: FileMode.append);
     } catch (_) {
       // Preserve caller flow even if telemetry persistence fails.
     }

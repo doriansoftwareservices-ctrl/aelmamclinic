@@ -27,12 +27,11 @@ import 'package:aelmamclinic/utils/app_observability.dart';
 /// ضع أي من الدالتين إن كنت تحتاج مسار تحويل مخصص لهذا الجدول.
 class EntityMapper {
   final Map<String, dynamic> Function(Map<String, dynamic> localRow)?
-  toCloudMap;
+      toCloudMap;
   final Map<String, dynamic> Function(
     Map<String, dynamic> remoteRow,
     Set<String> allowedLocalColumns,
-  )?
-  fromCloudMap;
+  )? fromCloudMap;
 
   const EntityMapper({this.toCloudMap, this.fromCloudMap});
 }
@@ -657,13 +656,11 @@ class SyncService {
       toCloudMap: (local) {
         final out = <String, dynamic>{}..addAll(local);
         final q = out['quantity'];
-        final up = out.containsKey('unitPrice')
-            ? out['unitPrice']
-            : out['unit_price'];
+        final up =
+            out.containsKey('unitPrice') ? out['unitPrice'] : out['unit_price'];
         double? qty = (q is num) ? q.toDouble() : double.tryParse('${q ?? ''}');
-        double? unit = (up is num)
-            ? up.toDouble()
-            : double.tryParse('${up ?? ''}');
+        double? unit =
+            (up is num) ? up.toDouble() : double.tryParse('${up ?? ''}');
         if (qty != null && unit != null) {
           out['total'] = qty * unit;
         }
@@ -696,12 +693,10 @@ class SyncService {
         if (!hasTotalLocally) {
           final rq = remote['quantity'];
           final rt = remote['total'];
-          final double? qty = (rq is num)
-              ? rq.toDouble()
-              : double.tryParse('${rq ?? ''}');
-          final double? tot = (rt is num)
-              ? rt.toDouble()
-              : double.tryParse('${rt ?? ''}');
+          final double? qty =
+              (rq is num) ? rq.toDouble() : double.tryParse('${rq ?? ''}');
+          final double? tot =
+              (rt is num) ? rt.toDouble() : double.tryParse('${rt ?? ''}');
           if (tot != null && qty != null && qty > 0) {
             if (allowed.contains('unitPrice')) {
               map['unitPrice'] = tot / qty;
@@ -783,9 +778,9 @@ class SyncService {
     this.useLedgerStock = false,
     this.pushDebounce = const Duration(seconds: 1),
     Future<bool> Function()? canSync,
-  }) : _db = database,
-       _remoteIds = RemoteIdMapper(database),
-       _canSync = canSync {
+  })  : _db = database,
+        _remoteIds = RemoteIdMapper(database),
+        _canSync = canSync {
     _validateConstraintMap();
     _clientListener = _handleClientRefresh;
     NhostGraphqlService.buildNotifier().addListener(_clientListener!);
@@ -861,12 +856,11 @@ class SyncService {
       deviceId!.trim().isNotEmpty &&
       deviceId!.trim().toLowerCase() != 'app-unknown';
   SyncRuntimeSnapshot get runtimeSnapshot {
-    final activePushTables =
-        _pushBusy.entries
-            .where((entry) => entry.value)
-            .map((entry) => entry.key)
-            .toList(growable: false)
-          ..sort();
+    final activePushTables = _pushBusy.entries
+        .where((entry) => entry.value)
+        .map((entry) => entry.key)
+        .toList(growable: false)
+      ..sort();
     final queuedPushTables = _pushQueue.keys.toList(growable: false)..sort();
     final pendingPushTimers = _pushTimers.keys.toList(growable: false)..sort();
     final disabledRemoteTables = _disabledRemoteTables.toList(growable: false)
@@ -1117,9 +1111,8 @@ class SyncService {
   }
 
   String _uuidKey(String table, String device, int local) {
-    final normalizedDevice = device.trim().isEmpty
-        ? 'app-unknown'
-        : device.trim();
+    final normalizedDevice =
+        device.trim().isEmpty ? 'app-unknown' : device.trim();
     return '$table|$accountId|$normalizedDevice|$local';
   }
 
@@ -1190,12 +1183,10 @@ class SyncService {
       if (table == 'service_doctor_share') {
         final serviceId = filtered['service_id'] ?? filtered['serviceId'];
         final doctorId = filtered['doctor_id'] ?? filtered['doctorId'];
-        final int? s = serviceId is num
-            ? serviceId.toInt()
-            : int.tryParse('$serviceId');
-        final int? d = doctorId is num
-            ? doctorId.toInt()
-            : int.tryParse('$doctorId');
+        final int? s =
+            serviceId is num ? serviceId.toInt() : int.tryParse('$serviceId');
+        final int? d =
+            doctorId is num ? doctorId.toInt() : int.tryParse('$doctorId');
         if (s == null || d == null || s <= 0 || d <= 0) return null;
         final rows = await _db.rawQuery(
           'SELECT id FROM service_doctor_share WHERE service_id = ? AND doctor_id = ? LIMIT 1',
@@ -1326,16 +1317,19 @@ class SyncService {
     final normalizedUuid = uuid.trim();
     final now = DateTime.now().toIso8601String();
     await _runDbWrite(() async {
-      await _db.insert(_uuidMappingTable, {
-        'table_name': table,
-        'record_id': recordId,
-        'account_id': accountId,
-        'device_id': normalizedDevice,
-        'local_sync_id': local,
-        'uuid': normalizedUuid,
-        'created_at': now,
-        'updated_at': now,
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      await _db.insert(
+          _uuidMappingTable,
+          {
+            'table_name': table,
+            'record_id': recordId,
+            'account_id': accountId,
+            'device_id': normalizedDevice,
+            'local_sync_id': local,
+            'uuid': normalizedUuid,
+            'created_at': now,
+            'updated_at': now,
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace);
     });
   }
 
@@ -1352,9 +1346,8 @@ class SyncService {
 
     if (resolvedLocal == null || resolvedLocal <= 0 || device == null) {
       final cols = await _getLocalColumns(table);
-      final deviceCol = device == null
-          ? _col(cols, 'deviceId', 'device_id')
-          : null;
+      final deviceCol =
+          device == null ? _col(cols, 'deviceId', 'device_id') : null;
       final localCol = (resolvedLocal == null || resolvedLocal <= 0)
           ? _col(cols, 'localId', 'local_id')
           : null;
@@ -1381,9 +1374,8 @@ class SyncService {
           }
           if (localCol != null) {
             final li = row[localCol];
-            final parsed = (li is num)
-                ? li.toInt()
-                : int.tryParse('${li ?? ''}');
+            final parsed =
+                (li is num) ? li.toInt() : int.tryParse('${li ?? ''}');
             if (parsed != null && parsed > 0) {
               resolvedLocal = parsed;
             }
@@ -1392,9 +1384,8 @@ class SyncService {
       }
     }
 
-    final int safeLocal = (resolvedLocal != null && resolvedLocal > 0)
-        ? resolvedLocal
-        : recordId;
+    final int safeLocal =
+        (resolvedLocal != null && resolvedLocal > 0) ? resolvedLocal : recordId;
     return _RowIdentity(
       deviceId: resolvedDevice,
       localId: safeLocal,
@@ -1426,8 +1417,7 @@ class SyncService {
       identity.deviceId,
       identity.localId,
     );
-    final uuid =
-        cached ??
+    final uuid = cached ??
         _uuidGen.v5(
           Namespace.url.value,
           _uuidKey(table, identity.deviceId, identity.localId),
@@ -1477,9 +1467,8 @@ class SyncService {
     if (_looksLikeUuid(str)) {
       return str;
     }
-    final int? recordId = (rawValue is num)
-        ? rawValue.toInt()
-        : int.tryParse(str);
+    final int? recordId =
+        (rawValue is num) ? rawValue.toInt() : int.tryParse(str);
     if (recordId == null || recordId <= 0) return null;
     return _ensureUuidForRecord(table: table, recordId: recordId);
   }
@@ -1534,10 +1523,9 @@ class SyncService {
     final bool newDeleted = (isDelRaw is num)
         ? isDelRaw.toInt() == 1
         : (isDelRaw?.toString().trim().toLowerCase() == 'true' ||
-              isDelRaw?.toString().trim() == '1');
+            isDelRaw?.toString().trim() == '1');
 
-    final itemRaw =
-        filteredRow['itemId'] ??
+    final itemRaw = filteredRow['itemId'] ??
         filteredRow['item_id'] ??
         filteredRow['itemID'];
     final int? newItemId = (itemRaw is num)
@@ -1570,15 +1558,14 @@ class SyncService {
     }
 
     final prev = rows.first;
-    final prevQty =
-        (prev['quantity'] as num?)?.toInt() ??
+    final prevQty = (prev['quantity'] as num?)?.toInt() ??
         int.tryParse(prev['quantity']?.toString() ?? '') ??
         0;
     final prevDelRaw = prev['isDeleted'] ?? prev['is_deleted'];
     final bool prevDeleted = (prevDelRaw is num)
         ? prevDelRaw.toInt() == 1
         : (prevDelRaw?.toString().trim().toLowerCase() == 'true' ||
-              prevDelRaw?.toString().trim() == '1');
+            prevDelRaw?.toString().trim() == '1');
     final prevItemRaw = prev['itemId'] ?? prev['item_id'];
     final int? prevItemId = (prevItemRaw is num)
         ? prevItemRaw.toInt()
@@ -1599,12 +1586,10 @@ class SyncService {
     final effectiveItemId = newItemId ?? prevItemId;
     if (effectiveItemId == null) return;
 
-    final oldImpact = prevDeleted
-        ? 0
-        : ((localTable == 'purchases') ? prevQty : -prevQty);
-    final newImpact = newDeleted
-        ? 0
-        : ((localTable == 'purchases') ? newQty : -newQty);
+    final oldImpact =
+        prevDeleted ? 0 : ((localTable == 'purchases') ? prevQty : -prevQty);
+    final newImpact =
+        newDeleted ? 0 : ((localTable == 'purchases') ? newQty : -newQty);
     final delta = newImpact - oldImpact;
 
     if (delta != 0) {
@@ -1758,9 +1743,8 @@ class SyncService {
     if (rows.isEmpty) return null;
     final row = rows.first;
     final accVal = accCol != null ? '${row[accCol] ?? ''}'.trim() : accountId;
-    final devVal = devCol != null
-        ? '${row[devCol] ?? ''}'.trim()
-        : _safeDeviceId;
+    final devVal =
+        devCol != null ? '${row[devCol] ?? ''}'.trim() : _safeDeviceId;
     final locVal = locCol != null ? row[locCol] : null;
     final resolvedLocalId = locVal is num
         ? locVal.toInt()
@@ -1888,14 +1872,17 @@ class SyncService {
     await _ensureFkMappingStore();
     final now = DateTime.now().toIso8601String();
     await _runDbWrite(() async {
-      await _db.insert('sync_fk_mapping', {
-        'table_name': table,
-        'local_id': localPk,
-        'remote_id': remoteId,
-        'remote_device_id': remoteDeviceId,
-        'remote_local_id': remoteLocalId,
-        'updated_at': now,
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      await _db.insert(
+          'sync_fk_mapping',
+          {
+            'table_name': table,
+            'local_id': localPk,
+            'remote_id': remoteId,
+            'remote_device_id': remoteDeviceId,
+            'remote_local_id': remoteLocalId,
+            'updated_at': now,
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace);
     });
     _fkRemoteIdCache.putIfAbsent(table, () => {})[localPk] = remoteId;
     _fkRemoteReverseCache.putIfAbsent(table, () => {})[remoteId] = localPk;
@@ -1971,8 +1958,7 @@ class SyncService {
 
     if (!_hasAccount) return null;
     try {
-      final query =
-          '''
+      final query = '''
         query ResolveLocalPk(\$accountId: uuid!, \$id: uuid!) {
           $table(where: {account_id: {_eq: \$accountId}, id: {_eq: \$id}}, limit: 1) {
             device_id
@@ -2037,9 +2023,8 @@ class SyncService {
         }
         if (locCol != null) {
           final dynamic locVal = row[locCol];
-          rawLocal = locVal is num
-              ? locVal.toInt()
-              : int.tryParse('${locVal ?? ''}');
+          rawLocal =
+              locVal is num ? locVal.toInt() : int.tryParse('${locVal ?? ''}');
         }
       }
 
@@ -2050,8 +2035,7 @@ class SyncService {
 
       if (rawLocal == null) return null;
 
-      final query =
-          '''
+      final query = '''
         query ResolveRemoteId(\$accountId: uuid!, \$deviceId: String!, \$localId: bigint!) {
           $table(
             where: {
@@ -2196,9 +2180,8 @@ class SyncService {
       }
     }
 
-    final int? localPk = rawValue is num
-        ? rawValue.toInt()
-        : int.tryParse(rawValue.toString());
+    final int? localPk =
+        rawValue is num ? rawValue.toInt() : int.tryParse(rawValue.toString());
     if (localPk == null || localPk <= 0) return null;
     return await _resolveRemoteIdForLocal(parentLocalTable, localPk);
   }
@@ -2414,12 +2397,10 @@ class SyncService {
     List<Map<String, dynamic>> objects,
   ) async {
     final updateCols = _updateColumnsForTable(table);
-    final safeUpdateCols = updateCols.isEmpty
-        ? const <String>{'updated_at'}
-        : updateCols;
+    final safeUpdateCols =
+        updateCols.isEmpty ? const <String>{'updated_at'} : updateCols;
     final updateClause = safeUpdateCols.join(', ');
-    final mutation =
-        '''
+    final mutation = '''
       mutation Upsert(\$objects: [${table}_insert_input!]!) {
         ${_insertFieldName(table)}(
           objects: \$objects,
@@ -2446,12 +2427,10 @@ class SyncService {
     List<Map<String, dynamic>> objects,
   ) async {
     final updateCols = _updateColumnsForTable(table);
-    final safeUpdateCols = updateCols.isEmpty
-        ? const <String>{'updated_at'}
-        : updateCols;
+    final safeUpdateCols =
+        updateCols.isEmpty ? const <String>{'updated_at'} : updateCols;
     final updateClause = safeUpdateCols.join(', ');
-    final mutation =
-        '''
+    final mutation = '''
       mutation UpsertByPrimaryKey(\$objects: [${table}_insert_input!]!) {
         ${_insertFieldName(table)}(
           objects: \$objects,
@@ -2478,8 +2457,7 @@ class SyncService {
     required Map<String, dynamic> where,
     required Map<String, dynamic> set,
   }) async {
-    final mutation =
-        '''
+    final mutation = '''
       mutation UpdateRows(\$where: ${table}_bool_exp!, \$_set: ${table}_set_input!) {
         ${_updateFieldName(table)}(where: \$where, _set: \$_set) {
           affected_rows
@@ -2495,8 +2473,7 @@ class SyncService {
     String table, {
     required Map<String, dynamic> where,
   }) async {
-    final mutation =
-        '''
+    final mutation = '''
       mutation DeleteRows(\$where: ${table}_bool_exp!) {
         ${_deleteFieldName(table)}(where: \$where) {
           affected_rows
@@ -2684,7 +2661,8 @@ class SyncService {
         where: 'id = ?',
         whereArgs: [id],
         limit: 1,
-      )).isNotEmpty;
+      ))
+          .isNotEmpty;
 
       if (exists) {
         if (updateMap.isEmpty) {
@@ -2761,8 +2739,7 @@ class SyncService {
     SyncRetryPolicy? policy,
     String? retryReason,
   }) async {
-    final retryPolicy =
-        policy ??
+    final retryPolicy = policy ??
         (maxAttempts == 3 && firstDelay == const Duration(milliseconds: 350)
             ? _kNetworkRetryPolicy
             : SyncRetryPolicy(
@@ -2855,7 +2832,8 @@ class SyncService {
           where: 'id = ?',
           whereArgs: [localId],
           limit: 1,
-        )).firstOrNull;
+        ))
+            .firstOrNull;
       } catch (e, st) {
         _syncWarn(
           ObsCode.syncStampLocalMetaReadFailed,
@@ -2875,9 +2853,8 @@ class SyncService {
         final vDev = existing['deviceId'] ?? existing['device_id'];
         if (vDev != null) {
           final dv = vDev.toString().trim();
-          currentDeviceId = dv.isEmpty || dv.toLowerCase() == 'app-unknown'
-              ? null
-              : dv;
+          currentDeviceId =
+              dv.isEmpty || dv.toLowerCase() == 'app-unknown' ? null : dv;
         }
 
         final vLoc = existing['localId'] ?? existing['local_id'];
@@ -2977,8 +2954,7 @@ class SyncService {
       return int.tryParse(li.toString()) ?? fallbackLocalId;
     })();
 
-    final uuid =
-        await _ensureUuidForRecord(
+    final uuid = await _ensureUuidForRecord(
           table: remoteTable,
           recordId: localPk,
           device: devForRow,
@@ -3044,9 +3020,8 @@ class SyncService {
     if (remoteTable == 'service_doctor_share') {
       if (snake['service_id'] == null) {
         final raw = localRow['serviceId'] ?? localRow['service_id'];
-        final int? localId = raw is num
-            ? raw.toInt()
-            : int.tryParse('${raw ?? ''}');
+        final int? localId =
+            raw is num ? raw.toInt() : int.tryParse('${raw ?? ''}');
         if (localId != null && localId > 0) {
           snake['service_id'] = await _resolveRemoteIdForLocal(
             'medical_services',
@@ -3056,9 +3031,8 @@ class SyncService {
       }
       if (snake['doctor_id'] == null) {
         final raw = localRow['doctorId'] ?? localRow['doctor_id'];
-        final int? localId = raw is num
-            ? raw.toInt()
-            : int.tryParse('${raw ?? ''}');
+        final int? localId =
+            raw is num ? raw.toInt() : int.tryParse('${raw ?? ''}');
         if (localId != null && localId > 0) {
           snake['doctor_id'] = await _resolveRemoteIdForLocal(
             'doctors',
@@ -3069,9 +3043,8 @@ class SyncService {
     } else if (remoteTable == 'patient_services') {
       if (snake['patient_id'] == null) {
         final raw = localRow['patientId'] ?? localRow['patient_id'];
-        final int? localId = raw is num
-            ? raw.toInt()
-            : int.tryParse('${raw ?? ''}');
+        final int? localId =
+            raw is num ? raw.toInt() : int.tryParse('${raw ?? ''}');
         if (localId != null && localId > 0) {
           snake['patient_id'] = await _resolveRemoteIdForLocal(
             'patients',
@@ -3081,9 +3054,8 @@ class SyncService {
       }
       if (snake['service_id'] == null) {
         final raw = localRow['serviceId'] ?? localRow['service_id'];
-        final int? localId = raw is num
-            ? raw.toInt()
-            : int.tryParse('${raw ?? ''}');
+        final int? localId =
+            raw is num ? raw.toInt() : int.tryParse('${raw ?? ''}');
         if (localId != null && localId > 0) {
           snake['service_id'] = await _resolveRemoteIdForLocal(
             'medical_services',
@@ -3245,12 +3217,10 @@ class SyncService {
         whereParts.add('account_id = ?');
         whereArgs.add(accountId.trim());
       }
-      final effectiveWhere = whereParts.isEmpty
-          ? null
-          : whereParts.join(' AND ');
-      final effectiveWhereArgs = whereArgs.isEmpty
-          ? null
-          : List<Object?>.from(whereArgs);
+      final effectiveWhere =
+          whereParts.isEmpty ? null : whereParts.join(' AND ');
+      final effectiveWhereArgs =
+          whereArgs.isEmpty ? null : List<Object?>.from(whereArgs);
 
       var localRows = await _db.query(
         localTable,
@@ -3304,8 +3274,8 @@ class SyncService {
             'localId': localIdDyn is num
                 ? localIdDyn.toInt()
                 : (localIdDyn == null
-                      ? null
-                      : int.tryParse(localIdDyn.toString())),
+                    ? null
+                    : int.tryParse(localIdDyn.toString())),
           };
           outgoingMeta.add(meta);
         } on MissingRemoteMappingException catch (e) {
@@ -3382,8 +3352,7 @@ class SyncService {
             filteredMeta,
           );
         } on OperationException catch (e) {
-          final bool isNameUniqueConflict =
-              (remoteTable == 'drugs') &&
+          final bool isNameUniqueConflict = (remoteTable == 'drugs') &&
               _isUniqueViolation(e, const [
                 'drugs_unique_name_per_account',
                 'uidx_drugs_name_per_account',
@@ -3405,8 +3374,7 @@ class SyncService {
             continue;
           }
 
-          final bool isItemsCompositeConflict =
-              (remoteTable == 'items') &&
+          final bool isItemsCompositeConflict = (remoteTable == 'items') &&
               _isUniqueViolation(e, const [
                 'items_type_name',
                 'items',
@@ -3561,7 +3529,7 @@ class SyncService {
       if (tableAllow.contains('deleted_at')) {
         remoteRow['deleted_at'] =
             (localRow['deleted_at'] ?? localRow['deletedAt'])?.toString() ??
-            DateTime.now().toUtc().toIso8601String();
+                DateTime.now().toUtc().toIso8601String();
       }
       if (tableAllow.contains('deletion_client_mutation_id')) {
         remoteRow['deletion_client_mutation_id'] = entry.clientMutationId;
@@ -3626,8 +3594,12 @@ class SyncService {
       return null;
     }
 
+    Map<String, Object?>? localPayloadForConflict;
+
     try {
       final localRow = await _loadOutboxLocalRow(entry);
+      localPayloadForConflict =
+          localRow == null ? null : Map<String, Object?>.from(localRow);
       if (localRow == null || localRow.isEmpty) {
         await _outbox.markTerminal(
           id: entry.id,
@@ -3648,9 +3620,12 @@ class SyncService {
       );
 
       final fkErrors = <String>[];
-      await _remapOutgoingForeignKeys(remoteTable, [
-        remoteRow,
-      ], errors: fkErrors);
+      await _remapOutgoingForeignKeys(
+          remoteTable,
+          [
+            remoteRow,
+          ],
+          errors: fkErrors);
       if (fkErrors.isNotEmpty) {
         await _outbox.markFailed(
           id: entry.id,
@@ -3786,7 +3761,7 @@ class SyncService {
           entry: entry,
           conflictCode: 'graphql_terminal',
           errorMessage: message,
-          localPayload: localRow,
+          localPayload: localPayloadForConflict,
         );
       } else {
         await _outbox.markFailed(
@@ -3844,9 +3819,8 @@ class SyncService {
           'local_payload_json': localPayload == null
               ? jsonEncode(entry.payload)
               : jsonEncode(localPayload),
-          'remote_payload_json': remotePayload == null
-              ? null
-              : jsonEncode(remotePayload),
+          'remote_payload_json':
+              remotePayload == null ? null : jsonEncode(remotePayload),
           'resolution_status': 'open',
           'last_error_message': errorMessage,
           'created_at': now,
@@ -4450,17 +4424,15 @@ class SyncService {
             : int.tryParse(rawLocalId.toString());
         final int sourceLocalId = rawLocalInt ?? 0;
 
-        final String remoteDeviceIdRaw = (raw['device_id'] ?? '')
-            .toString()
-            .trim();
-        final String remoteDeviceId = remoteDeviceIdRaw.isEmpty
-            ? _safeDeviceId
-            : remoteDeviceIdRaw;
+        final String remoteDeviceIdRaw =
+            (raw['device_id'] ?? '').toString().trim();
+        final String remoteDeviceId =
+            remoteDeviceIdRaw.isEmpty ? _safeDeviceId : remoteDeviceIdRaw;
 
         final String? remoteUpdatedAt =
             (raw['updated_at'] ?? '').toString().isNotEmpty
-            ? raw['updated_at'].toString()
-            : null;
+                ? raw['updated_at'].toString()
+                : null;
 
         int baseLocalId = sourceLocalId;
         if (baseLocalId <= 0) {
@@ -4620,8 +4592,7 @@ class SyncService {
         }
 
         if (localTable == 'complaints') {
-          final newReply =
-              filtered['replyMessage']?.toString() ??
+          final newReply = filtered['replyMessage']?.toString() ??
               filtered['reply_message']?.toString();
           final hadReply = (prevReply ?? '').trim().isNotEmpty;
           final hasReply = (newReply ?? '').trim().isNotEmpty;
@@ -4728,7 +4699,7 @@ class SyncService {
 
     final columnType =
         (await _getLocalColumnType(childLocalTable, childLocalColumnName)) ??
-        '';
+            '';
     final isTextColumn = columnType.contains('TEXT');
 
     dynamic toLocal(dynamic value) =>
@@ -4748,9 +4719,8 @@ class SyncService {
       return isTextColumn ? stringValue : null;
     }
 
-    final int? remoteLocalId = currentValue is num
-        ? currentValue.toInt()
-        : int.tryParse(stringValue);
+    final int? remoteLocalId =
+        currentValue is num ? currentValue.toInt() : int.tryParse(stringValue);
     if (remoteLocalId == null || remoteLocalId <= 0) {
       return null;
     }
@@ -4983,17 +4953,15 @@ class SyncService {
             : int.tryParse(rawLocalId.toString());
         final int sourceLocalId = rawLocalInt ?? 0;
 
-        final String remoteDeviceIdRaw = (raw['device_id'] ?? '')
-            .toString()
-            .trim();
-        final String remoteDeviceId = remoteDeviceIdRaw.isEmpty
-            ? _safeDeviceId
-            : remoteDeviceIdRaw;
+        final String remoteDeviceIdRaw =
+            (raw['device_id'] ?? '').toString().trim();
+        final String remoteDeviceId =
+            remoteDeviceIdRaw.isEmpty ? _safeDeviceId : remoteDeviceIdRaw;
 
         final String? remoteUpdatedAt =
             (raw['updated_at'] ?? '').toString().isNotEmpty
-            ? raw['updated_at'].toString()
-            : null;
+                ? raw['updated_at'].toString()
+                : null;
 
         int baseLocalId = sourceLocalId;
         if (baseLocalId <= 0) {
@@ -5112,8 +5080,7 @@ class SyncService {
               : (filtered.containsKey('typeId') ? 'typeId' : null);
           if (typeKey != null) {
             final v = filtered[typeKey];
-            final isEmpty =
-                v == null ||
+            final isEmpty = v == null ||
                 (v is num && v.toInt() <= 0) ||
                 (v is String && v.trim().isEmpty);
             if (isEmpty) {
@@ -5130,11 +5097,9 @@ class SyncService {
               ? 'item_id'
               : (filtered.containsKey('itemId') ? 'itemId' : null);
           if (itemKey != null && filtered[itemKey] == null) {
-            final nameSnap =
-                filtered['item_name_snapshot']?.toString() ??
+            final nameSnap = filtered['item_name_snapshot']?.toString() ??
                 filtered['itemNameSnapshot']?.toString();
-            final typeSnap =
-                filtered['item_type_name_snapshot']?.toString() ??
+            final typeSnap = filtered['item_type_name_snapshot']?.toString() ??
                 filtered['itemTypeNameSnapshot']?.toString();
             final resolved = await _findItemIdBySnapshot(
               itemName: nameSnap,
@@ -5324,9 +5289,8 @@ class SyncService {
   VoidCallback? _clientListener;
 
   bool _remoteRowIsDeleted(Map<String, dynamic> row) {
-    final v = row.containsKey('is_deleted')
-        ? row['is_deleted']
-        : row['isDeleted'];
+    final v =
+        row.containsKey('is_deleted') ? row['is_deleted'] : row['isDeleted'];
     if (v == null) return false;
     if (v is bool) return v;
     if (v is num) return v != 0;
@@ -5518,8 +5482,7 @@ class SyncService {
       remoteAllowed: _remoteAllow[remoteTable],
     );
 
-    final doc =
-        '''
+    final doc = '''
       subscription SyncTable(\$accountId: uuid!) {
         $remoteTable(where: {account_id: {_eq: \$accountId}}) {
           $selectClause
@@ -5584,14 +5547,13 @@ class SyncService {
     final int sourceLocalId = rawLocalInt ?? 0;
 
     final String remoteDeviceIdRaw = (raw['device_id'] ?? '').toString().trim();
-    final String remoteDeviceId = remoteDeviceIdRaw.isEmpty
-        ? _safeDeviceId
-        : remoteDeviceIdRaw;
+    final String remoteDeviceId =
+        remoteDeviceIdRaw.isEmpty ? _safeDeviceId : remoteDeviceIdRaw;
 
     final String? remoteUpdatedAt =
         (raw['updated_at'] ?? '').toString().isNotEmpty
-        ? raw['updated_at'].toString()
-        : null;
+            ? raw['updated_at'].toString()
+            : null;
 
     int baseLocalId = sourceLocalId;
     if (baseLocalId <= 0) {
@@ -5720,8 +5682,7 @@ class SyncService {
           : (filtered.containsKey('typeId') ? 'typeId' : null);
       if (typeKey != null) {
         final v = filtered[typeKey];
-        final isEmpty =
-            v == null ||
+        final isEmpty = v == null ||
             (v is num && v.toInt() <= 0) ||
             (v is String && v.trim().isEmpty);
         if (isEmpty) {
@@ -5890,9 +5851,8 @@ class SyncService {
         : int.tryParse(rawLocalId.toString()) ?? 0;
 
     final String remoteDeviceIdRaw = (raw['device_id'] ?? '').toString().trim();
-    final String remoteDeviceId = remoteDeviceIdRaw.isEmpty
-        ? _safeDeviceId
-        : remoteDeviceIdRaw;
+    final String remoteDeviceId =
+        remoteDeviceIdRaw.isEmpty ? _safeDeviceId : remoteDeviceIdRaw;
 
     int? localId = await _findLocalRowIdByTriple(
       table: localTable,
@@ -5938,10 +5898,9 @@ class SyncService {
           final bool isDeleted = (isDelRaw is num)
               ? isDelRaw.toInt() == 1
               : (isDelRaw?.toString().trim().toLowerCase() == 'true' ||
-                    isDelRaw?.toString().trim() == '1');
+                  isDelRaw?.toString().trim() == '1');
           if (!isDeleted) {
-            final qty =
-                (row['quantity'] as num?)?.toInt() ??
+            final qty = (row['quantity'] as num?)?.toInt() ??
                 int.tryParse(row['quantity']?.toString() ?? '') ??
                 0;
             final itemRaw = row['itemId'] ?? row['item_id'];
@@ -6471,11 +6430,11 @@ class SyncService {
   Future<void> pushPatients() =>
       _pushOutboxFoundationOrLegacy('patients', 'patients');
   Future<void> pullPatients() => _pullTableRemapFKs(
-    'patients',
-    'patients',
-    fkParentTables: _fkMap['patients']!,
-    useCursor: true,
-  );
+        'patients',
+        'patients',
+        fkParentTables: _fkMap['patients']!,
+        useCursor: true,
+      );
 
   Future<void> pushReturns() =>
       _pushOutboxFoundationOrLegacy('returns', 'returns');
@@ -6485,11 +6444,11 @@ class SyncService {
   Future<void> pushConsumptions() =>
       _pushOutboxFoundationOrLegacy('consumptions', 'consumptions');
   Future<void> pullConsumptions() => _pullTableRemapFKs(
-    'consumptions',
-    'consumptions',
-    fkParentTables: _fkMap['consumptions']!,
-    useCursor: true,
-  );
+        'consumptions',
+        'consumptions',
+        fkParentTables: _fkMap['consumptions']!,
+        useCursor: true,
+      );
 
   Future<void> pushDrugs() => _pushOutboxFoundationOrLegacy('drugs', 'drugs');
   Future<void> pullDrugs() => _pullTable('drugs', 'drugs', useCursor: true);
@@ -6497,20 +6456,20 @@ class SyncService {
   Future<void> pushPrescriptions() =>
       _pushOutboxFoundationOrLegacy('prescriptions', 'prescriptions');
   Future<void> pullPrescriptions() => _pullTableRemapFKs(
-    'prescriptions',
-    'prescriptions',
-    fkParentTables: _fkMap['prescriptions']!,
-    useCursor: true,
-  );
+        'prescriptions',
+        'prescriptions',
+        fkParentTables: _fkMap['prescriptions']!,
+        useCursor: true,
+      );
 
   Future<void> pushPrescriptionItems() =>
       _pushOutboxFoundationOrLegacy('prescription_items', 'prescription_items');
   Future<void> pullPrescriptionItems() => _pullTableRemapFKs(
-    'prescription_items',
-    'prescription_items',
-    fkParentTables: _fkMap['prescription_items']!,
-    useCursor: true,
-  );
+        'prescription_items',
+        'prescription_items',
+        fkParentTables: _fkMap['prescription_items']!,
+        useCursor: true,
+      );
 
   Future<void> pushComplaints() =>
       _pushOutboxFoundationOrLegacy('complaints', 'complaints');
@@ -6520,20 +6479,20 @@ class SyncService {
   Future<void> pushAppointments() =>
       _pushOutboxFoundationOrLegacy('appointments', 'appointments');
   Future<void> pullAppointments() => _pullTableRemapFKs(
-    'appointments',
-    'appointments',
-    fkParentTables: _fkMap['appointments']!,
-    useCursor: true,
-  );
+        'appointments',
+        'appointments',
+        fkParentTables: _fkMap['appointments']!,
+        useCursor: true,
+      );
 
   Future<void> pushDoctors() =>
       _pushOutboxFoundationOrLegacy('doctors', 'doctors');
   Future<void> pullDoctors() => _pullTableRemapFKs(
-    'doctors',
-    'doctors',
-    fkParentTables: _fkMap['doctors']!,
-    useCursor: true,
-  );
+        'doctors',
+        'doctors',
+        fkParentTables: _fkMap['doctors']!,
+        useCursor: true,
+      );
 
   Future<void> pushConsumptionTypes() =>
       _pushOutboxFoundationOrLegacy('consumption_types', 'consumption_types');
@@ -6546,15 +6505,15 @@ class SyncService {
       _pullTable('medical_services', 'medical_services', useCursor: true);
 
   Future<void> pushServiceDoctorShares() => _pushOutboxFoundationOrLegacy(
-    'service_doctor_share',
-    'service_doctor_share',
-  );
+        'service_doctor_share',
+        'service_doctor_share',
+      );
   Future<void> pullServiceDoctorShares() => _pullTableRemapFKs(
-    'service_doctor_share',
-    'service_doctor_share',
-    fkParentTables: _fkMap['service_doctor_share']!,
-    useCursor: true,
-  );
+        'service_doctor_share',
+        'service_doctor_share',
+        fkParentTables: _fkMap['service_doctor_share']!,
+        useCursor: true,
+      );
 
   Future<void> pushEmployees() =>
       _pushOutboxFoundationOrLegacy('employees', 'employees');
@@ -6564,31 +6523,31 @@ class SyncService {
   Future<void> pushEmployeeLoans() =>
       _pushOutboxFoundationOrLegacy('employees_loans', 'employees_loans');
   Future<void> pullEmployeeLoans() => _pullTableRemapFKs(
-    'employees_loans',
-    'employees_loans',
-    fkParentTables: _fkMap['employees_loans']!,
-    useCursor: true,
-  );
+        'employees_loans',
+        'employees_loans',
+        fkParentTables: _fkMap['employees_loans']!,
+        useCursor: true,
+      );
 
   Future<void> pushEmployeeSalaries() =>
       _pushOutboxFoundationOrLegacy('employees_salaries', 'employees_salaries');
   Future<void> pullEmployeeSalaries() => _pullTableRemapFKs(
-    'employees_salaries',
-    'employees_salaries',
-    fkParentTables: _fkMap['employees_salaries']!,
-    useCursor: true,
-  );
+        'employees_salaries',
+        'employees_salaries',
+        fkParentTables: _fkMap['employees_salaries']!,
+        useCursor: true,
+      );
 
   Future<void> pushEmployeeDiscounts() => _pushOutboxFoundationOrLegacy(
-    'employees_discounts',
-    'employees_discounts',
-  );
+        'employees_discounts',
+        'employees_discounts',
+      );
   Future<void> pullEmployeeDiscounts() => _pullTableRemapFKs(
-    'employees_discounts',
-    'employees_discounts',
-    fkParentTables: _fkMap['employees_discounts']!,
-    useCursor: true,
-  );
+        'employees_discounts',
+        'employees_discounts',
+        fkParentTables: _fkMap['employees_discounts']!,
+        useCursor: true,
+      );
 
   Future<void> pushItemTypes() =>
       _pushOutboxFoundationOrLegacy('item_types', 'item_types');
@@ -6597,48 +6556,48 @@ class SyncService {
 
   Future<void> pushItems() => _pushOutboxFoundationOrLegacy('items', 'items');
   Future<void> pullItems() => _pullTableRemapFKs(
-    'items',
-    'items',
-    fkParentTables: _fkMap['items']!,
-    useCursor: true,
-  );
+        'items',
+        'items',
+        fkParentTables: _fkMap['items']!,
+        useCursor: true,
+      );
 
   Future<void> pushPurchases() =>
       _pushOutboxFoundationOrLegacy('purchases', 'purchases');
   Future<void> pullPurchases() => _pullTableRemapFKs(
-    'purchases',
-    'purchases',
-    fkParentTables: _fkMap['purchases']!,
-    extraRemoteCols: {'total'},
-    useCursor: true,
-  );
+        'purchases',
+        'purchases',
+        fkParentTables: _fkMap['purchases']!,
+        extraRemoteCols: {'total'},
+        useCursor: true,
+      );
 
   Future<void> pushAlertSettings() =>
       _pushOutboxFoundationOrLegacy('alert_settings', 'alert_settings');
   Future<void> pullAlertSettings() => _pullTableRemapFKs(
-    'alert_settings',
-    'alert_settings',
-    fkParentTables: _fkMap['alert_settings']!,
-    useCursor: true,
-  );
+        'alert_settings',
+        'alert_settings',
+        fkParentTables: _fkMap['alert_settings']!,
+        useCursor: true,
+      );
 
   Future<void> pushFinancialLogs() =>
       _pushOutboxFoundationOrLegacy('financial_logs', 'financial_logs');
   Future<void> pullFinancialLogs() => _pullTableRemapFKs(
-    'financial_logs',
-    'financial_logs',
-    fkParentTables: _fkMap['financial_logs']!,
-    useCursor: true,
-  );
+        'financial_logs',
+        'financial_logs',
+        fkParentTables: _fkMap['financial_logs']!,
+        useCursor: true,
+      );
 
   Future<void> pushPatientServices() =>
       _pushOutboxFoundationOrLegacy('patient_services', 'patient_services');
   Future<void> pullPatientServices() => _pullTableRemapFKs(
-    'patient_services',
-    'patient_services',
-    fkParentTables: _fkMap['patient_services']!,
-    useCursor: true,
-  );
+        'patient_services',
+        'patient_services',
+        fkParentTables: _fkMap['patient_services']!,
+        useCursor: true,
+      );
 
   /*──────────────────── Bulk (مرتَّبة حسب الاعتمادات) ───────────────────*/
 

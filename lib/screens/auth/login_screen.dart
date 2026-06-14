@@ -16,27 +16,22 @@ import 'package:aelmamclinic/services/nhost_graphql_service.dart';
 import 'package:aelmamclinic/services/network_status_service.dart';
 import 'package:aelmamclinic/utils/l10n_extensions.dart';
 import 'package:aelmamclinic/utils/network_error_classifier.dart';
+import 'package:aelmamclinic/app/theme/app_colors.dart';
+import 'package:aelmamclinic/core/constants/app_spacing.dart';
+import 'package:aelmamclinic/core/widgets/brand_header.dart';
+import 'package:aelmamclinic/core/widgets/data_surface_widgets.dart';
 import 'package:aelmamclinic/widgets/language_switch_button.dart';
 
 // تصميم TBIAN
-import 'package:aelmamclinic/core/theme.dart';
 import 'package:aelmamclinic/core/neumorphism.dart';
 
 // 👇 إضافات مهمة
 import 'package:aelmamclinic/screens/admin/admin_dashboard_screen.dart';
 import 'package:aelmamclinic/screens/statistics/statistics_overview_screen.dart';
 
-enum _PendingLocalWipeAction {
-  wipe,
-  signOut,
-}
+enum _PendingLocalWipeAction { wipe, signOut }
 
-enum _PendingLocalWipeOutcome {
-  notNeeded,
-  wiped,
-  signedOut,
-  failed,
-}
+enum _PendingLocalWipeOutcome { notNeeded, wiped, signedOut, failed }
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -65,10 +60,7 @@ class _LoginScreenState extends State<LoginScreen> {
   static const _rememberEmailKey = 'auth.remember_email';
   static const _rememberPassKey = 'auth.remember_pass';
 
-  static const _supportNumbers = <String>[
-    '+967780696069',
-    '+967730696069',
-  ];
+  static const _supportNumbers = <String>['+967780696069', '+967730696069'];
 
   Future<void> _callNumber(String number) async {
     final uri = Uri.parse('tel:$number');
@@ -192,9 +184,7 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (_) {}
   }
 
-  Future<void> _persistRememberedCredentials({
-    required String email,
-  }) async {
+  Future<void> _persistRememberedCredentials({required String email}) async {
     try {
       final sp = await SharedPreferences.getInstance();
       await sp.setBool(_rememberMeKey, _rememberMe);
@@ -342,6 +332,22 @@ class _LoginScreenState extends State<LoginScreen> {
       return _PendingLocalWipeOutcome.notNeeded;
     }
 
+    final autoOk = await auth.performPendingLocalWipe(
+      createBackup: true,
+      rebootstrap: rebootstrap,
+    );
+    if (!mounted) {
+      return autoOk
+          ? _PendingLocalWipeOutcome.wiped
+          : _PendingLocalWipeOutcome.failed;
+    }
+    if (autoOk) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr('auth_pending_wipe_success'))),
+      );
+      return _PendingLocalWipeOutcome.wiped;
+    }
+
     final pendingAcc = auth.pendingWipeAccountId ?? '';
     final currentAcc = auth.accountId ?? '';
     final different = pendingAcc.isNotEmpty &&
@@ -417,8 +423,10 @@ class _LoginScreenState extends State<LoginScreen> {
     });
     try {
       if (auth.hasPendingLocalWipe) {
-        final outcome =
-            await _resolvePendingLocalWipe(auth, refreshState: false);
+        final outcome = await _resolvePendingLocalWipe(
+          auth,
+          refreshState: false,
+        );
         if (!mounted) return;
         if (outcome == _PendingLocalWipeOutcome.wiped) {
           await _checkAndRouteIfSignedIn(force: true);
@@ -434,8 +442,10 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       if (result.status == AuthSessionStatus.isolationRequired ||
           auth.hasPendingLocalWipe) {
-        final outcome =
-            await _resolvePendingLocalWipe(auth, refreshState: false);
+        final outcome = await _resolvePendingLocalWipe(
+          auth,
+          refreshState: false,
+        );
         if (!mounted) return;
         if (outcome == _PendingLocalWipeOutcome.wiped) {
           await _checkAndRouteIfSignedIn(force: true);
@@ -492,8 +502,10 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       if (result.status == AuthSessionStatus.isolationRequired ||
           auth.hasPendingLocalWipe) {
-        final outcome =
-            await _resolvePendingLocalWipe(auth, refreshState: false);
+        final outcome = await _resolvePendingLocalWipe(
+          auth,
+          refreshState: false,
+        );
         if (!mounted) return;
         if (outcome == _PendingLocalWipeOutcome.wiped) {
           await _checkAndRouteIfSignedIn(force: true);
@@ -628,7 +640,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (email.isEmpty || pass.isEmpty) {
       setState(
-          () => _error = context.tr('auth_error_enter_email_and_password'));
+        () => _error = context.tr('auth_error_enter_email_and_password'),
+      );
       return;
     }
     if (!_isValidEmail(email) || pass.length < 9) {
@@ -664,10 +677,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
       final sessionUser = NhostManager.client.auth.currentUser;
       final sessionRoles = sessionUser?.roles ?? const <String>[];
-      final isSuperFromSession = sessionRoles.any(
-            (r) => r.toLowerCase() == 'superadmin',
-          ) ||
-          (sessionUser?.defaultRole ?? '').toLowerCase() == 'superadmin';
+      final isSuperFromSession =
+          sessionRoles.any((r) => r.toLowerCase() == 'superadmin') ||
+              (sessionUser?.defaultRole ?? '').toLowerCase() == 'superadmin';
       if (isSuperFromSession && !auth.isSuperAdmin) {
         await auth.markSuperAdminFromSession();
         result = const AuthSessionResult.success();
@@ -680,7 +692,8 @@ class _LoginScreenState extends State<LoginScreen> {
           final clinicProfile = await _askClinicProfile();
           if (clinicProfile == null) {
             setState(
-                () => _error = context.tr('auth_error_clinic_name_required'));
+              () => _error = context.tr('auth_error_clinic_name_required'),
+            );
             return;
           }
           auth.setPendingClinicProfile(clinicProfile);
@@ -745,8 +758,9 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       if (!auth.isSuperAdmin && (auth.accountId ?? '').isEmpty) {
-        setState(() =>
-            _error = context.tr('auth_error_account_create_failed_plain'));
+        setState(
+          () => _error = context.tr('auth_error_account_create_failed_plain'),
+        );
         return;
       }
 
@@ -798,8 +812,9 @@ class _LoginScreenState extends State<LoginScreen> {
     final email = _email.text.trim();
     final pass = _pass.text.trim();
     if (email.isEmpty || pass.isEmpty) {
-      setState(() =>
-          _error = context.tr('auth_error_enter_email_and_password_first'));
+      setState(
+        () => _error = context.tr('auth_error_enter_email_and_password_first'),
+      );
       return;
     }
     if (!_isValidEmail(email) || pass.length < 9) {
@@ -819,6 +834,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     var shouldCleanupAuthSession = false;
     var signupCompleted = false;
+    var recoveredExistingEmail = false;
     try {
       if (auth.hasLocalSession || auth.hasNhostSession) {
         await auth.signOut();
@@ -827,22 +843,43 @@ class _LoginScreenState extends State<LoginScreen> {
       }
       auth.setPendingClinicProfile(clinicProfile);
       auth.allowAutoCreateAccountOnce();
-      var signUpResp = await auth.signUp(
-        email,
-        pass,
-        locale: context.currentLocaleCode,
-      );
-      if (signUpResp.session == null) {
+      dynamic signUpResp;
+      try {
+        signUpResp = await auth.signUp(
+          email,
+          pass,
+          locale: context.currentLocaleCode,
+        );
+      } catch (e) {
+        if (!_isEmailAlreadyInUseError(e)) rethrow;
+        recoveredExistingEmail = true;
         try {
           signUpResp = await auth.signIn(email, pass);
-        } catch (_) {}
+        } catch (signInError) {
+          if (!mounted) return;
+          setState(() {
+            _error = _isInvalidCredentialsError(signInError)
+                ? context.tr('auth_error_email_already_in_use')
+                : _mapLoginError(signInError);
+          });
+          return;
+        }
+      }
+      if (signUpResp.session == null) {
+        if (!recoveredExistingEmail) {
+          try {
+            signUpResp = await auth.signIn(email, pass);
+          } catch (_) {}
+        }
         if (signUpResp.session == null) {
           final token = auth.accessToken;
           if (token != null && token.isNotEmpty) {
             // Continue; token exists even if session is null.
           } else {
             setState(
-              () => _error = context.tr('auth_error_signup_verify_email'),
+              () => _error = recoveredExistingEmail
+                  ? context.tr('auth_error_login_activation_needed')
+                  : context.tr('auth_error_signup_verify_email'),
             );
             return;
           }
@@ -855,27 +892,40 @@ class _LoginScreenState extends State<LoginScreen> {
       // Ensure stale superadmin header does not leak into user session.
       AuthRoleState.clear();
       NhostGraphqlService.refreshClient();
-      Object? createError;
-      try {
-        await auth.selfCreateAccount(clinicProfile);
-        auth.clearOwnerOnboardingState();
-      } catch (e) {
-        auth.clearOwnerOnboardingState();
-        createError = e;
+      var result = await _ensurePostLoginState(auth, expectOwnerOrAdmin: true);
+      if (!mounted) return;
+      if (result.status == AuthSessionStatus.noAccount) {
+        Object? createError;
+        try {
+          await auth.selfCreateAccount(clinicProfile);
+          auth.clearOwnerOnboardingState();
+        } catch (e) {
+          auth.clearOwnerOnboardingState();
+          createError = e;
+        }
+        try {
+          await auth.refreshSession();
+        } catch (e) {
+          createError ??= e;
+        }
+        result = await _ensurePostLoginState(auth, expectOwnerOrAdmin: true);
+        if (!mounted) return;
+        if (!result.isSuccess) {
+          final message = createError != null
+              ? context.tr(
+                  'auth_error_account_create_failed_with_reason',
+                  params: {'reason': _mapLoginError(createError)},
+                )
+              : (_messageForStatus(result.status) ??
+                  context.tr('auth_error_account_verification_failed'));
+          setState(() => _error = message);
+          return;
+        }
       }
-      await auth.refreshSession();
-      final result = await _ensurePostLoginState(
-        auth,
-        expectOwnerOrAdmin: true,
-      );
       if (!mounted) return;
       if (!result.isSuccess) {
-        final message = createError != null
-            ? context.tr(
-                'auth_error_account_create_failed_with_reason',
-                params: {'reason': _mapLoginError(createError)},
-              )
-            : _messageForStatus(result.status);
+        final message = _messageForStatus(result.status) ??
+            context.tr('auth_error_account_verification_failed');
         setState(() => _error = message);
         return;
       }
@@ -885,12 +935,14 @@ class _LoginScreenState extends State<LoginScreen> {
           role != 'admin' &&
           role != 'superadmin') {
         setState(
-            () => _error = context.tr('auth_error_account_type_undetermined'));
+          () => _error = context.tr('auth_error_account_type_undetermined'),
+        );
         return;
       }
       if (!auth.isSuperAdmin && (auth.accountId ?? '').isEmpty) {
-        setState(() =>
-            _error = context.tr('auth_error_account_create_failed_plain'));
+        setState(
+          () => _error = context.tr('auth_error_account_create_failed_plain'),
+        );
         return;
       }
 
@@ -903,6 +955,8 @@ class _LoginScreenState extends State<LoginScreen> {
           preBootstrapIsolation == _PendingLocalWipeOutcome.failed) {
         return;
       }
+
+      await _ensureClinicProfileComplete(auth);
 
       await auth.bootstrapSync(
         pull: true,
@@ -945,20 +999,19 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<ClinicProfileInput?> _askClinicProfile() async {
-    final isEnglish =
-        Localizations.localeOf(context).languageCode.toLowerCase().startsWith(
-              'en',
-            );
+    final isEnglish = Localizations.localeOf(
+      context,
+    ).languageCode.toLowerCase().startsWith('en');
     final arStep = await _askClinicProfileStep(
       title: context.trRaw('بيانات المرفق الصحي (عربي)'),
-      nameLabel:
-          isEnglish ? 'Clinic name (Arabic)' : 'اسم المرفق الصحي',
+      nameLabel: isEnglish ? 'Clinic name (Arabic)' : 'اسم المرفق الصحي',
       cityLabel: isEnglish ? 'City (Arabic)' : 'المدينة',
       streetLabel: isEnglish ? 'Street (Arabic)' : 'الشارع',
       nearLabel: isEnglish ? 'Near (Arabic)' : 'بجوار',
       phoneLabel: isEnglish ? 'Phone number' : 'رقم الهاتف',
-      phone2Label:
-          isEnglish ? 'Additional phone (optional)' : 'رقم هاتف إضافي (اختياري)',
+      phone2Label: isEnglish
+          ? 'Additional phone (optional)'
+          : 'رقم هاتف إضافي (اختياري)',
       prefillPhone: null,
       prefillPhone2: null,
     );
@@ -1041,12 +1094,14 @@ class _LoginScreenState extends State<LoginScreen> {
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
               borderSide: BorderSide(
-                  color: scheme.outlineVariant.withValues(alpha: 0.55)),
+                color: scheme.outlineVariant.withValues(alpha: 0.55),
+              ),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
               borderSide: BorderSide(
-                  color: scheme.outlineVariant.withValues(alpha: 0.55)),
+                color: scheme.outlineVariant.withValues(alpha: 0.55),
+              ),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
@@ -1061,10 +1116,13 @@ class _LoginScreenState extends State<LoginScreen> {
         return Directionality(
           textDirection: isEnglish ? TextDirection.ltr : TextDirection.rtl,
           child: Dialog(
-            insetPadding:
-                const EdgeInsets.symmetric(horizontal: 18, vertical: 22),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            insetPadding: const EdgeInsets.symmetric(
+              horizontal: 18,
+              vertical: 22,
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
+            ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(24),
               child: Stack(
@@ -1075,8 +1133,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         gradient: LinearGradient(
                           colors: [
                             scheme.surface,
-                            scheme.surfaceContainerHighest
-                                .withValues(alpha: 0.75),
+                            scheme.surfaceContainerHighest.withValues(
+                              alpha: 0.75,
+                            ),
                           ],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
@@ -1126,8 +1185,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                     style: TextStyle(
                                       fontSize: 12.5,
                                       fontWeight: FontWeight.w700,
-                                      color: scheme.onSurface
-                                          .withValues(alpha: 0.65),
+                                      color: scheme.onSurface.withValues(
+                                        alpha: 0.65,
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -1138,15 +1198,19 @@ class _LoginScreenState extends State<LoginScreen> {
                         const SizedBox(height: 14),
                         TextField(
                           controller: nameCtrl,
-                          decoration:
-                              dec(nameLabel, Icons.local_hospital_rounded),
+                          decoration: dec(
+                            nameLabel,
+                            Icons.local_hospital_rounded,
+                          ),
                           textInputAction: TextInputAction.next,
                         ),
                         const SizedBox(height: 10),
                         TextField(
                           controller: cityCtrl,
-                          decoration:
-                              dec(cityLabel, Icons.location_city_rounded),
+                          decoration: dec(
+                            cityLabel,
+                            Icons.location_city_rounded,
+                          ),
                           textInputAction: TextInputAction.next,
                         ),
                         const SizedBox(height: 10),
@@ -1171,8 +1235,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         const SizedBox(height: 10),
                         TextField(
                           controller: phone2Ctrl,
-                          decoration:
-                              dec(phone2Label, Icons.phone_forwarded_rounded),
+                          decoration: dec(
+                            phone2Label,
+                            Icons.phone_forwarded_rounded,
+                          ),
                           keyboardType: TextInputType.phone,
                           textInputAction: TextInputAction.done,
                         ),
@@ -1183,8 +1249,9 @@ class _LoginScreenState extends State<LoginScreen> {
                               child: OutlinedButton(
                                 onPressed: () => Navigator.of(ctx).pop(),
                                 style: OutlinedButton.styleFrom(
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 12),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(16),
                                   ),
@@ -1202,11 +1269,11 @@ class _LoginScreenState extends State<LoginScreen> {
                                   final near = nearCtrl.text.trim();
                                   final phone = phoneCtrl.text.trim();
                                   final phone2 = phone2Ctrl.text.trim();
-                                      if (name.isEmpty ||
-                                          city.isEmpty ||
-                                          street.isEmpty ||
-                                          near.isEmpty ||
-                                          phone.isEmpty) {
+                                  if (name.isEmpty ||
+                                      city.isEmpty ||
+                                      street.isEmpty ||
+                                      near.isEmpty ||
+                                      phone.isEmpty) {
                                     ScaffoldMessenger.of(ctx).showSnackBar(
                                       SnackBar(
                                         content: Text(
@@ -1232,8 +1299,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                   );
                                 },
                                 style: FilledButton.styleFrom(
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 12),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(16),
                                   ),
@@ -1285,20 +1353,65 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  String _mapLoginError(Object error) {
+  bool _isInvalidCredentialsError(Object error) {
     if (error is ApiException) {
       final status = error.statusCode;
       final body = (error.responseBody ?? '').toString().toLowerCase();
       if (status == 401 ||
           body.contains('invalid-email-password') ||
           body.contains('incorrect email or password')) {
-        return context.tr('auth_error_invalid_credentials');
+        return true;
       }
+    }
+    final lower = error.toString().toLowerCase();
+    return lower.contains('invalid-email-password') ||
+        lower.contains('incorrect email or password') ||
+        lower.contains('statuscode=401') ||
+        lower.contains('status: 401');
+  }
+
+  bool _isInvalidEmailError(Object error) {
+    if (error is ApiException) {
+      final body = (error.responseBody ?? '').toString().toLowerCase();
       if (body.contains('invalid-email') ||
           body.contains('email format') ||
           body.contains('bad email')) {
-        return context.tr('auth_error_invalid_email');
+        return true;
       }
+    }
+    final lower = error.toString().toLowerCase();
+    return lower.contains('invalid-email') ||
+        lower.contains('email format') ||
+        lower.contains('bad email');
+  }
+
+  bool _isEmailAlreadyInUseError(Object error) {
+    if (error is ApiException) {
+      final status = error.statusCode;
+      final body = (error.responseBody ?? '').toString().toLowerCase();
+      if (status == 409 &&
+          (body.contains('email-already-in-use') ||
+              body.contains('email already in use'))) {
+        return true;
+      }
+    }
+    final lower = error.toString().toLowerCase();
+    return lower.contains('email-already-in-use') ||
+        lower.contains('email already in use');
+  }
+
+  String _mapLoginError(Object error) {
+    if (_isEmailAlreadyInUseError(error)) {
+      return context.tr('auth_error_email_already_in_use');
+    }
+    if (_isInvalidCredentialsError(error)) {
+      return context.tr('auth_error_invalid_credentials');
+    }
+    if (_isInvalidEmailError(error)) {
+      return context.tr('auth_error_invalid_email');
+    }
+    if (error is ApiException) {
+      final status = error.statusCode;
       if (status >= 500 ||
           NetworkErrorClassifier.isServerUnavailableLikeMessage(
             error.toString(),
@@ -1309,19 +1422,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if (NetworkErrorClassifier.isTransportError(error)) {
       return context.tr('auth_error_network_unstable');
     }
-    final msg = error.toString();
-    final lower = msg.toLowerCase();
-    if (lower.contains('invalid-email-password') ||
-        lower.contains('incorrect email or password') ||
-        lower.contains('statuscode=401') ||
-        lower.contains('status: 401')) {
-      return context.tr('auth_error_invalid_credentials');
-    }
-    if (lower.contains('invalid-email') ||
-        lower.contains('email format') ||
-        lower.contains('bad email')) {
-      return context.tr('auth_error_invalid_email');
-    }
+    final lower = error.toString().toLowerCase();
     if (NetworkErrorClassifier.isTransportLikeMessage(lower)) {
       return context.tr('auth_error_network_unstable');
     }
@@ -1351,91 +1452,88 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     return Scaffold(
-      backgroundColor: scheme.surface,
-      appBar: AppBar(
-        centerTitle: true,
-        elevation: 0,
-        backgroundColor: scheme.surface,
-        surfaceTintColor: scheme.surface,
-        actions: const [
-          LanguageSwitchButton(),
-          SizedBox(width: 8),
-        ],
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Image.asset(
-              'assets/images/logo.png',
-              height: 22,
-              fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-            ),
-            const SizedBox(width: 8),
-            Text(context.tr('auth_login_title')),
-          ],
+      backgroundColor: AppColors.canvas,
+      body: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: <Color>[
+              AppColors.surfaceRaised,
+              AppColors.background,
+              AppColors.primarySoft,
+            ],
+            begin: AlignmentDirectional.topStart,
+            end: AlignmentDirectional.bottomEnd,
+          ),
         ),
-      ),
-      body: Stack(
-        children: [
-          _AnimatedBubbleBackdrop(scheme: scheme),
-          SafeArea(
-            child: Center(
-              child: SingleChildScrollView(
-                padding: kScreenPadding,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 420),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Card(
-                        elevation: 0,
-                        color: Colors.transparent,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18),
-                          side: BorderSide(
-                            color:
-                                scheme.outlineVariant.withValues(alpha: 0.25),
-                            width: 0.7,
-                          ),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
+        child: SafeArea(
+          child: Stack(
+            children: [
+              PositionedDirectional(
+                top: AppSpacing.sm,
+                end: AppSpacing.sm,
+                child: AppSoftCard(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.xs,
+                    vertical: AppSpacing.xxs,
+                  ),
+                  radius: 18,
+                  child: const LanguageSwitchButton(),
+                ),
+              ),
+              Center(
+                child: SingleChildScrollView(
+                  padding: AppSpacing.responsivePagePadding(context),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 420),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        AppSoftCard(
+                          radius: 30,
+                          padding: AppSpacing.responsivePagePadding(context),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              Center(
-                                child: Image.asset(
-                                  'assets/images/logo.png',
-                                  height: 56,
-                                  fit: BoxFit.contain,
-                                  errorBuilder: (_, __, ___) =>
-                                      const SizedBox.shrink(),
+                              const BrandHeader(),
+                              const SizedBox(height: AppSpacing.lg),
+                              Align(
+                                alignment: AlignmentDirectional.centerStart,
+                                child: AppStatusChip(
+                                  label: showRecovery
+                                      ? context.trRaw('استعادة جلسة')
+                                      : context.trRaw('دخول آمن'),
+                                  tone: showRecovery
+                                      ? AppTone.warning
+                                      : AppTone.primary,
+                                  icon: showRecovery
+                                      ? Icons.sync_problem_rounded
+                                      : Icons.verified_user_rounded,
                                 ),
                               ),
-                              const SizedBox(height: 10),
+                              const SizedBox(height: AppSpacing.md),
                               Text(
-                                context.tr('app_name'),
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w900,
-                                  fontSize: 18,
-                                  color: scheme.onSurface,
-                                ),
+                                showRecovery
+                                    ? _recoveryTitle(auth)
+                                    : context.tr('auth_login_title'),
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .headlineMedium
+                                    ?.copyWith(fontWeight: FontWeight.w900),
                               ),
-                              const SizedBox(height: 6),
+                              const SizedBox(height: AppSpacing.sm),
                               Text(
                                 showRecovery
                                     ? _recoverySubtitle(auth)
                                     : context.tr('auth_login_subtitle'),
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 12.5,
-                                  color:
-                                      scheme.onSurface.withValues(alpha: 0.65),
-                                ),
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodyMedium
+                                    ?.copyWith(
+                                      color: AppColors.textSecondary,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                               ),
-                              const SizedBox(height: 14),
+                              const SizedBox(height: AppSpacing.lg),
                               if (showRecovery) ...[
                                 Container(
                                   padding: const EdgeInsets.all(14),
@@ -1444,8 +1542,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                         .withValues(alpha: 0.45),
                                     borderRadius: BorderRadius.circular(16),
                                     border: Border.all(
-                                      color: scheme.outlineVariant
-                                          .withValues(alpha: 0.35),
+                                      color: scheme.outlineVariant.withValues(
+                                        alpha: 0.35,
+                                      ),
                                     ),
                                   ),
                                   child: Column(
@@ -1478,8 +1577,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                           textAlign: TextAlign.center,
                                           style: TextStyle(
                                             fontWeight: FontWeight.w800,
-                                            color: scheme.onSurface
-                                                .withValues(alpha: 0.82),
+                                            color: scheme.onSurface.withValues(
+                                              alpha: 0.82,
+                                            ),
                                           ),
                                         ),
                                       if ((auth.email ?? '').trim().isNotEmpty)
@@ -1490,8 +1590,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                         style: TextStyle(
                                           fontSize: 11.5,
                                           fontWeight: FontWeight.w700,
-                                          color: scheme.onSurface
-                                              .withValues(alpha: 0.58),
+                                          color: scheme.onSurface.withValues(
+                                            alpha: 0.58,
+                                          ),
                                         ),
                                       ),
                                     ],
@@ -1503,8 +1604,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                   labelText: context.tr('auth_email_label'),
                                   keyboardType: TextInputType.emailAddress,
                                   textInputAction: TextInputAction.next,
-                                  prefix:
-                                      const Icon(Icons.alternate_email_rounded),
+                                  prefix: const Icon(
+                                    Icons.alternate_email_rounded,
+                                  ),
                                   onChanged: (_) {
                                     if (_error != null) {
                                       setState(() => _error = null);
@@ -1518,8 +1620,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                   obscureText: _obscure,
                                   textInputAction: TextInputAction.done,
                                   onSubmitted: (_) => _submit(auth),
-                                  prefix:
-                                      const Icon(Icons.lock_outline_rounded),
+                                  prefix: const Icon(
+                                    Icons.lock_outline_rounded,
+                                  ),
                                   suffix: IconButton(
                                     icon: Icon(
                                       _obscure
@@ -1544,8 +1647,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                   style: TextStyle(
                                     fontWeight: FontWeight.w600,
                                     fontSize: 11,
-                                    color:
-                                        scheme.onSurface.withValues(alpha: 0.6),
+                                    color: scheme.onSurface.withValues(
+                                      alpha: 0.6,
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(height: 8),
@@ -1554,7 +1658,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                     Checkbox(
                                       value: _rememberMe,
                                       onChanged: (v) => setState(
-                                          () => _rememberMe = v ?? false),
+                                        () => _rememberMe = v ?? false,
+                                      ),
                                     ),
                                     const SizedBox(width: 6),
                                     Expanded(
@@ -1562,8 +1667,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                         context.tr('auth_remember_me'),
                                         style: TextStyle(
                                           fontWeight: FontWeight.w700,
-                                          color: scheme.onSurface
-                                              .withValues(alpha: 0.80),
+                                          color: scheme.onSurface.withValues(
+                                            alpha: 0.80,
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -1592,9 +1698,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                                 strokeWidth: 2.4,
                                                 valueColor:
                                                     AlwaysStoppedAnimation<
-                                                        Color>(
-                                                  Colors.white,
-                                                ),
+                                                        Color>(Colors.white),
                                               ),
                                             )
                                           : const Icon(
@@ -1651,9 +1755,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                                 strokeWidth: 2.4,
                                                 valueColor:
                                                     AlwaysStoppedAnimation<
-                                                        Color>(
-                                                  Colors.white,
-                                                ),
+                                                        Color>(Colors.white),
                                               ),
                                             )
                                           : const Icon(
@@ -1670,8 +1772,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                       ),
                                       onPressed: _loading
                                           ? null
-                                          : () =>
-                                              _retryAuthenticatedRecovery(auth),
+                                          : () => _retryAuthenticatedRecovery(
+                                                auth,
+                                              ),
                                     ),
                                   ),
                                   if (!auth.isSuperAdmin &&
@@ -1695,7 +1798,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                             ? null
                                             : () =>
                                                 _completeAuthenticatedAccountSetup(
-                                                    auth),
+                                                  auth,
+                                                ),
                                       ),
                                     ),
                                   ],
@@ -1758,23 +1862,23 @@ class _LoginScreenState extends State<LoginScreen> {
                             ],
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 14),
-                      _SupportBar(
-                        onCall: _loading
-                            ? null
-                            : () => _openContactPicker(whatsapp: false),
-                        onWhatsApp: _loading
-                            ? null
-                            : () => _openContactPicker(whatsapp: true),
-                      ),
-                    ],
+                        const SizedBox(height: 14),
+                        _SupportBar(
+                          onCall: _loading
+                              ? null
+                              : () => _openContactPicker(whatsapp: false),
+                          onWhatsApp: _loading
+                              ? null
+                              : () => _openContactPicker(whatsapp: true),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -1887,10 +1991,7 @@ class _AnimatedBubbleBackdropState extends State<_AnimatedBubbleBackdrop>
   void _step(double dt) {
     // Update positions
     for (final b in _bubbles) {
-      b.pos = Offset(
-        b.pos.dx + b.vel.dx * dt,
-        b.pos.dy + b.vel.dy * dt,
-      );
+      b.pos = Offset(b.pos.dx + b.vel.dx * dt, b.pos.dy + b.vel.dy * dt);
 
       // Wall collisions
       if (b.pos.dx - b.radius < 0) {
@@ -1928,23 +2029,21 @@ class _AnimatedBubbleBackdropState extends State<_AnimatedBubbleBackdrop>
 
         if (velAlongNormal < 0) {
           final impulse = -velAlongNormal;
-          a.vel = Offset(
-            a.vel.dx - impulse * nx,
-            a.vel.dy - impulse * ny,
-          );
-          b.vel = Offset(
-            b.vel.dx + impulse * nx,
-            b.vel.dy + impulse * ny,
-          );
+          a.vel = Offset(a.vel.dx - impulse * nx, a.vel.dy - impulse * ny);
+          b.vel = Offset(b.vel.dx + impulse * nx, b.vel.dy + impulse * ny);
         }
 
         final overlap = minDist - dist;
         if (overlap > 0) {
           final correction = overlap / 2;
-          a.pos =
-              Offset(a.pos.dx - nx * correction, a.pos.dy - ny * correction);
-          b.pos =
-              Offset(b.pos.dx + nx * correction, b.pos.dy + ny * correction);
+          a.pos = Offset(
+            a.pos.dx - nx * correction,
+            a.pos.dy - ny * correction,
+          );
+          b.pos = Offset(
+            b.pos.dx + nx * correction,
+            b.pos.dy + ny * correction,
+          );
         }
       }
     }
@@ -1959,10 +2058,7 @@ class _AnimatedBubbleBackdropState extends State<_AnimatedBubbleBackdrop>
         builder: (context, constraints) {
           _ensureSize(constraints.biggest);
           return CustomPaint(
-            painter: _BubblePainter(
-              bubbles: _bubbles,
-              scheme: widget.scheme,
-            ),
+            painter: _BubblePainter(bubbles: _bubbles, scheme: widget.scheme),
           );
         },
       ),
@@ -1986,10 +2082,7 @@ class _BubbleParticle {
 }
 
 class _BubblePainter extends CustomPainter {
-  _BubblePainter({
-    required this.bubbles,
-    required this.scheme,
-  });
+  _BubblePainter({required this.bubbles, required this.scheme});
 
   final List<_BubbleParticle> bubbles;
   final ColorScheme scheme;
@@ -2036,8 +2129,9 @@ class _NeoIconBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final highlight = (isDark ? Colors.white : Colors.white)
-        .withValues(alpha: isDark ? 0.08 : 0.65);
+    final highlight = (isDark ? Colors.white : Colors.white).withValues(
+      alpha: isDark ? 0.08 : 0.65,
+    );
 
     return Container(
       width: size,
@@ -2100,10 +2194,7 @@ class _ErrorBanner extends StatelessWidget {
 }
 
 class _SupportBar extends StatelessWidget {
-  const _SupportBar({
-    required this.onCall,
-    required this.onWhatsApp,
-  });
+  const _SupportBar({required this.onCall, required this.onWhatsApp});
 
   final VoidCallback? onCall;
   final VoidCallback? onWhatsApp;
@@ -2112,44 +2203,34 @@ class _SupportBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
-    return Card(
-      elevation: 0,
-      color: Colors.transparent,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-        side: BorderSide(
-          color: scheme.outlineVariant.withValues(alpha: 0.25),
-          width: 0.7,
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        child: Row(
-          children: [
-            Icon(Icons.support_agent_rounded, color: scheme.primary),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                context.tr('auth_support_title'),
-                style: TextStyle(
-                  fontWeight: FontWeight.w900,
-                  color: scheme.onSurface,
-                ),
+    return AppSoftCard(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      radius: 18,
+      child: Row(
+        children: [
+          Icon(Icons.support_agent_rounded, color: scheme.primary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              context.tr('auth_support_title'),
+              style: TextStyle(
+                fontWeight: FontWeight.w900,
+                color: scheme.onSurface,
               ),
             ),
-            _SupportIconButton(
-              tooltip: context.tr('auth_support_call_tooltip'),
-              icon: Icons.phone_rounded,
-              onTap: onCall,
-            ),
-            const SizedBox(width: 10),
-            _SupportIconButton(
-              tooltip: context.tr('auth_support_whatsapp_tooltip'),
-              icon: Icons.chat_rounded,
-              onTap: onWhatsApp,
-            ),
-          ],
-        ),
+          ),
+          _SupportIconButton(
+            tooltip: context.tr('auth_support_call_tooltip'),
+            icon: Icons.phone_rounded,
+            onTap: onCall,
+          ),
+          const SizedBox(width: 10),
+          _SupportIconButton(
+            tooltip: context.tr('auth_support_whatsapp_tooltip'),
+            icon: Icons.chat_rounded,
+            onTap: onWhatsApp,
+          ),
+        ],
       ),
     );
   }

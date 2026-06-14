@@ -254,8 +254,17 @@ function graphqlUrl() {
   if (raw && raw.includes('nhost.run')) {
     let normalized = raw.replace(/\/+$/, '');
     if (normalized.endsWith('/v1/graphql')) return normalized;
-    if (normalized.endsWith('/v1')) return normalized;
-    return `${normalized}/v1`;
+    if (normalized.endsWith('/graphql')) {
+      return normalized.replace(/\/graphql$/i, '/v1/graphql');
+    }
+    if (normalized.endsWith('/v1')) {
+      return normalized.includes('.hasura.')
+        ? `${normalized}/graphql`
+        : normalized;
+    }
+    return normalized.includes('.hasura.')
+      ? `${normalized}/v1/graphql`
+      : `${normalized}/v1`;
   }
   const subdomain = process.env.NHOST_SUBDOMAIN;
   const region = process.env.NHOST_REGION;
