@@ -26,10 +26,11 @@ const readBody = (req) =>
     });
   });
 
-const ROOT_EMAIL = 'elmamclinic.admin@elmam.com';
+const ROOT_EMAIL = `${process.env.ROOT_SUPER_ADMIN_EMAIL || 'elmamclinic.admin@elmam.com'}`.toLowerCase().trim();
 const ALLOWED_TABS = [
   'clinics',
   'chats',
+  'support_ratings',
   'subscriptions',
   'payments',
   'complaints',
@@ -96,14 +97,26 @@ const resolveRunSqlUrl = () => {
   return `${base}/v2/query`;
 };
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const isTransientSqlHttpStatus = (status) =>
+  status === 0 || status === 502 || status === 503 || status === 504;
+
+const isDefaultSourceMissing = (text) =>
+  `${text ?? ''}`.includes('source with name "default" does not exist') ||
+  `${text ?? ''}`.includes('source with name "default" was not found');
+
 async function runSql(sql, readOnly = false) {
   const url = resolveRunSqlUrl();
   const adminSecret =
-    process.env.GRAPHQL_ADMIN_SECRET || process.env.NHOST_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
+    process.env.GRAPHQL_ADMIN_SECRET ||
+    process.env.NHOST_ADMIN_SECRET ||
+    process.env.HASURA_GRAPHQL_ADMIN_SECRET;
   if (!url || !adminSecret) {
     throw new Error('Missing HASURA admin secret for SQL');
   }
-  const execute = async (includeSource) => {
+
+  const executeOnce = async (includeSource) => {
     const res = await fetch(url, {
       method: 'POST',
       headers: {
@@ -120,28 +133,38 @@ async function runSql(sql, readOnly = false) {
       }),
     });
     const text = await res.text();
-    if (!res.ok) {
-      if (
-        includeSource &&
-        text.includes('source with name "default" does not exist')
-      ) {
+    return { ok: res.ok, status: res.status, text };
+  };
+
+  const execute = async (includeSource) => {
+    let lastStatus = 0;
+    let lastText = '';
+    for (let attempt = 1; attempt <= 4; attempt += 1) {
+      const result = await executeOnce(includeSource);
+      lastStatus = result.status;
+      lastText = result.text;
+      if (!result.ok) {
+        if (includeSource && isDefaultSourceMissing(result.text)) {
+          return execute(false);
+        }
+        if (isTransientSqlHttpStatus(result.status) && attempt < 4) {
+          await sleep(250 * attempt * attempt);
+          continue;
+        }
+        throw new Error(`run_sql failed: ${result.status} ${result.text}`);
+      }
+      let json;
+      try {
+        json = result.text ? JSON.parse(result.text) : {};
+      } catch (_) {
+        throw new Error(`run_sql returned invalid JSON: ${result.text}`);
+      }
+      if (includeSource && isDefaultSourceMissing(json?.error)) {
         return execute(false);
       }
-      throw new Error(`run_sql failed: ${res.status} ${text}`);
+      return json;
     }
-    let json;
-    try {
-      json = text ? JSON.parse(text) : {};
-    } catch (_) {
-      throw new Error(`run_sql returned invalid JSON: ${text}`);
-    }
-    if (
-      includeSource &&
-      `${json?.error ?? ''}`.includes('source with name "default" does not exist')
-    ) {
-      return execute(false);
-    }
-    return json;
+    throw new Error(`run_sql failed after retries: ${lastStatus} ${lastText}`);
   };
   return execute(true);
 }
@@ -256,12 +279,16 @@ async function isSuperAdminUser(userId, email) {
   const safeEmail = escapeLiteral(email);
   const sql = `
     select 1
-    from auth.user_roles
-    where user_id='${safeId}' and role='superadmin'
+    from auth.user_roles ur
+    join auth.users u on u.id = ur.user_id
+    where ur.user_id='${safeId}'
+      and ur.role='superadmin'
+      and coalesce(u.disabled, false) = false
     union all
     select 1
     from public.super_admins
-    where user_uid='${safeId}' or lower(email)=lower('${safeEmail}')
+    where (user_uid='${safeId}' or lower(email)=lower('${safeEmail}'))
+      and coalesce(disabled, false) = false
     limit 1;
   `;
   const json = await runSql(sql, true);
@@ -311,6 +338,10 @@ module.exports = async function handler(req, res) {
       res.status(400).json({ ok: false, error: 'Missing fields' });
       return;
     }
+    if (password.length < 9) {
+      res.status(400).json({ ok: false, error: 'Password too short' });
+      return;
+    }
 
     const allowedTabs = sanitizeTabs(body.allowed_tabs);
     created = await createOrGetUser(email, password);
@@ -319,24 +350,88 @@ module.exports = async function handler(req, res) {
     await ensureWhitelistEmail(email);
 
     const safeEmail = escapeLiteral(email);
+    const safeUserId = escapeLiteral(userId);
+    const allowedTabsSql = allowedTabs
+      .map((t) => `'${escapeLiteral(t)}'`)
+      .join(',');
     const sql = `
       BEGIN;
+
+      CREATE TABLE IF NOT EXISTS public.super_admins (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        created_at timestamptz NOT NULL DEFAULT now(),
+        account_id uuid,
+        device_id text,
+        local_id bigint,
+        email text,
+        user_uid uuid,
+        disabled boolean NOT NULL DEFAULT false,
+        default_role text NOT NULL DEFAULT 'superadmin',
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
+
+      ALTER TABLE public.super_admins
+        ADD COLUMN IF NOT EXISTS email text,
+        ADD COLUMN IF NOT EXISTS user_uid uuid,
+        ADD COLUMN IF NOT EXISTS disabled boolean NOT NULL DEFAULT false,
+        ADD COLUMN IF NOT EXISTS default_role text NOT NULL DEFAULT 'superadmin',
+        ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+
+      CREATE TABLE IF NOT EXISTS public.superadmin_whitelist (
+        email text PRIMARY KEY,
+        created_at timestamptz NOT NULL DEFAULT now()
+      );
+
+      CREATE TABLE IF NOT EXISTS public.super_admin_tab_permissions (
+        user_uid uuid PRIMARY KEY,
+        allowed_tabs text[] NOT NULL DEFAULT ARRAY['clinics','chats','support_ratings','subscriptions','payments','complaints','stats','members']::text[],
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
+
       INSERT INTO auth.roles(role)
-      VALUES ('superadmin')
+      SELECT role
+      FROM unnest(ARRAY['user','me','superadmin']::text[]) AS role
       ON CONFLICT DO NOTHING;
+
+      UPDATE auth.users
+      SET default_role = 'superadmin',
+          email_verified = true,
+          disabled = false,
+          metadata = coalesce(metadata, '{}'::jsonb)
+            || jsonb_build_object('role', 'superadmin', 'source', 'admin-create-superadmin'),
+          updated_at = now()
+      WHERE id='${safeUserId}';
 
       INSERT INTO auth.user_roles(user_id, role)
-      VALUES ('${userId}', 'superadmin')
+      SELECT '${safeUserId}'::uuid, role
+      FROM unnest(ARRAY['user','me','superadmin']::text[]) AS role
       ON CONFLICT DO NOTHING;
 
-      INSERT INTO public.super_admins(email, user_uid)
-      VALUES (lower('${safeEmail}'), '${userId}')
-      ON CONFLICT (email) DO UPDATE SET user_uid = excluded.user_uid;
+      INSERT INTO public.super_admins(email, user_uid, disabled, default_role, updated_at)
+      SELECT lower('${safeEmail}'), '${safeUserId}'::uuid, false, 'superadmin', now()
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM public.super_admins sa
+        WHERE lower(coalesce(sa.email, '')) = lower('${safeEmail}')
+           OR sa.user_uid = '${safeUserId}'::uuid
+      );
 
-      INSERT INTO public.super_admin_tab_permissions(user_uid, allowed_tabs)
-      VALUES ('${userId}', ARRAY[${allowedTabs
-        .map((t) => `'${t}'`)
-        .join(',')}]::text[])
+      UPDATE public.super_admins
+      SET email = lower('${safeEmail}'),
+          user_uid = '${safeUserId}'::uuid,
+          disabled = false,
+          default_role = 'superadmin',
+          updated_at = now()
+      WHERE lower(coalesce(email, '')) = lower('${safeEmail}')
+         OR user_uid = '${safeUserId}'::uuid;
+
+      INSERT INTO public.superadmin_whitelist(email)
+      VALUES (lower('${safeEmail}'))
+      ON CONFLICT (email) DO NOTHING;
+
+      INSERT INTO public.super_admin_tab_permissions(user_uid, allowed_tabs, updated_at)
+      VALUES ('${safeUserId}'::uuid, ARRAY[${allowedTabsSql}]::text[], now())
       ON CONFLICT (user_uid) DO UPDATE
       SET allowed_tabs = excluded.allowed_tabs,
           updated_at = now();
