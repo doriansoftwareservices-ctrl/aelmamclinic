@@ -17,11 +17,7 @@ insert_permissions:
             user_uid:
               _eq: X-Hasura-User-Id
       columns: '*'
-  - role: superadmin
-    permission:
-      check: {}
-      columns: '*'
-  - role: user
+  - role: owner
     permission:
       check:
         _exists:
@@ -35,7 +31,11 @@ insert_permissions:
               _eq: false
             user_uid:
               _eq: X-Hasura-User-Id
-  - role: owner
+  - role: superadmin
+    permission:
+      check: {}
+      columns: '*'
+  - role: user
     permission:
       check:
         _exists:
@@ -65,11 +65,7 @@ select_permissions:
               _eq: false
             user_uid:
               _eq: X-Hasura-User-Id
-  - role: superadmin
-    permission:
-      columns: '*'
-      filter: {}
-  - role: user
+  - role: owner
     permission:
       columns: '*'
       filter:
@@ -84,7 +80,11 @@ select_permissions:
               _eq: false
             user_uid:
               _eq: X-Hasura-User-Id
-  - role: owner
+  - role: superadmin
+    permission:
+      columns: '*'
+      filter: {}
+  - role: user
     permission:
       columns: '*'
       filter:
@@ -127,12 +127,7 @@ update_permissions:
               _eq: false
             user_uid:
               _eq: X-Hasura-User-Id
-  - role: superadmin
-    permission:
-      columns: '*'
-      filter: {}
-      check: {}
-  - role: user
+  - role: owner
     permission:
       columns: '*'
       filter:
@@ -148,7 +143,12 @@ update_permissions:
             user_uid:
               _eq: X-Hasura-User-Id
       check: {}
-  - role: owner
+  - role: superadmin
+    permission:
+      columns: '*'
+      filter: {}
+      check: {}
+  - role: user
     permission:
       columns: '*'
       filter:
@@ -179,10 +179,7 @@ delete_permissions:
               _eq: false
             user_uid:
               _eq: X-Hasura-User-Id
-  - role: superadmin
-    permission:
-      filter: {}
-  - role: user
+  - role: owner
     permission:
       filter:
         _exists:
@@ -196,7 +193,10 @@ delete_permissions:
               _eq: false
             user_uid:
               _eq: X-Hasura-User-Id
-  - role: owner
+  - role: superadmin
+    permission:
+      filter: {}
+  - role: user
     permission:
       filter:
         _exists:

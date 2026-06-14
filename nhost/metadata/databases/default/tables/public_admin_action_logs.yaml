@@ -1,6 +1,17 @@
 table:
   name: admin_action_logs
   schema: public
+insert_permissions:
+  - role: superadmin
+    permission:
+      check: {}
+      columns:
+        - actor_uid
+        - actor_email
+        - action
+        - entity_type
+        - entity_id
+        - details
 select_permissions:
   - role: superadmin
     permission:

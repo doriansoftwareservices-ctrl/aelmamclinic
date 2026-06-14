@@ -11,13 +11,13 @@ select_permissions:
             name: chat_participants
             schema: public
           _where:
-            conversation_id:
-              _ceq: conversation_id
             _or:
               - is_deleted:
                   _eq: false
               - is_deleted:
                   _is_null: true
+            conversation_id:
+              _ceq: conversation_id
             user_uid:
               _eq: X-Hasura-User-Id
   - role: me
@@ -29,13 +29,13 @@ select_permissions:
             name: chat_participants
             schema: public
           _where:
-            conversation_id:
-              _ceq: conversation_id
             _or:
               - is_deleted:
                   _eq: false
               - is_deleted:
                   _is_null: true
+            conversation_id:
+              _ceq: conversation_id
             user_uid:
               _eq: X-Hasura-User-Id
   - role: owner
@@ -47,13 +47,13 @@ select_permissions:
             name: chat_participants
             schema: public
           _where:
-            conversation_id:
-              _ceq: conversation_id
             _or:
               - is_deleted:
                   _eq: false
               - is_deleted:
                   _is_null: true
+            conversation_id:
+              _ceq: conversation_id
             user_uid:
               _eq: X-Hasura-User-Id
   - role: superadmin
@@ -69,13 +69,13 @@ select_permissions:
             name: chat_participants
             schema: public
           _where:
-            conversation_id:
-              _ceq: conversation_id
             _or:
               - is_deleted:
                   _eq: false
               - is_deleted:
                   _is_null: true
+            conversation_id:
+              _ceq: conversation_id
             user_uid:
               _eq: X-Hasura-User-Id
   - role: user
@@ -87,12 +87,12 @@ select_permissions:
             name: chat_participants
             schema: public
           _where:
-            conversation_id:
-              _ceq: conversation_id
             _or:
               - is_deleted:
                   _eq: false
               - is_deleted:
                   _is_null: true
+            conversation_id:
+              _ceq: conversation_id
             user_uid:
               _eq: X-Hasura-User-Id

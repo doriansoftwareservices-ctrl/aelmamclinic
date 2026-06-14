@@ -26,7 +26,7 @@ const readBody = (req) =>
     });
   });
 
-const ROOT_EMAIL = 'elmam.clinic.c.s@elmam.com';
+const ROOT_EMAIL = 'elmamclinic.admin@elmam.com';
 
 const normalizeAuthUrl = (raw) => {
   if (!raw) return null;
@@ -259,3 +259,4 @@ module.exports = async function handler(req, res) {
     res.status(code).json({ ok: false, error: err?.message ?? 'Failed' });
   }
 };
+

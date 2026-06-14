@@ -7,6 +7,52 @@ insert_permissions:
       check: {}
       columns: '*'
 select_permissions:
+  - role: owner
+    permission:
+      columns:
+        - id
+        - account_id
+        - plan_code
+        - status
+        - start_at
+        - end_at
+        - created_at
+        - updated_at
+        - approved_at
+        - request_id
+      filter:
+        _exists:
+          _table:
+            name: user_current_account
+            schema: public
+          _where:
+            account_id:
+              _ceq: account_id
+            user_uid:
+              _eq: X-Hasura-User-Id
+  - role: user
+    permission:
+      columns:
+        - id
+        - account_id
+        - plan_code
+        - status
+        - start_at
+        - end_at
+        - created_at
+        - updated_at
+        - approved_at
+        - request_id
+      filter:
+        _exists:
+          _table:
+            name: user_current_account
+            schema: public
+          _where:
+            account_id:
+              _ceq: account_id
+            user_uid:
+              _eq: X-Hasura-User-Id
   - role: superadmin
     permission:
       columns: '*'

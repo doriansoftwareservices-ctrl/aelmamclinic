@@ -58,7 +58,7 @@ class NhostConfig {
   static final String _defaultRootSuperAdminEmail =
       const String.fromEnvironment(
         'ROOT_SUPER_ADMIN_EMAIL',
-        defaultValue: 'elmam.clinic.c.s@elmam.com',
+        defaultValue: 'elmamclinic.admin@elmam.com',
       );
   static String? _overrideRootSuperAdminEmail;
 
@@ -171,3 +171,4 @@ class NhostConfig {
         normalize(rootSuperAdminEmail) ?? _overrideRootSuperAdminEmail;
   }
 }
+
