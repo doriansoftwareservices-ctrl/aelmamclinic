@@ -44,17 +44,48 @@ BEGIN
 END;
 $$;
 
-DROP TRIGGER IF EXISTS trg_normalize_auth_users_json ON auth.users;
-CREATE TRIGGER trg_normalize_auth_users_json
-BEFORE INSERT OR UPDATE ON auth.users
-FOR EACH ROW
-EXECUTE FUNCTION public.trg_normalize_auth_users_json();
+DO $$
+DECLARE
+  can_manage_auth_users boolean := false;
+BEGIN
+  SELECT EXISTS (
+    SELECT 1
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    JOIN pg_roles r ON r.oid = c.relowner
+    WHERE n.nspname = 'auth'
+      AND c.relname = 'users'
+      AND r.rolname = current_user
+  ) INTO can_manage_auth_users;
 
--- Normalize existing rows (one-time cleanup).
+  IF can_manage_auth_users THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS trg_normalize_auth_users_json ON auth.users';
+    EXECUTE $sql$
+      CREATE TRIGGER trg_normalize_auth_users_json
+      BEFORE INSERT OR UPDATE ON auth.users
+      FOR EACH ROW
+      EXECUTE FUNCTION public.trg_normalize_auth_users_json()
+    $sql$;
+  ELSE
+    RAISE NOTICE 'Skipping auth.users JSON normalization trigger: current role % is not owner of auth.users', current_user;
+  END IF;
+END;
+$$;
+
+-- Normalize existing rows (one-time cleanup) only when the migration role can update auth.users.
 DO $$
 DECLARE
   col text;
+  can_update_auth_users boolean := false;
 BEGIN
+  SELECT COALESCE(has_table_privilege('auth.users', 'UPDATE'), false)
+  INTO can_update_auth_users;
+
+  IF NOT can_update_auth_users THEN
+    RAISE NOTICE 'Skipping auth.users existing-row JSON cleanup: current role % cannot update auth.users', current_user;
+    RETURN;
+  END IF;
+
   FOR col IN SELECT unnest(ARRAY['metadata','app_metadata','raw_app_meta_data','raw_user_meta_data'])
   LOOP
     IF EXISTS (
