@@ -5,7 +5,7 @@
 class NhostConfig {
   const NhostConfig._();
 
-  static const String _fallbackSubdomain = 'ujxbrdbrjbujvlylpbbn';
+  static const String _fallbackSubdomain = 'nbbywmmebvxegshrvgic';
   static const String _fallbackRegion = 'ap-southeast-1';
 
   static final String _defaultSubdomain = const String.fromEnvironment(
@@ -23,46 +23,46 @@ class NhostConfig {
   static final String _defaultGraphqlUrl = const String.fromEnvironment(
     'NHOST_GRAPHQL_URL',
     defaultValue:
-        'https://ujxbrdbrjbujvlylpbbn.graphql.ap-southeast-1.nhost.run/v1',
+        'https://nbbywmmebvxegshrvgic.graphql.ap-southeast-1.nhost.run/v1',
   );
   static String? _overrideGraphqlUrl;
 
   static final String _defaultAuthUrl = const String.fromEnvironment(
     'NHOST_AUTH_URL',
     defaultValue:
-        'https://ujxbrdbrjbujvlylpbbn.auth.ap-southeast-1.nhost.run/v1',
+        'https://nbbywmmebvxegshrvgic.auth.ap-southeast-1.nhost.run/v1',
   );
   static String? _overrideAuthUrl;
 
   static final String _defaultStorageUrl = const String.fromEnvironment(
     'NHOST_STORAGE_URL',
     defaultValue:
-        'https://ujxbrdbrjbujvlylpbbn.storage.ap-southeast-1.nhost.run/v1',
+        'https://nbbywmmebvxegshrvgic.storage.ap-southeast-1.nhost.run/v1',
   );
   static String? _overrideStorageUrl;
 
   static final String _defaultFunctionsUrl = const String.fromEnvironment(
     'NHOST_FUNCTIONS_URL',
     defaultValue:
-        'https://ujxbrdbrjbujvlylpbbn.functions.ap-southeast-1.nhost.run/v1',
+        'https://nbbywmmebvxegshrvgic.functions.ap-southeast-1.nhost.run/v1',
   );
   static String? _overrideFunctionsUrl;
 
   static final String _defaultResetPasswordRedirectUrl =
       const String.fromEnvironment(
-    'NHOST_PASSWORD_RESET_REDIRECT_URL',
-    defaultValue: '',
-  );
+        'NHOST_PASSWORD_RESET_REDIRECT_URL',
+        defaultValue: '',
+      );
   static String? _overrideResetPasswordRedirectUrl;
 
   static final String _defaultRootSuperAdminEmail =
       const String.fromEnvironment(
-    'ROOT_SUPER_ADMIN_EMAIL',
-    defaultValue: 'elmam.clinic.c.s@elmam.com',
-  );
+        'ROOT_SUPER_ADMIN_EMAIL',
+        defaultValue: 'elmam.clinic.c.s@elmam.com',
+      );
   static String? _overrideRootSuperAdminEmail;
 
-  /// Nhost project subdomain (e.g. `ujxbrdbrjbujvlylpbbn`).
+  /// Nhost project subdomain (e.g. `nbbywmmebvxegshrvgic`).
   static String get subdomain =>
       _overrideSubdomain ??
       _normalizeOrFallback(_defaultSubdomain, _fallbackSubdomain);
@@ -89,10 +89,9 @@ class NhostConfig {
     if (httpUrl.startsWith('http://')) {
       return 'ws://${httpUrl.substring('http://'.length)}';
     }
-    return httpUrl.replaceFirst('https://', 'wss://').replaceFirst(
-          'http://',
-          'ws://',
-        );
+    return httpUrl
+        .replaceFirst('https://', 'wss://')
+        .replaceFirst('http://', 'ws://');
   }
 
   static String get authUrl {
@@ -165,9 +164,10 @@ class NhostConfig {
     _overrideAuthUrl = normalize(authUrl) ?? _overrideAuthUrl;
     _overrideStorageUrl = normalize(storageUrl) ?? _overrideStorageUrl;
     _overrideFunctionsUrl = normalize(functionsUrl) ?? _overrideFunctionsUrl;
-    _overrideResetPasswordRedirectUrl = normalize(resetPasswordRedirectUrl) ??
+    _overrideResetPasswordRedirectUrl =
+        normalize(resetPasswordRedirectUrl) ??
         _overrideResetPasswordRedirectUrl;
-    _overrideRootSuperAdminEmail = normalize(rootSuperAdminEmail) ??
-        _overrideRootSuperAdminEmail;
+    _overrideRootSuperAdminEmail =
+        normalize(rootSuperAdminEmail) ?? _overrideRootSuperAdminEmail;
   }
 }
