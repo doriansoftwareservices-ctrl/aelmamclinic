@@ -395,7 +395,7 @@ module.exports = async function handler(req, res) {
       ON CONFLICT DO NOTHING;
 
       UPDATE auth.users
-      SET default_role = 'superadmin',
+      SET default_role = 'user',
           email_verified = true,
           disabled = false,
           metadata = coalesce(metadata, '{}'::jsonb)

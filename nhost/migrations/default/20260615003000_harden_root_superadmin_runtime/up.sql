@@ -54,7 +54,7 @@ ON CONFLICT DO NOTHING;
 
 -- If the root user already exists, make it a complete authenticated superadmin.
 UPDATE auth.users
-SET default_role = 'superadmin',
+SET default_role = 'user',
     email_verified = true,
     disabled = false,
     metadata = coalesce(metadata, '{}'::jsonb)
