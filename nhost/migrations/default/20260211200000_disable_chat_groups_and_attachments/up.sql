@@ -1,8 +1,22 @@
 BEGIN;
 
 -- Remove chat attachments storage artifacts
-DELETE FROM storage.files WHERE bucket_id = 'chat-attachments';
-DELETE FROM storage.buckets WHERE id = 'chat-attachments';
+DO $$
+BEGIN
+  IF to_regclass('storage.files') IS NOT NULL
+     AND has_table_privilege(current_user, 'storage.files', 'DELETE') THEN
+    DELETE FROM storage.files WHERE bucket_id = 'chat-attachments';
+  ELSE
+    RAISE NOTICE 'skip deleting chat attachment storage files: no DELETE on storage.files';
+  END IF;
+
+  IF to_regclass('storage.buckets') IS NOT NULL
+     AND has_table_privilege(current_user, 'storage.buckets', 'DELETE') THEN
+    DELETE FROM storage.buckets WHERE id = 'chat-attachments';
+  ELSE
+    RAISE NOTICE 'skip deleting chat attachments bucket: no DELETE on storage.buckets';
+  END IF;
+END $$;
 
 -- Drop attachment/group views
 DROP VIEW IF EXISTS public.v_chat_messages_with_attachments;
