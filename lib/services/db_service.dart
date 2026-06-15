@@ -12,6 +12,7 @@ library db_service;
 // DBService.instance.bindSyncPush(sync.pushFor);
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart' as sqflite_ffi;
@@ -19,7 +20,9 @@ import 'package:path/path.dart' as p;
 import 'package:meta/meta.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:aelmamclinic/core/active_account_store.dart';
+import 'package:aelmamclinic/core/sync/clinic_sync_domains.dart';
 import 'package:aelmamclinic/l10n/raw_string_localizer.dart';
+import 'package:uuid/uuid.dart';
 
 /*─────────────────── موديلات ───────────────────*/
 import 'package:aelmamclinic/models/patient_service.dart';
@@ -98,6 +101,36 @@ const Set<String> _kStatsTables = {
   'item_types',
   'alert_settings',
 };
+
+const String _kClinicSyncOutboxTable = 'clinic_sync_outbox';
+const String _kClinicSyncStateTable = 'clinic_sync_state';
+const String _kClinicSyncConflictsTable = 'clinic_sync_conflicts';
+const String _kClinicSyncHealthEventsTable = 'clinic_sync_health_events';
+const Set<String> _kClinicOutboxFoundationTables = {
+  'item_types',
+  'items',
+  'drugs',
+  'medical_services',
+  'consumption_types',
+  'service_doctor_share',
+  'employees',
+  'doctors',
+  'patients',
+  'patient_services',
+  'returns',
+  'appointments',
+  'prescriptions',
+  'prescription_items',
+  'consumptions',
+  'purchases',
+  'alert_settings',
+  'employees_loans',
+  'employees_salaries',
+  'employees_discounts',
+  'complaints',
+  'financial_logs',
+};
+const Uuid _clinicSyncUuid = Uuid();
 
 class DBService {
   DBService._();
@@ -236,15 +269,15 @@ class DBService {
         ObsCode.dbMarkChangedFailed,
         'markChanged failed while signaling local table mutation',
         flowId: _newDbFlow('mark_changed'),
-        context: {
-          'table': table,
-        },
+        context: {'table': table},
       );
     }
   }
 
   Future<Set<String>> _getTableColumns(
-      DatabaseExecutor db, String table) async {
+    DatabaseExecutor db,
+    String table,
+  ) async {
     if (_tableColumnsCache.containsKey(table)) {
       return _tableColumnsCache[table]!;
     }
@@ -261,9 +294,7 @@ class DBService {
         ObsCode.dbGetTableColumnsFailed,
         'loading table columns failed',
         flowId: _newDbFlow('table_columns'),
-        context: {
-          'table': table,
-        },
+        context: {'table': table},
         error: e,
         stackTrace: st,
       );
@@ -272,13 +303,19 @@ class DBService {
   }
 
   Future<bool> _hasColumn(
-      DatabaseExecutor db, String table, String column) async {
+    DatabaseExecutor db,
+    String table,
+    String column,
+  ) async {
     final cols = await _getTableColumns(db, table);
     return cols.contains(column);
   }
 
   Future<bool> hasColumn(
-      DatabaseExecutor db, String table, String column) async {
+    DatabaseExecutor db,
+    String table,
+    String column,
+  ) async {
     return _hasColumn(db, table, column);
   }
 
@@ -317,8 +354,9 @@ class DBService {
     }
     try {
       if (!await _tableExists(db, 'sync_identity')) return null;
-      final rows =
-          await db.rawQuery('SELECT account_id FROM sync_identity LIMIT 1');
+      final rows = await db.rawQuery(
+        'SELECT account_id FROM sync_identity LIMIT 1',
+      );
       if (rows.isEmpty) return null;
       final raw = rows.first['account_id']?.toString().trim() ?? '';
       final acc = raw.isEmpty ? null : raw;
@@ -384,8 +422,9 @@ class DBService {
   ) async {
     try {
       if (!await _tableExists(db, 'sync_identity')) return;
-      final rows =
-          await db.rawQuery('SELECT account_id FROM sync_identity LIMIT 1');
+      final rows = await db.rawQuery(
+        'SELECT account_id FROM sync_identity LIMIT 1',
+      );
       if (rows.isEmpty) {
         await db.rawInsert(
           'INSERT INTO sync_identity(account_id, device_id) VALUES (?, COALESCE((SELECT device_id FROM sync_identity LIMIT 1), ""))',
@@ -395,19 +434,16 @@ class DBService {
       }
       final existing = rows.first['account_id']?.toString().trim() ?? '';
       if (existing.isEmpty) {
-        await db.rawUpdate(
-          'UPDATE sync_identity SET account_id = ?',
-          [accountId],
-        );
+        await db.rawUpdate('UPDATE sync_identity SET account_id = ?', [
+          accountId,
+        ]);
       }
     } catch (e, st) {
       _dbWarn(
         ObsCode.dbEnsureSyncIdentityFailed,
         'ensuring sync_identity account id failed',
         flowId: _newDbFlow('ensure_sync_identity_account'),
-        context: {
-          'accountId': accountId,
-        },
+        context: {'accountId': accountId},
         error: e,
         stackTrace: st,
       );
@@ -435,9 +471,7 @@ class DBService {
           ObsCode.dbCurrentAccountIdFailed,
           'persisting fallback account id to ActiveAccountStore failed',
           flowId: _newDbFlow('persist_fallback_account'),
-          context: {
-            'accountId': fallback,
-          },
+          context: {'accountId': fallback},
           error: e,
           stackTrace: st,
         );
@@ -458,8 +492,9 @@ class DBService {
     try {
       if (!await _tableExists(db, 'sync_identity')) return null;
       if (!await _hasColumn(db, 'sync_identity', 'device_id')) return null;
-      final rows =
-          await db.rawQuery('SELECT device_id FROM sync_identity LIMIT 1');
+      final rows = await db.rawQuery(
+        'SELECT device_id FROM sync_identity LIMIT 1',
+      );
       if (rows.isEmpty) return null;
       final raw = rows.first['device_id']?.toString().trim() ?? '';
       final dev = raw.isEmpty ? null : raw;
@@ -512,6 +547,320 @@ class DBService {
     }
 
     return prepared;
+  }
+
+  Future<void> _ensureClinicSyncInfrastructure(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $_kClinicSyncOutboxTable (
+        id TEXT PRIMARY KEY,
+        operation_type TEXT NOT NULL,
+        entity_table TEXT NOT NULL,
+        entity_id INTEGER,
+        remote_id TEXT,
+        client_mutation_id TEXT NOT NULL UNIQUE,
+        account_id TEXT NOT NULL,
+        device_id TEXT NOT NULL,
+        local_id INTEGER,
+        payload_json TEXT NOT NULL,
+        local_reference_json TEXT,
+        status TEXT NOT NULL DEFAULT 'queued',
+        retry_count INTEGER NOT NULL DEFAULT 0,
+        next_retry_at TEXT,
+        last_attempt_at TEXT,
+        locked_at TEXT,
+        last_error_code TEXT,
+        last_error_message TEXT,
+        last_response_json TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        completed_at TEXT
+      );
+    ''');
+
+    await db.execute('''
+      CREATE UNIQUE INDEX IF NOT EXISTS uix_clinic_sync_outbox_client_mutation
+      ON $_kClinicSyncOutboxTable(client_mutation_id);
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_clinic_sync_outbox_status_retry
+      ON $_kClinicSyncOutboxTable(status, next_retry_at);
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_clinic_sync_outbox_account_status
+      ON $_kClinicSyncOutboxTable(account_id, status);
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_clinic_sync_outbox_entity
+      ON $_kClinicSyncOutboxTable(entity_table, entity_id);
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_clinic_sync_outbox_sync_key
+      ON $_kClinicSyncOutboxTable(account_id, device_id, local_id);
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $_kClinicSyncStateTable (
+        scope_key TEXT PRIMARY KEY,
+        cursor_json TEXT,
+        last_server_timestamp TEXT,
+        last_pull_started_at TEXT,
+        last_pull_completed_at TEXT,
+        last_push_completed_at TEXT,
+        is_full_resync_required INTEGER NOT NULL DEFAULT 0,
+        last_error_code TEXT,
+        updated_at TEXT NOT NULL
+      );
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $_kClinicSyncConflictsTable (
+        id TEXT PRIMARY KEY,
+        account_id TEXT,
+        device_id TEXT,
+        entity_table TEXT NOT NULL,
+        entity_id INTEGER,
+        remote_id TEXT,
+        operation_type TEXT,
+        client_mutation_id TEXT,
+        conflict_code TEXT NOT NULL,
+        local_payload_json TEXT,
+        remote_payload_json TEXT,
+        resolution_status TEXT NOT NULL DEFAULT 'open',
+        last_error_message TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_clinic_sync_conflicts_account_status
+      ON $_kClinicSyncConflictsTable(account_id, resolution_status);
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_clinic_sync_conflicts_entity
+      ON $_kClinicSyncConflictsTable(entity_table, entity_id);
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $_kClinicSyncHealthEventsTable (
+        id TEXT PRIMARY KEY,
+        scope TEXT NOT NULL,
+        severity TEXT NOT NULL,
+        code TEXT NOT NULL,
+        message TEXT NOT NULL,
+        account_id TEXT,
+        device_id TEXT,
+        entity_table TEXT,
+        entity_id INTEGER,
+        payload_json TEXT,
+        created_at TEXT NOT NULL
+      );
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_clinic_sync_health_account_created
+      ON $_kClinicSyncHealthEventsTable(account_id, created_at);
+    ''');
+  }
+
+  Future<void> _enqueueClinicOutboxForRow(
+    DatabaseExecutor db, {
+    required String table,
+    required int? entityId,
+    required String operationType,
+  }) async {
+    if (!_kClinicOutboxFoundationTables.contains(table)) return;
+    if (entityId == null || entityId <= 0) return;
+    try {
+      await _ensureClinicSyncInfrastructure(db);
+      if (!await _tableExists(db, table)) return;
+      final rows = await db.query(
+        table,
+        where: 'id = ?',
+        whereArgs: <Object?>[entityId],
+        limit: 1,
+      );
+      if (rows.isEmpty) {
+        await _recordClinicSyncHealthEvent(
+          db,
+          severity: 'warning',
+          code: 'outbox_source_row_missing',
+          message: 'تعذر تسجيل عملية المزامنة لأن السجل المحلي غير موجود.',
+          entityTable: table,
+          entityId: entityId,
+        );
+        return;
+      }
+
+      final row = Map<String, Object?>.from(rows.first);
+      final accountId =
+          _nonEmpty(row['account_id']) ?? await _currentAccountIdFrom(db);
+      final deviceId =
+          _nonEmpty(row['device_id']) ?? await _currentDeviceIdFrom(db);
+      if (accountId == null || deviceId == null) {
+        await _recordClinicSyncHealthEvent(
+          db,
+          severity: 'warning',
+          code: 'outbox_identity_missing',
+          message:
+              'تم حفظ السجل محليًا لكن لم يتم إنشاء outbox لغياب account_id أو device_id.',
+          entityTable: table,
+          entityId: entityId,
+          payload: <String, Object?>{
+            'has_account_id': accountId != null,
+            'has_device_id': deviceId != null,
+          },
+        );
+        return;
+      }
+
+      final localId = _intValue(row['local_id']) ?? entityId;
+      final remoteId = await _remoteUuidForOutboxRow(
+        db,
+        table: table,
+        entityId: entityId,
+      );
+      final now = DateTime.now().toIso8601String();
+      final clientMutationId =
+          '$accountId:$deviceId:$table:$localId:$operationType:'
+          '${DateTime.now().toUtc().microsecondsSinceEpoch}:'
+          '${_clinicSyncUuid.v4()}';
+      final domain = ClinicSyncDomains.domainForTable(table).name;
+      final payload = <String, Object?>{
+        ...row,
+        'client_mutation_id': clientMutationId,
+        'operation_type': operationType,
+        'sync_domain': domain,
+      };
+      final localReference = <String, Object?>{
+        'entity_table': table,
+        'entity_id': entityId,
+        'local_id': localId,
+        'account_id': accountId,
+        'device_id': deviceId,
+        'domain': domain,
+      };
+
+      await db.insert(_kClinicSyncOutboxTable, <String, Object?>{
+        'id': _clinicSyncUuid.v4(),
+        'operation_type': operationType,
+        'entity_table': table,
+        'entity_id': entityId,
+        'remote_id': remoteId,
+        'client_mutation_id': clientMutationId,
+        'account_id': accountId,
+        'device_id': deviceId,
+        'local_id': localId,
+        'payload_json': jsonEncode(_jsonSafe(payload)),
+        'local_reference_json': jsonEncode(localReference),
+        'status': 'queued',
+        'retry_count': 0,
+        'created_at': now,
+        'updated_at': now,
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
+    } catch (e, st) {
+      _dbWarn(
+        ObsCode.dbMarkChangedFailed,
+        'clinic outbox enqueue failed',
+        flowId: _newDbFlow('clinic_outbox_enqueue'),
+        context: <String, Object?>{
+          'table': table,
+          'entityId': entityId,
+          'operationType': operationType,
+        },
+        error: e,
+        stackTrace: st,
+      );
+    }
+  }
+
+  Future<void> _enqueueClinicOutboxForRows(
+    DatabaseExecutor db, {
+    required String table,
+    required Iterable<int> entityIds,
+    required String operationType,
+  }) async {
+    for (final entityId in entityIds) {
+      await _enqueueClinicOutboxForRow(
+        db,
+        table: table,
+        entityId: entityId,
+        operationType: operationType,
+      );
+    }
+  }
+
+  Future<String?> _remoteUuidForOutboxRow(
+    DatabaseExecutor db, {
+    required String table,
+    required int entityId,
+  }) async {
+    try {
+      if (!await _tableExists(db, 'sync_uuid_mapping')) return null;
+      final rows = await db.query(
+        'sync_uuid_mapping',
+        columns: const <String>['uuid'],
+        where: 'table_name = ? AND record_id = ?',
+        whereArgs: <Object?>[table, entityId],
+        limit: 1,
+      );
+      if (rows.isEmpty) return null;
+      return _nonEmpty(rows.first['uuid']);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _recordClinicSyncHealthEvent(
+    DatabaseExecutor db, {
+    required String severity,
+    required String code,
+    required String message,
+    String scope = 'outbox',
+    String? entityTable,
+    int? entityId,
+    Map<String, Object?>? payload,
+  }) async {
+    try {
+      await _ensureClinicSyncInfrastructure(db);
+      final accountId = await _currentAccountIdFrom(db);
+      final deviceId = await _currentDeviceIdFrom(db);
+      await db.insert(_kClinicSyncHealthEventsTable, <String, Object?>{
+        'id': _clinicSyncUuid.v4(),
+        'scope': scope,
+        'severity': severity,
+        'code': code,
+        'message': message,
+        'account_id': accountId,
+        'device_id': deviceId,
+        'entity_table': entityTable,
+        'entity_id': entityId,
+        'payload_json': payload == null ? null : jsonEncode(_jsonSafe(payload)),
+        'created_at': DateTime.now().toIso8601String(),
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
+    } catch (_) {}
+  }
+
+  Map<String, Object?> _jsonSafe(Map<String, Object?> input) {
+    return input.map((key, value) {
+      if (value == null ||
+          value is num ||
+          value is bool ||
+          value is String ||
+          value is List ||
+          value is Map) {
+        return MapEntry(key, value);
+      }
+      return MapEntry(key, value.toString());
+    });
+  }
+
+  String? _nonEmpty(Object? value) {
+    final text = value?.toString().trim();
+    return text == null || text.isEmpty ? null : text;
+  }
+
+  int? _intValue(Object? value) {
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '');
   }
 
   Future<String> _accountFilterClause(
@@ -576,11 +925,9 @@ class DBService {
         for (final table in tables) {
           if (!await _tableExists(db, table)) continue;
           if (!await _hasColumn(db, table, 'account_id')) continue;
-          await db.update(
-            table,
-            {'account_id': acc},
-            where: "account_id IS NULL OR length(trim(account_id)) = 0",
-          );
+          await db.update(table, {
+            'account_id': acc,
+          }, where: "account_id IS NULL OR length(trim(account_id)) = 0");
         }
       });
     });
@@ -624,8 +971,7 @@ class DBService {
       alias: 't',
       args: orphanItemArgs,
     );
-    final orphanItemsRows = await db.rawQuery(
-      '''
+    final orphanItemsRows = await db.rawQuery('''
       SELECT COUNT(*) AS c
         FROM ${Item.table} i
         LEFT JOIN ${ItemType.table} t
@@ -633,9 +979,7 @@ class DBService {
           $typeAcc
        WHERE t.id IS NULL
          $itemAcc
-      ''',
-      orphanItemArgs,
-    );
+      ''', orphanItemArgs);
     final orphanItems = (orphanItemsRows.first['c'] as num).toInt();
 
     final orphanPurchaseArgs = <Object?>[];
@@ -651,8 +995,7 @@ class DBService {
       alias: 'i',
       args: orphanPurchaseArgs,
     );
-    final orphanPurchasesRows = await db.rawQuery(
-      '''
+    final orphanPurchasesRows = await db.rawQuery('''
       SELECT COUNT(*) AS c
         FROM ${Purchase.table} p
         LEFT JOIN ${Item.table} i
@@ -660,9 +1003,7 @@ class DBService {
           $itemAccOnPurchase
        WHERE i.id IS NULL
          $purchaseAcc
-      ''',
-      orphanPurchaseArgs,
-    );
+      ''', orphanPurchaseArgs);
     final orphanPurchases = (orphanPurchasesRows.first['c'] as num).toInt();
 
     final orphanConsumptionArgs = <Object?>[];
@@ -678,8 +1019,7 @@ class DBService {
       alias: 'i',
       args: orphanConsumptionArgs,
     );
-    final orphanConsumptionsRows = await db.rawQuery(
-      '''
+    final orphanConsumptionsRows = await db.rawQuery('''
       SELECT COUNT(*) AS c
         FROM ${Consumption.table} c
         LEFT JOIN ${Item.table} i
@@ -687,13 +1027,12 @@ class DBService {
           $itemAccOnConsumption
        WHERE (c.itemId IS NULL OR trim(c.itemId) = '' OR i.id IS NULL)
          $consumptionAcc
-      ''',
-      orphanConsumptionArgs,
-    );
-    final orphanConsumptions =
-        (orphanConsumptionsRows.first['c'] as num).toInt();
+      ''', orphanConsumptionArgs);
+    final orphanConsumptions = (orphanConsumptionsRows.first['c'] as num)
+        .toInt();
 
-    final missingAccountRows = await _countMissingAccount(db, ItemType.table) +
+    final missingAccountRows =
+        await _countMissingAccount(db, ItemType.table) +
         await _countMissingAccount(db, Item.table) +
         await _countMissingAccount(db, Purchase.table) +
         await _countMissingAccount(db, Consumption.table);
@@ -708,9 +1047,7 @@ class DBService {
     );
   }
 
-  Future<Map<String, int>> auditSyncMappings({
-    int minGap = 1,
-  }) async {
+  Future<Map<String, int>> auditSyncMappings({int minGap = 1}) async {
     final db = await database;
     final accountId = await _currentAccountId();
     if (accountId == null || accountId.trim().isEmpty) {
@@ -729,12 +1066,15 @@ class DBService {
       return (rows.first['c'] as num).toInt();
     }
 
-    final uuidRows = await db.rawQuery('''
+    final uuidRows = await db.rawQuery(
+      '''
       SELECT table_name, COUNT(*) AS c
         FROM sync_uuid_mapping
        WHERE account_id = ?
     GROUP BY table_name
-    ''', [accountId]);
+    ''',
+      [accountId],
+    );
 
     for (final row in uuidRows) {
       final table = (row['table_name'] ?? '').toString();
@@ -829,18 +1169,19 @@ class DBService {
       );
     ''');
 
-    final rows =
-        await db.rawQuery('SELECT COUNT(*) AS c FROM sync_dirty LIMIT 1');
+    final rows = await db.rawQuery(
+      'SELECT COUNT(*) AS c FROM sync_dirty LIMIT 1',
+    );
     final count = (rows.first['c'] as num?)?.toInt() ?? 0;
     if (count == 0) {
       final now = DateTime.now().toIso8601String();
       final batch = db.batch();
       for (final t in _kSyncTables) {
-        batch.insert(
-          'sync_dirty',
-          {'table_name': t, 'dirty': 1, 'updated_at': now},
-          conflictAlgorithm: ConflictAlgorithm.ignore,
-        );
+        batch.insert('sync_dirty', {
+          'table_name': t,
+          'dirty': 1,
+          'updated_at': now,
+        }, conflictAlgorithm: ConflictAlgorithm.ignore);
       }
       await batch.commit(noResult: true);
     }
@@ -849,15 +1190,11 @@ class DBService {
   Future<void> _setDirty(String table) async {
     try {
       final db = await database;
-      await db.insert(
-        'sync_dirty',
-        {
-          'table_name': table,
-          'dirty': 1,
-          'updated_at': DateTime.now().toIso8601String(),
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      await db.insert('sync_dirty', {
+        'table_name': table,
+        'dirty': 1,
+        'updated_at': DateTime.now().toIso8601String(),
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
     } catch (_) {}
   }
 
@@ -866,10 +1203,7 @@ class DBService {
       final db = await database;
       await db.update(
         'sync_dirty',
-        {
-          'dirty': 0,
-          'updated_at': DateTime.now().toIso8601String(),
-        },
+        {'dirty': 0, 'updated_at': DateTime.now().toIso8601String()},
         where: 'table_name = ?',
         whereArgs: [table],
       );
@@ -1003,7 +1337,7 @@ class DBService {
   Future<Database> _openDatabaseAt(String dbPath) {
     return openDatabase(
       dbPath,
-      version: 35, // ↑ إضافة حقول snapshot للمستودع
+      version: 36, // ↑ ضمان جداول ربط UUID/Outbox بعد الترقيات
       onConfigure: (db) async {
         // ✅ على أندرويد: بعض أوامر PRAGMA يجب تنفيذها بـ rawQuery
         await db.rawQuery('PRAGMA foreign_keys = ON');
@@ -1172,11 +1506,9 @@ class DBService {
           Future<void> backfillAccount(String table) async {
             final cols = await _getTableColumns(txn, table);
             if (!cols.contains('account_id')) return;
-            await txn.update(
-              table,
-              {'account_id': accountId},
-              where: "account_id IS NULL OR length(trim(account_id)) = 0",
-            );
+            await txn.update(table, {
+              'account_id': accountId,
+            }, where: "account_id IS NULL OR length(trim(account_id)) = 0");
           }
 
           await backfillAccount(ItemType.table);
@@ -1220,8 +1552,9 @@ class DBService {
           if (fallbackId <= 0) return;
 
           final itemCols = await _getTableColumns(txn, Item.table);
-          final itemAccCol =
-              itemCols.contains('account_id') ? 'account_id' : null;
+          final itemAccCol = itemCols.contains('account_id')
+              ? 'account_id'
+              : null;
 
           final orphans = await txn.rawQuery('''
             SELECT i.id
@@ -1284,11 +1617,10 @@ class DBService {
         dirty INTEGER NOT NULL DEFAULT 1
       );
     ''');
-    await db.insert(
-      'stats_dirty',
-      {'id': 1, 'dirty': 1},
-      conflictAlgorithm: ConflictAlgorithm.ignore,
-    );
+    await db.insert('stats_dirty', {
+      'id': 1,
+      'dirty': 1,
+    }, conflictAlgorithm: ConflictAlgorithm.ignore);
 
     const affectedTables = [
       'patients',
@@ -1300,7 +1632,7 @@ class DBService {
       'prescriptions',
       'prescription_items',
       'drugs',
-      'complaints'
+      'complaints',
     ];
 
     for (final table in affectedTables) {
@@ -1332,8 +1664,10 @@ class DBService {
   Future<void> _ensureAlertSettingsColumnsImpl(Database db) async {
     try {
       var cols = await db.rawQuery("PRAGMA table_info(alert_settings)");
-      bool has(String name) => cols.any((c) =>
-          ((c['name'] ?? '') as String).toLowerCase() == name.toLowerCase());
+      bool has(String name) => cols.any(
+        (c) =>
+            ((c['name'] ?? '') as String).toLowerCase() == name.toLowerCase(),
+      );
       String? columnType(String name) {
         for (final row in cols) {
           final colName = (row['name'] ?? '').toString();
@@ -1371,22 +1705,26 @@ class DBService {
 
       // createdAt/created_at
       if (!has('createdAt')) {
-        await db
-            .execute('ALTER TABLE alert_settings ADD COLUMN createdAt TEXT');
+        await db.execute(
+          'ALTER TABLE alert_settings ADD COLUMN createdAt TEXT',
+        );
       }
       if (!has('created_at')) {
-        await db
-            .execute('ALTER TABLE alert_settings ADD COLUMN created_at TEXT');
+        await db.execute(
+          'ALTER TABLE alert_settings ADD COLUMN created_at TEXT',
+        );
       }
       cols = await db.rawQuery("PRAGMA table_info(alert_settings)");
       final thresholdType = columnType('threshold');
-      final needsRebuild = thresholdType != null &&
+      final needsRebuild =
+          thresholdType != null &&
           !thresholdType.toUpperCase().contains('REAL');
       if (needsRebuild) {
         await db.rawQuery('PRAGMA foreign_keys = OFF');
         try {
           await db.execute(
-              'ALTER TABLE alert_settings RENAME TO alert_settings_old');
+            'ALTER TABLE alert_settings RENAME TO alert_settings_old',
+          );
           await db.execute(AlertSetting.createTable);
           await db.execute('''
             INSERT INTO alert_settings (
@@ -1422,8 +1760,9 @@ class DBService {
         await _ensureColumn('notifyTime', 'TEXT');
         await _ensureColumn('itemUuid', 'TEXT');
         if (!has('createdAt')) {
-          await db
-              .execute('ALTER TABLE alert_settings ADD COLUMN createdAt TEXT');
+          await db.execute(
+            'ALTER TABLE alert_settings ADD COLUMN createdAt TEXT',
+          );
         }
       }
 
@@ -1434,29 +1773,41 @@ class DBService {
       }
       try {
         await db.execute(
-            'UPDATE alert_settings SET itemId = COALESCE(itemId, item_id)');
+          'UPDATE alert_settings SET itemId = COALESCE(itemId, item_id)',
+        );
         await db.execute(
-            'UPDATE alert_settings SET item_id = COALESCE(item_id, itemId)');
+          'UPDATE alert_settings SET item_id = COALESCE(item_id, itemId)',
+        );
         await db.execute(
-            'UPDATE alert_settings SET isEnabled = COALESCE(isEnabled, is_enabled, 1)');
+          'UPDATE alert_settings SET isEnabled = COALESCE(isEnabled, is_enabled, 1)',
+        );
         await db.execute(
-            'UPDATE alert_settings SET is_enabled = COALESCE(is_enabled, isEnabled, 1)');
+          'UPDATE alert_settings SET is_enabled = COALESCE(is_enabled, isEnabled, 1)',
+        );
         await db.execute(
-            'UPDATE alert_settings SET lastTriggered = COALESCE(lastTriggered, last_triggered)');
+          'UPDATE alert_settings SET lastTriggered = COALESCE(lastTriggered, last_triggered)',
+        );
         await db.execute(
-            'UPDATE alert_settings SET last_triggered = COALESCE(last_triggered, lastTriggered)');
+          'UPDATE alert_settings SET last_triggered = COALESCE(last_triggered, lastTriggered)',
+        );
         await db.execute(
-            'UPDATE alert_settings SET notifyTime = COALESCE(notifyTime, notify_time)');
+          'UPDATE alert_settings SET notifyTime = COALESCE(notifyTime, notify_time)',
+        );
         await db.execute(
-            'UPDATE alert_settings SET notify_time = COALESCE(notify_time, notifyTime)');
+          'UPDATE alert_settings SET notify_time = COALESCE(notify_time, notifyTime)',
+        );
         await db.execute(
-            'UPDATE alert_settings SET itemUuid = COALESCE(itemUuid, item_uuid)');
+          'UPDATE alert_settings SET itemUuid = COALESCE(itemUuid, item_uuid)',
+        );
         await db.execute(
-            'UPDATE alert_settings SET item_uuid = COALESCE(item_uuid, itemUuid)');
+          'UPDATE alert_settings SET item_uuid = COALESCE(item_uuid, itemUuid)',
+        );
         await db.execute(
-            'UPDATE alert_settings SET createdAt = COALESCE(createdAt, created_at, CURRENT_TIMESTAMP)');
+          'UPDATE alert_settings SET createdAt = COALESCE(createdAt, created_at, CURRENT_TIMESTAMP)',
+        );
         await db.execute(
-            'UPDATE alert_settings SET created_at = COALESCE(created_at, createdAt, CURRENT_TIMESTAMP)');
+          'UPDATE alert_settings SET created_at = COALESCE(created_at, createdAt, CURRENT_TIMESTAMP)',
+        );
       } finally {
         if (!hasItemsTable) {
           await db.rawQuery('PRAGMA foreign_keys = ON');
@@ -1465,7 +1816,8 @@ class DBService {
 
       // فهرس للأداء
       await db.execute(
-          'CREATE INDEX IF NOT EXISTS idx_alert_settings_item_id ON alert_settings(item_id)');
+        'CREATE INDEX IF NOT EXISTS idx_alert_settings_item_id ON alert_settings(item_id)',
+      );
 
       // تريجر تعبئة القيم الافتراضية
       await db.execute('''
@@ -1558,8 +1910,9 @@ class DBService {
         'updated_at',
       ];
 
-      final copyCols =
-          desiredCols.where((col) => availableCols.contains(col)).toList();
+      final copyCols = desiredCols
+          .where((col) => availableCols.contains(col))
+          .toList();
 
       if (copyCols.isNotEmpty) {
         final cols = copyCols.join(', ');
@@ -1570,8 +1923,9 @@ class DBService {
       }
 
       await db.execute('DROP TABLE financial_logs;');
-      await db
-          .execute('ALTER TABLE financial_logs_new RENAME TO financial_logs;');
+      await db.execute(
+        'ALTER TABLE financial_logs_new RENAME TO financial_logs;',
+      );
 
       await _ensureSoftDeleteColumns(db);
       await _ensureSyncMetaColumns(db);
@@ -1607,15 +1961,24 @@ class DBService {
         return;
       }
 
-      final hasPatientId =
-          await _hasColumn(database, 'financial_logs', 'patient_id');
+      final hasPatientId = await _hasColumn(
+        database,
+        'financial_logs',
+        'patient_id',
+      );
       if (!hasPatientId) {
         return;
       }
-      final logsHasAccCol =
-          await _hasColumn(database, 'financial_logs', 'account_id');
-      final patientsHasAccCol =
-          await _hasColumn(database, 'patients', 'account_id');
+      final logsHasAccCol = await _hasColumn(
+        database,
+        'financial_logs',
+        'account_id',
+      );
+      final patientsHasAccCol = await _hasColumn(
+        database,
+        'patients',
+        'account_id',
+      );
       if ((logsHasAccCol || patientsHasAccCol) && (accountId.trim().isEmpty)) {
         return;
       }
@@ -1641,17 +2004,18 @@ class DBService {
         );
 
         if (logs.isNotEmpty) {
-          final hasUpdatedAt =
-              await _hasColumn(txn, 'financial_logs', 'updated_at');
+          final hasUpdatedAt = await _hasColumn(
+            txn,
+            'financial_logs',
+            'updated_at',
+          );
           for (final row in logs) {
             final desc = (row['description'] ?? '').toString();
             final m = reg.firstMatch(desc);
             if (m == null) continue;
             final pid = int.tryParse(m.group(1) ?? '');
             if (pid == null) continue;
-            final update = <String, Object?>{
-              'patient_id': pid,
-            };
+            final update = <String, Object?>{'patient_id': pid};
             if (hasUpdatedAt) {
               update['updated_at'] = nowIso;
             }
@@ -1713,21 +2077,17 @@ class DBService {
             ts = DateTime.now();
           }
 
-          final fData = await prepareInsert(
-            'financial_logs',
-            {
-              'transaction_type': 'PatientPayment',
-              'operation': 'backfill',
-              'amount': diff,
-              'employee_id': null,
-              'patient_id': pid,
-              'description':
-                  'Backfill دفعات مريض: ${(p['name'] ?? '').toString()} (ID: $pid)',
-              'modification_details': 'auto backfill to match paidAmount',
-              'timestamp': ts.toIso8601String(),
-            },
-            executor: txn,
-          );
+          final fData = await prepareInsert('financial_logs', {
+            'transaction_type': 'PatientPayment',
+            'operation': 'backfill',
+            'amount': diff,
+            'employee_id': null,
+            'patient_id': pid,
+            'description':
+                'Backfill دفعات مريض: ${(p['name'] ?? '').toString()} (ID: $pid)',
+            'modification_details': 'auto backfill to match paidAmount',
+            'timestamp': ts.toIso8601String(),
+          }, executor: txn);
           await txn.insert('financial_logs', fData);
           touched = true;
         }
@@ -1741,8 +2101,12 @@ class DBService {
 
       await prefs.setBool(key, true);
     } catch (e) {
-      // نتجاهل أخطاء الخلفية حتى لا نكسر الإقلاع
-      print('patientPaymentBackfill: $e');
+      // نتجاهل أخطاء الخلفية حتى لا نكسر الإقلاع.
+      // اختبارات الإغلاق قد تسابق هذه المهمة غير الحرجة فتنتج database_closed.
+      final msg = e.toString().toLowerCase();
+      if (!msg.contains('database_closed')) {
+        print('patientPaymentBackfill: $e');
+      }
     } finally {
       _patientPaymentBackfillBusy = false;
     }
@@ -1772,12 +2136,16 @@ class DBService {
       'purchases',
       'alert_settings',
       'financial_logs',
-      'patient_services'
+      'patient_services',
     ];
 
     for (final t in tables) {
       await _addColumnIfMissing(
-          db, t, 'isDeleted', 'INTEGER NOT NULL DEFAULT 0');
+        db,
+        t,
+        'isDeleted',
+        'INTEGER NOT NULL DEFAULT 0',
+      );
       await _addColumnIfMissing(db, t, 'deletedAt', 'TEXT');
       await _createIndexIfMissing(db, 'idx_${t}_isDeleted', t, ['isDeleted']);
     }
@@ -1785,22 +2153,50 @@ class DBService {
 
   Future<void> _ensureEmployeeSalariesColumns(Database db) async {
     await _addColumnIfMissing(
-        db, 'employees_salaries', 'totalDiscounts', 'REAL DEFAULT 0');
+      db,
+      'employees_salaries',
+      'totalDiscounts',
+      'REAL DEFAULT 0',
+    );
     await _addColumnIfMissing(
-        db, 'employees_salaries', 'totalLoans', 'REAL DEFAULT 0');
+      db,
+      'employees_salaries',
+      'totalLoans',
+      'REAL DEFAULT 0',
+    );
     await _addColumnIfMissing(
-        db, 'employees_salaries', 'ratioSum', 'REAL DEFAULT 0');
+      db,
+      'employees_salaries',
+      'ratioSum',
+      'REAL DEFAULT 0',
+    );
     await _addColumnIfMissing(
-        db, 'employees_salaries', 'finalSalary', 'REAL DEFAULT 0');
+      db,
+      'employees_salaries',
+      'finalSalary',
+      'REAL DEFAULT 0',
+    );
     await _addColumnIfMissing(
-        db, 'employees_salaries', 'netPay', 'REAL DEFAULT 0');
+      db,
+      'employees_salaries',
+      'netPay',
+      'REAL DEFAULT 0',
+    );
     await _addColumnIfMissing(
-        db, 'employees_salaries', 'isPaid', 'INTEGER DEFAULT 0');
+      db,
+      'employees_salaries',
+      'isPaid',
+      'INTEGER DEFAULT 0',
+    );
     await _addColumnIfMissing(db, 'employees_salaries', 'paymentDate', 'TEXT');
     await _addColumnIfMissing(db, 'employees_salaries', 'periodStart', 'TEXT');
     await _addColumnIfMissing(db, 'employees_salaries', 'periodEnd', 'TEXT');
     await _addColumnIfMissing(
-        db, 'employees_salaries', 'employeeId', 'INTEGER');
+      db,
+      'employees_salaries',
+      'employeeId',
+      'INTEGER',
+    );
   }
 
   Map<String, dynamic> _normalizeEmployeeSalaryData(Map<String, dynamic> data) {
@@ -1902,20 +2298,36 @@ class DBService {
   ///
   /// 🔄 تمت مواءمته مع سكربت parity v3 (account_id/device_id/local_id/updated_at).
   Future<void> _ensureSyncMetaColumns(Database db) async {
+    await _ensureSyncIdentityTable(db);
     // استعمل لائحة الجداول المتزامنة الموحّدة (بدون attachments)
     for (final t in _kSyncTables) {
       await _addColumnIfMissing(db, t, 'account_id', 'TEXT');
       await _addColumnIfMissing(db, t, 'device_id', 'TEXT');
       await _addColumnIfMissing(db, t, 'local_id', 'INTEGER');
       await _addColumnIfMissing(db, t, 'updated_at', 'TEXT');
-      await _createIndexIfMissing(db, 'idx_${t}_acc_dev_local', t,
-          ['account_id', 'device_id', 'local_id']);
+      await _createIndexIfMissing(db, 'idx_${t}_acc_dev_local', t, [
+        'account_id',
+        'device_id',
+        'local_id',
+      ]);
     }
     await _ensureUpdatedAtTriggers(db);
   }
 
+  Future<void> _ensureSyncIdentityTable(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS sync_identity (
+        account_id TEXT,
+        device_id TEXT
+      )
+    ''');
+  }
+
   Future<void> _ensureUpdatedAtTriggers(Database db) async {
     for (final t in _kSyncTables) {
+      if (!await _tableExists(db, t)) {
+        continue;
+      }
       // بعد الإدراج: لو لم يُمرر updated_at، املأه تلقائيًا
       await db.execute('''
         CREATE TRIGGER IF NOT EXISTS trg_${t}_updated_at_ins
@@ -1941,13 +2353,21 @@ class DBService {
 
   Future<void> _ensureReturnsAttendanceColumns(Database db) async {
     await _addColumnIfMissing(
-        db, 'returns', 'isAttended', 'INTEGER NOT NULL DEFAULT 0');
+      db,
+      'returns',
+      'isAttended',
+      'INTEGER NOT NULL DEFAULT 0',
+    );
     await _addColumnIfMissing(db, 'returns', 'attendedAt', 'TEXT');
   }
 
   Future<void> _ensureLoansSettlementColumns(Database db) async {
     await _addColumnIfMissing(
-        db, 'employees_loans', 'isSettled', 'INTEGER NOT NULL DEFAULT 0');
+      db,
+      'employees_loans',
+      'isSettled',
+      'INTEGER NOT NULL DEFAULT 0',
+    );
     await _addColumnIfMissing(db, 'employees_loans', 'settledAt', 'TEXT');
   }
 
@@ -2023,8 +2443,9 @@ class DBService {
     final db = await database;
     final trimmedPath = path?.trim();
     final updateData = <String, dynamic>{
-      'logo_path':
-          (trimmedPath == null || trimmedPath.isEmpty) ? null : trimmedPath,
+      'logo_path': (trimmedPath == null || trimmedPath.isEmpty)
+          ? null
+          : trimmedPath,
       'updated_at': DateTime.now().toIso8601String(),
     };
     final rows = await db.update(
@@ -2034,11 +2455,10 @@ class DBService {
       whereArgs: [trimmedId],
     );
     if (rows == 0) {
-      await db.insert(
-        'clinic_profile',
-        {'account_id': trimmedId, ...updateData},
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      await db.insert('clinic_profile', {
+        'account_id': trimmedId,
+        ...updateData,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
   }
 
@@ -2066,45 +2486,69 @@ class DBService {
     await safeIndex('idx_patients_doctorId', 'patients', ['doctorId']);
     await safeIndex('idx_patients_registerDate', 'patients', ['registerDate']);
     await safeIndex('idx_purchases_created_at', 'purchases', ['created_at']);
-    await safeIndex('idx_attachments_patient_created', 'attachments',
-        ['patientId', 'createdAt']);
+    await safeIndex('idx_attachments_patient_created', 'attachments', [
+      'patientId',
+      'createdAt',
+    ]);
+
+    await safeIndex('idx_patient_services_patientId', PatientService.table, [
+      'patientId',
+    ]);
+    await safeIndex('idx_patient_services_serviceId', PatientService.table, [
+      'serviceId',
+    ]);
+
+    await safeIndex('idx_prescriptions_patientId', 'prescriptions', [
+      'patientId',
+    ]);
+    await safeIndex(
+      'idx_prescription_items_prescriptionId',
+      'prescription_items',
+      ['prescriptionId'],
+    );
 
     await safeIndex(
-        'idx_patient_services_patientId', PatientService.table, ['patientId']);
+      'idx_service_doctor_share_serviceId',
+      'service_doctor_share',
+      ['serviceId'],
+    );
     await safeIndex(
-        'idx_patient_services_serviceId', PatientService.table, ['serviceId']);
-
-    await safeIndex(
-        'idx_prescriptions_patientId', 'prescriptions', ['patientId']);
-    await safeIndex('idx_prescription_items_prescriptionId',
-        'prescription_items', ['prescriptionId']);
-
-    await safeIndex('idx_service_doctor_share_serviceId',
-        'service_doctor_share', ['serviceId']);
-    await safeIndex('idx_service_doctor_share_doctorId', 'service_doctor_share',
-        ['doctorId']);
+      'idx_service_doctor_share_doctorId',
+      'service_doctor_share',
+      ['doctorId'],
+    );
     await safeIndex('idx_doctors_userUid', 'doctors', ['userUid']);
 
-    await safeIndex(
-        'idx_consumptions_patientId', 'consumptions', ['patientId']);
+    await safeIndex('idx_consumptions_patientId', 'consumptions', [
+      'patientId',
+    ]);
     await safeIndex('idx_consumptions_itemId', 'consumptions', ['itemId']);
 
     await safeIndex('idx_items_name', 'items', ['name']);
-    await safeIndex(
-        'idx_appointments_patientId', 'appointments', ['patientId']);
+    await safeIndex('idx_appointments_patientId', 'appointments', [
+      'patientId',
+    ]);
     await safeIndex('idx_returns_date', 'returns', ['date']);
 
+    await safeIndex('idx_employees_loans_employeeId', 'employees_loans', [
+      'employeeId',
+    ]);
+    await safeIndex('idx_employees_salaries_employeeId', 'employees_salaries', [
+      'employeeId',
+    ]);
     await safeIndex(
-        'idx_employees_loans_employeeId', 'employees_loans', ['employeeId']);
-    await safeIndex('idx_employees_salaries_employeeId', 'employees_salaries',
-        ['employeeId']);
-    await safeIndex('idx_employees_discounts_employeeId', 'employees_discounts',
-        ['employeeId']);
+      'idx_employees_discounts_employeeId',
+      'employees_discounts',
+      ['employeeId'],
+    );
     await safeIndex('idx_employees_userUid', 'employees', ['userUid']);
 
     if (await _tableExists(db, 'employees_salaries')) {
-      final hasIsDeleted =
-          await _hasColumn(db, 'employees_salaries', 'isDeleted');
+      final hasIsDeleted = await _hasColumn(
+        db,
+        'employees_salaries',
+        'isDeleted',
+      );
       try {
         if (hasIsDeleted) {
           await db.execute('''
@@ -2219,8 +2663,9 @@ class DBService {
       });
       if (!(hasUniqueName || hasAutoUnique)) return;
 
-      final colsInfo =
-          await db.rawQuery("PRAGMA table_info('${ItemType.table}')");
+      final colsInfo = await db.rawQuery(
+        "PRAGMA table_info('${ItemType.table}')",
+      );
       final existingCols = colsInfo
           .map((c) => (c['name'] ?? '').toString())
           .where((c) => c.isNotEmpty)
@@ -2272,8 +2717,9 @@ class DBService {
       ''');
 
       await db.execute('DROP TABLE ${ItemType.table};');
-      await db
-          .execute('ALTER TABLE item_types_new RENAME TO ${ItemType.table};');
+      await db.execute(
+        'ALTER TABLE item_types_new RENAME TO ${ItemType.table};',
+      );
     } catch (e) {
       print('ensureItemTypesNoUniqueName: $e');
     }
@@ -2281,6 +2727,7 @@ class DBService {
 
   Future<void> _postOpenChecks(Database db) async {
     await db.rawQuery('PRAGMA foreign_keys = ON');
+    await _ensureSyncIdentityTable(db);
     await _ensureClinicProfileTable(db);
     await _ensureAlertSettingsColumns(db);
     await _ensurePatientCollateralColumn(db);
@@ -2292,8 +2739,12 @@ class DBService {
     await _ensureReturnsAttendanceColumns(db);
     await _ensureLoansSettlementColumns(db);
     await _ensureSyncFkMappingTable(db);
+    // ضروري لقواعد البيانات القديمة: SyncService يعتمد على sync_uuid_mapping
+    // في pull/push، وغياب الجدول بعد upgrade يسبب فشل مزامنة وقت التشغيل.
+    await _ensureUuidMappingTable(db);
     await _ensureCommonIndexes(db);
     await _ensureSyncDirtyTable(db);
+    await _ensureClinicSyncInfrastructure(db);
     await _runPatientPaymentBackfillIfNeeded(db: db);
     if (Platform.isWindows) {
       try {
@@ -2305,8 +2756,10 @@ class DBService {
 
   /*──────────────── إنشاء الجداول ───────────────*/
   Future<void> _onCreate(Database db, int version) async {
+    await _ensureSyncIdentityTable(db);
     await _ensureSyncFkMappingTable(db);
     await _ensureSyncDirtyTable(db);
+    await _ensureClinicSyncInfrastructure(db);
     await _ensureClinicProfileTable(db);
     await db.execute('''
   CREATE TABLE patients (
@@ -2379,7 +2832,8 @@ class DBService {
     ''');
     // 🧪 فهرس فريد case-insensitive للأدوية أثناء الإنشاء الأولي
     await db.execute(
-        'CREATE UNIQUE INDEX IF NOT EXISTS uix_drugs_lower_name ON drugs(lower(name))');
+      'CREATE UNIQUE INDEX IF NOT EXISTS uix_drugs_lower_name ON drugs(lower(name))',
+    );
 
     await db.execute('''
       CREATE TABLE prescriptions (
@@ -2580,6 +3034,7 @@ class DBService {
     await _ensureCommonIndexes(db);
 
     await _ensureUuidMappingTable(db);
+    await _ensureClinicSyncInfrastructure(db);
   }
 
   Future<void> _ensureRemoteIdMap(Database db) async {
@@ -2604,8 +3059,9 @@ class DBService {
   /*────────────────── الترقيات ──────────────────*/
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 6) {
-      await db
-          .execute('ALTER TABLE patients ADD COLUMN doctorSpecialization TEXT');
+      await db.execute(
+        'ALTER TABLE patients ADD COLUMN doctorSpecialization TEXT',
+      );
     }
 
     if (oldVersion < 7) {
@@ -2616,7 +3072,8 @@ class DBService {
 
     if (oldVersion < 8) {
       await db.execute(
-          "ALTER TABLE doctors ADD COLUMN printCounter INTEGER DEFAULT 0");
+        "ALTER TABLE doctors ADD COLUMN printCounter INTEGER DEFAULT 0",
+      );
     }
 
     if (oldVersion < 9) {
@@ -2694,7 +3151,11 @@ class DBService {
 
     if (oldVersion < 12) {
       await _addColumnIfMissing(
-          db, 'patients', 'doctorShare', 'REAL DEFAULT 0');
+        db,
+        'patients',
+        'doctorShare',
+        'REAL DEFAULT 0',
+      );
       await db.execute('''
         CREATE TABLE IF NOT EXISTS employees_discounts (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2709,23 +3170,39 @@ class DBService {
 
     if (oldVersion < 13) {
       await _addColumnIfMissing(
-          db, 'patients', 'doctorInput', 'REAL DEFAULT 0');
+        db,
+        'patients',
+        'doctorInput',
+        'REAL DEFAULT 0',
+      );
     }
 
     if (oldVersion < 14) {
       await _addColumnIfMissing(
-          db, 'service_doctor_share', 'towerSharePercentage', 'REAL DEFAULT 0');
+        db,
+        'service_doctor_share',
+        'towerSharePercentage',
+        'REAL DEFAULT 0',
+      );
       await _addColumnIfMissing(db, 'patients', 'towerShare', 'REAL DEFAULT 0');
     }
 
     if (oldVersion < 15) {
       await _addColumnIfMissing(
-          db, 'patients', 'departmentShare', 'REAL DEFAULT 0');
+        db,
+        'patients',
+        'departmentShare',
+        'REAL DEFAULT 0',
+      );
     }
 
     if (oldVersion < 16) {
       await _addColumnIfMissing(
-          db, 'employees', 'isDoctor', 'INTEGER DEFAULT 0');
+        db,
+        'employees',
+        'isDoctor',
+        'INTEGER DEFAULT 0',
+      );
     }
 
     if (oldVersion < 17) {
@@ -2751,9 +3228,17 @@ class DBService {
 
     if (oldVersion < 19) {
       await _addColumnIfMissing(
-          db, 'financial_logs', 'operation', "TEXT NOT NULL DEFAULT 'create'");
+        db,
+        'financial_logs',
+        'operation',
+        "TEXT NOT NULL DEFAULT 'create'",
+      );
       await _addColumnIfMissing(
-          db, 'financial_logs', 'modification_details', 'TEXT');
+        db,
+        'financial_logs',
+        'modification_details',
+        'TEXT',
+      );
     }
 
     if (oldVersion < 20) {
@@ -2762,12 +3247,17 @@ class DBService {
       } catch (_) {}
       try {
         await db.execute(
-            "ALTER TABLE items RENAME COLUMN quantityAvailable TO stock");
+          "ALTER TABLE items RENAME COLUMN quantityAvailable TO stock",
+        );
       } catch (_) {}
       await _addColumnIfMissing(db, 'consumptions', 'patientId', 'TEXT');
       await _addColumnIfMissing(db, 'consumptions', 'itemId', 'TEXT');
       await _addColumnIfMissing(
-          db, 'consumptions', 'quantity', 'INTEGER DEFAULT 0');
+        db,
+        'consumptions',
+        'quantity',
+        'INTEGER DEFAULT 0',
+      );
       await db.execute(Attachment.createTable);
     }
 
@@ -2783,12 +3273,7 @@ class DBService {
           'doctorReviewPending',
           'INTEGER NOT NULL DEFAULT 0',
         );
-        await _addColumnIfMissing(
-          db,
-          'patients',
-          'doctorReviewedAt',
-          'TEXT',
-        );
+        await _addColumnIfMissing(db, 'patients', 'doctorReviewedAt', 'TEXT');
         try {
           await db.rawUpdate(
             'UPDATE patients SET doctorReviewPending = 0 WHERE doctorReviewPending IS NULL',
@@ -2804,7 +3289,8 @@ class DBService {
 
     if (oldVersion < 21) {
       final chk = await db.rawQuery(
-          "SELECT name FROM sqlite_master WHERE type='table' AND name='stats_dirty'");
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='stats_dirty'",
+      );
       if (chk.isEmpty) {
         await _createStatsDirtyStructure(db);
       }
@@ -2816,7 +3302,11 @@ class DBService {
 
     if (oldVersion < 23) {
       await _addColumnIfMissing(
-          db, 'service_doctor_share', 'isHidden', 'INTEGER NOT NULL DEFAULT 0');
+        db,
+        'service_doctor_share',
+        'isHidden',
+        'INTEGER NOT NULL DEFAULT 0',
+      );
     }
 
     if (oldVersion < 24) {
@@ -2870,7 +3360,7 @@ class DBService {
         'drugs',
         'prescriptions',
         'prescription_items',
-        'complaints'
+        'complaints',
       ]) {
         for (final op in ['INSERT', 'UPDATE', 'DELETE']) {
           final trig = 'tg_${tbl}_${op.toLowerCase()}_stats_dirty';
@@ -2887,7 +3377,8 @@ class DBService {
 
     if (oldVersion < 25) {
       await _ensureAlertSettingsColumns(
-          db); // camel + snake + ترحيل + تريجر + notifyTime
+        db,
+      ); // camel + snake + ترحيل + تريجر + notifyTime
     }
 
     if (oldVersion < 26) {
@@ -2945,24 +3436,14 @@ class DBService {
     }
 
     if (oldVersion < 35) {
-      await _addColumnIfMissing(
-        db,
-        'purchases',
-        'item_name_snapshot',
-        'TEXT',
-      );
+      await _addColumnIfMissing(db, 'purchases', 'item_name_snapshot', 'TEXT');
       await _addColumnIfMissing(
         db,
         'purchases',
         'item_type_name_snapshot',
         'TEXT',
       );
-      await _addColumnIfMissing(
-        db,
-        'consumptions',
-        'itemNameSnapshot',
-        'TEXT',
-      );
+      await _addColumnIfMissing(db, 'consumptions', 'itemNameSnapshot', 'TEXT');
       await _addColumnIfMissing(
         db,
         'consumptions',
@@ -2993,6 +3474,13 @@ class DBService {
         'unit_price_snapshot',
         'REAL',
       );
+    }
+
+    if (oldVersion < 36) {
+      await _ensureUuidMappingTable(db);
+      await _ensureSyncFkMappingTable(db);
+      await _ensureSyncDirtyTable(db);
+      await _ensureClinicSyncInfrastructure(db);
     }
   }
 
@@ -3039,7 +3527,10 @@ class DBService {
   }
 
   Future<void> _softDeleteWhere(
-      String table, String where, List<Object?> whereArgs) async {
+    String table,
+    String where,
+    List<Object?> whereArgs,
+  ) async {
     final db = await database;
     final now = DateTime.now().toIso8601String();
     await db.update(
@@ -3079,16 +3570,27 @@ class DBService {
           where: 'id = ?',
           whereArgs: [id],
         );
+        await _enqueueClinicOutboxForRow(
+          db,
+          table: ItemType.table,
+          entityId: id,
+          operationType: 'update_item_type',
+        );
       }
       await _markChanged(ItemType.table);
       return id;
     }
-    final data = await prepareInsert(
-      ItemType.table,
-      {...t.toMap(), 'name': name},
-      executor: db,
-    );
+    final data = await prepareInsert(ItemType.table, {
+      ...t.toMap(),
+      'name': name,
+    }, executor: db);
     final id = await db.insert(ItemType.table, data);
+    await _enqueueClinicOutboxForRow(
+      db,
+      table: ItemType.table,
+      entityId: id,
+      operationType: 'create_item_type',
+    );
     await _markChanged(ItemType.table);
     return id;
   }
@@ -3121,8 +3623,20 @@ class DBService {
     if (sanitized.isEmpty) {
       throw ArgumentError(_tr('اسم نوع الصنف فارغ'));
     }
-    final rows = await db.update(ItemType.table, {'name': sanitized},
-        where: 'id = ?', whereArgs: [id]);
+    final rows = await db.update(
+      ItemType.table,
+      {'name': sanitized},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    if (rows > 0) {
+      await _enqueueClinicOutboxForRow(
+        db,
+        table: ItemType.table,
+        entityId: id,
+        operationType: 'update_item_type',
+      );
+    }
     await _markChanged(ItemType.table);
     return rows;
   }
@@ -3139,13 +3653,33 @@ class DBService {
         .map((r) => (r['id'] as num?)?.toInt())
         .whereType<int>()
         .toList();
+    final alertRows = itemIds.isEmpty
+        ? const <Map<String, Object?>>[]
+        : await db.query(
+            AlertSetting.table,
+            columns: const ['id'],
+            where: 'item_id IN (${List.filled(itemIds.length, '?').join(',')})',
+            whereArgs: itemIds,
+          );
+    final alertIds = alertRows
+        .map((r) => (r['id'] as num?)?.toInt())
+        .whereType<int>()
+        .toList();
     if (itemIds.isNotEmpty) {
       final itemArgs = <Object?>[...itemIds];
       final inClause = List.filled(itemIds.length, '?').join(',');
-      final pAcc = await _accountFilterClause(db, Purchase.table,
-          alias: 'p', args: itemArgs);
-      final cAcc = await _accountFilterClause(db, Consumption.table,
-          alias: 'c', args: itemArgs);
+      final pAcc = await _accountFilterClause(
+        db,
+        Purchase.table,
+        alias: 'p',
+        args: itemArgs,
+      );
+      final cAcc = await _accountFilterClause(
+        db,
+        Consumption.table,
+        alias: 'c',
+        args: itemArgs,
+      );
 
       final hasPurchases = await db.rawQuery('''
         SELECT 1 FROM ${Purchase.table} p
@@ -3167,7 +3701,8 @@ class DBService {
       ''', itemArgs);
       if (hasConsumptions.isNotEmpty) {
         throw StateError(
-            _tr('لا يمكن حذف نوع الصنف لوجود استهلاكات مرتبطة به'));
+          _tr('لا يمكن حذف نوع الصنف لوجود استهلاكات مرتبطة به'),
+        );
       }
 
       final args = List<Object?>.filled(itemIds.length, 0);
@@ -3179,6 +3714,12 @@ class DBService {
         'id IN (${List.filled(itemIds.length, '?').join(',')})',
         args,
       );
+      await _enqueueClinicOutboxForRows(
+        db,
+        table: Item.table,
+        entityIds: itemIds,
+        operationType: 'delete_item_soft',
+      );
       await _markChanged(Item.table);
 
       // احذف أي تنبيهات مرتبطة بهذه الأصناف
@@ -3187,10 +3728,24 @@ class DBService {
         'item_id IN (${List.filled(itemIds.length, '?').join(',')})',
         args,
       );
+      await _enqueueClinicOutboxForRows(
+        db,
+        table: AlertSetting.table,
+        entityIds: alertIds,
+        operationType: 'delete_alert_setting_soft',
+      );
       await _markChanged(AlertSetting.table);
     }
 
     final rows = await _softDeleteById(ItemType.table, id);
+    if (rows > 0) {
+      await _enqueueClinicOutboxForRow(
+        db,
+        table: ItemType.table,
+        entityId: id,
+        operationType: 'delete_item_type_soft',
+      );
+    }
     await _markChanged(ItemType.table);
     return rows;
   }
@@ -3220,25 +3775,31 @@ class DBService {
       if (isDel) {
         await db.update(
           Item.table,
-          {
-            ...i.toMap(),
-            'name': name,
-            'isDeleted': 0,
-            'deletedAt': null,
-          },
+          {...i.toMap(), 'name': name, 'isDeleted': 0, 'deletedAt': null},
           where: 'id = ?',
           whereArgs: [id],
+        );
+        await _enqueueClinicOutboxForRow(
+          db,
+          table: Item.table,
+          entityId: id,
+          operationType: 'update_item',
         );
       }
       await _markChanged(Item.table);
       return id;
     }
-    final data = await prepareInsert(
-      Item.table,
-      {...i.toMap(), 'name': name},
-      executor: db,
-    );
+    final data = await prepareInsert(Item.table, {
+      ...i.toMap(),
+      'name': name,
+    }, executor: db);
     final id = await db.insert(Item.table, data);
+    await _enqueueClinicOutboxForRow(
+      db,
+      table: Item.table,
+      entityId: id,
+      operationType: 'create_item',
+    );
     await _markChanged(Item.table);
     return id;
   }
@@ -3268,10 +3829,18 @@ class DBService {
   Future<List<Item>> getLowStockItems() async {
     final db = await database;
     final args = <Object?>[];
-    final itemAccount =
-        await _accountFilterClause(db, Item.table, alias: 'i', args: args);
-    final alertAccount = await _accountFilterClause(db, AlertSetting.table,
-        alias: 'a', args: args);
+    final itemAccount = await _accountFilterClause(
+      db,
+      Item.table,
+      alias: 'i',
+      args: args,
+    );
+    final alertAccount = await _accountFilterClause(
+      db,
+      AlertSetting.table,
+      alias: 'a',
+      args: args,
+    );
     final rows = await db.rawQuery('''
       SELECT i.*
       FROM ${Item.table}         AS i
@@ -3289,10 +3858,18 @@ class DBService {
   Future<bool> hasLowStockAlert() async {
     final db = await database;
     final args = <Object?>[];
-    final itemAccount =
-        await _accountFilterClause(db, Item.table, alias: 'i', args: args);
-    final alertAccount = await _accountFilterClause(db, AlertSetting.table,
-        alias: 'a', args: args);
+    final itemAccount = await _accountFilterClause(
+      db,
+      Item.table,
+      alias: 'i',
+      args: args,
+    );
+    final alertAccount = await _accountFilterClause(
+      db,
+      AlertSetting.table,
+      alias: 'a',
+      args: args,
+    );
     final result = await db.rawQuery('''
       SELECT 1
       FROM ${AlertSetting.table} AS a
@@ -3315,8 +3892,20 @@ class DBService {
       throw ArgumentError(_tr('اسم الصنف فارغ'));
     }
     data['name'] = name;
-    final rows =
-        await db.update(Item.table, data, where: 'id = ?', whereArgs: [i.id]);
+    final rows = await db.update(
+      Item.table,
+      data,
+      where: 'id = ?',
+      whereArgs: [i.id],
+    );
+    if (rows > 0) {
+      await _enqueueClinicOutboxForRow(
+        db,
+        table: Item.table,
+        entityId: i.id,
+        operationType: 'update_item',
+      );
+    }
     await _markChanged(Item.table);
     return rows;
   }
@@ -3324,10 +3913,18 @@ class DBService {
   Future<int> deleteItem(int id) async {
     final db = await database;
     final itemArgs = <Object?>[id];
-    final pAcc = await _accountFilterClause(db, Purchase.table,
-        alias: 'p', args: itemArgs);
-    final cAcc = await _accountFilterClause(db, Consumption.table,
-        alias: 'c', args: itemArgs);
+    final pAcc = await _accountFilterClause(
+      db,
+      Purchase.table,
+      alias: 'p',
+      args: itemArgs,
+    );
+    final cAcc = await _accountFilterClause(
+      db,
+      Consumption.table,
+      alias: 'c',
+      args: itemArgs,
+    );
 
     final hasPurchases = await db.rawQuery('''
       SELECT 1 FROM ${Purchase.table} p
@@ -3351,15 +3948,36 @@ class DBService {
       throw StateError(_tr('لا يمكن حذف الصنف لوجود استهلاكات مرتبطة به'));
     }
 
-    // احذف أي تنبيهات مرتبطة بالصنف
-    await _softDeleteWhere(
+    final alertRows = await db.query(
       AlertSetting.table,
-      'item_id = ?',
-      [id],
+      columns: const ['id'],
+      where: 'item_id = ?',
+      whereArgs: [id],
+    );
+    final alertIds = alertRows
+        .map((r) => (r['id'] as num?)?.toInt())
+        .whereType<int>()
+        .toList();
+
+    // احذف أي تنبيهات مرتبطة بالصنف
+    await _softDeleteWhere(AlertSetting.table, 'item_id = ?', [id]);
+    await _enqueueClinicOutboxForRows(
+      db,
+      table: AlertSetting.table,
+      entityIds: alertIds,
+      operationType: 'delete_alert_setting_soft',
     );
     await _markChanged(AlertSetting.table);
 
     final rows = await _softDeleteById(Item.table, id);
+    if (rows > 0) {
+      await _enqueueClinicOutboxForRow(
+        db,
+        table: Item.table,
+        entityId: id,
+        operationType: 'delete_item_soft',
+      );
+    }
     await _markChanged(Item.table);
     return rows;
   }
@@ -3370,6 +3988,12 @@ class DBService {
     final data = ps.toMap();
     data.remove('id'); // always autoincrement to avoid UNIQUE conflicts
     final id = await db.insert(PatientService.table, data);
+    await _enqueueClinicOutboxForRow(
+      db,
+      table: PatientService.table,
+      entityId: id,
+      operationType: 'attach_service_to_patient',
+    );
     await _markChanged(PatientService.table);
     return id;
   }
@@ -3377,8 +4001,12 @@ class DBService {
   Future<List<PatientService>> getPatientServices(int patientId) async {
     final db = await database;
     final args = <Object?>[patientId];
-    final psAccount = await _accountFilterClause(db, PatientService.table,
-        alias: 'ps', args: args);
+    final psAccount = await _accountFilterClause(
+      db,
+      PatientService.table,
+      alias: 'ps',
+      args: args,
+    );
     String msAccount = '';
     if (await _hasColumn(db, 'medical_services', 'account_id')) {
       final accountId = await _currentAccountId();
@@ -3407,7 +4035,24 @@ class DBService {
   }
 
   Future<int> deletePatientServices(int patientId) async {
+    final db = await database;
+    final rows = await db.query(
+      PatientService.table,
+      columns: const ['id'],
+      where: 'patientId=? AND ifnull(isDeleted,0)=0',
+      whereArgs: [patientId],
+    );
+    final ids = rows
+        .map((r) => (r['id'] as num?)?.toInt())
+        .whereType<int>()
+        .toList();
     await _softDeleteWhere(PatientService.table, 'patientId=?', [patientId]);
+    await _enqueueClinicOutboxForRows(
+      db,
+      table: PatientService.table,
+      entityIds: ids,
+      operationType: 'delete_patient_service_soft',
+    );
     await _markChanged(PatientService.table);
     return 1;
   }
@@ -3434,10 +4079,16 @@ class DBService {
             'notes': d.notes,
             'createdAt': d.createdAt.toIso8601String(),
             'isDeleted': 0,
-            'deletedAt': null
+            'deletedAt': null,
           },
           where: 'id=?',
           whereArgs: [id],
+        );
+        await _enqueueClinicOutboxForRow(
+          db,
+          table: Drug.table,
+          entityId: id,
+          operationType: 'update_drug',
         );
         await _markChanged(Drug.table);
         return id;
@@ -3449,6 +4100,12 @@ class DBService {
     }
 
     final id = await db.insert(Drug.table, d.toMap());
+    await _enqueueClinicOutboxForRow(
+      db,
+      table: Drug.table,
+      entityId: id,
+      operationType: 'create_drug',
+    );
     await _markChanged(Drug.table);
     return id;
   }
@@ -3463,21 +4120,50 @@ class DBService {
   }
 
   Future<int> updateDrug(Drug d) async {
-    final rows = await (await database)
-        .update(Drug.table, d.toMap(), where: 'id = ?', whereArgs: [d.id]);
+    final db = await database;
+    final rows = await db.update(
+      Drug.table,
+      d.toMap(),
+      where: 'id = ?',
+      whereArgs: [d.id],
+    );
+    if (rows > 0) {
+      await _enqueueClinicOutboxForRow(
+        db,
+        table: Drug.table,
+        entityId: d.id,
+        operationType: 'update_drug',
+      );
+    }
     await _markChanged(Drug.table);
     return rows;
   }
 
   Future<int> deleteDrug(int id) async {
+    final db = await database;
     final rows = await _softDeleteById(Drug.table, id);
+    if (rows > 0) {
+      await _enqueueClinicOutboxForRow(
+        db,
+        table: Drug.table,
+        entityId: id,
+        operationType: 'delete_drug_soft',
+      );
+    }
     await _markChanged(Drug.table);
     return rows;
   }
 
   /*=============================== prescriptions ===============================*/
   Future<int> insertPrescription(Prescription p) async {
-    final id = await (await database).insert(Prescription.table, p.toMap());
+    final db = await database;
+    final id = await db.insert(Prescription.table, p.toMap());
+    await _enqueueClinicOutboxForRow(
+      db,
+      table: Prescription.table,
+      entityId: id,
+      operationType: 'create_prescription',
+    );
     await _markChanged(Prescription.table);
     return id;
   }
@@ -3493,32 +4179,57 @@ class DBService {
   }
 
   Future<int> updatePrescription(Prescription p) async {
-    final rows = await (await database).update(
+    final db = await database;
+    final rows = await db.update(
       Prescription.table,
       p.toMap(),
       where: 'id = ?',
       whereArgs: [p.id],
     );
+    if (rows > 0) {
+      await _enqueueClinicOutboxForRow(
+        db,
+        table: Prescription.table,
+        entityId: p.id,
+        operationType: 'update_prescription',
+      );
+    }
     await _markChanged(Prescription.table);
     return rows;
   }
 
   Future<int> deletePrescription(int id) async {
+    final db = await database;
     final rows = await _softDeleteById(Prescription.table, id);
+    if (rows > 0) {
+      await _enqueueClinicOutboxForRow(
+        db,
+        table: Prescription.table,
+        entityId: id,
+        operationType: 'delete_prescription_soft',
+      );
+    }
     await _markChanged(Prescription.table);
     return rows;
   }
 
   /*=============================== prescription_items ===============================*/
   Future<int> insertPrescriptionItem(PrescriptionItem pi) async {
-    final id =
-        await (await database).insert(PrescriptionItem.table, pi.toMap());
+    final db = await database;
+    final id = await db.insert(PrescriptionItem.table, pi.toMap());
+    await _enqueueClinicOutboxForRow(
+      db,
+      table: PrescriptionItem.table,
+      entityId: id,
+      operationType: 'add_prescription_item',
+    );
     await _markChanged(PrescriptionItem.table);
     return id;
   }
 
   Future<List<PrescriptionItem>> getItemsOfPrescription(
-      int prescriptionId) async {
+    int prescriptionId,
+  ) async {
     final res = await (await database).query(
       PrescriptionItem.table,
       where: 'prescriptionId = ? AND ifnull(isDeleted,0)=0',
@@ -3528,8 +4239,26 @@ class DBService {
   }
 
   Future<int> deleteItemsOfPrescription(int prescriptionId) async {
-    await _softDeleteWhere(
-        PrescriptionItem.table, 'prescriptionId=?', [prescriptionId]);
+    final db = await database;
+    final rows = await db.query(
+      PrescriptionItem.table,
+      columns: const ['id'],
+      where: 'prescriptionId = ? AND ifnull(isDeleted,0)=0',
+      whereArgs: [prescriptionId],
+    );
+    final ids = rows
+        .map((r) => (r['id'] as num?)?.toInt())
+        .whereType<int>()
+        .toList();
+    await _softDeleteWhere(PrescriptionItem.table, 'prescriptionId=?', [
+      prescriptionId,
+    ]);
+    await _enqueueClinicOutboxForRows(
+      db,
+      table: PrescriptionItem.table,
+      entityIds: ids,
+      operationType: 'delete_prescription_item_soft',
+    );
     await _markChanged(PrescriptionItem.table);
     return 1;
   }
@@ -3539,6 +4268,12 @@ class DBService {
     final db = await database;
     final data = await prepareInsert(Purchase.table, p.toMap(), executor: db);
     final id = await db.insert(Purchase.table, data);
+    await _enqueueClinicOutboxForRow(
+      db,
+      table: Purchase.table,
+      entityId: id,
+      operationType: 'create_purchase',
+    );
     await _markChanged(Purchase.table);
     return id;
   }
@@ -3567,14 +4302,35 @@ class DBService {
 
   Future<int> updatePurchase(Purchase p) async {
     final db = await database;
-    final rows = await db
-        .update(Purchase.table, p.toMap(), where: 'id = ?', whereArgs: [p.id]);
+    final rows = await db.update(
+      Purchase.table,
+      p.toMap(),
+      where: 'id = ?',
+      whereArgs: [p.id],
+    );
+    if (rows > 0) {
+      await _enqueueClinicOutboxForRow(
+        db,
+        table: Purchase.table,
+        entityId: p.id,
+        operationType: 'update_purchase',
+      );
+    }
     await _markChanged(Purchase.table);
     return rows;
   }
 
   Future<int> deletePurchase(int id) async {
+    final db = await database;
     final rows = await _softDeleteById(Purchase.table, id);
+    if (rows > 0) {
+      await _enqueueClinicOutboxForRow(
+        db,
+        table: Purchase.table,
+        entityId: id,
+        operationType: 'reverse_purchase',
+      );
+    }
     await _markChanged(Purchase.table);
     return rows;
   }
@@ -3585,6 +4341,12 @@ class DBService {
     final id = await db.insert(AlertSetting.table, a.toMap());
     // مزامنة أعمدة camel/snake بعد الإدراج
     await _ensureAlertSettingsColumns(db);
+    await _enqueueClinicOutboxForRow(
+      db,
+      table: AlertSetting.table,
+      entityId: id,
+      operationType: 'create_alert_setting',
+    );
     await _markChanged(AlertSetting.table);
     return id;
   }
@@ -3613,15 +4375,36 @@ class DBService {
 
   Future<int> updateAlert(AlertSetting a) async {
     final db = await database;
-    final rows = await db.update(AlertSetting.table, a.toMap(),
-        where: 'id = ?', whereArgs: [a.id]);
+    final rows = await db.update(
+      AlertSetting.table,
+      a.toMap(),
+      where: 'id = ?',
+      whereArgs: [a.id],
+    );
     await _ensureAlertSettingsColumns(db);
+    if (rows > 0) {
+      await _enqueueClinicOutboxForRow(
+        db,
+        table: AlertSetting.table,
+        entityId: a.id,
+        operationType: 'update_alert_setting',
+      );
+    }
     await _markChanged(AlertSetting.table);
     return rows;
   }
 
   Future<int> deleteAlert(int id) async {
+    final db = await database;
     final rows = await _softDeleteById(AlertSetting.table, id);
+    if (rows > 0) {
+      await _enqueueClinicOutboxForRow(
+        db,
+        table: AlertSetting.table,
+        entityId: id,
+        operationType: 'delete_alert_setting_soft',
+      );
+    }
     await _markChanged(AlertSetting.table);
     return rows;
   }
@@ -3661,9 +4444,15 @@ class DBService {
       args.add(accountId);
     }
 
+    var paymentChanged = false;
+    int? financialLogId;
     await db.transaction((txn) async {
-      final rows =
-          await txn.query('patients', where: where, whereArgs: args, limit: 1);
+      final rows = await txn.query(
+        'patients',
+        where: where,
+        whereArgs: args,
+        limit: 1,
+      );
       if (rows.isEmpty) {
         throw StateError(_tr('المريض غير موجود أو غير تابع للحساب'));
       }
@@ -3685,32 +4474,39 @@ class DBService {
 
       await txn.update(
         'patients',
-        {
-          'paidAmount': newPaid,
-          'remaining': newRemaining,
-          'updated_at': ts,
-        },
+        {'paidAmount': newPaid, 'remaining': newRemaining, 'updated_at': ts},
         where: where,
         whereArgs: args,
       );
 
-      final fData = await prepareInsert(
-        'financial_logs',
-        {
-          'transaction_type': 'PatientPayment',
-          'operation': 'settle',
-          'amount': pay,
-          'employee_id': null,
-          'patient_id': patientId,
-          'description': 'تسديد مريض: ${p.name} (ID: ${p.id})',
-          'modification_details': note ?? '',
-          'timestamp': ts,
-        },
-        executor: txn,
-      );
-      await txn.insert('financial_logs', fData);
+      final fData = await prepareInsert('financial_logs', {
+        'transaction_type': 'PatientPayment',
+        'operation': 'settle',
+        'amount': pay,
+        'employee_id': null,
+        'patient_id': patientId,
+        'description': 'تسديد مريض: ${p.name} (ID: ${p.id})',
+        'modification_details': note ?? '',
+        'timestamp': ts,
+      }, executor: txn);
+      financialLogId = await txn.insert('financial_logs', fData);
+      paymentChanged = true;
     });
 
+    if (paymentChanged) {
+      await _enqueueClinicOutboxForRow(
+        db,
+        table: 'patients',
+        entityId: patientId,
+        operationType: 'update_patient',
+      );
+      await _enqueueClinicOutboxForRow(
+        db,
+        table: 'financial_logs',
+        entityId: financialLogId,
+        operationType: 'create_financial_log',
+      );
+    }
     await _markChanged('patients');
     await _markChanged('financial_logs');
   }
@@ -3735,6 +4531,12 @@ class DBService {
     } catch (e) {
       print('فشل جدولة الإشعار: $e');
     }
+    await _enqueueClinicOutboxForRow(
+      db,
+      table: 'returns',
+      entityId: id,
+      operationType: 'create_return',
+    );
     await _markChanged('returns');
     return id;
   }
@@ -3751,8 +4553,20 @@ class DBService {
 
   Future<int> updateReturnEntry(ReturnEntry entry) async {
     final db = await database;
-    final rows = await db.update('returns', entry.toMap(),
-        where: 'id = ?', whereArgs: [entry.id]);
+    final rows = await db.update(
+      'returns',
+      entry.toMap(),
+      where: 'id = ?',
+      whereArgs: [entry.id],
+    );
+    if (rows > 0) {
+      await _enqueueClinicOutboxForRow(
+        db,
+        table: 'returns',
+        entityId: entry.id,
+        operationType: 'update_return',
+      );
+    }
     await _markChanged('returns');
     return rows;
   }
@@ -3768,6 +4582,14 @@ class DBService {
       where: 'id = ?',
       whereArgs: [id],
     );
+    if (rows > 0) {
+      await _enqueueClinicOutboxForRow(
+        db,
+        table: 'returns',
+        entityId: id,
+        operationType: 'update_return',
+      );
+    }
     await _markChanged('returns');
     return rows;
   }
@@ -3784,6 +4606,12 @@ class DBService {
       batch.update('returns', payload, where: 'id = ?', whereArgs: [id]);
     }
     await batch.commit(noResult: true);
+    await _enqueueClinicOutboxForRows(
+      db,
+      table: 'returns',
+      entityIds: ids,
+      operationType: 'update_return',
+    );
     await _markChanged('returns');
   }
 
@@ -3795,6 +4623,15 @@ class DBService {
       print('فشل إلغاء الإشعار: $e');
     }
     final rows = await _softDeleteById('returns', id);
+    if (rows > 0) {
+      final db = await database;
+      await _enqueueClinicOutboxForRow(
+        db,
+        table: 'returns',
+        entityId: id,
+        operationType: 'delete_return_soft',
+      );
+    }
     await _markChanged('returns');
     return rows;
   }
@@ -3816,15 +4653,17 @@ class DBService {
         amount = price * c.quantity;
       }
     }
-    final data = await prepareInsert(
-      'consumptions',
-      {
-        ...c.toMap(),
-        'amount': amount,
-      },
-      executor: db,
-    );
+    final data = await prepareInsert('consumptions', {
+      ...c.toMap(),
+      'amount': amount,
+    }, executor: db);
     final id = await db.insert('consumptions', data);
+    await _enqueueClinicOutboxForRow(
+      db,
+      table: 'consumptions',
+      entityId: id,
+      operationType: 'create_consumption',
+    );
     await _markChanged('consumptions');
     return id;
   }
@@ -3841,7 +4680,7 @@ class DBService {
     final accClause = hasAcc ? ' AND c.account_id = ?' : '';
     if (hasAcc) args.add(accountId);
     final res = await db.rawQuery('''
-      SELECT 
+      SELECT
         c.*,
         CASE 
           WHEN (c.amount IS NULL OR c.amount = 0) 
@@ -3858,7 +4697,16 @@ class DBService {
   }
 
   Future<int> deleteConsumption(int id) async {
+    final db = await database;
     final rows = await _softDeleteById('consumptions', id);
+    if (rows > 0) {
+      await _enqueueClinicOutboxForRow(
+        db,
+        table: 'consumptions',
+        entityId: id,
+        operationType: 'reverse_consumption',
+      );
+    }
     await _markChanged('consumptions');
     return rows;
   }
@@ -3867,16 +4715,60 @@ class DBService {
   Future<int> saveAppointment(Appointment appointment) async {
     final db = await database;
     if (appointment.id == null) {
-      final id = await db.insert('appointments', appointment.toMap());
+      final data = await prepareInsert(
+        'appointments',
+        appointment.toMap(),
+        executor: db,
+      );
+      final id = await db.insert('appointments', data);
+      await _enqueueClinicOutboxForRow(
+        db,
+        table: 'appointments',
+        entityId: id,
+        operationType: ClinicSyncDomains.foundationOperationFor(
+          table: 'appointments',
+          isCreate: true,
+          isDelete: false,
+          status: appointment.status,
+        ),
+      );
       await _markChanged('appointments');
       return id;
     } else {
+      final data = Map<String, dynamic>.from(appointment.toMap());
+      if (await _hasColumn(db, 'appointments', 'account_id') &&
+          !data.containsKey('account_id')) {
+        final accountId = await _currentAccountIdFrom(db);
+        if (accountId != null && accountId.trim().isNotEmpty) {
+          data['account_id'] = accountId.trim();
+        }
+      }
+      if (await _hasColumn(db, 'appointments', 'device_id') &&
+          !data.containsKey('device_id')) {
+        final deviceId = await _currentDeviceIdFrom(db);
+        if (deviceId != null && deviceId.trim().isNotEmpty) {
+          data['device_id'] = deviceId.trim();
+        }
+      }
       final rows = await db.update(
         'appointments',
-        appointment.toMap(),
+        data,
         where: 'id = ?',
         whereArgs: [appointment.id],
       );
+      if (rows > 0) {
+        await _enqueueClinicOutboxForRow(
+          db,
+          table: 'appointments',
+          entityId: appointment.id,
+          operationType: ClinicSyncDomains.foundationOperationFor(
+            table: 'appointments',
+            isCreate: false,
+            isDelete: false,
+            status: appointment.status,
+          ),
+        );
+      }
       await _markChanged('appointments');
       return rows;
     }
@@ -3908,8 +4800,15 @@ class DBService {
     final db = await database;
     final now = DateTime.now();
     final fromIso = DateTime(now.year, now.month, now.day).toIso8601String();
-    final toIso = DateTime(now.year, now.month, now.day, 23, 59, 59, 999)
-        .toIso8601String();
+    final toIso = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      23,
+      59,
+      59,
+      999,
+    ).toIso8601String();
 
     if (await _hasColumn(db, 'appointments', 'account_id')) {
       final accountId = await _currentAccountId();
@@ -3934,6 +4833,15 @@ class DBService {
 
   Future<int> deleteAppointment(int id) async {
     final rows = await _softDeleteById('appointments', id);
+    if (rows > 0) {
+      final db = await database;
+      await _enqueueClinicOutboxForRow(
+        db,
+        table: 'appointments',
+        entityId: id,
+        operationType: 'delete_appointment_soft',
+      );
+    }
     await _markChanged('appointments');
     return rows;
   }
@@ -3975,11 +4883,12 @@ class DBService {
         } else if (hasIsDeletedSnake) {
           updateMap['is_deleted'] = 0;
         }
-        await db.update(
-          'doctors',
-          updateMap,
-          where: 'id = ?',
-          whereArgs: [id],
+        await db.update('doctors', updateMap, where: 'id = ?', whereArgs: [id]);
+        await _enqueueClinicOutboxForRow(
+          db,
+          table: 'doctors',
+          entityId: id,
+          operationType: 'update_doctor',
         );
         await _markChanged('doctors');
         return id;
@@ -4005,6 +4914,14 @@ class DBService {
         return existingId;
       }
     }
+    if (id > 0) {
+      await _enqueueClinicOutboxForRow(
+        db,
+        table: 'doctors',
+        entityId: id,
+        operationType: 'create_doctor',
+      );
+    }
     await _markChanged('doctors');
     return id;
   }
@@ -4022,8 +4939,12 @@ class DBService {
       where += ' AND account_id = ?';
       whereArgs.add(accountId);
     }
-    final res = await db.query('doctors',
-        where: where, whereArgs: whereArgs, orderBy: 'id DESC');
+    final res = await db.query(
+      'doctors',
+      where: where,
+      whereArgs: whereArgs,
+      orderBy: 'id DESC',
+    );
     return res.map((row) => Doctor.fromMap(row)).toList();
   }
 
@@ -4082,8 +5003,20 @@ class DBService {
 
   Future<int> updateDoctor(Doctor doctor) async {
     final db = await database;
-    final rows = await db.update('doctors', doctor.toMap(),
-        where: 'id = ?', whereArgs: [doctor.id]);
+    final rows = await db.update(
+      'doctors',
+      doctor.toMap(),
+      where: 'id = ?',
+      whereArgs: [doctor.id],
+    );
+    if (rows > 0) {
+      await _enqueueClinicOutboxForRow(
+        db,
+        table: 'doctors',
+        entityId: doctor.id,
+        operationType: 'update_doctor',
+      );
+    }
     await _markChanged('doctors');
     return rows;
   }
@@ -4091,6 +5024,16 @@ class DBService {
   Future<int> deleteDoctor(int id) async {
     final db = await database;
     final now = DateTime.now().toIso8601String();
+    final shareRows = await db.query(
+      'service_doctor_share',
+      columns: const ['id'],
+      where: 'doctorId = ? AND ifnull(isDeleted,0)=0',
+      whereArgs: [id],
+    );
+    final shareIds = shareRows
+        .map((r) => (r['id'] as num?)?.toInt())
+        .whereType<int>()
+        .toList();
     final rows = await db.transaction((txn) async {
       final r = await txn.update(
         'doctors',
@@ -4106,6 +5049,20 @@ class DBService {
       );
       return r;
     });
+    if (rows > 0) {
+      await _enqueueClinicOutboxForRow(
+        db,
+        table: 'doctors',
+        entityId: id,
+        operationType: 'disable_doctor',
+      );
+    }
+    await _enqueueClinicOutboxForRows(
+      db,
+      table: 'service_doctor_share',
+      entityIds: shareIds,
+      operationType: 'delete_service_doctor_share_soft',
+    );
     await _markChanged('doctors');
     await _markChanged('service_doctor_share');
     return rows;
@@ -4127,24 +5084,54 @@ class DBService {
     final currentCounter = (row['printCounter'] ?? 0) as int;
     final nextCounter = currentCounter + 1;
 
-    await db.update('doctors', {'printCounter': nextCounter},
-        where: 'id = ?', whereArgs: [doctorId]);
+    await db.update(
+      'doctors',
+      {'printCounter': nextCounter},
+      where: 'id = ?',
+      whereArgs: [doctorId],
+    );
     await _markChanged('doctors');
     return nextCounter;
   }
 
   Future<void> resetDoctorPrintCounter(int doctorId) async {
     final db = await database;
-    await db.update('doctors', {'printCounter': 0},
-        where: 'id = ?', whereArgs: [doctorId]);
+    await db.update(
+      'doctors',
+      {'printCounter': 0},
+      where: 'id = ?',
+      whereArgs: [doctorId],
+    );
     await _markChanged('doctors');
   }
 
   Future<int> updateDoctorByEmployeeId(
-      int employeeId, Map<String, dynamic> updatedData) async {
+    int employeeId,
+    Map<String, dynamic> updatedData,
+  ) async {
     final db = await database;
-    final rows = await db.update('doctors', updatedData,
-        where: 'employeeId = ?', whereArgs: [employeeId]);
+    final rows = await db.update(
+      'doctors',
+      updatedData,
+      where: 'employeeId = ?',
+      whereArgs: [employeeId],
+    );
+    if (rows > 0) {
+      final changed = await db.query(
+        'doctors',
+        columns: const ['id'],
+        where: 'employeeId = ?',
+        whereArgs: [employeeId],
+      );
+      await _enqueueClinicOutboxForRows(
+        db,
+        table: 'doctors',
+        entityIds: changed
+            .map((r) => (r['id'] as num?)?.toInt())
+            .whereType<int>(),
+        operationType: 'update_doctor',
+      );
+    }
     await _markChanged('doctors');
     return rows;
   }
@@ -4156,16 +5143,18 @@ class DBService {
     required String serviceType,
   }) async {
     final db = await database;
-    final data = await prepareInsert(
-      'medical_services',
-      {
-        'name': name,
-        'cost': cost,
-        'serviceType': serviceType,
-      },
-      executor: db,
-    );
+    final data = await prepareInsert('medical_services', {
+      'name': name,
+      'cost': cost,
+      'serviceType': serviceType,
+    }, executor: db);
     final id = await db.insert('medical_services', data);
+    await _enqueueClinicOutboxForRow(
+      db,
+      table: 'medical_services',
+      entityId: id,
+      operationType: 'create_service',
+    );
     await _markChanged('medical_services');
     return id;
   }
@@ -4185,8 +5174,20 @@ class DBService {
     if (await _hasColumn(db, 'medical_services', 'updated_at')) {
       data['updated_at'] = DateTime.now().toIso8601String();
     }
-    final rows = await db
-        .update('medical_services', data, where: 'id = ?', whereArgs: [id]);
+    final rows = await db.update(
+      'medical_services',
+      data,
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    if (rows > 0) {
+      await _enqueueClinicOutboxForRow(
+        db,
+        table: 'medical_services',
+        entityId: id,
+        operationType: 'update_service',
+      );
+    }
     await _markChanged('medical_services');
     return rows;
   }
@@ -4194,6 +5195,16 @@ class DBService {
   Future<int> deleteMedicalService(int id) async {
     final db = await database;
     final now = DateTime.now().toIso8601String();
+    final shareRows = await db.query(
+      'service_doctor_share',
+      columns: const ['id'],
+      where: 'serviceId = ? AND ifnull(isDeleted,0)=0',
+      whereArgs: [id],
+    );
+    final shareIds = shareRows
+        .map((r) => (r['id'] as num?)?.toInt())
+        .whereType<int>()
+        .toList();
     final rows = await db.transaction((txn) async {
       final r = await txn.update(
         'medical_services',
@@ -4209,13 +5220,28 @@ class DBService {
       );
       return r;
     });
+    if (rows > 0) {
+      await _enqueueClinicOutboxForRow(
+        db,
+        table: 'medical_services',
+        entityId: id,
+        operationType: 'delete_service_soft',
+      );
+    }
+    await _enqueueClinicOutboxForRows(
+      db,
+      table: 'service_doctor_share',
+      entityIds: shareIds,
+      operationType: 'delete_service_doctor_share_soft',
+    );
     await _markChanged('medical_services');
     await _markChanged('service_doctor_share');
     return rows;
   }
 
   Future<List<Map<String, dynamic>>> getServicesByType(
-      String serviceType) async {
+    String serviceType,
+  ) async {
     final db = await database;
     final accountId = await _currentAccountId();
     final whereArgs = <Object?>[serviceType];
@@ -4274,27 +5300,33 @@ class DBService {
     }
 
     final db = await database;
-    final data = await prepareInsert(
-      'service_doctor_share',
-      {
-        'serviceId': serviceId,
-        'doctorId': doctorId,
-        'sharePercentage': clampPct(sharePercentage),
-        'towerSharePercentage': clampPct(towerSharePercentage),
-      },
-      executor: db,
-    );
+    final data = await prepareInsert('service_doctor_share', {
+      'serviceId': serviceId,
+      'doctorId': doctorId,
+      'sharePercentage': clampPct(sharePercentage),
+      'towerSharePercentage': clampPct(towerSharePercentage),
+    }, executor: db);
     final id = await db.insert('service_doctor_share', data);
+    await _enqueueClinicOutboxForRow(
+      db,
+      table: 'service_doctor_share',
+      entityId: id,
+      operationType: 'create_service_doctor_share',
+    );
     await _markChanged('service_doctor_share');
     return id;
   }
 
   Future<List<Map<String, dynamic>>> getDoctorSharesForService(
-      int serviceId) async {
+    int serviceId,
+  ) async {
     final db = await database;
     final accountId = await _currentAccountId();
-    final hasAccCol =
-        await _hasColumn(db, 'service_doctor_share', 'account_id');
+    final hasAccCol = await _hasColumn(
+      db,
+      'service_doctor_share',
+      'account_id',
+    );
     if (hasAccCol && (accountId == null || accountId.trim().isEmpty)) {
       return const [];
     }
@@ -4304,11 +5336,7 @@ class DBService {
       where += ' AND account_id = ?';
       whereArgs.add(accountId);
     }
-    return db.query(
-      'service_doctor_share',
-      where: where,
-      whereArgs: whereArgs,
-    );
+    return db.query('service_doctor_share', where: where, whereArgs: whereArgs);
   }
 
   Future<double?> getDoctorShareForService({
@@ -4317,8 +5345,11 @@ class DBService {
   }) async {
     final db = await database;
     final accountId = await _currentAccountId();
-    final hasAccCol =
-        await _hasColumn(db, 'service_doctor_share', 'account_id');
+    final hasAccCol = await _hasColumn(
+      db,
+      'service_doctor_share',
+      'account_id',
+    );
     if (hasAccCol && (accountId == null || accountId.trim().isEmpty)) {
       return null;
     }
@@ -4363,14 +5394,35 @@ class DBService {
     if (await _hasColumn(db, 'service_doctor_share', 'updated_at')) {
       updateData['updated_at'] = DateTime.now().toIso8601String();
     }
-    final rows = await db.update('service_doctor_share', updateData,
-        where: 'id = ?', whereArgs: [id]);
+    final rows = await db.update(
+      'service_doctor_share',
+      updateData,
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    if (rows > 0) {
+      await _enqueueClinicOutboxForRow(
+        db,
+        table: 'service_doctor_share',
+        entityId: id,
+        operationType: 'update_service_doctor_share',
+      );
+    }
     await _markChanged('service_doctor_share');
     return rows;
   }
 
   Future<int> deleteServiceDoctorShare(int id) async {
+    final db = await database;
     final rows = await _softDeleteById('service_doctor_share', id);
+    if (rows > 0) {
+      await _enqueueClinicOutboxForRow(
+        db,
+        table: 'service_doctor_share',
+        entityId: id,
+        operationType: 'delete_service_doctor_share_soft',
+      );
+    }
     await _markChanged('service_doctor_share');
     return rows;
   }
@@ -4380,20 +5432,41 @@ class DBService {
     required int isHidden,
   }) async {
     final db = await database;
-    final rows = await db.update('service_doctor_share', {'isHidden': isHidden},
-        where: 'id = ?', whereArgs: [id]);
+    final rows = await db.update(
+      'service_doctor_share',
+      {'isHidden': isHidden},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    if (rows > 0) {
+      await _enqueueClinicOutboxForRow(
+        db,
+        table: 'service_doctor_share',
+        entityId: id,
+        operationType: 'update_service_doctor_share',
+      );
+    }
     await _markChanged('service_doctor_share');
     return rows;
   }
 
   Future<List<Map<String, dynamic>>> getDoctorGeneralServices(
-      int doctorId) async {
+    int doctorId,
+  ) async {
     final db = await database;
     final args = <Object?>[doctorId];
-    final msAccount = await _accountFilterClause(db, 'medical_services',
-        alias: 'ms', args: args);
-    final sdsAccount = await _accountFilterClause(db, 'service_doctor_share',
-        alias: 'sds', args: args);
+    final msAccount = await _accountFilterClause(
+      db,
+      'medical_services',
+      alias: 'ms',
+      args: args,
+    );
+    final sdsAccount = await _accountFilterClause(
+      db,
+      'service_doctor_share',
+      alias: 'sds',
+      args: args,
+    );
     return db.rawQuery('''
     SELECT ms.id, ms.name, ms.cost
     FROM medical_services ms
@@ -4422,15 +5495,24 @@ class DBService {
 
   /// كتالوج خدمات الطبيب مع النِّسب
   Future<List<Map<String, dynamic>>> getDoctorServiceCatalogWithPercents(
-      int doctorId) async {
+    int doctorId,
+  ) async {
     final db = await database;
     final args = <Object?>[doctorId];
-    final sdsAccount = await _accountFilterClause(db, 'service_doctor_share',
-        alias: 'sds', args: args);
-    final msAccount = await _accountFilterClause(db, 'medical_services',
-        alias: 'ms', args: args);
+    final sdsAccount = await _accountFilterClause(
+      db,
+      'service_doctor_share',
+      alias: 'sds',
+      args: args,
+    );
+    final msAccount = await _accountFilterClause(
+      db,
+      'medical_services',
+      alias: 'ms',
+      args: args,
+    );
     return db.rawQuery('''
-      SELECT 
+      SELECT
         ms.id   AS serviceId,
         ms.name AS serviceName,
         ms.serviceType,
@@ -4470,10 +5552,18 @@ class DBService {
       from.toIso8601String(),
       to.toIso8601String(),
     ];
-    final sdsAccount = await _accountFilterClause(db, 'service_doctor_share',
-        alias: 'sds', args: args);
-    final msAccount = await _accountFilterClause(db, 'medical_services',
-        alias: 'ms', args: args);
+    final sdsAccount = await _accountFilterClause(
+      db,
+      'service_doctor_share',
+      alias: 'sds',
+      args: args,
+    );
+    final msAccount = await _accountFilterClause(
+      db,
+      'medical_services',
+      alias: 'ms',
+      args: args,
+    );
     String psAccount = '';
     if (await _hasColumn(db, PatientService.table, 'account_id')) {
       final accountId = await _currentAccountId();
@@ -4546,10 +5636,18 @@ class DBService {
   }) async {
     final db = await database;
     final args = <Object?>[doctorId, serviceId];
-    final sdsAccount = await _accountFilterClause(db, 'service_doctor_share',
-        alias: 'sds', args: args);
-    final msAccount = await _accountFilterClause(db, 'medical_services',
-        alias: 'ms', args: args);
+    final sdsAccount = await _accountFilterClause(
+      db,
+      'service_doctor_share',
+      alias: 'sds',
+      args: args,
+    );
+    final msAccount = await _accountFilterClause(
+      db,
+      'medical_services',
+      alias: 'ms',
+      args: args,
+    );
     final rows = await db.rawQuery('''
       SELECT 
         ms.serviceType,
@@ -4590,6 +5688,12 @@ class DBService {
   Future<int> insertEmployee(Map<String, dynamic> employeeData) async {
     final db = await database;
     final id = await db.insert('employees', employeeData);
+    await _enqueueClinicOutboxForRow(
+      db,
+      table: 'employees',
+      entityId: id,
+      operationType: 'create_employee',
+    );
     await _markChanged('employees');
     await _ensureDoctorForEmployeeId(id, dataHint: employeeData);
     return id;
@@ -4612,11 +5716,9 @@ class DBService {
             Future<void> backfill(String table) async {
               final cols = await _getTableColumns(txn, table);
               if (!cols.contains('account_id')) return;
-              await txn.update(
-                table,
-                {'account_id': accountId},
-                where: "account_id IS NULL OR length(trim(account_id)) = 0",
-              );
+              await txn.update(table, {
+                'account_id': accountId,
+              }, where: "account_id IS NULL OR length(trim(account_id)) = 0");
             }
 
             await backfill('employees');
@@ -4656,8 +5758,12 @@ class DBService {
       where += ' AND account_id = ?';
       whereArgs.add(accountId);
     }
-    return db.query('employees',
-        where: where, whereArgs: whereArgs, orderBy: 'id DESC');
+    return db.query(
+      'employees',
+      where: where,
+      whereArgs: whereArgs,
+      orderBy: 'id DESC',
+    );
   }
 
   Future<Employee?> getEmployeeByUserUid(String userUid) async {
@@ -4691,17 +5797,40 @@ class DBService {
   }
 
   Future<int> updateEmployee(
-      int employeeId, Map<String, dynamic> newData) async {
+    int employeeId,
+    Map<String, dynamic> newData,
+  ) async {
     final db = await database;
-    final rows = await db
-        .update('employees', newData, where: 'id = ?', whereArgs: [employeeId]);
+    final rows = await db.update(
+      'employees',
+      newData,
+      where: 'id = ?',
+      whereArgs: [employeeId],
+    );
+    if (rows > 0) {
+      await _enqueueClinicOutboxForRow(
+        db,
+        table: 'employees',
+        entityId: employeeId,
+        operationType: 'update_employee',
+      );
+    }
     await _markChanged('employees');
     await _ensureDoctorForEmployeeId(employeeId, dataHint: newData);
     return rows;
   }
 
   Future<int> deleteEmployee(int employeeId) async {
+    final db = await database;
     final rows = await _softDeleteById('employees', employeeId);
+    if (rows > 0) {
+      await _enqueueClinicOutboxForRow(
+        db,
+        table: 'employees',
+        entityId: employeeId,
+        operationType: 'delete_employee_soft',
+      );
+    }
     await _markChanged('employees');
     await _softDeleteDoctorsForEmployee(employeeId);
     return rows;
@@ -4709,10 +5838,12 @@ class DBService {
 
   Future<Map<String, dynamic>?> getEmployeeById(int employeeId) async {
     final db = await database;
-    final res = await db.query('employees',
-        where: 'id = ? AND ifnull(isDeleted,0)=0',
-        whereArgs: [employeeId],
-        limit: 1);
+    final res = await db.query(
+      'employees',
+      where: 'id = ? AND ifnull(isDeleted,0)=0',
+      whereArgs: [employeeId],
+      limit: 1,
+    );
     return res.isEmpty ? null : res.first;
   }
 
@@ -4762,8 +5893,9 @@ class DBService {
           specialization: specialization.isEmpty
               ? row['specialization']?.toString() ?? 'عام'
               : specialization,
-          phoneNumber:
-              phone.isEmpty ? row['phoneNumber']?.toString() ?? '' : phone,
+          phoneNumber: phone.isEmpty
+              ? row['phoneNumber']?.toString() ?? ''
+              : phone,
         );
         await updateDoctor(doc);
         return;
@@ -4855,12 +5987,35 @@ class DBService {
 
       final idArgs = ids.toList();
       final whereIn = 'id IN (${List.filled(idArgs.length, '?').join(',')})';
+      final shareRows = await db.query(
+        'service_doctor_share',
+        columns: const ['id'],
+        where:
+            'doctorId IN (${List.filled(idArgs.length, '?').join(',')}) AND ifnull(isDeleted,0)=0',
+        whereArgs: idArgs,
+      );
+      final shareIds = shareRows
+          .map((r) => (r['id'] as num?)?.toInt())
+          .whereType<int>()
+          .toList();
       await _softDeleteWhere('doctors', whereIn, idArgs);
+      await _enqueueClinicOutboxForRows(
+        db,
+        table: 'doctors',
+        entityIds: idArgs,
+        operationType: 'disable_doctor',
+      );
       await _markChanged('doctors');
 
       final shareWhere =
           'doctorId IN (${List.filled(idArgs.length, '?').join(',')})';
       await _softDeleteWhere('service_doctor_share', shareWhere, idArgs);
+      await _enqueueClinicOutboxForRows(
+        db,
+        table: 'service_doctor_share',
+        entityIds: shareIds,
+        operationType: 'delete_service_doctor_share_soft',
+      );
       await _markChanged('service_doctor_share');
 
       await db.update(
@@ -4932,6 +6087,12 @@ class DBService {
   Future<int> insertEmployeeLoan(Map<String, dynamic> loanData) async {
     final db = await database;
     final id = await db.insert('employees_loans', loanData);
+    await _enqueueClinicOutboxForRow(
+      db,
+      table: 'employees_loans',
+      entityId: id,
+      operationType: 'create_loan',
+    );
     await _markChanged('employees_loans');
     return id;
   }
@@ -4957,21 +6118,48 @@ class DBService {
       where += ' AND account_id = ?';
       whereArgs.add(accountId);
     }
-    return db.query('employees_loans',
-        where: where, whereArgs: whereArgs, orderBy: 'loanDateTime DESC');
+    return db.query(
+      'employees_loans',
+      where: where,
+      whereArgs: whereArgs,
+      orderBy: 'loanDateTime DESC',
+    );
   }
 
   Future<int> updateEmployeeLoan(
-      int loanId, Map<String, dynamic> newData) async {
+    int loanId,
+    Map<String, dynamic> newData,
+  ) async {
     final db = await database;
-    final rows = await db.update('employees_loans', newData,
-        where: 'id = ?', whereArgs: [loanId]);
+    final rows = await db.update(
+      'employees_loans',
+      newData,
+      where: 'id = ?',
+      whereArgs: [loanId],
+    );
+    if (rows > 0) {
+      await _enqueueClinicOutboxForRow(
+        db,
+        table: 'employees_loans',
+        entityId: loanId,
+        operationType: 'update_loan',
+      );
+    }
     await _markChanged('employees_loans');
     return rows;
   }
 
   Future<int> deleteEmployeeLoan(int loanId) async {
+    final db = await database;
     final rows = await _softDeleteById('employees_loans', loanId);
+    if (rows > 0) {
+      await _enqueueClinicOutboxForRow(
+        db,
+        table: 'employees_loans',
+        entityId: loanId,
+        operationType: 'delete_loan_soft',
+      );
+    }
     await _markChanged('employees_loans');
     return rows;
   }
@@ -4983,14 +6171,39 @@ class DBService {
   }) async {
     final db = await database;
     final now = DateTime.now().toIso8601String();
+    final selectArgs = <Object?>[
+      employeeId,
+      year.toString(),
+      month.toString().padLeft(2, '0'),
+    ];
+    final selectAccountClause = await _accountFilterClause(
+      db,
+      'employees_loans',
+      args: selectArgs,
+    );
+    final affectedRows = await db.rawQuery('''
+        SELECT id FROM employees_loans
+        WHERE employeeId = ?
+          AND strftime('%Y', loanDateTime) = ?
+          AND strftime('%m', loanDateTime) = ?
+          AND ifnull(isDeleted,0)=0
+          $selectAccountClause
+      ''', selectArgs);
+    final affectedIds = affectedRows
+        .map((r) => (r['id'] as num?)?.toInt())
+        .whereType<int>()
+        .toList();
     final args = <Object?>[
       now,
       employeeId,
       year.toString(),
       month.toString().padLeft(2, '0'),
     ];
-    final accountClause =
-        await _accountFilterClause(db, 'employees_loans', args: args);
+    final accountClause = await _accountFilterClause(
+      db,
+      'employees_loans',
+      args: args,
+    );
     final rows = await db.rawUpdate('''
         UPDATE employees_loans
         SET isSettled = 1,
@@ -5002,6 +6215,14 @@ class DBService {
           AND ifnull(isDeleted,0)=0
           $accountClause
       ''', args);
+    if (rows > 0) {
+      await _enqueueClinicOutboxForRows(
+        db,
+        table: 'employees_loans',
+        entityIds: affectedIds,
+        operationType: 'settle_loan',
+      );
+    }
     await _markChanged('employees_loans');
     return rows;
   }
@@ -5017,8 +6238,11 @@ class DBService {
       from.toIso8601String(),
       to.toIso8601String(),
     ];
-    final accountClause =
-        await _accountFilterClause(db, 'employees_loans', args: args);
+    final accountClause = await _accountFilterClause(
+      db,
+      'employees_loans',
+      args: args,
+    );
     final res = await db.rawQuery('''
       SELECT COALESCE(SUM(loanAmount), 0) AS total
       FROM employees_loans
@@ -5036,6 +6260,12 @@ class DBService {
     final db = await database;
     final normalized = _normalizeEmployeeSalaryData(salaryData);
     final id = await db.insert('employees_salaries', normalized);
+    await _enqueueClinicOutboxForRow(
+      db,
+      table: 'employees_salaries',
+      entityId: id,
+      operationType: 'create_salary',
+    );
     await _markChanged('employees_salaries');
     return id;
   }
@@ -5061,22 +6291,54 @@ class DBService {
       where += ' AND account_id = ?';
       whereArgs.add(accountId);
     }
-    return db.query('employees_salaries',
-        where: where, whereArgs: whereArgs, orderBy: 'id DESC');
+    return db.query(
+      'employees_salaries',
+      where: where,
+      whereArgs: whereArgs,
+      orderBy: 'id DESC',
+    );
   }
 
   Future<int> updateEmployeeSalary(
-      int salaryId, Map<String, dynamic> newData) async {
+    int salaryId,
+    Map<String, dynamic> newData,
+  ) async {
     final db = await database;
     final normalized = _normalizeEmployeeSalaryData(newData);
-    final rows = await db.update('employees_salaries', normalized,
-        where: 'id = ?', whereArgs: [salaryId]);
+    final rows = await db.update(
+      'employees_salaries',
+      normalized,
+      where: 'id = ?',
+      whereArgs: [salaryId],
+    );
+    if (rows > 0) {
+      final paidRaw = normalized['isPaid'];
+      final isPaid =
+          paidRaw == true ||
+          (paidRaw is num && paidRaw.toInt() == 1) ||
+          paidRaw?.toString().trim() == '1';
+      await _enqueueClinicOutboxForRow(
+        db,
+        table: 'employees_salaries',
+        entityId: salaryId,
+        operationType: isPaid ? 'mark_salary_paid' : 'update_salary',
+      );
+    }
     await _markChanged('employees_salaries');
     return rows;
   }
 
   Future<int> deleteEmployeeSalary(int salaryId) async {
+    final db = await database;
     final rows = await _softDeleteById('employees_salaries', salaryId);
+    if (rows > 0) {
+      await _enqueueClinicOutboxForRow(
+        db,
+        table: 'employees_salaries',
+        entityId: salaryId,
+        operationType: 'delete_salary_soft',
+      );
+    }
     await _markChanged('employees_salaries');
     return rows;
   }
@@ -5085,6 +6347,12 @@ class DBService {
   Future<int> insertEmployeeDiscount(Map<String, dynamic> discountData) async {
     final db = await database;
     final id = await db.insert('employees_discounts', discountData);
+    await _enqueueClinicOutboxForRow(
+      db,
+      table: 'employees_discounts',
+      entityId: id,
+      operationType: 'create_discount',
+    );
     await _markChanged('employees_discounts');
     return id;
   }
@@ -5129,8 +6397,11 @@ class DBService {
       from.toIso8601String(),
       to.toIso8601String(),
     ];
-    final accountClause =
-        await _accountFilterClause(db, 'employees_discounts', args: args);
+    final accountClause = await _accountFilterClause(
+      db,
+      'employees_discounts',
+      args: args,
+    );
     final res = await db.rawQuery('''
       SELECT COALESCE(SUM(amount), 0) AS total
       FROM employees_discounts
@@ -5191,8 +6462,11 @@ class DBService {
       }
     }
 
-    final loansHasAccCol =
-        await _hasColumn(db, 'employees_loans', 'account_id');
+    final loansHasAccCol = await _hasColumn(
+      db,
+      'employees_loans',
+      'account_id',
+    );
     if (loansHasAccCol && (accountId == null || accountId.trim().isEmpty)) {
       return;
     }
@@ -5230,8 +6504,9 @@ class DBService {
         }
       }
       final empIdRaw = best?['employee_id'];
-      final empId =
-          empIdRaw is num ? empIdRaw.toInt() : int.tryParse('$empIdRaw');
+      final empId = empIdRaw is num
+          ? empIdRaw.toInt()
+          : int.tryParse('$empIdRaw');
       if (empId != null && empId > 0) {
         await db.update(
           'employees_loans',
@@ -5243,8 +6518,11 @@ class DBService {
       }
     }
 
-    final discountsHasAccCol =
-        await _hasColumn(db, 'employees_discounts', 'account_id');
+    final discountsHasAccCol = await _hasColumn(
+      db,
+      'employees_discounts',
+      'account_id',
+    );
     if (discountsHasAccCol && (accountId == null || accountId.trim().isEmpty)) {
       return;
     }
@@ -5282,8 +6560,9 @@ class DBService {
         }
       }
       final empIdRaw = best?['employee_id'];
-      final empId =
-          empIdRaw is num ? empIdRaw.toInt() : int.tryParse('$empIdRaw');
+      final empId = empIdRaw is num
+          ? empIdRaw.toInt()
+          : int.tryParse('$empIdRaw');
       if (empId != null && empId > 0) {
         await db.update(
           'employees_discounts',
@@ -5321,16 +6600,39 @@ class DBService {
   }
 
   Future<int> updateEmployeeDiscount(
-      int discountId, Map<String, dynamic> newData) async {
+    int discountId,
+    Map<String, dynamic> newData,
+  ) async {
     final db = await database;
-    final rows = await db.update('employees_discounts', newData,
-        where: 'id = ?', whereArgs: [discountId]);
+    final rows = await db.update(
+      'employees_discounts',
+      newData,
+      where: 'id = ?',
+      whereArgs: [discountId],
+    );
+    if (rows > 0) {
+      await _enqueueClinicOutboxForRow(
+        db,
+        table: 'employees_discounts',
+        entityId: discountId,
+        operationType: 'update_discount',
+      );
+    }
     await _markChanged('employees_discounts');
     return rows;
   }
 
   Future<int> deleteEmployeeDiscount(int discountId) async {
+    final db = await database;
     final rows = await _softDeleteById('employees_discounts', discountId);
+    if (rows > 0) {
+      await _enqueueClinicOutboxForRow(
+        db,
+        table: 'employees_discounts',
+        entityId: discountId,
+        operationType: 'delete_discount_soft',
+      );
+    }
     await _markChanged('employees_discounts');
     return rows;
   }
@@ -5339,8 +6641,11 @@ class DBService {
   Future<int> getTotalPatients() async {
     final db = await database;
     final args = <Object?>[];
-    final accountClause =
-        await _accountFilterClause(db, 'patients', args: args);
+    final accountClause = await _accountFilterClause(
+      db,
+      'patients',
+      args: args,
+    );
     final res = await db.rawQuery(
       'SELECT COUNT(*) as count FROM patients WHERE ifnull(isDeleted,0)=0$accountClause',
       args,
@@ -5351,8 +6656,11 @@ class DBService {
   Future<int> getSuccessfulAppointments() async {
     final db = await database;
     final args = <Object?>[];
-    final accountClause =
-        await _accountFilterClause(db, 'appointments', args: args);
+    final accountClause = await _accountFilterClause(
+      db,
+      'appointments',
+      args: args,
+    );
     final res = await db.rawQuery(
       "SELECT COUNT(*) as count FROM appointments WHERE status = 'مؤكد' AND ifnull(isDeleted,0)=0$accountClause",
       args,
@@ -5363,8 +6671,11 @@ class DBService {
   Future<int> getFollowUpCount() async {
     final db = await database;
     final args = <Object?>[];
-    final accountClause =
-        await _accountFilterClause(db, 'appointments', args: args);
+    final accountClause = await _accountFilterClause(
+      db,
+      'appointments',
+      args: args,
+    );
     final res = await db.rawQuery(
       "SELECT COUNT(*) as count FROM appointments WHERE status = 'متابعة' AND ifnull(isDeleted,0)=0$accountClause",
       args,
@@ -5375,8 +6686,11 @@ class DBService {
   Future<double> getFinancialTotal() async {
     final db = await database;
     final args = <Object?>[];
-    final accountClause =
-        await _accountFilterClause(db, 'patients', args: args);
+    final accountClause = await _accountFilterClause(
+      db,
+      'patients',
+      args: args,
+    );
     final res = await db.rawQuery(
       'SELECT SUM(paidAmount) as total FROM patients WHERE ifnull(isDeleted,0)=0$accountClause',
       args,
@@ -5410,10 +6724,7 @@ class DBService {
   }
 
   @visibleForTesting
-  Future<String> debugAccountFilterClause(
-    String table, {
-    String? alias,
-  }) async {
+  Future<String> debugAccountFilterClause(String table, {String? alias}) async {
     final db = await database;
     final args = <Object?>[];
     return _accountFilterClause(db, table, alias: alias, args: args);
@@ -5422,47 +6733,52 @@ class DBService {
   /// مسح كل الجداول المحلية (لما تغيّر الحساب) ثم تعليم الإحصاءات كـ Dirty.
   Future<void> clearAllLocalTables() async {
     final db = await database;
-    final batch = db.batch();
-    const tables = <String>[
-      'patients',
-      'returns',
-      'consumptions',
-      'appointments',
-      'doctors',
-      'consumption_types',
-      'medical_services',
-      'service_doctor_share',
-      'employees',
-      'employees_loans',
-      'employees_salaries',
-      'employees_discounts',
-      'items',
-      'item_types',
-      'purchases',
-      'alert_settings',
-      'attachments',
-      'financial_logs',
-      PatientService.table,
-      Drug.table,
-      Prescription.table,
-      PrescriptionItem.table,
-      'complaints',
-      'sync_fk_mapping',
-    ];
-    for (final t in tables) {
-      batch.delete(t);
-    }
-    batch.delete('remote_id_map');
-    await batch.commit(noResult: true);
-
-    // 🧽 إعادة ضبط عدّادات AUTOINCREMENT (إن وُجدت)
+    await db.rawQuery('PRAGMA foreign_keys = OFF');
     try {
-      await db.rawDelete('DELETE FROM sqlite_sequence');
-    } catch (_) {
-      // بعض الإصدارات/البيئات قد لا تحتوي sqlite_sequence
-    }
+      final batch = db.batch();
+      const tables = <String>[
+        'patients',
+        'returns',
+        'consumptions',
+        'appointments',
+        'doctors',
+        'consumption_types',
+        'medical_services',
+        'service_doctor_share',
+        'employees',
+        'employees_loans',
+        'employees_salaries',
+        'employees_discounts',
+        'items',
+        'item_types',
+        'purchases',
+        'alert_settings',
+        'attachments',
+        'financial_logs',
+        PatientService.table,
+        Drug.table,
+        Prescription.table,
+        PrescriptionItem.table,
+        'complaints',
+        'sync_fk_mapping',
+      ];
+      for (final t in tables) {
+        batch.delete(t);
+      }
+      batch.delete('remote_id_map');
+      await batch.commit(noResult: true);
 
-    await db.update('stats_dirty', {'dirty': 1}, where: 'id = 1');
+      // 🧽 إعادة ضبط عدّادات AUTOINCREMENT (إن وُجدت)
+      try {
+        await db.rawDelete('DELETE FROM sqlite_sequence');
+      } catch (_) {
+        // بعض الإصدارات/البيئات قد لا تحتوي sqlite_sequence
+      }
+
+      await db.update('stats_dirty', {'dirty': 1}, where: 'id = 1');
+    } finally {
+      await db.rawQuery('PRAGMA foreign_keys = ON');
+    }
   }
 
   /// تحقّق هل توجد صفوف محليًا تخص حسابًا مختلفًا عن الحساب الحالي.
@@ -5516,8 +6832,11 @@ class DBService {
   Future<double> getSumPatientsBetween(DateTime from, DateTime to) async {
     final db = await database;
     final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
-    final accountClause =
-        await _accountFilterClause(db, 'patients', args: args);
+    final accountClause = await _accountFilterClause(
+      db,
+      'patients',
+      args: args,
+    );
     final res = await db.rawQuery('''
         SELECT SUM(paidAmount) as total
         FROM patients
@@ -5532,11 +6851,16 @@ class DBService {
 
   /// إجمالي مدفوعات المرضى خلال الفترة (تحصيل فعلي).
   Future<double> getSumPatientPaymentsBetween(
-      DateTime from, DateTime to) async {
+    DateTime from,
+    DateTime to,
+  ) async {
     final db = await database;
     final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
-    final accountClause =
-        await _accountFilterClause(db, 'financial_logs', args: args);
+    final accountClause = await _accountFilterClause(
+      db,
+      'financial_logs',
+      args: args,
+    );
     final res = await db.rawQuery('''
         SELECT COALESCE(SUM(amount), 0) as total
         FROM financial_logs
@@ -5551,8 +6875,11 @@ class DBService {
   Future<bool> _hasPatientPaymentsBetween(DateTime from, DateTime to) async {
     final db = await database;
     final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
-    final accountClause =
-        await _accountFilterClause(db, 'financial_logs', args: args);
+    final accountClause = await _accountFilterClause(
+      db,
+      'financial_logs',
+      args: args,
+    );
     final res = await db.rawQuery('''
         SELECT COUNT(1) as cnt
         FROM financial_logs
@@ -5567,13 +6894,23 @@ class DBService {
 
   /// دخل الخدمات حسب اليوم (احتياط للأنظمة القديمة قبل توحيد التحصيل).
   Future<Map<String, double>> getServiceRevenueByDateBetween(
-      DateTime from, DateTime to) async {
+    DateTime from,
+    DateTime to,
+  ) async {
     final db = await database;
     final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
-    final psAccount = await _accountFilterClause(db, PatientService.table,
-        alias: 'ps', args: args);
-    final pAccount =
-        await _accountFilterClause(db, 'patients', alias: 'p', args: args);
+    final psAccount = await _accountFilterClause(
+      db,
+      PatientService.table,
+      alias: 'ps',
+      args: args,
+    );
+    final pAccount = await _accountFilterClause(
+      db,
+      'patients',
+      alias: 'p',
+      args: args,
+    );
     String msAccount = '';
     if (await _hasColumn(db, 'medical_services', 'account_id')) {
       final accountId = await _currentAccountIdFrom(db);
@@ -5607,11 +6944,16 @@ class DBService {
 
   /// دخل المرضى حسب اليوم اعتمادًا على التحصيل الفعلي (financial_logs).
   Future<Map<String, double>> getPatientPaymentsByDateBetween(
-      DateTime from, DateTime to) async {
+    DateTime from,
+    DateTime to,
+  ) async {
     final db = await database;
     final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
-    final accountClause =
-        await _accountFilterClause(db, 'financial_logs', args: args);
+    final accountClause = await _accountFilterClause(
+      db,
+      'financial_logs',
+      args: args,
+    );
     final rows = await db.rawQuery('''
       SELECT date(timestamp) AS dayKey,
              COALESCE(SUM(amount), 0) AS total
@@ -5633,7 +6975,9 @@ class DBService {
 
   /// دخل المرضى حسب الطبيب خلال الفترة (تحصيل فعلي).
   Future<Map<String, double>> getPatientPaymentsByDoctorBetween(
-      DateTime from, DateTime to) async {
+    DateTime from,
+    DateTime to,
+  ) async {
     final db = await database;
     final hasPatientId = await _hasColumn(db, 'financial_logs', 'patient_id');
     final hasAccCol = await _hasColumn(db, 'financial_logs', 'account_id');
@@ -5670,8 +7014,11 @@ class DBService {
 
     // مسار احتياطي: حاول استخراج patientId من الوصف (ID: X)
     final logArgs = <Object?>[from.toIso8601String(), to.toIso8601String()];
-    final logAccClause =
-        await _accountFilterClause(db, 'financial_logs', args: logArgs);
+    final logAccClause = await _accountFilterClause(
+      db,
+      'financial_logs',
+      args: logArgs,
+    );
     final logs = await db.rawQuery('''
       SELECT amount, description
       FROM financial_logs
@@ -5718,7 +7065,9 @@ class DBService {
 
   /// دخل حسب اليوم: تحصيل فعلي إن وجد، وإلا fallback لخدمات المرضى (legacy).
   Future<Map<String, double>> getIncomeByDateBetween(
-      DateTime from, DateTime to) async {
+    DateTime from,
+    DateTime to,
+  ) async {
     final hasPayments = await _hasPatientPaymentsBetween(from, to);
     if (hasPayments) {
       return getPatientPaymentsByDateBetween(from, to);
@@ -5728,11 +7077,16 @@ class DBService {
 
   /// إجمالي المبالغ المتبقية على المرضى خلال الفترة.
   Future<double> getSumPatientsRemainingBetween(
-      DateTime from, DateTime to) async {
+    DateTime from,
+    DateTime to,
+  ) async {
     final db = await database;
     final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
-    final accountClause =
-        await _accountFilterClause(db, 'patients', args: args);
+    final accountClause = await _accountFilterClause(
+      db,
+      'patients',
+      args: args,
+    );
     final res = await db.rawQuery('''
         SELECT COALESCE(SUM(remaining), 0) as total
         FROM patients
@@ -5745,13 +7099,23 @@ class DBService {
 
   /// إجمالي قيمة الخدمات المقدمة خلال الفترة (يُستخدم كدخل عند عدم تسجيل الدفعات).
   Future<double> getSumPatientServicesBetween(
-      DateTime from, DateTime to) async {
+    DateTime from,
+    DateTime to,
+  ) async {
     final db = await database;
     final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
-    final psAccount = await _accountFilterClause(db, PatientService.table,
-        alias: 'ps', args: args);
-    final pAccount =
-        await _accountFilterClause(db, 'patients', alias: 'p', args: args);
+    final psAccount = await _accountFilterClause(
+      db,
+      PatientService.table,
+      alias: 'ps',
+      args: args,
+    );
+    final pAccount = await _accountFilterClause(
+      db,
+      'patients',
+      alias: 'p',
+      args: args,
+    );
     String msAccount = '';
     if (await _hasColumn(db, 'medical_services', 'account_id')) {
       final accountId = await _currentAccountId();
@@ -5778,8 +7142,12 @@ class DBService {
   Future<double> getSumConsumptionBetween(DateTime from, DateTime to) async {
     final db = await database;
     final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
-    final cAccount =
-        await _accountFilterClause(db, 'consumptions', alias: 'c', args: args);
+    final cAccount = await _accountFilterClause(
+      db,
+      'consumptions',
+      alias: 'c',
+      args: args,
+    );
     String iAccount = '';
     if (await _hasColumn(db, 'items', 'account_id')) {
       final accountId = await _currentAccountId();
@@ -5810,8 +7178,11 @@ class DBService {
   Future<double> getSumPurchasesBetween(DateTime from, DateTime to) async {
     final db = await database;
     final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
-    final accountClause =
-        await _accountFilterClause(db, 'purchases', args: args);
+    final accountClause = await _accountFilterClause(
+      db,
+      'purchases',
+      args: args,
+    );
     final res = await db.rawQuery('''
         SELECT COALESCE(SUM(
           COALESCE(quantity, 0) * COALESCE(unit_price, 0)
@@ -5825,7 +7196,9 @@ class DBService {
   }
 
   Future<double> getSumReturnsRemainingBetween(
-      DateTime from, DateTime to) async {
+    DateTime from,
+    DateTime to,
+  ) async {
     final db = await database;
     final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
     final accountClause = await _accountFilterClause(db, 'returns', args: args);
@@ -5848,19 +7221,34 @@ class DBService {
     - السطور الحرّة (serviceId NULL) تُنسب لطبيب المريض فقط في مدخلات الطبيب
    ───────────────────────────────────────────────────────────────*/
   Future<double> getDoctorRatioSum(
-      int doctorId, DateTime from, DateTime to) async {
+    int doctorId,
+    DateTime from,
+    DateTime to,
+  ) async {
     final db = await database;
     final args = <Object?>[
       doctorId,
       from.toIso8601String(),
       to.toIso8601String(),
     ];
-    final psAccount = await _accountFilterClause(db, PatientService.table,
-        alias: 'ps', args: args);
-    final pAccount =
-        await _accountFilterClause(db, 'patients', alias: 'p', args: args);
-    final msAccount = await _accountFilterClause(db, 'medical_services',
-        alias: 'ms', args: args);
+    final psAccount = await _accountFilterClause(
+      db,
+      PatientService.table,
+      alias: 'ps',
+      args: args,
+    );
+    final pAccount = await _accountFilterClause(
+      db,
+      'patients',
+      alias: 'p',
+      args: args,
+    );
+    final msAccount = await _accountFilterClause(
+      db,
+      'medical_services',
+      alias: 'ms',
+      args: args,
+    );
     String sdsAccount = '';
     if (await _hasColumn(db, 'service_doctor_share', 'account_id')) {
       final accountId = await _currentAccountId();
@@ -5890,7 +7278,10 @@ class DBService {
   }
 
   Future<double> getEffectiveDoctorDirectInputSum(
-      int doctorId, DateTime from, DateTime to) async {
+    int doctorId,
+    DateTime from,
+    DateTime to,
+  ) async {
     final db = await database;
     final args = <Object?>[
       doctorId,
@@ -5899,10 +7290,18 @@ class DBService {
       from.toIso8601String(),
       to.toIso8601String(),
     ];
-    final psAccount = await _accountFilterClause(db, PatientService.table,
-        alias: 'ps', args: args);
-    final pAccount =
-        await _accountFilterClause(db, 'patients', alias: 'p', args: args);
+    final psAccount = await _accountFilterClause(
+      db,
+      PatientService.table,
+      alias: 'ps',
+      args: args,
+    );
+    final pAccount = await _accountFilterClause(
+      db,
+      'patients',
+      alias: 'p',
+      args: args,
+    );
     String msAccount = '';
     if (await _hasColumn(db, 'medical_services', 'account_id')) {
       final accountId = await _currentAccountId();
@@ -5946,7 +7345,10 @@ class DBService {
   }
 
   Future<double> getDoctorTowerShareSum(
-      int doctorId, DateTime from, DateTime to) async {
+    int doctorId,
+    DateTime from,
+    DateTime to,
+  ) async {
     final db = await database;
     final args = <Object?>[
       doctorId,
@@ -5954,10 +7356,18 @@ class DBService {
       from.toIso8601String(),
       to.toIso8601String(),
     ];
-    final psAccount = await _accountFilterClause(db, PatientService.table,
-        alias: 'ps', args: args);
-    final pAccount =
-        await _accountFilterClause(db, 'patients', alias: 'p', args: args);
+    final psAccount = await _accountFilterClause(
+      db,
+      PatientService.table,
+      alias: 'ps',
+      args: args,
+    );
+    final pAccount = await _accountFilterClause(
+      db,
+      'patients',
+      alias: 'p',
+      args: args,
+    );
     String msAccount = '';
     if (await _hasColumn(db, 'medical_services', 'account_id')) {
       final accountId = await _currentAccountId();
@@ -6001,13 +7411,23 @@ class DBService {
   }
 
   Future<double> getEffectiveSumAllDoctorInputBetween(
-      DateTime from, DateTime to) async {
+    DateTime from,
+    DateTime to,
+  ) async {
     final db = await database;
     final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
-    final psAccount = await _accountFilterClause(db, PatientService.table,
-        alias: 'ps', args: args);
-    final pAccount =
-        await _accountFilterClause(db, 'patients', alias: 'p', args: args);
+    final psAccount = await _accountFilterClause(
+      db,
+      PatientService.table,
+      alias: 'ps',
+      args: args,
+    );
+    final pAccount = await _accountFilterClause(
+      db,
+      'patients',
+      alias: 'p',
+      args: args,
+    );
     String msAccount = '';
     if (await _hasColumn(db, 'medical_services', 'account_id')) {
       final accountId = await _currentAccountId();
@@ -6057,12 +7477,24 @@ class DBService {
   Future<double> getSumAllDoctorShareBetween(DateTime from, DateTime to) async {
     final db = await database;
     final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
-    final psAccount = await _accountFilterClause(db, PatientService.table,
-        alias: 'ps', args: args);
-    final pAccount =
-        await _accountFilterClause(db, 'patients', alias: 'p', args: args);
-    final msAccount = await _accountFilterClause(db, 'medical_services',
-        alias: 'ms', args: args);
+    final psAccount = await _accountFilterClause(
+      db,
+      PatientService.table,
+      alias: 'ps',
+      args: args,
+    );
+    final pAccount = await _accountFilterClause(
+      db,
+      'patients',
+      alias: 'p',
+      args: args,
+    );
+    final msAccount = await _accountFilterClause(
+      db,
+      'medical_services',
+      alias: 'ms',
+      args: args,
+    );
     String sdsAccount = '';
     if (await _hasColumn(db, 'service_doctor_share', 'account_id')) {
       final accountId = await _currentAccountId();
@@ -6097,10 +7529,18 @@ class DBService {
   Future<double> getSumAllTowerShareBetween(DateTime from, DateTime to) async {
     final db = await database;
     final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
-    final psAccount = await _accountFilterClause(db, PatientService.table,
-        alias: 'ps', args: args);
-    final pAccount =
-        await _accountFilterClause(db, 'patients', alias: 'p', args: args);
+    final psAccount = await _accountFilterClause(
+      db,
+      PatientService.table,
+      alias: 'ps',
+      args: args,
+    );
+    final pAccount = await _accountFilterClause(
+      db,
+      'patients',
+      alias: 'p',
+      args: args,
+    );
     String msAccount = '';
     if (await _hasColumn(db, 'medical_services', 'account_id')) {
       final accountId = await _currentAccountId();
@@ -6141,15 +7581,29 @@ class DBService {
   }
 
   Future<Map<String, double>> getDoctorShareByDateBetween(
-      DateTime from, DateTime to) async {
+    DateTime from,
+    DateTime to,
+  ) async {
     final db = await database;
     final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
-    final psAccount = await _accountFilterClause(db, PatientService.table,
-        alias: 'ps', args: args);
-    final pAccount =
-        await _accountFilterClause(db, 'patients', alias: 'p', args: args);
-    final msAccount = await _accountFilterClause(db, 'medical_services',
-        alias: 'ms', args: args);
+    final psAccount = await _accountFilterClause(
+      db,
+      PatientService.table,
+      alias: 'ps',
+      args: args,
+    );
+    final pAccount = await _accountFilterClause(
+      db,
+      'patients',
+      alias: 'p',
+      args: args,
+    );
+    final msAccount = await _accountFilterClause(
+      db,
+      'medical_services',
+      alias: 'ms',
+      args: args,
+    );
     String sdsAccount = '';
     if (await _hasColumn(db, 'service_doctor_share', 'account_id')) {
       final accountId = await _currentAccountId();
@@ -6188,8 +7642,9 @@ class DBService {
   }
 
   /// تقرير مستحقات الأطباء (من آخر صرف وحتى تاريخ محدد).
-  Future<List<Map<String, dynamic>>> getDoctorOutstandingBalances(
-      {DateTime? asOf}) async {
+  Future<List<Map<String, dynamic>>> getDoctorOutstandingBalances({
+    DateTime? asOf,
+  }) async {
     final now = asOf ?? DateTime.now();
     final monthStart = DateTime(now.year, now.month, 1);
     final doctors = await getAllDoctors();
@@ -6253,8 +7708,11 @@ class DBService {
       }
 
       final ratioSum = await getDoctorRatioSum(doctorId, from, to);
-      final directInput =
-          await getEffectiveDoctorDirectInputSum(doctorId, from, to);
+      final directInput = await getEffectiveDoctorDirectInputSum(
+        doctorId,
+        from,
+        to,
+      );
       double loans = 0.0;
       double discounts = 0.0;
       if (employeeId != null) {
@@ -6288,13 +7746,23 @@ class DBService {
   }
 
   Future<Map<String, double>> getDoctorInputByDateBetween(
-      DateTime from, DateTime to) async {
+    DateTime from,
+    DateTime to,
+  ) async {
     final db = await database;
     final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
-    final psAccount = await _accountFilterClause(db, PatientService.table,
-        alias: 'ps', args: args);
-    final pAccount =
-        await _accountFilterClause(db, 'patients', alias: 'p', args: args);
+    final psAccount = await _accountFilterClause(
+      db,
+      PatientService.table,
+      alias: 'ps',
+      args: args,
+    );
+    final pAccount = await _accountFilterClause(
+      db,
+      'patients',
+      alias: 'p',
+      args: args,
+    );
     String msAccount = '';
     if (await _hasColumn(db, 'medical_services', 'account_id')) {
       final accountId = await _currentAccountId();
@@ -6350,11 +7818,17 @@ class DBService {
   }
 
   Future<Map<String, double>> getConsumptionByDateBetween(
-      DateTime from, DateTime to) async {
+    DateTime from,
+    DateTime to,
+  ) async {
     final db = await database;
     final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
-    final consumptionAccount = await _accountFilterClause(db, 'consumptions',
-        alias: 'c', args: args);
+    final consumptionAccount = await _accountFilterClause(
+      db,
+      'consumptions',
+      alias: 'c',
+      args: args,
+    );
     String itemsAccount = '';
     if (await _hasColumn(db, 'items', 'account_id')) {
       final accountId = await _currentAccountIdFrom(db);
@@ -6391,11 +7865,17 @@ class DBService {
   }
 
   Future<Map<String, double>> getConsumptionByTypeBetween(
-      DateTime from, DateTime to) async {
+    DateTime from,
+    DateTime to,
+  ) async {
     final db = await database;
     final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
-    final consumptionAccount = await _accountFilterClause(db, 'consumptions',
-        alias: 'c', args: args);
+    final consumptionAccount = await _accountFilterClause(
+      db,
+      'consumptions',
+      alias: 'c',
+      args: args,
+    );
     String itemsAccount = '';
     if (await _hasColumn(db, 'items', 'account_id')) {
       final accountId = await _currentAccountIdFrom(db);
@@ -6432,13 +7912,18 @@ class DBService {
   }
 
   Future<Map<String, double>> getNetProfitByDateBetween(
-      DateTime from, DateTime to) async {
+    DateTime from,
+    DateTime to,
+  ) async {
     final db = await database;
     final income = await getIncomeByDateBetween(from, to);
 
     final consArgs = <Object?>[from.toIso8601String(), to.toIso8601String()];
-    final purchasesAccount =
-        await _accountFilterClause(db, 'purchases', args: consArgs);
+    final purchasesAccount = await _accountFilterClause(
+      db,
+      'purchases',
+      args: consArgs,
+    );
     final consRows = await db.rawQuery('''
       SELECT date(created_at) AS dayKey,
              COALESCE(SUM(
@@ -6453,10 +7938,14 @@ class DBService {
 
     final facilityArgs = <Object?>[
       from.toIso8601String(),
-      to.toIso8601String()
+      to.toIso8601String(),
     ];
-    final consumptionAccount = await _accountFilterClause(db, 'consumptions',
-        alias: 'c', args: facilityArgs);
+    final consumptionAccount = await _accountFilterClause(
+      db,
+      'consumptions',
+      alias: 'c',
+      args: facilityArgs,
+    );
     String itemsAccount = '';
     if (await _hasColumn(db, 'items', 'account_id')) {
       final accountId = await _currentAccountIdFrom(db);
@@ -6482,8 +7971,11 @@ class DBService {
     ''', facilityArgs);
 
     final salArgs = <Object?>[from.toIso8601String(), to.toIso8601String()];
-    final salariesAccount =
-        await _accountFilterClause(db, 'employees_salaries', args: salArgs);
+    final salariesAccount = await _accountFilterClause(
+      db,
+      'employees_salaries',
+      args: salArgs,
+    );
     final salRows = await db.rawQuery('''
       SELECT date(paymentDate) AS dayKey,
              COALESCE(SUM(netPay), 0) AS total
@@ -6515,7 +8007,8 @@ class DBService {
 
     final net = <String, double>{};
     for (final k in days) {
-      net[k] = (income[k] ?? 0) -
+      net[k] =
+          (income[k] ?? 0) -
           (cons[k] ?? 0) -
           (facility[k] ?? 0) -
           (salaries[k] ?? 0);
@@ -6531,8 +8024,12 @@ class DBService {
   Future<double> getSumConsumptionsBetween(DateTime from, DateTime to) async {
     final db = await database;
     final args = <Object?>[from.toIso8601String(), to.toIso8601String()];
-    final consumptionAccount =
-        await _accountFilterClause(db, 'consumptions', alias: 'c', args: args);
+    final consumptionAccount = await _accountFilterClause(
+      db,
+      'consumptions',
+      alias: 'c',
+      args: args,
+    );
     String itemsAccount = '';
     if (await _hasColumn(db, 'items', 'account_id')) {
       final accountId = await _currentAccountIdFrom(db);
@@ -6559,16 +8056,20 @@ class DBService {
 
   Future<int> insertConsumptionType(String type) async {
     final db = await database;
-    final id = await db.insert('consumption_types', {'type': type},
-        conflictAlgorithm: ConflictAlgorithm.ignore);
+    final id = await db.insert('consumption_types', {
+      'type': type,
+    }, conflictAlgorithm: ConflictAlgorithm.ignore);
     await _markChanged('consumption_types'); // ← ضمان الدفع
     return id;
   }
 
   Future<List<String>> getAllConsumptionTypes() async {
     final db = await database;
-    final res = await db.query('consumption_types',
-        where: 'ifnull(isDeleted,0)=0', orderBy: 'id ASC');
+    final res = await db.query(
+      'consumption_types',
+      where: 'ifnull(isDeleted,0)=0',
+      orderBy: 'id ASC',
+    );
     return res.map((row) => row['type'] as String).toList();
   }
 
@@ -6603,8 +8104,9 @@ class DBService {
   Future<bool> _tableExists(DatabaseExecutor db, String table) async {
     try {
       final res = await db.rawQuery(
-          "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
-          [table]);
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+        [table],
+      );
       return res.isNotEmpty;
     } catch (_) {
       return false;
@@ -6612,7 +8114,10 @@ class DBService {
   }
 
   Future<bool> _columnExists(
-      DatabaseExecutor db, String table, String column) async {
+    DatabaseExecutor db,
+    String table,
+    String column,
+  ) async {
     if (!await _tableExists(db, table)) return false;
     List<Map<String, Object?>> info = const [];
     try {
@@ -6628,7 +8133,11 @@ class DBService {
   }
 
   Future<void> _addColumnIfMissing(
-      DatabaseExecutor db, String table, String column, String sqlType) async {
+    DatabaseExecutor db,
+    String table,
+    String column,
+    String sqlType,
+  ) async {
     if (!await _tableExists(db, table)) {
       return;
     }
@@ -6678,15 +8187,20 @@ class DBService {
     ''');
   }
 
-  Future<void> _createIndexIfMissing(DatabaseExecutor db, String indexName,
-      String table, List<String> columns) async {
+  Future<void> _createIndexIfMissing(
+    DatabaseExecutor db,
+    String indexName,
+    String table,
+    List<String> columns,
+  ) async {
     if (!await _tableExists(db, table)) {
       return;
     }
     final cols = columns.join(',');
     try {
-      await db
-          .execute('CREATE INDEX IF NOT EXISTS $indexName ON $table($cols)');
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS $indexName ON $table($cols)',
+      );
     } catch (_) {
       // قد يُستدعى أثناء ترقية دفاعية قبل إنشاء الجدول، لذا نتجاهل الخطأ.
     }
@@ -6705,10 +8219,10 @@ class InventoryRepairReport {
   bool get skipped => skippedReason != null;
 
   Map<String, dynamic> toMap() => {
-        'createdFallbackType': createdFallbackType,
-        'orphanItemsFixed': orphanItemsFixed,
-        'skippedReason': skippedReason,
-      };
+    'createdFallbackType': createdFallbackType,
+    'orphanItemsFixed': orphanItemsFixed,
+    'skippedReason': skippedReason,
+  };
 
   @override
   String toString() {

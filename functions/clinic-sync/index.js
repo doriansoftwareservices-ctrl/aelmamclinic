@@ -245,6 +245,66 @@ const TABLES = {
   },
 };
 
+const FULL_SYNC_ROLES = new Set(['owner', 'admin']);
+
+// يجب أن يطابق هذا الجدول مفاتيح lib/core/features.dart حتى لا تصبح الواجهة
+// أكثر صرامة أو أكثر تساهلًا من الخادم. الدالة تعمل بـ admin secret، لذلك
+// يجب تطبيق صلاحيات الميزة و CRUD هنا وليس في Flutter فقط.
+const TABLE_FEATURES = {
+  item_types: 'repository',
+  items: 'repository',
+  purchases: 'repository',
+  consumptions: 'repository',
+  alert_settings: 'repository',
+  consumption_types: 'repository',
+  patients: {
+    create: 'patients.new',
+    update: 'patients.list',
+    delete: 'patients.list',
+  },
+  patient_services: 'patients.list',
+  returns: 'returns',
+  appointments: 'patients.list',
+  prescriptions: 'prescriptions',
+  prescription_items: 'prescriptions',
+  drugs: 'prescriptions',
+  employees: 'employees',
+  doctors: 'employees',
+  employees_loans: 'payments',
+  employees_salaries: 'payments',
+  employees_discounts: 'payments',
+  financial_logs: 'payments',
+  medical_services: 'lab_radiology',
+  service_doctor_share: 'lab_radiology',
+  complaints: 'patients.questions',
+};
+
+function syncCrudAction(operationType) {
+  const text = `${operationType || ''}`.trim().toLowerCase();
+  if (text.includes('delete') || text.includes('reverse') || text.includes('disable')) {
+    return 'delete';
+  }
+  if (text.startsWith('create') || text.startsWith('add') || text.startsWith('insert')) {
+    return 'create';
+  }
+  return 'update';
+}
+
+function requiredFeatureFor(table, operationType) {
+  const spec = TABLE_FEATURES[table];
+  if (!spec) return null;
+  if (typeof spec === 'string') return spec;
+  const action = syncCrudAction(operationType);
+  return spec[action] || spec.update || spec.create || null;
+}
+
+function deny(status, code, message) {
+  const err = new Error(message);
+  err.status = status;
+  err.code = code;
+  return err;
+}
+
 function graphqlUrl() {
   const raw =
     process.env.NHOST_GRAPHQL_URL ||
@@ -422,6 +482,19 @@ async function accessFor(userId, accountId) {
       super_admins(where: {user_uid: {_eq: $userId}}, limit: 1) {
         id
       }
+      account_feature_permissions(
+        where: {
+          account_id: {_eq: $accountId},
+          user_uid: {_eq: $userId}
+        },
+        limit: 1
+      ) {
+        allow_all
+        allowed_features
+        can_create
+        can_update
+        can_delete
+      }
     }
   `;
   const data = await gqlRequest(query, { userId, accountId });
@@ -431,43 +504,66 @@ async function accessFor(userId, accountId) {
   const superAdmin = Array.isArray(data.super_admins)
     ? data.super_admins[0]
     : null;
+  const permissions = Array.isArray(data.account_feature_permissions)
+    ? data.account_feature_permissions[0]
+    : null;
   return {
     role: `${membership?.role || ''}`.trim().toLowerCase(),
     memberDisabled: membership?.disabled === true,
     accountFrozen: data.accounts_by_pk?.frozen === true,
     isSuperAdmin: !!superAdmin,
     isMember: !!membership,
+    allowAll: permissions?.allow_all === true,
+    allowedFeatures: Array.isArray(permissions?.allowed_features)
+      ? permissions.allowed_features.map((value) => `${value}`)
+      : [],
+    canCreate: permissions?.can_create === true,
+    canUpdate: permissions?.can_update === true,
+    canDelete: permissions?.can_delete === true,
   };
 }
 
-function assertRoleAllowed(access, tableConfig) {
+function assertRoleAllowed(access, table, tableConfig, operationType) {
   if (access.isSuperAdmin) return;
   if (!access.isMember) {
-    const err = new Error('User is not a member of this account');
-    err.status = 403;
-    err.code = 'not_account_member';
-    throw err;
+    throw deny(403, 'not_account_member', 'User is not a member of this account');
   }
   if (access.memberDisabled) {
-    const err = new Error('User is disabled for this account');
-    err.status = 403;
-    err.code = 'user_disabled';
-    throw err;
+    throw deny(403, 'user_disabled', 'User is disabled for this account');
   }
   if (access.accountFrozen) {
-    const err = new Error('Account is frozen');
-    err.status = 423;
-    err.code = 'account_frozen';
-    throw err;
+    throw deny(423, 'account_frozen', 'Account is frozen');
   }
+  if (FULL_SYNC_ROLES.has(access.role)) return;
   if (
     Array.isArray(tableConfig.allowedRoles) &&
     !tableConfig.allowedRoles.includes(access.role)
   ) {
-    const err = new Error('Operation is not allowed for this role');
-    err.status = 403;
-    err.code = 'insufficient_sync_role';
-    throw err;
+    throw deny(403, 'insufficient_sync_role', 'Operation is not allowed for this role');
+  }
+
+  const action = syncCrudAction(operationType);
+  if (action === 'create' && !access.canCreate) {
+    throw deny(403, 'sync_create_denied', 'You do not have permission to create this data');
+  }
+  if (action === 'update' && !access.canUpdate) {
+    throw deny(403, 'sync_update_denied', 'You do not have permission to update this data');
+  }
+  if (action === 'delete' && !access.canDelete) {
+    throw deny(403, 'sync_delete_denied', 'You do not have permission to delete this data');
+  }
+
+  const requiredFeature = requiredFeatureFor(table, operationType);
+  if (
+    requiredFeature &&
+    !access.allowAll &&
+    !access.allowedFeatures.includes(requiredFeature)
+  ) {
+    throw deny(
+      403,
+      'sync_feature_denied',
+      `You do not have permission for feature ${requiredFeature}`,
+    );
   }
 }
 
@@ -581,7 +677,7 @@ module.exports = async function handler(req, res) {
     }
 
     const access = await accessFor(userId, accountId);
-    assertRoleAllowed(access, tableConfig);
+    assertRoleAllowed(access, table, tableConfig, operationType);
 
     const object = filterPayload(table, payload, {
       accountId,
