@@ -985,14 +985,32 @@ class NhostAuthService {
       }
 
       final accountRows = _rowsFromData(snap, 'account_users');
-      if (accountRows.isNotEmpty) {
-        final row = accountRows.first;
-        accountId ??= row['account_id']?.toString();
-        role ??= row['role']?.toString();
-        disabled = row['disabled'] == true;
-        if (accountId != null && accountId.isNotEmpty) {
-          await ActiveAccountStore.writeAccountId(accountId);
+      Map<String, dynamic>? selectedAccountUser;
+      try {
+        final preferredAccountId = await ActiveAccountStore.readAccountId();
+        selectedAccountUser = await _fetchAccountUserRow(
+          uid: user.id,
+          accountId: preferredAccountId,
+        );
+      } catch (_) {
+        selectedAccountUser = null;
+      }
+      if (selectedAccountUser == null && accountRows.isNotEmpty) {
+        selectedAccountUser = accountRows.first;
+      }
+      if (selectedAccountUser != null) {
+        final selectedAccountId = selectedAccountUser['account_id']?.toString();
+        final selectedRole = selectedAccountUser['role']?.toString();
+        if (selectedAccountId != null &&
+            selectedAccountId.isNotEmpty &&
+            selectedAccountId != 'null') {
+          accountId = selectedAccountId;
+          await ActiveAccountStore.writeAccountId(selectedAccountId);
         }
+        if (selectedRole != null && selectedRole.trim().isNotEmpty) {
+          role = selectedRole;
+        }
+        disabled = selectedAccountUser['disabled'] == true;
       }
 
       final planRows = _rowsFromData(snap, 'my_account_plan');
