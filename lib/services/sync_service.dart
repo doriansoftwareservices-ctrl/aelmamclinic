@@ -3932,6 +3932,12 @@ class SyncService {
     }
   }
 
+  Future<void> forceRetryPendingOutbox({String reason = 'manual_retry'}) async {
+    if (!_hasAccount) return;
+    await _outbox.forceRetryPending(accountId: accountId);
+    await pushPendingOutbox(reason: reason);
+  }
+
   Future<void> pushPendingOutbox({String reason = 'manual'}) async {
     if (_outboxPushInProgress) {
       _outboxPushRequested = true;
