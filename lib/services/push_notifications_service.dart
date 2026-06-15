@@ -8,6 +8,7 @@ import 'package:gql/ast.dart';
 
 import 'package:aelmamclinic/core/active_account_store.dart';
 import 'package:aelmamclinic/core/nhost_manager.dart';
+import 'package:aelmamclinic/services/chat_realtime_notifier.dart';
 import 'package:aelmamclinic/services/nhost_graphql_service.dart';
 import 'package:aelmamclinic/services/notification_service.dart';
 import 'package:aelmamclinic/local/chat_local_store.dart';
@@ -85,7 +86,8 @@ class PushNotificationsService {
 
   @pragma('vm:entry-point')
   static Future<void> firebaseMessagingBackgroundHandler(
-      RemoteMessage message) async {
+    RemoteMessage message,
+  ) async {
     if (!kIsWeb) {
       await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform,
@@ -224,9 +226,7 @@ class PushNotificationsService {
           ObsCode.pushTokenRefreshUpsertFailed,
           'token upsert failed during token refresh',
           flowId: flowId,
-          context: {
-            'tokenTail': _tokenTail(token),
-          },
+          context: {'tokenTail': _tokenTail(token)},
           error: e,
           stackTrace: st,
         );
@@ -294,8 +294,11 @@ class PushNotificationsService {
     await _deactivateToken(token);
   }
 
-  static Future<void> _handleMessage(RemoteMessage message,
-      {bool fromBackground = false, bool opened = false}) async {
+  static Future<void> _handleMessage(
+    RemoteMessage message, {
+    bool fromBackground = false,
+    bool opened = false,
+  }) async {
     if (!_registerHandledMessage(
       message,
       opened: opened,
@@ -307,11 +310,11 @@ class PushNotificationsService {
     String localize(String raw) => notifier.translateRaw(raw);
     final data = message.data;
     final type = (data['type'] ?? '').toString();
-    final title =
-        (data['title'] ?? message.notification?.title ?? '').toString();
+    final title = (data['title'] ?? message.notification?.title ?? '')
+        .toString();
     final body = (data['body'] ?? message.notification?.body ?? '').toString();
-    final payload =
-        (data['payload'] ?? data['conversation_id'] ?? '').toString();
+    final payload = (data['payload'] ?? data['conversation_id'] ?? '')
+        .toString();
 
     if (type == 'patient') {
       final patientId = int.tryParse('${data['patient_id'] ?? '0'}') ?? 0;
@@ -330,9 +333,7 @@ class PushNotificationsService {
     if (type == 'plan_request') {
       final effectivePayload = payload.isEmpty ? 'admin:plan_request' : payload;
       if (opened) {
-        await NotificationService.dispatchPayloadTap(
-          effectivePayload,
-        );
+        await NotificationService.dispatchPayloadTap(effectivePayload);
         return;
       }
       final nid = DateTime.now().millisecondsSinceEpoch.remainder(0x7fffffff);
@@ -348,9 +349,7 @@ class PushNotificationsService {
     if (type == 'seat_request') {
       final effectivePayload = payload.isEmpty ? 'admin:seat_request' : payload;
       if (opened) {
-        await NotificationService.dispatchPayloadTap(
-          effectivePayload,
-        );
+        await NotificationService.dispatchPayloadTap(effectivePayload);
         return;
       }
       final nid = DateTime.now().millisecondsSinceEpoch.remainder(0x7fffffff);
@@ -368,8 +367,10 @@ class PushNotificationsService {
       try {
         final uid = NhostManager.client.auth.currentUser?.id ?? '';
         if (uid.isNotEmpty) {
-          final archived =
-              await ChatLocalStore.instance.isArchivedForUser(payload, uid);
+          final archived = await ChatLocalStore.instance.isArchivedForUser(
+            payload,
+            uid,
+          );
           if (archived) return;
         }
       } catch (e, st) {
@@ -392,6 +393,21 @@ class PushNotificationsService {
       await NotificationService.dispatchPayloadTap(payload);
       return;
     }
+
+    final rt = ChatRealtimeNotifier.instance;
+    final activeConversationId = rt.activeConversationId?.trim() ?? '';
+    if (!fromBackground &&
+        payload.isNotEmpty &&
+        activeConversationId == payload) {
+      return;
+    }
+    if (!fromBackground &&
+        payload.isNotEmpty &&
+        rt.isStarted &&
+        rt.isTrackingConversation(payload)) {
+      return;
+    }
+
     final nid = DateTime.now().millisecondsSinceEpoch.remainder(0x7fffffff);
     await NotificationService().showChatNotification(
       id: nid,
@@ -417,10 +433,12 @@ class PushNotificationsService {
     );
   }
 
-  Future<bool> _upsertToken(String token,
-      {required String? accountId,
-      String? role,
-      required String languageCode}) async {
+  Future<bool> _upsertToken(
+    String token, {
+    required String? accountId,
+    String? role,
+    required String languageCode,
+  }) async {
     final user = NhostManager.client.auth.currentUser;
     if (user == null) return false;
     final acc = accountId ?? await ActiveAccountStore.readAccountId();
@@ -480,15 +498,14 @@ class PushNotificationsService {
         'platform': platform,
         'locale': normalizedLanguageCode,
       };
+      final mutationVariables = Map<String, dynamic>.from(variables);
+      if (!_supportsLocaleColumn) {
+        mutationVariables.remove('locale');
+      }
       final res = await gql.mutate(
         MutationOptions(
-          document: gql_ast(
-            _supportsLocaleColumn ? mutation : legacyMutation,
-          ),
-          variables: _supportsLocaleColumn
-              ? variables
-              : Map<String, dynamic>.from(variables)
-            ..remove('locale'),
+          document: gql_ast(_supportsLocaleColumn ? mutation : legacyMutation),
+          variables: mutationVariables,
         ),
       );
       if (res.hasException) {
@@ -572,9 +589,7 @@ class PushNotificationsService {
           ObsCode.pushTokenDeactivateFailed,
           'push token deactivate failed',
           flowId: _newPushFlow('deactivate_token'),
-          context: {
-            'tokenTail': _tokenTail(trimmed),
-          },
+          context: {'tokenTail': _tokenTail(trimmed)},
           error: res.exception,
         );
         return;
@@ -587,9 +602,7 @@ class PushNotificationsService {
         ObsCode.pushTokenDeactivateFailed,
         'push token deactivate threw unexpectedly',
         flowId: _newPushFlow('deactivate_token'),
-        context: {
-          'tokenTail': _tokenTail(trimmed),
-        },
+        context: {'tokenTail': _tokenTail(trimmed)},
         error: e,
         stackTrace: st,
       );
@@ -633,12 +646,13 @@ class PushNotificationsService {
     required bool opened,
     required bool fromBackground,
   }) {
-    final payload = (message.data['payload'] ??
-            message.data['conversation_id'] ??
-            message.messageId ??
-            '')
-        .toString()
-        .trim();
+    final payload =
+        (message.data['payload'] ??
+                message.data['conversation_id'] ??
+                message.messageId ??
+                '')
+            .toString()
+            .trim();
     final sentAt = message.sentTime?.millisecondsSinceEpoch ?? 0;
     final route = opened ? 'open' : 'display';
     final source = fromBackground ? 'bg' : 'fg';

@@ -279,7 +279,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if (_isIsolationRecovery(auth)) {
       return context.tr('auth_recovery_isolation_title');
     }
-    if (auth.hasSuperAdminSessionRole) {
+    if (auth.canEnterRemoteAdminShell || auth.isSuperAdmin) {
       return context.trRaw('استعادة جلسة الإدارة');
     }
     if (auth.needsAccountContextResolution) {
@@ -292,7 +292,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if (_isIsolationRecovery(auth)) {
       return context.tr('auth_recovery_isolation_subtitle');
     }
-    if (auth.hasSuperAdminSessionRole) {
+    if (auth.canEnterRemoteAdminShell || auth.isSuperAdmin) {
       return context.trRaw(
         'تم العثور على جلسة محلية للمشرف، لكن لوحة الإدارة تحتاج جلسة خادم صالحة قبل المتابعة.',
       );
@@ -675,18 +675,11 @@ class _LoginScreenState extends State<LoginScreen> {
       var result = await _ensurePostLoginState(auth);
       if (!mounted) return;
 
-      final sessionUser = NhostManager.client.auth.currentUser;
-      final sessionRoles = sessionUser?.roles ?? const <String>[];
-      final isSuperFromSession =
-          sessionRoles.any((r) => r.toLowerCase() == 'superadmin') ||
-              (sessionUser?.defaultRole ?? '').toLowerCase() == 'superadmin';
-      if (isSuperFromSession && !auth.isSuperAdmin) {
-        await auth.markSuperAdminFromSession();
-        result = const AuthSessionResult.success();
-      }
-
+      // لا نستخدم roles/defaultRole الخام لتحديد مسار السوبر أدمن.
+      // AuthProvider/NhostAuthService يتحققان من الخادم أولًا. أي حساب عيادة
+      // يحمل claim superadmin قديمًا يجب أن يمر بمسار العيادة أو onboarding.
       if (result.status == AuthSessionStatus.noAccount) {
-        if (isSuperFromSession || auth.isSuperAdmin) {
+        if (auth.isSuperAdmin) {
           result = const AuthSessionResult.success();
         } else {
           final clinicProfile = await _askClinicProfile();

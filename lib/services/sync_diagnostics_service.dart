@@ -144,7 +144,7 @@ class SyncDiagnosticsService {
             'checked': false,
             'skipped_reason': 'missing_account_scope',
           };
-    final runtimeEvents = await _recentRuntimeEvents();
+    final runtimeEvents = await _recentRuntimeEvents(auth: auth);
     final recentEvents = <JsonMap>[
       ...syncHealthEvents,
       ...runtimeEvents,
@@ -155,7 +155,7 @@ class SyncDiagnosticsService {
         ? await _clinicSyncStateRows(db)
         : const <JsonMap>[];
     final databaseSnapshot = <String, Object?>{
-      'path': dbPath,
+      'path': _redactDatabasePath(dbPath),
       'diagnostic_scope': _scopeFor(auth),
       'clinic_local_state_checked': inspectClinicState,
       'sync_dirty_rows': syncDirtyRows,
@@ -241,11 +241,11 @@ class SyncDiagnosticsService {
       ..sort();
     return <String, Object?>{
       'is_logged_in': auth.isLoggedIn,
-      'uid': auth.uid,
-      'email': auth.email,
+      'uid': _redactIdentifier(auth.uid),
+      'email': _redactEmail(auth.email),
       'role': auth.role,
       'is_super_admin': auth.isSuperAdmin,
-      'account_id': auth.accountId,
+      'account_id': _redactIdentifier(auth.accountId),
       'has_account_context': auth.hasAccountContext,
       'has_nhost_session': auth.hasNhostSession,
       'has_super_admin_session_role': auth.hasSuperAdminSessionRole,
@@ -573,7 +573,7 @@ class SyncDiagnosticsService {
     }
   }
 
-  Future<List<JsonMap>> _recentRuntimeEvents() async {
+  Future<List<JsonMap>> _recentRuntimeEvents({required AuthProvider auth}) async {
     final dir = await AppPaths.logsDir();
     final file = File(p.join(dir.path, 'app_runtime_events.jsonl'));
     if (!await file.exists()) {
@@ -581,28 +581,35 @@ class SyncDiagnosticsService {
     }
     final events = <JsonMap>[];
     try {
-      final stream = file
-          .openRead()
-          .transform(utf8.decoder)
-          .transform(const LineSplitter());
-      await for (final line in stream) {
+      final text = await file.readAsString(
+        encoding: const Utf8Codec(allowMalformed: true),
+      );
+      for (final line in const LineSplitter().convert(text)) {
         final trimmed = line.trim();
-        if (trimmed.isEmpty) continue;
-        final parsed = jsonDecode(trimmed);
-        if (parsed is! Map) continue;
-        final event = _redactJsonMap(Map<String, Object?>.from(parsed));
-        event['sync_related'] = _isSyncRelatedEvent(event);
-        events.add(event);
-        if (events.length > _recentEventLimit) {
-          events.removeAt(0);
+        if (trimmed.isEmpty || !trimmed.startsWith('{')) continue;
+        try {
+          final parsed = jsonDecode(trimmed);
+          if (parsed is! Map) continue;
+          final raw = Map<String, Object?>.from(parsed);
+          if (!_eventBelongsToCurrentSession(raw, auth)) continue;
+          final event = _redactJsonMap(raw);
+          event['sync_related'] = _isSyncRelatedEvent(event);
+          events.add(event);
+          if (events.length > _recentEventLimit) {
+            events.removeAt(0);
+          }
+        } catch (_) {
+          // Ignore malformed/truncated JSONL lines. Diagnostic export must not
+          // become dangerous because a log write was interrupted.
+          continue;
         }
       }
     } catch (error) {
       events.add(<String, Object?>{
-        'level': 'warn',
+        'level': 'info',
         'scope': 'DIAGNOSTICS',
-        'code': 'RUNTIME_EVENTS_READ_FAILED',
-        'message': '$error',
+        'code': 'RUNTIME_EVENTS_READ_SKIPPED',
+        'message': _trimDiagnosticText('$error'),
       });
     }
     return events;
@@ -614,7 +621,10 @@ class SyncDiagnosticsService {
     if (!await file.exists()) return const <JsonMap>[];
     final entries = <JsonMap>[];
     try {
-      final lines = await file.readAsLines();
+      final text = await file.readAsString(
+        encoding: const Utf8Codec(allowMalformed: true),
+      );
+      final lines = const LineSplitter().convert(text);
       final pattern = RegExp(r'^\[(.*?)\]\[(.*?)\]\s*(.*)$');
       for (final raw in lines.reversed) {
         final line = raw.trim();
@@ -629,22 +639,69 @@ class SyncDiagnosticsService {
           }
           continue;
         }
+        final message = _redactFreeText(match.group(3) ?? '');
+        if (_isDiagnosticReaderNoise(message)) continue;
         entries.add(<String, Object?>{
           'ts': match.group(1),
           'level': match.group(2),
-          'message': _trimDiagnosticText(_redactFreeText(match.group(3) ?? '')),
+          'message': _trimDiagnosticText(message),
         });
         if (entries.length >= _recentEventLimit) break;
       }
     } catch (error) {
       return <JsonMap>[
         <String, Object?>{
-          'level': 'WARN',
-          'message': 'APP_ERRORS_LOG_READ_FAILED: $error',
+          'level': 'INFO',
+          'scope': 'DIAGNOSTICS',
+          'code': 'APP_ERRORS_LOG_READ_SKIPPED',
+          'message': _trimDiagnosticText('$error'),
         },
       ];
     }
     return entries.reversed.toList(growable: false);
+  }
+
+  bool _eventBelongsToCurrentSession(JsonMap event, AuthProvider auth) {
+    final context = event['context'];
+    final contextMap = context is Map ? context : const <Object?, Object?>{};
+    String valueOf(String key) => (contextMap[key] ?? event[key] ?? '').toString().trim();
+    final eventAccountId = valueOf('accountId');
+    final eventUid = valueOf('uid');
+    final currentAccountId = (auth.accountId ?? '').trim();
+    final currentUid = (auth.uid ?? '').trim();
+
+    if (eventAccountId.isNotEmpty && currentAccountId.isNotEmpty) {
+      return eventAccountId == currentAccountId;
+    }
+    if (eventUid.isNotEmpty && currentUid.isNotEmpty) {
+      return eventUid == currentUid;
+    }
+    if (auth.isSuperAdmin && (eventAccountId.isNotEmpty || eventUid.isNotEmpty)) {
+      return false;
+    }
+    if (!auth.isSuperAdmin && eventAccountId.isNotEmpty && currentAccountId.isEmpty) {
+      return false;
+    }
+    return true;
+  }
+
+  bool _isDiagnosticInternalEvent(JsonMap event) {
+    final scope = (event['scope'] ?? '').toString().toUpperCase();
+    final code = (event['code'] ?? '').toString().toUpperCase();
+    final message = (event['message'] ?? '').toString().toUpperCase();
+    return scope == 'DIAGNOSTICS' ||
+        code.startsWith('RUNTIME_EVENTS_READ_') ||
+        code.startsWith('APP_ERRORS_LOG_READ_') ||
+        message.contains('APP_ERRORS_LOG_READ_FAILED') ||
+        message.contains('RUNTIME_EVENTS_READ_FAILED');
+  }
+
+  bool _isDiagnosticReaderNoise(String message) {
+    final upper = message.toUpperCase();
+    return upper.contains('APP_ERRORS_LOG_READ_FAILED') ||
+        upper.contains('RUNTIME_EVENTS_READ_FAILED') ||
+        upper.contains('APP_ERRORS_LOG_READ_SKIPPED') ||
+        upper.contains('RUNTIME_EVENTS_READ_SKIPPED');
   }
 
   bool _isSyncRelatedEvent(JsonMap event) {
@@ -958,6 +1015,7 @@ class SyncDiagnosticsService {
     }
 
     final warnOrErrorEvents = recentEvents.where((event) {
+      if (_isDiagnosticInternalEvent(event)) return false;
       final level = (event['level'] ?? '').toString().toLowerCase();
       return level == 'warn' || level == 'error';
     }).toList();
@@ -978,14 +1036,21 @@ class SyncDiagnosticsService {
       );
     }
 
-    if (appErrorLogs.isNotEmpty) {
+    final realAppErrors = appErrorLogs
+        .where((entry) => !_isDiagnosticInternalEvent(entry))
+        .toList();
+    if (realAppErrors.isNotEmpty) {
       addIssue(
-        severity: 'danger',
+        severity: realAppErrors.any(
+          (entry) => (entry['level'] ?? '').toString().toLowerCase() == 'error',
+        )
+            ? 'danger'
+            : 'warning',
         code: 'app_error_log_entries_present',
         title: 'توجد أخطاء عامة مسجلة في التطبيق.',
         recommendation:
             'افتح app_error_logs في JSON لمعرفة الشاشة أو العملية التي أبلغت عن الخطأ، حتى لو لم يكن الخطأ متعلقًا بالمزامنة.',
-        evidence: appErrorLogs.take(25).toList(),
+        evidence: realAppErrors.take(25).toList(),
       );
     }
 
@@ -1031,10 +1096,12 @@ class SyncDiagnosticsService {
         .where((table) => _num(table['duplicate_sync_key_groups']) > 0)
         .length;
     final eventWarnCount = recentEvents.where((event) {
+      if (_isDiagnosticInternalEvent(event)) return false;
       final level = (event['level'] ?? '').toString().toLowerCase();
       return level == 'warn';
     }).length;
     final eventErrorCount = recentEvents.where((event) {
+      if (_isDiagnosticInternalEvent(event)) return false;
       final level = (event['level'] ?? '').toString().toLowerCase();
       return level == 'error';
     }).length;
@@ -1204,6 +1271,19 @@ class SyncDiagnosticsService {
         lowerKey.contains('cookie')) {
       return '__redacted__';
     }
+    if (value is String && (lowerKey == 'email' || lowerKey.endsWith('_email'))) {
+      return _redactEmail(value);
+    }
+    if (value is String &&
+        (lowerKey == 'uid' ||
+            lowerKey == 'accountid' ||
+            lowerKey == 'account_id' ||
+            lowerKey == 'deviceid' ||
+            lowerKey == 'device_id' ||
+            lowerKey.endsWith('_uid') ||
+            lowerKey.endsWith('_id'))) {
+      return _redactIdentifier(value);
+    }
     if (value is Map) {
       final nested = <String, Object?>{};
       for (final entry in value.entries) {
@@ -1240,6 +1320,29 @@ class SyncDiagnosticsService {
       'Bearer __redacted__',
     );
     return text;
+  }
+
+  String? _redactEmail(String? value) {
+    final text = value?.trim();
+    if (text == null || text.isEmpty) return text;
+    final at = text.indexOf('@');
+    if (at <= 1) return '__redacted_email__';
+    final name = text.substring(0, at);
+    final domain = text.substring(at + 1);
+    final visible = name.length <= 2 ? name[0] : name.substring(0, 2);
+    return '$visible***@$domain';
+  }
+
+  String? _redactIdentifier(String? value) {
+    final text = value?.trim();
+    if (text == null || text.isEmpty) return text;
+    if (text.length <= 12) return '__redacted_id__';
+    return '${text.substring(0, 8)}...${text.substring(text.length - 4)}';
+  }
+
+  String _redactDatabasePath(String value) {
+    if (value.trim().isEmpty) return value;
+    return '[local_app_database]';
   }
 
   String? _trimDiagnosticText(String? value) {
