@@ -52,14 +52,28 @@ function hasCompleteClinicProfile(profile) {
   ].every((value) => `${value || ''}`.trim() !== '');
 }
 
+function userSessionSql(userId, role = 'user') {
+  const safeUserId = escapeLiteral(userId);
+  const safeRole = escapeLiteral(role || 'user');
+  const hasuraUser = JSON.stringify({
+    'x-hasura-user-id': `${userId}`,
+    'x-hasura-role': `${role || 'user'}`,
+  }).replace(/'/g, "''");
+  return `
+    select set_config('x-hasura-user-id', '${safeUserId}', true);
+    select set_config('request.jwt.claim.x-hasura-user-id', '${safeUserId}', true);
+    select set_config('request.jwt.claim.sub', '${safeUserId}', true);
+    select set_config('request.jwt.claim.role', '${safeRole}', true);
+    select set_config('hasura.user', '${hasuraUser}', true);
+  `;
+}
+
 async function createAccountAsUser(userId, profile) {
   if (!hasCompleteClinicProfile(profile)) {
     throw new Error('Complete clinic profile is required');
   }
-  const safeUserId = escapeLiteral(userId);
   const sql = `
-    select set_config('request.jwt.claim.role', 'user', true);
-    select set_config('x-hasura-user-id', '${safeUserId}', true);
+    ${userSessionSql(userId, 'user')}
     select *
     from public.self_create_account(
       '${escapeLiteral(profile.nameAr)}',
@@ -79,10 +93,8 @@ async function createAccountAsUser(userId, profile) {
 
 async function updateClinicProfileAsUser(userId, profile) {
   if (!hasCompleteClinicProfile(profile)) return null;
-  const safeUserId = escapeLiteral(userId);
   const sql = `
-    select set_config('request.jwt.claim.role', 'user', true);
-    select set_config('x-hasura-user-id', '${safeUserId}', true);
+    ${userSessionSql(userId, 'user')}
     select *
     from public.update_clinic_profile(
       '${escapeLiteral(profile.nameAr)}',

@@ -1,19 +1,32 @@
+const parseJsonBody = (value) => {
+  if (value === null || value === undefined) return {};
+  if (Buffer.isBuffer(value)) value = value.toString('utf8');
+  if (typeof value === 'object') return value;
+  if (typeof value !== 'string') return {};
+  const trimmed = value.trim();
+  if (!trimmed) return {};
+  try {
+    const decoded = JSON.parse(trimmed);
+    return decoded && typeof decoded === 'object' ? decoded : {};
+  } catch (_) {
+    return {};
+  }
+};
+
 const readBody = (req) =>
   new Promise((resolve) => {
-    if (req.body && typeof req.body === 'object') {
-      resolve(req.body);
+    if (req.body !== undefined && req.body !== null) {
+      resolve(parseJsonBody(req.body));
+      return;
+    }
+    if (!req || typeof req.on !== 'function') {
+      resolve({});
       return;
     }
     let data = '';
     req.on('data', (chunk) => (data += chunk));
-    req.on('end', () => {
-      if (!data) return resolve({});
-      try {
-        resolve(JSON.parse(data));
-      } catch (_) {
-        resolve({});
-      }
-    });
+    req.on('end', () => resolve(parseJsonBody(data)));
+    req.on('error', () => resolve({}));
   });
 
 const stripTrailing = (s) => (s || '').replace(/\/+$/, '');

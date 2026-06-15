@@ -25,8 +25,8 @@ import 'package:aelmamclinic/services/sync_service.dart';
 /// توفر عمليات الدخول والخروج ومراقبة حالة الجلسة باستخدام `nhost_dart`.
 class NhostAuthService {
   NhostAuthService({NhostClient? client, GraphQLClient? gql})
-      : _client = client ?? NhostManager.client,
-        _gqlOverride = gql {
+    : _client = client ?? NhostManager.client,
+      _gqlOverride = gql {
     _authUnsub = _client.auth.addAuthStateChangedCallback((state) {
       NhostGraphqlService.refreshClient(client: _client);
       _authStateController.add(state);
@@ -81,8 +81,9 @@ class NhostAuthService {
     await _disposeSync();
   }
 
-  Future<void> waitForSyncIdle(
-      {Duration timeout = const Duration(seconds: 10)}) async {
+  Future<void> waitForSyncIdle({
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
     await _sync?.waitForIdle(timeout: timeout);
   }
 
@@ -129,18 +130,13 @@ class NhostAuthService {
   /// محاولة تحديث الجلسة من refreshToken (إن وُجد).
   Future<void> refreshSession() async {
     final refreshToken = _client.auth.userSession.session?.refreshToken;
-    try {
-      if (refreshToken == null || refreshToken.isEmpty) {
-        // عند إعادة فتح التطبيق، قد لا تكون الجلسة محمّلة بعد.
-        // استخدم AuthStore لاستعادة الجلسة إن أمكن.
-        await _client.auth.signInWithStoredCredentials();
-        return;
-      }
-      await _client.auth.signInWithRefreshToken(refreshToken);
-    } catch (_) {
-      // تجاهل الأخطاء هنا؛ سيتم التعامل معها من طبقة الحراسة.
-      rethrow;
+    if (refreshToken == null || refreshToken.isEmpty) {
+      // عند إعادة فتح التطبيق، قد لا تكون الجلسة محمّلة بعد.
+      // استخدم AuthStore لاستعادة الجلسة إن أمكن.
+      await _client.auth.signInWithStoredCredentials();
+      return;
     }
+    await _client.auth.signInWithRefreshToken(refreshToken);
   }
 
   /// يحاول استعادة الجلسة من التخزين المحلي فقط (بدون اشتراط اتصال).
@@ -191,7 +187,10 @@ class NhostAuthService {
     ''';
   }
 
-  Future<Map<String, dynamic>?> _fetchSessionSnapshot(String uid) async {
+  Future<Map<String, dynamic>?> _fetchSessionSnapshot(
+    String uid, {
+    bool allowAuthRecovery = true,
+  }) async {
     final includeSuper = _superAdminQuerySupported != false;
     try {
       final data = await _runQuery(
@@ -207,10 +206,22 @@ class NhostAuthService {
           {'uid': uid},
         );
         return data;
-      } catch (_) {
+      } catch (error) {
+        if (allowAuthRecovery && _isAuthGraphqlError(error)) {
+          final recovered = await _tryRecoverAuthSession();
+          if (recovered) {
+            return _fetchSessionSnapshot(uid, allowAuthRecovery: false);
+          }
+        }
         return null;
       }
-    } catch (_) {
+    } catch (error) {
+      if (allowAuthRecovery && _isAuthGraphqlError(error)) {
+        final recovered = await _tryRecoverAuthSession();
+        if (recovered) {
+          return _fetchSessionSnapshot(uid, allowAuthRecovery: false);
+        }
+      }
       return null;
     }
   }
@@ -241,9 +252,9 @@ class NhostAuthService {
 
   Future<Map<String, dynamic>> _runMutation(
     String doc,
-    Map<String, dynamic> variables,
-    {String? role}
-  ) async {
+    Map<String, dynamic> variables, {
+    String? role,
+  }) async {
     final safeVariables = Map<String, dynamic>.from(variables);
     final result = await _gql
         .mutate(
@@ -254,9 +265,7 @@ class NhostAuthService {
             context: (role == null || role.trim().isEmpty)
                 ? Context()
                 : Context.fromList([
-                    HttpLinkHeaders(
-                      headers: {'x-hasura-role': role.trim()},
-                    ),
+                    HttpLinkHeaders(headers: {'x-hasura-role': role.trim()}),
                   ]),
           ),
         )
@@ -290,9 +299,33 @@ class NhostAuthService {
         msg.contains('mutation') && msg.contains('validation-failed');
   }
 
+  bool _isAuthGraphqlError(Object error) {
+    final msg = error.toString().toLowerCase();
+    return msg.contains('401') ||
+        msg.contains('403') ||
+        msg.contains('unauthorized') ||
+        msg.contains('access-denied') ||
+        msg.contains('invalid_request') ||
+        (msg.contains('jwt') && msg.contains('expired')) ||
+        (msg.contains('access token') && msg.contains('expired'));
+  }
+
+  Future<bool> _tryRecoverAuthSession() async {
+    try {
+      await refreshSession();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   bool _isLegacySelfCreateAccountSignatureError(Object error) {
     final msg = error.toString().toLowerCase();
     return msg.contains('p_city_ar') ||
+        msg.contains('non default arguments cannot be omitted') ||
+        (msg.contains('self_create_account') &&
+            msg.contains('args.args') &&
+            msg.contains('not-supported')) ||
         msg.contains('p_street_ar') ||
         msg.contains('p_near_ar') ||
         msg.contains('p_clinic_name_en') ||
@@ -362,6 +395,16 @@ class NhostAuthService {
           preferredRoles: preferredRoles,
         );
       }
+      if (_isAuthGraphqlError(e)) {
+        final recovered = await _tryRecoverAuthSession();
+        if (recovered) {
+          return await _runMutationWithRoleFallback(
+            doc,
+            variables,
+            preferredRoles: preferredRoles,
+          );
+        }
+      }
       rethrow;
     }
   }
@@ -389,28 +432,28 @@ class NhostAuthService {
   }) async {
     final api = NhostApiClient();
     try {
-      final data = await api.postJson(
-        _functionUri('self-create-owner'),
-        <String, dynamic>{
-          'clinic_name': profile.nameAr.trim(),
-          'city_ar': profile.cityAr.trim(),
-          'street_ar': profile.streetAr.trim(),
-          'near_ar': profile.nearAr.trim(),
-          'name_en': profile.nameEn.trim(),
-          'city_en': profile.cityEn.trim(),
-          'street_en': profile.streetEn.trim(),
-          'near_en': profile.nearEn.trim(),
-          'phone': profile.phone.trim(),
-          'phone2': (profile.phone2 ?? '').trim().isEmpty
-              ? null
-              : profile.phone2!.trim(),
-        },
-      );
+      final data = await api
+          .postJson(_functionUri('self-create-owner'), <String, dynamic>{
+            'clinic_name': profile.nameAr.trim(),
+            'city_ar': profile.cityAr.trim(),
+            'street_ar': profile.streetAr.trim(),
+            'near_ar': profile.nearAr.trim(),
+            'name_en': profile.nameEn.trim(),
+            'city_en': profile.cityEn.trim(),
+            'street_en': profile.streetEn.trim(),
+            'near_en': profile.nearEn.trim(),
+            'phone': profile.phone.trim(),
+            'phone2': (profile.phone2 ?? '').trim().isEmpty
+                ? null
+                : profile.phone2!.trim(),
+          });
       final ok = data['ok'] == true;
       final accountId = '${data['account_id'] ?? ''}'.trim();
       if (!ok || accountId.isEmpty) {
         final message = '${data['error'] ?? 'self-create-owner failed'}'.trim();
-        throw StateError(message.isEmpty ? 'self-create-owner failed' : message);
+        throw StateError(
+          message.isEmpty ? 'self-create-owner failed' : message,
+        );
       }
       return accountId;
     } finally {
@@ -425,15 +468,15 @@ class NhostAuthService {
         return;
       } catch (_) {
         if (attempt >= 2) return;
-        await Future<void>.delayed(
-          Duration(milliseconds: 350 * (attempt + 1)),
-        );
+        await Future<void>.delayed(Duration(milliseconds: 350 * (attempt + 1)));
       }
     }
   }
 
   String _requireCreatedAccountId(List<Map<String, dynamic>> rows) {
-    final accountId = rows.isEmpty ? '' : (rows.first['id']?.toString() ?? '').trim();
+    final accountId = rows.isEmpty
+        ? ''
+        : (rows.first['id']?.toString() ?? '').trim();
     if (accountId.isEmpty) {
       throw StateError('self_create_account returned empty account id');
     }
@@ -447,16 +490,68 @@ class NhostAuthService {
     if (!_hasCompleteClinicProfile(profile)) {
       return;
     }
-    try {
-      await updateClinicProfile(profile: profile);
-    } catch (e) {
-      throw StateError('Account created but clinic profile update failed: $e');
+    Object? lastError;
+    StackTrace? lastStackTrace;
+    for (var attempt = 0; attempt < 4; attempt += 1) {
+      try {
+        await updateClinicProfile(profile: profile);
+        return;
+      } catch (e, st) {
+        lastError = e;
+        lastStackTrace = st;
+        if (attempt >= 3) {
+          dev.log(
+            'self_create_account completed but update_clinic_profile still failed',
+            name: 'AUTH',
+            error: e,
+            stackTrace: st,
+          );
+          return;
+        }
+        await Future<void>.delayed(Duration(milliseconds: 350 * (attempt + 1)));
+        await _refreshSessionAfterAccountMutation();
+      }
+    }
+    if (lastError != null) {
+      dev.log(
+        'self_create_account finalized with deferred clinic profile update',
+        name: 'AUTH',
+        error: lastError,
+        stackTrace: lastStackTrace,
+      );
     }
   }
 
   Future<String> selfCreateAccount({
     required ClinicProfileInput profile,
   }) async {
+    if (_hasCompleteClinicProfile(profile)) {
+      try {
+        final accountId = await _selfCreateAccountViaFunction(
+          profile: profile,
+        );
+        await _finalizeSelfCreateAccount(profile: profile);
+        return accountId;
+      } catch (functionError, functionStack) {
+        dev.log(
+          'self-create-owner function failed; falling back to GraphQL RPC',
+          name: 'AUTH',
+          error: functionError,
+          stackTrace: functionStack,
+        );
+        try {
+          await _refreshSessionAfterAccountMutation();
+          final active = await resolveActiveAccountOrThrow();
+          if (active.id.trim().isNotEmpty &&
+              (active.role.toLowerCase() == 'owner' ||
+                  active.role.toLowerCase() == 'admin')) {
+            await _finalizeSelfCreateAccount(profile: profile);
+            return active.id;
+          }
+        } catch (_) {}
+      }
+    }
+
     const modernMutation = r'''
       mutation SelfCreateAccountModern($clinic_name: String!) {
         self_create_account(
@@ -509,12 +604,11 @@ class NhostAuthService {
       'street_en': profile.streetEn.trim(),
       'near_en': profile.nearEn.trim(),
       'phone': profile.phone.trim(),
-      'phone2':
-          (profile.phone2 ?? '').trim().isEmpty ? null : profile.phone2!.trim(),
+      'phone2': (profile.phone2 ?? '').trim().isEmpty
+          ? null
+          : profile.phone2!.trim(),
     };
-    final modernVars = <String, dynamic>{
-      'clinic_name': profile.nameAr.trim(),
-    };
+    final modernVars = <String, dynamic>{'clinic_name': profile.nameAr.trim()};
     for (var attempt = 0; attempt < 2; attempt += 1) {
       try {
         final data = await _runMutationWithAuthRecovery(
@@ -550,7 +644,9 @@ class NhostAuthService {
           }
         }
         if (_isNoMutationsGraphqlError(e)) {
-          final accountId = await _selfCreateAccountViaFunction(profile: profile);
+          final accountId = await _selfCreateAccountViaFunction(
+            profile: profile,
+          );
           await _finalizeSelfCreateAccount(profile: profile);
           return accountId;
         }
@@ -640,8 +736,9 @@ class NhostAuthService {
       'street_en': profile.streetEn.trim(),
       'near_en': profile.nearEn.trim(),
       'phone': profile.phone.trim(),
-      'phone2':
-          (profile.phone2 ?? '').trim().isEmpty ? null : profile.phone2!.trim(),
+      'phone2': (profile.phone2 ?? '').trim().isEmpty
+          ? null
+          : profile.phone2!.trim(),
     };
     final data = await _runMutationWithAuthRecovery(
       mutation,
@@ -672,8 +769,7 @@ class NhostAuthService {
 
   Future<Map<String, dynamic>?> _fetchMyProfileRow() async {
     try {
-      final data = await _runQuery(
-        '''
+      final data = await _runQuery('''
         query MyProfile {
           my_profile {
             id
@@ -682,9 +778,7 @@ class NhostAuthService {
             role
           }
         }
-        ''',
-        const {},
-      );
+        ''', const {});
       final rows = _rowsFromData(data, 'my_profile');
       return rows.isEmpty ? null : rows.first;
     } catch (_) {
@@ -738,16 +832,13 @@ class NhostAuthService {
 
   Future<String?> fetchMyPlanCode() async {
     try {
-      final data = await _runQuery(
-        '''
+      final data = await _runQuery('''
         query MyAccountPlan {
           my_account_plan {
             plan_code
           }
         }
-        ''',
-        const {},
-      );
+        ''', const {});
       final rows = _rowsFromData(data, 'my_account_plan');
       if (rows.isEmpty) return null;
       return rows.first['plan_code']?.toString();
@@ -758,17 +849,14 @@ class NhostAuthService {
 
   Future<Map<String, dynamic>?> fetchMyPlanDetails() async {
     try {
-      final data = await _runQuery(
-        '''
+      final data = await _runQuery('''
         query MyAccountPlanDetails {
           my_account_plan {
             plan_code
             plan_end_at
           }
         }
-        ''',
-        const {},
-      );
+        ''', const {});
       final rows = _rowsFromData(data, 'my_account_plan');
       if (rows.isEmpty) return null;
       return rows.first;
@@ -944,10 +1032,8 @@ class NhostAuthService {
 
       try {
         final preferred = await ActiveAccountStore.readAccountId();
-        final row = await _fetchAccountUserRow(
-              uid: user.id,
-              accountId: preferred,
-            ) ??
+        final row =
+            await _fetchAccountUserRow(uid: user.id, accountId: preferred) ??
             await _fetchAccountUserRow(uid: user.id);
         if (row != null) {
           accountId ??= row['account_id']?.toString();
@@ -961,7 +1047,8 @@ class NhostAuthService {
     }
 
     final tokenRoles = user.roles.map((r) => r.toLowerCase()).toList();
-    final tokenIsSuper = tokenRoles.contains('superadmin') ||
+    final tokenIsSuper =
+        tokenRoles.contains('superadmin') ||
         (user.defaultRole.toLowerCase() == 'superadmin');
     final metaRole =
         (user.metadata?['role']?.toString().toLowerCase() == 'superadmin');
@@ -970,7 +1057,8 @@ class NhostAuthService {
     }
     final emailLower = (user.email ?? '').toLowerCase().trim();
     final rootEmail = NhostConfig.rootSuperAdminEmail.toLowerCase().trim();
-    final isSuper = tokenIsSuper &&
+    final isSuper =
+        tokenIsSuper &&
         (dbIsSuper == true ||
             _superAdminQuerySupported == false ||
             metaRole ||
@@ -1094,8 +1182,10 @@ class NhostAuthService {
     }
 
     try {
-      final data =
-          await _runQuery('query { my_account_id { account_id } }', const {});
+      final data = await _runQuery(
+        'query { my_account_id { account_id } }',
+        const {},
+      );
       final rows = _rowsFromData(data, 'my_account_id');
       final acc = rows.isNotEmpty ? rows.first['account_id']?.toString() : null;
       if (acc != null && acc.isNotEmpty && acc != 'null') {
@@ -1297,8 +1387,9 @@ class NhostAuthService {
       final accountChangedBetweenLaunches =
           (lastAcc != null && lastAcc.isNotEmpty && lastAcc != acc.id);
       if (accountChangedBetweenLaunches) {
-        final hasForeignRows =
-            await DBService.instance.hasRowsForOtherAccount(acc.id);
+        final hasForeignRows = await DBService.instance.hasRowsForOtherAccount(
+          acc.id,
+        );
         if (hasForeignRows) {
           dev.log(
             'Account change detected → pending local wipe (manual confirmation required).',
@@ -1462,8 +1553,9 @@ class NhostAuthService {
         ['sync_identity'],
       );
       if (rows is List && rows.isNotEmpty) {
-        final r =
-            await db.rawQuery('SELECT account_id FROM sync_identity LIMIT 1');
+        final r = await db.rawQuery(
+          'SELECT account_id FROM sync_identity LIMIT 1',
+        );
         if (r is List && r.isNotEmpty) {
           final v = r.first['account_id']?.toString();
           return (v != null && v.isNotEmpty) ? v : null;
