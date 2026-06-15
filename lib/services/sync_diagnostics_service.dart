@@ -1230,12 +1230,13 @@ class SyncDiagnosticsService {
     var text = value;
     text = text.replaceAll(
       RegExp(
-        r'(?i)(authorization|cookie|access[_-]?token|refresh[_-]?token|password|secret)\s*[:=]\s*[^\s,;}]+',
+        r'(authorization|cookie|access[_-]?token|refresh[_-]?token|password|secret)\s*[:=]\s*[^\s,;}]+',
+        caseSensitive: false,
       ),
       r'$1=__redacted__',
     );
     text = text.replaceAll(
-      RegExp(r'(?i)bearer\s+[a-z0-9._\-]+'),
+      RegExp(r'bearer\s+[a-z0-9._\-]+', caseSensitive: false),
       'Bearer __redacted__',
     );
     return text;

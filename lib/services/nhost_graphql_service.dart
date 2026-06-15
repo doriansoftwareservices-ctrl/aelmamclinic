@@ -24,13 +24,10 @@ class NhostGraphqlService {
   }
 
   static bool _isSuperAdmin(NhostClient client) {
-    final user = client.auth.currentUser;
-    if (user != null) {
-      final roles = user.roles;
-      final hasRole =
-          roles.any((role) => role.toLowerCase() == 'superadmin');
-      return hasRole || user.defaultRole.toLowerCase() == 'superadmin';
-    }
+    // لا نثق بدور superadmin الخام الموجود في JWT قبل أن يثبته AuthProvider
+    // من قاعدة البيانات. أي claim خاطئ أو قديم يجب ألا يجعل كل GraphQL يعمل
+    // تلقائيًا بصلاحية superadmin، لأن ذلك قد يغيّر نتيجة my_profile ويوجه
+    // حساب عيادة عادي إلى شاشة السوبر أدمن.
     return AuthRoleState.isSuperAdmin;
   }
 
@@ -93,9 +90,10 @@ class NhostGraphqlService {
         return access != null && access.isNotEmpty ? 'Bearer $access' : null;
       },
     );
-    final authedHttp = retryLink.concat(roleLink).concat(authLink).concat(
-          httpLink,
-        );
+    final authedHttp = retryLink
+        .concat(roleLink)
+        .concat(authLink)
+        .concat(httpLink);
     return Link.split((request) => request.isSubscription, wsLink, authedHttp);
   }
 
@@ -145,17 +143,11 @@ class NhostGraphqlService {
         if (attempt >= maxAttempts || !_shouldRetry(e)) {
           yield Response(
             response: const <String, dynamic>{},
-            errors: [
-              GraphQLError(
-                message: _retryFailureMessage(e),
-              ),
-            ],
+            errors: [GraphQLError(message: _retryFailureMessage(e))],
           );
           return;
         }
-        await Future<void>.delayed(
-          Duration(milliseconds: 350 * attempt),
-        );
+        await Future<void>.delayed(Duration(milliseconds: 350 * attempt));
       }
     }
   }

@@ -196,6 +196,7 @@ class NhostAuthService {
       final data = await _runQuery(
         _sessionSnapshotQuery(includeSuperFlag: includeSuper),
         {'uid': uid},
+        role: 'user',
       );
       return data;
     } on BackendSchemaException {
@@ -204,6 +205,7 @@ class NhostAuthService {
         final data = await _runQuery(
           _sessionSnapshotQuery(includeSuperFlag: false),
           {'uid': uid},
+          role: 'user',
         );
         return data;
       } catch (error) {
@@ -228,8 +230,9 @@ class NhostAuthService {
 
   Future<Map<String, dynamic>> _runQuery(
     String doc,
-    Map<String, dynamic> variables,
-  ) async {
+    Map<String, dynamic> variables, {
+    String? role,
+  }) async {
     final safeVariables = Map<String, dynamic>.from(variables);
     final result = await _gql
         .query(
@@ -237,6 +240,11 @@ class NhostAuthService {
             document: gql(doc),
             variables: safeVariables,
             fetchPolicy: FetchPolicy.noCache,
+            context: (role == null || role.trim().isEmpty)
+                ? Context()
+                : Context.fromList([
+                    HttpLinkHeaders(headers: {'x-hasura-role': role.trim()}),
+                  ]),
           ),
         )
         .timeout(_kGraphqlTimeout);
@@ -778,7 +786,7 @@ class NhostAuthService {
             role
           }
         }
-        ''', const {});
+        ''', const {}, role: 'user');
       final rows = _rowsFromData(data, 'my_profile');
       return rows.isEmpty ? null : rows.first;
     } catch (_) {
@@ -805,6 +813,7 @@ class NhostAuthService {
         }
         ''',
         {'uid': uid, 'account': accountId},
+        role: 'user',
       );
       final rows = _rowsFromData(data, 'account_users');
       return rows.isEmpty ? null : rows.first;
@@ -825,6 +834,7 @@ class NhostAuthService {
       }
       ''',
       {'uid': uid},
+      role: 'user',
     );
     final rows = _rowsFromData(data, 'account_users');
     return rows.isEmpty ? null : rows.first;
@@ -886,7 +896,7 @@ class NhostAuthService {
     if (_superAdminQuerySupported == false) return false;
     const query = 'query { fn_is_super_admin_gql { is_super_admin } }';
     try {
-      final data = await _runQuery(query, const {});
+      final data = await _runQuery(query, const {}, role: 'user');
       _superAdminQuerySupported = true;
       final rows = data['fn_is_super_admin_gql'];
       if (rows is List && rows.isNotEmpty) {
@@ -960,6 +970,7 @@ class NhostAuthService {
     String? accountId;
     String? role;
     bool disabled = false;
+    bool hasActiveClinicMembership = false;
     String? planCode;
     DateTime? planEndAt;
     bool? dbIsSuper;
@@ -1011,6 +1022,14 @@ class NhostAuthService {
           role = selectedRole;
         }
         disabled = selectedAccountUser['disabled'] == true;
+        final normalizedSelectedRole = (selectedRole ?? '').trim().toLowerCase();
+        if (!disabled &&
+            selectedAccountId != null &&
+            selectedAccountId.isNotEmpty &&
+            selectedAccountId != 'null' &&
+            normalizedSelectedRole != 'superadmin') {
+          hasActiveClinicMembership = true;
+        }
       }
 
       final planRows = _rowsFromData(snap, 'my_account_plan');
@@ -1057,6 +1076,14 @@ class NhostAuthService {
           accountId ??= row['account_id']?.toString();
           role ??= row['role']?.toString();
           disabled = disabled || row['disabled'] == true;
+          final fallbackRole = (row['role'] ?? '').toString().trim().toLowerCase();
+          if (!disabled &&
+              accountId != null &&
+              accountId.isNotEmpty &&
+              accountId != 'null' &&
+              fallbackRole != 'superadmin') {
+            hasActiveClinicMembership = true;
+          }
           if (accountId != null && accountId.isNotEmpty) {
             await ActiveAccountStore.writeAccountId(accountId);
           }
@@ -1075,12 +1102,29 @@ class NhostAuthService {
     }
     final emailLower = (user.email ?? '').toLowerCase().trim();
     final rootEmail = NhostConfig.rootSuperAdminEmail.toLowerCase().trim();
+    final normalizedDomainRole = (role ?? '').trim().toLowerCase();
+    final hasClinicAccountContext =
+        hasActiveClinicMembership ||
+        ((accountId ?? '').trim().isNotEmpty &&
+            (accountId ?? '').trim().toLowerCase() != 'null' &&
+            normalizedDomainRole != 'superadmin');
+
+    // السوبر أدمن يجب أن يثبت من الخادم، ولا يجوز اعتبار فشل دالة
+    // fn_is_super_admin_gql أو وجود claim قديم سببًا لدخول شاشة السوبر أدمن.
+    // كذلك أي مستخدم له عضوية عيادة فعالة owner/admin/employee يتم توجيهه
+    // كحساب عيادة حتى لو وصل JWT قديم يحتوي superadmin بالخطأ.
     final isSuper =
+        !hasClinicAccountContext &&
         tokenIsSuper &&
-        (dbIsSuper == true ||
-            _superAdminQuerySupported == false ||
-            metaRole ||
-            (emailLower == rootEmail));
+        (dbIsSuper == true || (metaRole && emailLower == rootEmail));
+
+    if (tokenIsSuper && !isSuper) {
+      dev.log(
+        'Ignoring unverified superadmin JWT role for $emailLower; '
+        'dbIsSuper=$dbIsSuper, hasClinicAccountContext=$hasClinicAccountContext',
+        name: 'AUTH',
+      );
+    }
 
     final chatCode = snap?['__chat_code']?.toString();
     if (dbIsSuper == true && !tokenIsSuper) {
