@@ -24,7 +24,7 @@ const TABLES = {
   items: {
     constraint: 'items_account_id_device_id_local_id_key',
     domain: 'inventory',
-    columns: ['type_id', 'name', 'price', 'stock', 'created_at'],
+    columns: ['type_id', 'name', 'price', 'price_minor', 'created_at'],
   },
   drugs: {
     constraint: 'drugs_account_id_device_id_local_id_key',
@@ -34,7 +34,7 @@ const TABLES = {
   medical_services: {
     constraint: 'medical_services_account_id_device_id_local_id_key',
     domain: 'reference',
-    columns: ['name', 'cost', 'service_type'],
+    columns: ['name', 'cost', 'cost_minor', 'service_type'],
   },
   consumption_types: {
     constraint: 'consumption_types_account_id_device_id_local_id_key',
@@ -52,7 +52,9 @@ const TABLES = {
       'address',
       'marital_status',
       'basic_salary',
+      'basic_salary_minor',
       'final_salary',
+      'final_salary_minor',
       'is_doctor',
       'user_uid',
     ],
@@ -90,7 +92,9 @@ const TABLES = {
       'age',
       'diagnosis',
       'paid_amount',
+      'paid_amount_minor',
       'remaining',
+      'remaining_minor',
       'register_date',
       'phone_number',
       'health_status',
@@ -104,10 +108,15 @@ const TABLES = {
       'service_id',
       'service_name',
       'service_cost',
+      'service_cost_minor',
       'doctor_share',
+      'doctor_share_minor',
       'doctor_input',
+      'doctor_input_minor',
       'tower_share',
+      'tower_share_minor',
       'department_share',
+      'department_share_minor',
       'doctor_review_pending',
       'doctor_reviewed_at',
     ],
@@ -115,7 +124,13 @@ const TABLES = {
   patient_services: {
     constraint: 'patient_services_account_id_device_id_local_id_key',
     domain: 'clinical',
-    columns: ['patient_id', 'service_id', 'service_name', 'service_cost'],
+    columns: [
+      'patient_id',
+      'service_id',
+      'service_name',
+      'service_cost',
+      'service_cost_minor',
+    ],
   },
   returns: {
     constraint: 'returns_account_id_device_id_local_id_key',
@@ -126,6 +141,7 @@ const TABLES = {
       'phone_number',
       'diagnosis',
       'remaining',
+      'remaining_minor',
       'age',
       'doctor',
       'notes',
@@ -136,7 +152,7 @@ const TABLES = {
   appointments: {
     constraint: 'appointments_account_id_device_id_local_id_key',
     domain: 'clinical',
-    columns: ['patient_id', 'appointment_time', 'status', 'notes'],
+    columns: ['patient_id', 'doctor_id', 'appointment_time', 'status', 'notes'],
   },
   prescriptions: {
     constraint: 'prescriptions_account_id_device_id_local_id_key',
@@ -151,7 +167,17 @@ const TABLES = {
   consumptions: {
     constraint: 'consumptions_account_id_device_id_local_id_key',
     domain: 'inventory',
-    columns: ['patient_id', 'item_id', 'quantity', 'date', 'amount', 'note'],
+    columns: [
+      'patient_id',
+      'item_id',
+      'quantity',
+      'date',
+      'amount',
+      'amount_minor',
+      'unit_price_snapshot',
+      'unit_price_minor',
+      'note',
+    ],
   },
   purchases: {
     constraint: 'purchases_account_id_device_id_local_id_key',
@@ -162,6 +188,9 @@ const TABLES = {
       'item_type_name_snapshot',
       'quantity',
       'total',
+      'amount_minor',
+      'unit_price_snapshot',
+      'unit_price_minor',
       'created_at',
       'date',
     ],
@@ -186,9 +215,13 @@ const TABLES = {
       'employee_id',
       'loan_date_time',
       'final_salary',
+      'final_salary_minor',
       'ratio_sum',
+      'ratio_sum_minor',
       'loan_amount',
+      'loan_amount_minor',
       'leftover',
+      'leftover_minor',
     ],
   },
   employees_salaries: {
@@ -199,10 +232,15 @@ const TABLES = {
       'year',
       'month',
       'final_salary',
+      'final_salary_minor',
       'ratio_sum',
+      'ratio_sum_minor',
       'total_loans',
+      'total_loans_minor',
       'total_discounts',
+      'total_discounts_minor',
       'net_pay',
+      'net_pay_minor',
       'is_paid',
       'payment_date',
       'period_start',
@@ -212,7 +250,13 @@ const TABLES = {
   employees_discounts: {
     constraint: 'employees_discounts_account_id_device_id_local_id_key',
     domain: 'finance',
-    columns: ['employee_id', 'discount_date_time', 'amount', 'notes'],
+    columns: [
+      'employee_id',
+      'discount_date_time',
+      'amount',
+      'amount_minor',
+      'notes',
+    ],
   },
   complaints: {
     constraint: 'complaints_account_id_device_id_local_id_key',
@@ -236,6 +280,7 @@ const TABLES = {
       'transaction_type',
       'operation',
       'amount',
+      'amount_minor',
       'employee_id',
       'patient_id',
       'description',
@@ -373,14 +418,19 @@ async function gqlRequest(query, variables) {
   try {
     json = text ? JSON.parse(text) : {};
   } catch (_) {
-    throw new Error(`GraphQL returned invalid JSON: ${text}`);
+    const error = new Error('upstream_invalid_response');
+    error.code = 'upstream_invalid_response';
+    throw error;
   }
   if (!res.ok || json.errors) {
-    const message = json.errors
-      ? json.errors.map((e) => e.message || JSON.stringify(e)).join('; ')
-      : text;
-    const err = new Error(message || `GraphQL failed: ${res.status}`);
-    err.graphql = json;
+    const errors = Array.isArray(json.errors) ? json.errors : [];
+    const err = new Error('upstream_mutation_failed');
+    err.code = 'upstream_mutation_failed';
+    err.isConstraintViolation = errors.some((entry) => {
+      const code = `${entry?.extensions?.code || ''}`.toLowerCase();
+      const message = `${entry?.message || ''}`.toLowerCase();
+      return code.includes('constraint') || message.includes('unique constraint');
+    });
     throw err;
   }
   return json.data || {};
@@ -450,16 +500,24 @@ function filterPayload(table, payload, context) {
   return out;
 }
 
-async function fetchCachedMutation(clientMutationId) {
+async function fetchCachedMutation(clientMutationId, accountId) {
   const query = `
-    query ExistingMutation($id: String!) {
-      client_mutations(where: {client_mutation_id: {_eq: $id}}, limit: 1) {
+    query ExistingMutation($id: String!, $accountId: uuid!) {
+      client_mutations(
+        where: {
+          client_mutation_id: {_eq: $id},
+          account_id: {_eq: $accountId}
+        },
+        limit: 1
+      ) {
+        id
+        operation_type
         payload_hash
         result_json
       }
     }
   `;
-  const data = await gqlRequest(query, { id: clientMutationId });
+  const data = await gqlRequest(query, { id: clientMutationId, accountId });
   return Array.isArray(data.client_mutations) ? data.client_mutations[0] : null;
 }
 
@@ -477,11 +535,14 @@ async function accessFor(userId, accountId) {
         disabled
       }
       accounts_by_pk(id: $accountId) {
+        id
         frozen
       }
       super_admins(where: {user_uid: {_eq: $userId}}, limit: 1) {
         id
+        disabled
       }
+      user(id: $userId) { disabled }
       account_feature_permissions(
         where: {
           account_id: {_eq: $accountId},
@@ -511,7 +572,12 @@ async function accessFor(userId, accountId) {
     role: `${membership?.role || ''}`.trim().toLowerCase(),
     memberDisabled: membership?.disabled === true,
     accountFrozen: data.accounts_by_pk?.frozen === true,
-    isSuperAdmin: !!superAdmin,
+    accountExists: !!data.accounts_by_pk?.id,
+    userDisabled: data.user?.disabled === true,
+    isSuperAdmin:
+      !!superAdmin &&
+      superAdmin.disabled !== true &&
+      data.user?.disabled !== true,
     isMember: !!membership,
     allowAll: permissions?.allow_all === true,
     allowedFeatures: Array.isArray(permissions?.allowed_features)
@@ -524,6 +590,15 @@ async function accessFor(userId, accountId) {
 }
 
 function assertRoleAllowed(access, table, tableConfig, operationType) {
+  if (access.userDisabled) {
+    throw deny(403, 'user_disabled', 'User is disabled');
+  }
+  if (!access.accountExists) {
+    throw deny(404, 'account_not_found', 'Account was not found');
+  }
+  if (access.accountFrozen) {
+    throw deny(423, 'account_frozen', 'Account is frozen');
+  }
   if (access.isSuperAdmin) return;
   if (!access.isMember) {
     throw deny(403, 'not_account_member', 'User is not a member of this account');
@@ -531,10 +606,6 @@ function assertRoleAllowed(access, table, tableConfig, operationType) {
   if (access.memberDisabled) {
     throw deny(403, 'user_disabled', 'User is disabled for this account');
   }
-  if (access.accountFrozen) {
-    throw deny(423, 'account_frozen', 'Account is frozen');
-  }
-  if (FULL_SYNC_ROLES.has(access.role)) return;
   if (
     Array.isArray(tableConfig.allowedRoles) &&
     !tableConfig.allowedRoles.includes(access.role)
@@ -543,13 +614,14 @@ function assertRoleAllowed(access, table, tableConfig, operationType) {
   }
 
   const action = syncCrudAction(operationType);
-  if (action === 'create' && !access.canCreate) {
+  const hasFullCrudRole = FULL_SYNC_ROLES.has(access.role);
+  if (action === 'create' && !hasFullCrudRole && !access.canCreate) {
     throw deny(403, 'sync_create_denied', 'You do not have permission to create this data');
   }
-  if (action === 'update' && !access.canUpdate) {
+  if (action === 'update' && !hasFullCrudRole && !access.canUpdate) {
     throw deny(403, 'sync_update_denied', 'You do not have permission to update this data');
   }
-  if (action === 'delete' && !access.canDelete) {
+  if (action === 'delete' && !hasFullCrudRole && !access.canDelete) {
     throw deny(403, 'sync_delete_denied', 'You do not have permission to delete this data');
   }
 
@@ -567,7 +639,13 @@ function assertRoleAllowed(access, table, tableConfig, operationType) {
   }
 }
 
-async function applyMutation({ table, tableConfig, object, event }) {
+async function applyMutation({
+  table,
+  tableConfig,
+  object,
+  event,
+  clientMutation,
+}) {
   const updateColumns = [
     ...new Set([
       ...tableConfig.columns,
@@ -583,7 +661,8 @@ async function applyMutation({ table, tableConfig, object, event }) {
   const mutationDoc = `
     mutation ClinicSyncApply(
       $object: ${table}_insert_input!,
-      $event: sync_events_insert_input!
+      $event: sync_events_insert_input!,
+      $clientMutation: client_mutations_insert_input!
     ) {
       row: insert_${table}_one(
         object: $object,
@@ -600,32 +679,126 @@ async function applyMutation({ table, tableConfig, object, event }) {
         id
         created_at
       }
+      clientMutation: insert_client_mutations_one(object: $clientMutation) {
+        id
+      }
     }
   `;
-  return gqlRequest(mutationDoc, { object, event });
+  return gqlRequest(mutationDoc, { object, event, clientMutation });
 }
 
-async function cacheMutationResult(mutation) {
+function deterministicUuid(value) {
+  const bytes = crypto.createHash('sha256').update(value).digest().subarray(0, 16);
+  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = bytes.toString('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+async function resolveRemoteId({
+  table,
+  accountId,
+  deviceId,
+  localId,
+  requestedId,
+  clientMutationId,
+}) {
+  const candidate = `${requestedId || ''}`.trim();
+  if (/^[0-9a-f-]{36}$/i.test(candidate)) return candidate;
+  const query = `
+    query ExistingSyncIdentity(
+      $accountId: uuid!,
+      $deviceId: String!,
+      $localId: bigint!
+    ) {
+      rows: ${table}(
+        where: {
+          account_id: {_eq: $accountId},
+          device_id: {_eq: $deviceId},
+          local_id: {_eq: $localId}
+        },
+        limit: 1
+      ) { id }
+    }
+  `;
+  const data = await gqlRequest(query, { accountId, deviceId, localId });
+  const existing = Array.isArray(data.rows) ? data.rows[0]?.id : null;
+  return existing || deterministicUuid(`${accountId}:${table}:${clientMutationId}`);
+}
+
+async function recoverCommittedMutation({
+  cached,
+  table,
+  accountId,
+  clientMutationId,
+}) {
+  const query = `
+    query RecoverClinicSyncMutation($accountId: uuid!, $id: String!) {
+      rows: ${table}(
+        where: {
+          account_id: {_eq: $accountId},
+          client_mutation_id: {_eq: $id}
+        },
+        limit: 1
+      ) { id updated_at server_version }
+      events: sync_events(
+        where: {
+          account_id: {_eq: $accountId},
+          client_mutation_id: {_eq: $id}
+        },
+        limit: 1
+      ) { id created_at }
+    }
+  `;
+  const data = await gqlRequest(query, { accountId, id: clientMutationId });
+  const row = Array.isArray(data.rows) ? data.rows[0] : null;
+  const event = Array.isArray(data.events) ? data.events[0] : null;
+  if (!row || !event) return null;
+  const result = {
+    success: true,
+    operation: cached.operation_type,
+    server_timestamp: row.updated_at || event.created_at,
+    data: {
+      entity_table: table,
+      client_mutation_id: clientMutationId,
+      remote_id: row.id,
+      server_version: row.server_version ?? null,
+      sync_event_id: event.id,
+    },
+  };
+  await completeMutationResult(cached.id, result);
+  return result;
+}
+
+async function completeMutationResult(id, result) {
   const mutationDoc = `
-    mutation CacheClinicSyncMutation($mutation: client_mutations_insert_input!) {
-      clientMutation: insert_client_mutations_one(
-        object: $mutation,
-        on_conflict: {
-          constraint: client_mutations_client_mutation_id_key,
-          update_columns: [result_json]
-        }
+    mutation CompleteClinicSyncMutation(
+      $id: uuid!,
+      $result: jsonb!,
+      $completedAt: timestamptz!
+    ) {
+      clientMutation: update_client_mutations_by_pk(
+        pk_columns: {id: $id},
+        _set: {result_json: $result, completed_at: $completedAt}
       ) {
         id
         result_json
       }
     }
   `;
-  return gqlRequest(mutationDoc, { mutation });
+  return gqlRequest(mutationDoc, {
+    id,
+    result,
+    completedAt: new Date().toISOString(),
+  });
 }
 
 module.exports = async function handler(req, res) {
+  const correlationId = crypto.randomUUID();
   if (req.method && req.method.toUpperCase() !== 'POST') {
-    fail(res, 405, 'method_not_allowed', 'POST is required');
+    fail(res, 405, 'method_not_allowed', 'POST is required', {
+      correlation_id: correlationId,
+    });
     return;
   }
 
@@ -633,7 +806,9 @@ module.exports = async function handler(req, res) {
     const token = extractBearer(req);
     const userId = await resolveUserIdFromToken(token);
     if (!userId) {
-      fail(res, 401, 'invalid_session', 'Invalid or missing session');
+      fail(res, 401, 'invalid_session', 'Invalid or missing session', {
+        correlation_id: correlationId,
+      });
       return;
     }
 
@@ -650,11 +825,15 @@ module.exports = async function handler(req, res) {
         : parseInt(`${body.local_id || ''}`, 10);
 
     if (!operationType || !tableConfig || !clientMutationId || !accountId) {
-      fail(res, 400, 'invalid_sync_request', 'Invalid sync request');
+      fail(res, 400, 'invalid_sync_request', 'Invalid sync request', {
+        correlation_id: correlationId,
+      });
       return;
     }
     if (!deviceId || !Number.isFinite(localId) || localId <= 0) {
-      fail(res, 400, 'invalid_local_identity', 'Missing device/local identity');
+      fail(res, 400, 'invalid_local_identity', 'Missing device/local identity', {
+        correlation_id: correlationId,
+      });
       return;
     }
 
@@ -666,18 +845,37 @@ module.exports = async function handler(req, res) {
       payload,
     });
 
-    const cached = await fetchCachedMutation(clientMutationId);
-    if (cached?.result_json) {
-      if (cached.payload_hash && cached.payload_hash !== payloadHash) {
-        fail(res, 409, 'idempotency_payload_mismatch', 'Mutation id was reused with a different payload');
-        return;
-      }
-      response(res, 200, cached.result_json);
-      return;
-    }
-
+    // Security first: never return cached mutation results before proving that
+    // the current JWT still belongs to the requested account and has permission
+    // for this table/operation. client_mutation_id values are opaque, but cached
+    // result_json may contain remote ids and sync event ids.
     const access = await accessFor(userId, accountId);
     assertRoleAllowed(access, table, tableConfig, operationType);
+
+    const cached = await fetchCachedMutation(clientMutationId, accountId);
+    if (cached) {
+      if (cached.payload_hash && cached.payload_hash !== payloadHash) {
+        fail(res, 409, 'idempotency_payload_mismatch', 'Mutation id was reused with a different payload', {
+          correlation_id: correlationId,
+        });
+        return;
+      }
+      if (cached.result_json) {
+        response(res, 200, cached.result_json);
+        return;
+      }
+      const recovered = await recoverCommittedMutation({
+        cached,
+        table,
+        accountId,
+        clientMutationId,
+      });
+      if (recovered) {
+        response(res, 200, recovered);
+        return;
+      }
+      throw deny(409, 'mutation_in_progress', 'Mutation is still being committed');
+    }
 
     const object = filterPayload(table, payload, {
       accountId,
@@ -687,58 +885,86 @@ module.exports = async function handler(req, res) {
       userId,
       deleteOperation: isDeleteOperation(operationType),
     });
+    object.id = await resolveRemoteId({
+      table,
+      accountId,
+      deviceId,
+      localId,
+      requestedId: object.id,
+      clientMutationId,
+    });
     const now = new Date().toISOString();
+    const eventId = crypto.randomUUID();
+    const mutationRowId = crypto.randomUUID();
     const event = {
+      id: eventId,
       account_id: accountId,
       domain: tableConfig.domain,
       entity_table: table,
+      entity_id: object.id,
       operation_type: operationType,
       actor_user_id: userId,
+      client_mutation_id: clientMutationId,
+      correlation_id: correlationId,
     };
-
-    const data = await applyMutation({
-      table,
-      tableConfig,
-      object,
-      event,
-    });
-    const row = data.row || {};
     const result = {
       success: true,
       operation: operationType,
-      server_timestamp: row.updated_at || now,
+      server_timestamp: now,
       data: {
         entity_table: table,
         client_mutation_id: clientMutationId,
-        remote_id: row.id || null,
-        server_version: row.server_version ?? null,
-        sync_event_id: data.event?.id || null,
+        remote_id: object.id,
+        server_version: null,
+        sync_event_id: eventId,
       },
     };
-    try {
-      await cacheMutationResult({
-        account_id: accountId,
-        client_mutation_id: clientMutationId,
-        operation_type: operationType,
-        actor_user_id: userId,
-        payload_hash: payloadHash,
-        result_json: result,
-      });
-    } catch (cacheErr) {
-      console.warn(
-        'clinic-sync: client_mutations cache failed',
-        cacheErr?.message || cacheErr,
-      );
-    }
 
+    try {
+      await applyMutation({
+        table,
+        tableConfig,
+        object,
+        event,
+        clientMutation: {
+          id: mutationRowId,
+          account_id: accountId,
+          client_mutation_id: clientMutationId,
+          operation_type: operationType,
+          actor_user_id: userId,
+          payload_hash: payloadHash,
+          correlation_id: correlationId,
+          result_json: result,
+          completed_at: now,
+        },
+      });
+    } catch (error) {
+      if (!error?.isConstraintViolation) throw error;
+      const concurrent = await fetchCachedMutation(clientMutationId, accountId);
+      if (!concurrent || concurrent.payload_hash !== payloadHash) {
+        throw deny(409, 'idempotency_conflict', 'Concurrent mutation conflict');
+      }
+      const recovered = concurrent.result_json ||
+        await recoverCommittedMutation({
+          cached: concurrent,
+          table,
+          accountId,
+          clientMutationId,
+        });
+      if (!recovered) {
+        throw deny(409, 'mutation_in_progress', 'Mutation is still being committed');
+      }
+      response(res, 200, recovered);
+      return;
+    }
     response(res, 200, result);
   } catch (err) {
     fail(
       res,
       err.status || 500,
       err.code || 'clinic_sync_function_failed',
-      err.message || 'Clinic sync function failed',
-      err.graphql ? { graphql: err.graphql } : {},
+      err.status ? err.message : 'Clinic sync function failed',
+      { correlation_id: correlationId },
     );
   }
 };

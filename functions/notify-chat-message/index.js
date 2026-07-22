@@ -11,19 +11,17 @@ const {
   logWarn,
   logError,
   toErrorString,
+  resolveNotificationEventId,
+  claimNotificationEvent,
+  markNotificationDispatchStarted,
+  completeNotificationEvent,
+  failNotificationEvent,
 } = require('../_shared/notify_utils');
 
-const pickBody = (row) =>
-  row?.body ||
-  row?.text ||
-  row?.message_body ||
-  row?.message ||
-  '';
-
-const buildPayload = (languageCode, conversationId, body, accountId) => {
+const buildPayload = (languageCode, conversationId, accountId) => {
   const locale = normalizeLanguageCode(languageCode);
   const title = locale === 'en' ? 'New message' : 'رسالة جديدة';
-  const safeBody = body || (locale === 'en' ? 'Message' : 'رسالة');
+  const safeBody = locale === 'en' ? 'You have a new message.' : 'لديك رسالة جديدة.';
   const data = {
     type: 'chat',
     conversation_id: conversationId,
@@ -45,6 +43,9 @@ const buildPayload = (languageCode, conversationId, body, accountId) => {
 
 module.exports = async (req, res) => {
   const ctx = makeRequestContext(req, 'notify-chat-message');
+  let claimedEventId = null;
+  let claimToken = null;
+  let dispatchCommitted = false;
   try {
     if (req.method !== 'POST') {
       res.status(405).json({ ok: false, error: 'method_not_allowed' });
@@ -93,6 +94,30 @@ module.exports = async (req, res) => {
       .map((participant) => participant.user_uid)
       .filter(Boolean);
 
+    if (targetUids.length > 0 && accountId) {
+      const active = await gqlRequest(
+        `query ActiveChatTargets($uids: [uuid!]!, $account: uuid!) {
+          account_users(where: {
+            user_uid: {_in: $uids}, account_id: {_eq: $account}, disabled: {_eq: false}
+          }) { user_uid }
+          users(where: {id: {_in: $uids}, disabled: {_eq: false}}) { id }
+          accounts_by_pk(id: $account) { frozen }
+        }`,
+        { uids: targetUids, account: accountId },
+      );
+      if (active?.accounts_by_pk?.frozen === true) {
+        res.status(200).json({ ok: true, skipped: 'account_frozen' });
+        return;
+      }
+      const memberships = new Set(
+        (active?.account_users || []).map((entry) => entry.user_uid),
+      );
+      const enabledUsers = new Set((active?.users || []).map((entry) => entry.id));
+      targetUids = targetUids.filter(
+        (uid) => memberships.has(uid) && enabledUsers.has(uid),
+      );
+    }
+
     if (targetUids.length === 0) {
       logInfo('CHAT_NOTIFY_SKIPPED', ctx, { reason: 'no_targets' });
       res.status(200).json({ ok: true, skipped: 'no_targets' });
@@ -137,14 +162,30 @@ module.exports = async (req, res) => {
       return;
     }
 
-    const body = pickBody(row);
+    claimedEventId = resolveNotificationEventId(
+      payload,
+      'notify-chat-message',
+      row.id || conversationId,
+    );
+    const claim = await claimNotificationEvent(
+      claimedEventId,
+      'notify-chat-message',
+    );
+    claimToken = claim.claimToken;
+    if (!claim.claimed) {
+      res.status(200).json({ ok: true, skipped: 'event_already_processed' });
+      return;
+    }
+    await markNotificationDispatchStarted(claimedEventId, claimToken);
+    dispatchCommitted = true;
+
     const byLocale = groupTokensByLocale(tokenRows);
     const results = [];
     if (byLocale.ar.length > 0) {
       results.push(
         await sendFcm(
           byLocale.ar,
-          buildPayload('ar', conversationId, body, accountId),
+          buildPayload('ar', conversationId, accountId),
         ),
       );
     }
@@ -152,11 +193,12 @@ module.exports = async (req, res) => {
       results.push(
         await sendFcm(
           byLocale.en,
-          buildPayload('en', conversationId, body, accountId),
+          buildPayload('en', conversationId, accountId),
         ),
       );
     }
     const result = mergeSendResults(results);
+    await completeNotificationEvent(claimedEventId, claimToken, result);
     logInfo('CHAT_NOTIFY_SENT', ctx, {
       conversation_id: conversationId,
       target_uids: targetUids.length,
@@ -167,11 +209,22 @@ module.exports = async (req, res) => {
     });
     res.status(200).json({ ok: true, ...result });
   } catch (e) {
+    if (claimedEventId && claimToken && !dispatchCommitted) {
+      await failNotificationEvent(
+        claimedEventId,
+        claimToken,
+        toErrorString(e),
+      );
+    }
     const statusCode = Number(e?.statusCode || 500);
     const logFn = statusCode >= 500 ? logError : logWarn;
     logFn(statusCode >= 500 ? 'CHAT_NOTIFY_UNHANDLED' : 'CHAT_NOTIFY_REJECTED', ctx, {
       error: toErrorString(e),
     });
-    res.status(statusCode).json({ ok: false, error: e?.message || 'internal_error' });
+    res.status(statusCode).json({
+      ok: false,
+      error: statusCode >= 500 ? 'internal_error' : 'request_rejected',
+      correlation_id: ctx.request_id,
+    });
   }
 };

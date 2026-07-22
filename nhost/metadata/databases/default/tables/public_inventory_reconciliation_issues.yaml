@@ -1,0 +1,3 @@
+table:
+  name: inventory_reconciliation_issues
+  schema: public

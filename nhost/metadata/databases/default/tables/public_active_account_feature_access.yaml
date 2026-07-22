@@ -1,0 +1,3 @@
+table:
+  name: active_account_feature_access
+  schema: public

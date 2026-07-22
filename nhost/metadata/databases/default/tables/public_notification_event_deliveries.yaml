@@ -1,0 +1,3 @@
+table:
+  name: notification_event_deliveries
+  schema: public

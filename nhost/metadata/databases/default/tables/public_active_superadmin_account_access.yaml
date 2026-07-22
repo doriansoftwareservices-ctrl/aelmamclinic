@@ -1,0 +1,3 @@
+table:
+  name: active_superadmin_account_access
+  schema: public

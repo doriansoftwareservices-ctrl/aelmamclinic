@@ -1,0 +1,7 @@
+function:
+  name: claim_notification_event
+  schema: public
+configuration:
+  custom_name: claim_notification_event
+  custom_root_fields: {}
+  exposed_as: mutation

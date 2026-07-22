@@ -203,10 +203,75 @@ function parseChatIds({ filename, metadata }) {
 async function isSuperAdmin(uid) {
   const u = escapeLiteral(uid);
   const json = await runSql(
-    `select 1 from public.super_admins where user_uid='${u}' limit 1;`,
+    `select 1
+       from public.super_admins sa
+       join auth.users au on au.id = sa.user_uid
+      where sa.user_uid='${u}'::uuid
+        and coalesce(sa.disabled, false) = false
+        and coalesce(au.disabled, false) = false
+      limit 1;`,
     true,
   );
   return !!(Array.isArray(json?.result) ? json.result[1] : null);
+}
+
+async function getChatAccess(conversationId, uid) {
+  const c = escapeLiteral(conversationId);
+  const u = escapeLiteral(uid);
+  const json = await runSql(
+    `select c.account_id::text,
+            coalesce(p.role, '')::text,
+            (p.user_uid is not null)::text as participant,
+            exists (
+              select 1
+                from public.account_users au
+               where au.account_id = c.account_id
+                 and au.user_uid = '${u}'::uuid
+                 and coalesce(au.disabled, false) = false
+            )::text as active_member,
+            exists (
+              select 1
+                from public.super_admins sa
+                join auth.users auth_user on auth_user.id = sa.user_uid
+               where sa.user_uid = '${u}'::uuid
+                 and coalesce(sa.disabled, false) = false
+                 and coalesce(auth_user.disabled, false) = false
+            )::text as active_superadmin,
+            coalesce(a.frozen, false)::text as account_frozen
+       from public.chat_conversations c
+       join public.accounts a on a.id = c.account_id
+       left join public.chat_participants p
+         on p.conversation_id = c.id
+        and p.user_uid = '${u}'::uuid
+        and coalesce(p.is_deleted, false) = false
+      where c.id = '${c}'::uuid
+      limit 1;`,
+    true,
+  );
+  const row = Array.isArray(json?.result) ? json.result[1] : null;
+  if (!row) {
+    return {
+      allowed: false,
+      accountId: null,
+      participantRole: null,
+      isSuperAdmin: false,
+      accountFrozen: false,
+    };
+  }
+  const flag = (value) => `${value || ''}`.toLowerCase() === 'true';
+  const participant = flag(row[2]);
+  const activeMember = flag(row[3]);
+  const activeSuperadmin = flag(row[4]);
+  const accountFrozen = flag(row[5]);
+  return {
+    allowed:
+      !accountFrozen &&
+      ((participant && activeMember) || activeSuperadmin),
+    accountId: row[0] || null,
+    participantRole: row[1] || null,
+    isSuperAdmin: activeSuperadmin,
+    accountFrozen,
+  };
 }
 
 async function getParticipantRole(conversationId, uid) {
@@ -241,6 +306,44 @@ async function ensureBucketExists(bucketId) {
   return !!(Array.isArray(json?.result) ? json.result[1] : null);
 }
 
+async function messageBelongsToConversation(messageId, conversationId) {
+  if (!messageId) return false;
+  const m = escapeLiteral(messageId);
+  const c = escapeLiteral(conversationId);
+  const json = await runSql(
+    `select 1 from public.chat_messages where id='${m}' and conversation_id='${c}' limit 1;`,
+    true,
+  );
+  return !!(Array.isArray(json?.result) ? json.result[1] : null);
+}
+
+async function updateChatFileOwnership({
+  fileId,
+  accountId,
+  conversationId,
+  messageId,
+  uploadedByUserId,
+}) {
+  const file = escapeLiteral(fileId);
+  const account = escapeLiteral(accountId);
+  const conversation = escapeLiteral(conversationId);
+  const message = escapeLiteral(messageId);
+  const uploader = escapeLiteral(uploadedByUserId);
+  const json = await runSql(
+    `update storage.files
+        set account_id = '${account}'::uuid,
+            conversation_id = '${conversation}'::uuid,
+            attachment_message_id = '${message}'::uuid,
+            uploaded_by_user_id = '${uploader}'::uuid,
+            security_state = 'active'
+      where id = '${file}'::uuid
+        and bucket_id in ('chat-images', 'chat-attachments')
+      returning id::text;`,
+    false,
+  );
+  return !!(Array.isArray(json?.result) ? json.result[1] : null);
+}
+
 module.exports = {
   readBody,
   resolveStorageUrl,
@@ -250,8 +353,11 @@ module.exports = {
   safeBasename,
   parseChatIds,
   isSuperAdmin,
+  getChatAccess,
   getParticipantRole,
   messageBelongsToSender,
+  messageBelongsToConversation,
   ensureBucketExists,
+  updateChatFileOwnership,
   runSql,
 };

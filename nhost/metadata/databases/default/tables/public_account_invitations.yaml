@@ -1,0 +1,6 @@
+table:
+  name: account_invitations
+  schema: public
+
+# Deliberately no client permissions. Tokens and state transitions are handled
+# only by account-invitations/owner-create-employee Functions.

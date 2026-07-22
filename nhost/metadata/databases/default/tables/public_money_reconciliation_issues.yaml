@@ -1,0 +1,3 @@
+table:
+  name: money_reconciliation_issues
+  schema: public

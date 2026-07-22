@@ -11,19 +11,22 @@ const {
   logWarn,
   logError,
   toErrorString,
+  resolveNotificationEventId,
+  claimNotificationEvent,
+  markNotificationDispatchStarted,
+  completeNotificationEvent,
+  failNotificationEvent,
 } = require('../_shared/notify_utils');
 
-const buildPayload = (languageCode, patientId, patientName, accountId) => {
+const buildPayload = (languageCode, patientId, accountId) => {
   const locale = normalizeLanguageCode(languageCode);
-  const safeName = patientName || (locale === 'en' ? 'New patient' : 'مريض جديد');
   const title = locale === 'en' ? 'New patient case' : 'حالة مرضية جديدة';
   const body = locale === 'en'
-    ? `Patient ${safeName} was added to your medical account.`
-    : `تم إضافة المريض ${safeName} إلى حسابك الطبي.`;
+    ? 'A patient record was added to your medical account.'
+    : 'تمت إضافة حالة جديدة إلى حسابك الطبي.';
   const data = {
     type: 'patient',
     patient_id: String(patientId || ''),
-    patient_name: String(safeName || ''),
     title,
     body,
     payload: `patient:${patientId}`,
@@ -39,6 +42,9 @@ const buildPayload = (languageCode, patientId, patientName, accountId) => {
 
 module.exports = async (req, res) => {
   const ctx = makeRequestContext(req, 'notify-new-patient');
+  let claimedEventId = null;
+  let claimToken = null;
+  let dispatchCommitted = false;
   try {
     if (req.method !== 'POST') {
       res.status(405).json({ ok: false, error: 'method_not_allowed' });
@@ -50,7 +56,6 @@ module.exports = async (req, res) => {
     const payload = await readBody(req);
     const row = payload?.event?.data?.new || payload?.data?.new || {};
     const patientId = row.id;
-    const patientName = row.name || row.full_name || row.patient_name || '';
     const doctorId = row.doctor_id;
     const accountId = row.account_id || null;
     logInfo('PATIENT_NOTIFY_REQUEST_RECEIVED', ctx, {
@@ -66,15 +71,33 @@ module.exports = async (req, res) => {
     }
 
     const doctorData = await gqlRequest(
-      `query Doctor($id: Int!) {
-        doctors(where: {id: {_eq: $id}}, limit: 1) { user_uid }
+      `query Doctor($id: uuid!) {
+        doctors(where: {id: {_eq: $id}}, limit: 1) { user_uid account_id }
       }`,
       { id: doctorId },
     );
     const doctorUid = doctorData?.doctors?.[0]?.user_uid;
+    const doctorAccountId = doctorData?.doctors?.[0]?.account_id;
     if (!doctorUid) {
       logInfo('PATIENT_NOTIFY_SKIPPED', ctx, { reason: 'no_doctor_uid' });
       res.status(200).json({ ok: true, skipped: 'no_doctor_uid' });
+      return;
+    }
+    if (!doctorAccountId || (accountId && doctorAccountId !== accountId)) {
+      res.status(200).json({ ok: true, skipped: 'account_mismatch' });
+      return;
+    }
+    const access = await gqlRequest(
+      `query ActiveDoctor($uid: uuid!, $account: uuid!) {
+        account_users(where: {
+          user_uid: {_eq: $uid}, account_id: {_eq: $account}, disabled: {_eq: false}
+        }, limit: 1) { user_uid }
+        user(id: $uid) { disabled }
+      }`,
+      { uid: doctorUid, account: doctorAccountId },
+    );
+    if (!access?.account_users?.length || access?.user?.disabled === true) {
+      res.status(200).json({ ok: true, skipped: 'inactive_doctor' });
       return;
     }
 
@@ -115,13 +138,30 @@ module.exports = async (req, res) => {
       return;
     }
 
+    claimedEventId = resolveNotificationEventId(
+      payload,
+      'notify-new-patient',
+      patientId,
+    );
+    const claim = await claimNotificationEvent(
+      claimedEventId,
+      'notify-new-patient',
+    );
+    claimToken = claim.claimToken;
+    if (!claim.claimed) {
+      res.status(200).json({ ok: true, skipped: 'event_already_processed' });
+      return;
+    }
+    await markNotificationDispatchStarted(claimedEventId, claimToken);
+    dispatchCommitted = true;
+
     const byLocale = groupTokensByLocale(tokenRows);
     const results = [];
     if (byLocale.ar.length > 0) {
       results.push(
         await sendFcm(
           byLocale.ar,
-          buildPayload('ar', patientId, patientName, accountId),
+          buildPayload('ar', patientId, accountId),
         ),
       );
     }
@@ -129,11 +169,12 @@ module.exports = async (req, res) => {
       results.push(
         await sendFcm(
           byLocale.en,
-          buildPayload('en', patientId, patientName, accountId),
+          buildPayload('en', patientId, accountId),
         ),
       );
     }
     const result = mergeSendResults(results);
+    await completeNotificationEvent(claimedEventId, claimToken, result);
     logInfo('PATIENT_NOTIFY_SENT', ctx, {
       patient_id: patientId || '',
       doctor_uid: doctorUid,
@@ -144,11 +185,22 @@ module.exports = async (req, res) => {
     });
     res.status(200).json({ ok: true, ...result });
   } catch (e) {
+    if (claimedEventId && claimToken && !dispatchCommitted) {
+      await failNotificationEvent(
+        claimedEventId,
+        claimToken,
+        toErrorString(e),
+      );
+    }
     const statusCode = Number(e?.statusCode || 500);
     const logFn = statusCode >= 500 ? logError : logWarn;
     logFn(statusCode >= 500 ? 'PATIENT_NOTIFY_UNHANDLED' : 'PATIENT_NOTIFY_REJECTED', ctx, {
       error: toErrorString(e),
     });
-    res.status(statusCode).json({ ok: false, error: e?.message || 'internal_error' });
+    res.status(statusCode).json({
+      ok: false,
+      error: statusCode >= 500 ? 'internal_error' : 'request_rejected',
+      correlation_id: ctx.request_id,
+    });
   }
 };

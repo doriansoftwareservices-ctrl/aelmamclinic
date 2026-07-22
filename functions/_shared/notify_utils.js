@@ -4,15 +4,11 @@ const nowIso = () => new Date().toISOString();
 
 const toErrorString = (error) => {
   if (!error) return '';
-  if (typeof error === 'string') return error;
+  if (typeof error === 'string') return 'operation_failed';
   if (error instanceof Error) {
-    return error.stack ? `${error.message}\n${error.stack}` : error.message;
+    return `${error.code || error.name || 'operation_failed'}`;
   }
-  try {
-    return JSON.stringify(error);
-  } catch (_) {
-    return `${error}`;
-  }
+  return 'operation_failed';
 };
 
 const makeRequestContext = (req, eventType) => {
@@ -186,9 +182,168 @@ async function gqlRequest(query, variables = {}) {
   });
   const json = await res.json();
   if (json.errors) {
-    throw new Error(JSON.stringify(json.errors));
+    const error = new Error('graphql_request_failed');
+    error.code = 'graphql_request_failed';
+    throw error;
   }
   return json.data || {};
+}
+
+const resolveNotificationEventId = (payload, eventType, rowId) => {
+  const deliveredEventId =
+    payload?.id || payload?.event?.id || payload?.event_id || '';
+  const table = payload?.table || payload?.event?.table || {};
+  const operation = payload?.event?.op || payload?.op || 'INSERT';
+  const source = `${table.schema || 'public'}.${table.name || 'unknown'}`;
+  const stableIdentity = `${deliveredEventId || rowId || ''}`.trim();
+  if (!stableIdentity) {
+    const error = new Error('missing_notification_event_identity');
+    error.statusCode = 400;
+    throw error;
+  }
+  const seed = deliveredEventId
+    ? `hasura:${eventType}:${stableIdentity}`
+    : `fallback:${eventType}:${source}:${operation}:${stableIdentity}`;
+  return `nev1_${crypto.createHash('sha256').update(seed).digest('hex')}`;
+};
+
+const newClaimToken = () =>
+  typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : crypto.randomBytes(16).toString('hex');
+
+async function claimNotificationEvent(eventId, eventType) {
+  const claimToken = newClaimToken();
+  const data = await gqlRequest(
+    `mutation ClaimNotificationEvent(
+      $eventId: String!,
+      $eventType: String!,
+      $claimToken: String!
+    ) {
+      claim_notification_event(args: {
+        p_event_id: $eventId,
+        p_event_type: $eventType,
+        p_claim_token: $claimToken
+      }) {
+        event_id
+        claim_token
+      }
+    }`,
+    { eventId, eventType, claimToken },
+  );
+  const row = data?.claim_notification_event?.[0];
+  return {
+    claimed: row?.event_id === eventId && row?.claim_token === claimToken,
+    claimToken,
+  };
+}
+
+const notificationResultSummary = (result = {}) => ({
+  sent: Number(result.sent || 0),
+  failed: Number(result.failed || 0),
+  deactivated: Number(result.deactivated || 0),
+  ...(result.skipped ? { skipped: `${result.skipped}` } : {}),
+});
+
+async function markNotificationDispatchStarted(eventId, claimToken) {
+  const completedAt = nowIso();
+  const data = await gqlRequest(
+    `mutation MarkNotificationDispatchStarted(
+      $eventId: String!,
+      $claimToken: String!,
+      $completedAt: timestamptz!,
+      $summary: jsonb!
+    ) {
+      update_notification_event_deliveries(
+        where: {
+          event_id: {_eq: $eventId},
+          claim_token: {_eq: $claimToken},
+          status: {_eq: "processing"}
+        },
+        _set: {
+          status: "completed",
+          lease_until: null,
+          completed_at: $completedAt,
+          updated_at: $completedAt,
+          result_summary: $summary,
+          last_error_code: null
+        }
+      ) { affected_rows }
+    }`,
+    {
+      eventId,
+      claimToken,
+      completedAt,
+      summary: { dispatch_started: true },
+    },
+  );
+  if (data?.update_notification_event_deliveries?.affected_rows !== 1) {
+    throw new Error('notification_claim_lost');
+  }
+}
+
+async function completeNotificationEvent(eventId, claimToken, result) {
+  const updatedAt = nowIso();
+  await gqlRequest(
+    `mutation CompleteNotificationEvent(
+      $eventId: String!,
+      $claimToken: String!,
+      $updatedAt: timestamptz!,
+      $summary: jsonb!
+    ) {
+      update_notification_event_deliveries(
+        where: {
+          event_id: {_eq: $eventId},
+          claim_token: {_eq: $claimToken},
+          status: {_eq: "completed"}
+        },
+        _set: {updated_at: $updatedAt, result_summary: $summary}
+      ) { affected_rows }
+    }`,
+    {
+      eventId,
+      claimToken,
+      updatedAt,
+      summary: notificationResultSummary(result),
+    },
+  );
+}
+
+async function failNotificationEvent(eventId, claimToken, errorCode) {
+  if (!eventId || !claimToken) return;
+  const updatedAt = nowIso();
+  try {
+    await gqlRequest(
+      `mutation FailNotificationEvent(
+        $eventId: String!,
+        $claimToken: String!,
+        $updatedAt: timestamptz!,
+        $errorCode: String!
+      ) {
+        update_notification_event_deliveries(
+          where: {
+            event_id: {_eq: $eventId},
+            claim_token: {_eq: $claimToken},
+            status: {_eq: "processing"}
+          },
+          _set: {
+            status: "failed",
+            lease_until: null,
+            updated_at: $updatedAt,
+            last_error_code: $errorCode
+          }
+        ) { affected_rows }
+      }`,
+      {
+        eventId,
+        claimToken,
+        updatedAt,
+        errorCode: `${errorCode || 'notification_failed'}`.slice(0, 80),
+      },
+    );
+  } catch (_) {
+    // Preserve the original failure. The lease still makes the claim recoverable.
+  }
 }
 
 const INVALID_FCM_V1_ERRORS = new Set([
@@ -229,24 +384,14 @@ const mergeSendResults = (results) => {
     failed: 0,
     deactivated: 0,
   };
-  const errors = [];
   for (const result of results || []) {
     if (!result || typeof result !== 'object') continue;
     summary.sent += Number(result.sent || 0);
     summary.failed += Number(result.failed || 0);
     summary.deactivated += Number(result.deactivated || 0);
-    if (result.cleanupError) {
-      errors.push(`${result.cleanupError}`);
-    }
-    if (Array.isArray(result.errors)) {
-      errors.push(...result.errors.map((entry) => `${entry}`));
-    }
     if (result.skipped && !summary.skipped) {
       summary.skipped = result.skipped;
     }
-  }
-  if (errors.length > 0) {
-    summary.errors = errors;
   }
   return summary;
 };
@@ -595,4 +740,9 @@ module.exports = {
   logWarn,
   logError,
   toErrorString,
+  resolveNotificationEventId,
+  claimNotificationEvent,
+  markNotificationDispatchStarted,
+  completeNotificationEvent,
+  failNotificationEvent,
 };

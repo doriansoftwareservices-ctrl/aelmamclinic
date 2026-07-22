@@ -53,3 +53,4 @@
 - "!include public_superadmin_review_employee_seat_request.yaml"
 - "!include public_update_clinic_profile.yaml"
 - "!include public_user_cancel_subscription_request.yaml"
+- "!include public_claim_notification_event.yaml"

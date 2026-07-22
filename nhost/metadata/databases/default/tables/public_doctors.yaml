@@ -1,164 +1,46 @@
 table:
   name: doctors
   schema: public
-insert_permissions:
-  - role: me
-    permission:
-      check:
-        _exists:
-          _table:
-            name: account_users
-            schema: public
-          _where:
-            account_id:
-              _ceq: account_id
-            disabled:
-              _eq: false
-            user_uid:
-              _eq: X-Hasura-User-Id
-      columns: '*'
-  - role: superadmin
-    permission:
-      check: {}
-      columns: '*'
-  - role: user
-    permission:
-      check:
-        _exists:
-          _table:
-            name: account_users
-            schema: public
-          _where:
-            account_id:
-              _ceq: account_id
-            disabled:
-              _eq: false
-            user_uid:
-              _eq: X-Hasura-User-Id
+array_relationships:
+- name: active_feature_access
+  using:
+    manual_configuration:
+      column_mapping:
+        account_id: account_id
+      insertion_order: null
+      remote_table:
+        name: active_account_feature_access
+        schema: public
+- name: active_superadmin_access
+  using:
+    manual_configuration:
+      column_mapping:
+        account_id: account_id
+      insertion_order: null
+      remote_table:
+        name: active_superadmin_account_access
+        schema: public
 select_permissions:
-  - role: me
-    permission:
-      columns: '*'
-      filter:
-        _exists:
-          _table:
-            name: account_users
-            schema: public
-          _where:
-            account_id:
-              _ceq: account_id
-            disabled:
-              _eq: false
-            user_uid:
-              _eq: X-Hasura-User-Id
-  - role: superadmin
-    permission:
-      columns: '*'
-      filter: {}
-  - role: user
-    permission:
-      columns: '*'
-      filter:
-        _exists:
-          _table:
-            name: account_users
-            schema: public
-          _where:
-            account_id:
-              _ceq: account_id
-            disabled:
-              _eq: false
-            user_uid:
-              _eq: X-Hasura-User-Id
-update_permissions:
-  - role: me
-    permission:
-      columns: '*'
-      filter:
-        _exists:
-          _table:
-            name: account_users
-            schema: public
-          _where:
-            account_id:
-              _ceq: account_id
-            disabled:
-              _eq: false
-            user_uid:
-              _eq: X-Hasura-User-Id
-      check:
-        _exists:
-          _table:
-            name: account_users
-            schema: public
-          _where:
-            account_id:
-              _ceq: account_id
-            disabled:
-              _eq: false
-            user_uid:
-              _eq: X-Hasura-User-Id
-  - role: superadmin
-    permission:
-      columns: '*'
-      filter: {}
-      check: {}
-  - role: user
-    permission:
-      columns: '*'
-      filter:
-        _exists:
-          _table:
-            name: account_users
-            schema: public
-          _where:
-            account_id:
-              _ceq: account_id
-            disabled:
-              _eq: false
-            user_uid:
-              _eq: X-Hasura-User-Id
-      check:
-        _exists:
-          _table:
-            name: account_users
-            schema: public
-          _where:
-            account_id:
-              _ceq: account_id
-            disabled:
-              _eq: false
-            user_uid:
-              _eq: X-Hasura-User-Id
-delete_permissions:
-  - role: me
-    permission:
-      filter:
-        _exists:
-          _table:
-            name: account_users
-            schema: public
-          _where:
-            account_id:
-              _ceq: account_id
-            disabled:
-              _eq: false
-            user_uid:
-              _eq: X-Hasura-User-Id
-  - role: superadmin
-    permission:
-      filter: {}
-  - role: user
-    permission:
-      filter:
-        _exists:
-          _table:
-            name: account_users
-            schema: public
-          _where:
-            account_id:
-              _ceq: account_id
-            disabled:
-              _eq: false
-            user_uid:
-              _eq: X-Hasura-User-Id
+- role: me
+  permission: &domain_member_select
+    columns: '*'
+    filter:
+      _and:
+      - active_feature_access:
+          user_uid:
+            _eq: X-Hasura-User-Id
+          _or:
+          - allow_all:
+              _eq: true
+          - allowed_features:
+              _contains:
+              - employees
+- role: user
+  permission: *domain_member_select
+- role: superadmin
+  permission:
+    columns: '*'
+    filter:
+      active_superadmin_access:
+        user_uid:
+          _eq: X-Hasura-User-Id

@@ -11,23 +11,25 @@ const {
   logWarn,
   logError,
   toErrorString,
+  resolveNotificationEventId,
+  claimNotificationEvent,
+  markNotificationDispatchStarted,
+  completeNotificationEvent,
+  failNotificationEvent,
 } = require('../_shared/notify_utils');
 
 const buildPlanPayload = ({
   languageCode,
-  clinicName,
   planCode,
-  employeeEmail,
   isSeatRequest,
   accountId,
   requestId,
 }) => {
   const locale = normalizeLanguageCode(languageCode);
-  const planLabel = planCode ? ` (${planCode})` : '';
   let title = locale === 'en' ? 'New upgrade request' : 'طلب ترقية جديد';
   let body = locale === 'en'
-    ? `A new upgrade request was received${planLabel}`
-    : `تم استلام طلب ترقية جديد${planLabel}`;
+    ? 'A new upgrade request was received.'
+    : 'تم استلام طلب ترقية جديد.';
   let type = 'plan_request';
   let payload = 'admin:plan_request';
 
@@ -35,32 +37,20 @@ const buildPlanPayload = ({
     title = locale === 'en'
       ? 'Additional employee seat request'
       : 'طلب مقعد موظف إضافي';
-    body = employeeEmail
-      ? (locale === 'en'
-          ? `Additional employee request submitted: ${employeeEmail}`
-          : `تم إرسال طلب إضافة موظف: ${employeeEmail}`)
-      : (locale === 'en'
-          ? 'An additional employee request was submitted'
-          : 'تم إرسال طلب إضافة موظف إضافي');
+    body = locale === 'en'
+      ? 'An additional employee request was submitted'
+      : 'تم إرسال طلب إضافة موظف إضافي';
     type = 'seat_request';
     payload = 'admin:seat_request';
-  } else if (`${planCode}`.toLowerCase() === 'trial_month') {
+  } else if (`${planCode || ''}`.toLowerCase() === 'trial_month') {
     title = locale === 'en'
       ? 'Monthly trial activation request'
       : 'طلب تفعيل الخطة التجريبية الشهرية';
-    body = clinicName
-      ? (locale === 'en'
-          ? `A free monthly trial request was received from ${clinicName}`
-          : `تم استلام طلب تفعيل تجريبي شهري مجاني من ${clinicName}`)
-      : (locale === 'en'
-          ? 'A free monthly trial activation request was received'
-          : 'تم استلام طلب تفعيل تجريبي شهري مجاني');
+    body = locale === 'en'
+      ? 'A free monthly trial activation request was received.'
+      : 'تم استلام طلب تفعيل تجريبي شهري مجاني.';
     type = 'trial_plan_request';
     payload = 'admin:trial_plan_request';
-  } else if (clinicName) {
-    body = locale === 'en'
-      ? `An upgrade request was received from ${clinicName}${planLabel}`
-      : `تم استلام طلب ترقية من ${clinicName}${planLabel}`;
   }
 
   return {
@@ -78,6 +68,9 @@ const buildPlanPayload = ({
 
 module.exports = async (req, res) => {
   const ctx = makeRequestContext(req, 'notify-plan-request');
+  let claimedEventId = null;
+  let claimToken = null;
+  let dispatchCommitted = false;
   try {
     if (req.method !== 'POST') {
       res.status(405).json({ ok: false, error: 'method_not_allowed' });
@@ -91,10 +84,8 @@ module.exports = async (req, res) => {
     const requestId = row.id || null;
     const accountId = row.account_id || null;
     const planCode = row.plan_code || row.planCode || '';
-    const clinicName = row.clinic_name || row.clinicName || '';
     const seatKind = row.seat_kind || row.seatKind || '';
     const seatStatus = row.status || '';
-    const employeeEmail = row.employee_email || row.employeeEmail || '';
     logInfo('PLAN_NOTIFY_REQUEST_RECEIVED', ctx, {
       request_id: requestId || '',
       account_id: accountId || '',
@@ -103,10 +94,22 @@ module.exports = async (req, res) => {
       status: seatStatus || '',
     });
 
-    const admins = await gqlRequest(`query { super_admins { user_uid } }`, {});
-    const uids = (admins?.super_admins || [])
+    const admins = await gqlRequest(
+      `query { super_admins(where: {disabled: {_eq: false}}) { user_uid } }`,
+      {},
+    );
+    const candidateUids = (admins?.super_admins || [])
       .map((entry) => entry.user_uid)
       .filter(Boolean);
+    const activeUsers = candidateUids.length === 0
+      ? { users: [] }
+      : await gqlRequest(
+          `query ActiveAdmins($uids: [uuid!]!) {
+            users(where: {id: {_in: $uids}, disabled: {_eq: false}}) { id }
+          }`,
+          { uids: candidateUids },
+        );
+    const uids = (activeUsers?.users || []).map((entry) => entry.id).filter(Boolean);
     if (uids.length === 0) {
       logInfo('PLAN_NOTIFY_SKIPPED', ctx, { reason: 'no_admins' });
       res.status(200).json({ ok: true, skipped: 'no_admins' });
@@ -158,6 +161,23 @@ module.exports = async (req, res) => {
       }
     }
 
+    claimedEventId = resolveNotificationEventId(
+      payload,
+      'notify-plan-request',
+      requestId,
+    );
+    const claim = await claimNotificationEvent(
+      claimedEventId,
+      'notify-plan-request',
+    );
+    claimToken = claim.claimToken;
+    if (!claim.claimed) {
+      res.status(200).json({ ok: true, skipped: 'event_already_processed' });
+      return;
+    }
+    await markNotificationDispatchStarted(claimedEventId, claimToken);
+    dispatchCommitted = true;
+
     const byLocale = groupTokensByLocale(tokenRows);
     const results = [];
     const isSeatRequest =
@@ -165,9 +185,7 @@ module.exports = async (req, res) => {
     if (byLocale.ar.length > 0) {
       results.push(await sendFcm(byLocale.ar, buildPlanPayload({
         languageCode: 'ar',
-        clinicName,
         planCode,
-        employeeEmail,
         isSeatRequest,
         accountId,
         requestId,
@@ -176,15 +194,14 @@ module.exports = async (req, res) => {
     if (byLocale.en.length > 0) {
       results.push(await sendFcm(byLocale.en, buildPlanPayload({
         languageCode: 'en',
-        clinicName,
         planCode,
-        employeeEmail,
         isSeatRequest,
         accountId,
         requestId,
       })));
     }
     const result = mergeSendResults(results);
+    await completeNotificationEvent(claimedEventId, claimToken, result);
     logInfo('PLAN_NOTIFY_SENT', ctx, {
       request_id: requestId || '',
       account_id: accountId || '',
@@ -196,11 +213,22 @@ module.exports = async (req, res) => {
 
     res.status(200).json({ ok: true, ...result });
   } catch (error) {
+    if (claimedEventId && claimToken && !dispatchCommitted) {
+      await failNotificationEvent(
+        claimedEventId,
+        claimToken,
+        toErrorString(error),
+      );
+    }
     const statusCode = Number(error?.statusCode || 500);
     const logFn = statusCode >= 500 ? logError : logWarn;
     logFn(statusCode >= 500 ? 'PLAN_NOTIFY_UNHANDLED' : 'PLAN_NOTIFY_REJECTED', ctx, {
       error: toErrorString(error),
     });
-    res.status(statusCode).json({ ok: false, error: error?.message || 'internal_error' });
+    res.status(statusCode).json({
+      ok: false,
+      error: statusCode >= 500 ? 'internal_error' : 'request_rejected',
+      correlation_id: ctx.request_id,
+    });
   }
 };
