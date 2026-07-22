@@ -6,6 +6,7 @@ const {
   resolveUserIdFromToken,
   extractBearer,
   getChatAccess,
+  deleteChatFileOwnership,
   runSql,
 } = require('../_shared/storage_utils');
 
@@ -27,20 +28,63 @@ async function findFile(body) {
   const path = `${body.path || body.name || ''}`.trim();
   let predicate;
   if (uuidPattern.test(fileId)) {
-    predicate = `id = '${escapeLiteral(fileId)}'::uuid`;
-  } else if (bucket && path) {
-    predicate = `bucket_id = '${escapeLiteral(bucket)}' and name = '${escapeLiteral(path)}'`;
+    predicate = `sf.id = '${escapeLiteral(fileId)}'::uuid`;
+  } else if (
+    ['chat-images', 'chat-attachments'].includes(bucket) &&
+    path
+  ) {
+    predicate = `sf.bucket_id = '${escapeLiteral(bucket)}' and sf.name = '${escapeLiteral(path)}'`;
   } else {
     return null;
   }
+
   const json = await runSql(
-    `select id::text, bucket_id, name, account_id::text,
-            conversation_id::text, attachment_message_id::text,
-            uploaded_by_user_id::text, security_state
-       from storage.files
-      where ${predicate}
-        and bucket_id in ('chat-images', 'chat-attachments')
-      limit 1;`,
+    `with registered as (
+       select sf.id::text,
+              sf.bucket_id,
+              sf.name,
+              o.account_id::text,
+              o.conversation_id::text,
+              o.message_id::text,
+              coalesce(o.uploaded_by_user_id, sf.uploaded_by_user_id)::text,
+              o.security_state
+         from storage.files sf
+         join public.chat_attachment_file_ownership o
+           on (o.file_id is not null and o.file_id = sf.id)
+           or (o.bucket_id = sf.bucket_id and o.file_name = sf.name)
+        where ${predicate}
+          and sf.bucket_id in ('chat-images', 'chat-attachments')
+          and o.security_state = 'active'
+       limit 1
+     ), legacy as (
+       select sf.id::text,
+              sf.bucket_id,
+              sf.name,
+              c.account_id::text,
+              m.conversation_id::text,
+              a.message_id::text,
+              coalesce(sf.uploaded_by_user_id, m.sender_uid)::text,
+              'active'::text
+         from storage.files sf
+         join public.chat_attachments a
+           on a.bucket = sf.bucket_id
+          and (a.path = sf.id::text or a.path = sf.name)
+         join public.chat_messages m on m.id = a.message_id
+         join public.chat_conversations c on c.id = m.conversation_id
+        where ${predicate}
+          and sf.bucket_id in ('chat-images', 'chat-attachments')
+          and c.account_id is not null
+          and (a.account_id is null or a.account_id = c.account_id)
+          and coalesce(a.is_deleted, false) = false
+          and coalesce(m.is_deleted, false) = false
+          and coalesce(m.deleted, false) = false
+          and not exists (select 1 from registered)
+       limit 1
+     )
+     select * from registered
+     union all
+     select * from legacy
+     limit 1;`,
     true,
   );
   const row = Array.isArray(json?.result) ? json.result[1] : null;
@@ -139,6 +183,12 @@ module.exports = async (req, res) => {
       if (!response.ok) {
         return fail(res, 502, 'storage_delete_failed', correlationId);
       }
+      await deleteChatFileOwnership(file.id).catch((error) => {
+        console.warn('chat attachment ownership cleanup failed', {
+          correlation_id: correlationId,
+          error: `${error?.code || error?.name || 'internal'}`,
+        });
+      });
       return res.status(200).json({ ok: true, correlation_id: correlationId });
     }
 

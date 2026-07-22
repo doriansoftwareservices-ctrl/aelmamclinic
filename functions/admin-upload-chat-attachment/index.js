@@ -318,6 +318,8 @@ module.exports = async (req, res) => {
     }
     const ownershipLinked = await updateChatFileOwnership({
       fileId,
+      bucketId,
+      fileName: `${uploaded?.name || meta.name}`.trim(),
       accountId: access.accountId,
       conversationId,
       messageId,

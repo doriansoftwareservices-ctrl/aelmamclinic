@@ -9,7 +9,7 @@ const {
   completeNotificationEvent,
   markNotificationDispatchStarted,
   resolveNotificationEventId,
-} = require('../_shared/notify_utils');
+} = require('../functions/_shared/notify_utils');
 
 test('notification event identity is stable for Hasura retries', () => {
   const payload = {

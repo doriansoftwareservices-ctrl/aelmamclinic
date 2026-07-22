@@ -319,29 +319,52 @@ async function messageBelongsToConversation(messageId, conversationId) {
 
 async function updateChatFileOwnership({
   fileId,
+  bucketId,
+  fileName,
   accountId,
   conversationId,
   messageId,
   uploadedByUserId,
 }) {
-  const file = escapeLiteral(fileId);
-  const account = escapeLiteral(accountId);
-  const conversation = escapeLiteral(conversationId);
-  const message = escapeLiteral(messageId);
-  const uploader = escapeLiteral(uploadedByUserId);
+  const uuidPattern =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  const ids = [fileId, accountId, conversationId, messageId, uploadedByUserId];
+  if (!ids.every((value) => uuidPattern.test(`${value || ''}`.trim()))) {
+    return false;
+  }
+  const bucket = `${bucketId || ''}`.trim();
+  const name = `${fileName || ''}`.trim();
+  if (!['chat-images', 'chat-attachments'].includes(bucket) || !name) {
+    return false;
+  }
+
   const json = await runSql(
-    `update storage.files
-        set account_id = '${account}'::uuid,
-            conversation_id = '${conversation}'::uuid,
-            attachment_message_id = '${message}'::uuid,
-            uploaded_by_user_id = '${uploader}'::uuid,
-            security_state = 'active'
-      where id = '${file}'::uuid
-        and bucket_id in ('chat-images', 'chat-attachments')
-      returning id::text;`,
+    `select public.claim_chat_attachment_file(
+       '${escapeLiteral(fileId)}'::uuid,
+       '${escapeLiteral(bucket)}'::text,
+       '${escapeLiteral(name)}'::text,
+       '${escapeLiteral(accountId)}'::uuid,
+       '${escapeLiteral(conversationId)}'::uuid,
+       '${escapeLiteral(messageId)}'::uuid,
+       '${escapeLiteral(uploadedByUserId)}'::uuid
+     )::text as status;`,
     false,
   );
-  return !!(Array.isArray(json?.result) ? json.result[1] : null);
+  const row = Array.isArray(json?.result) ? json.result[1] : null;
+  return !!row && row[0] === 'linked';
+}
+
+async function deleteChatFileOwnership(fileId) {
+  const uuidPattern =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  const file = `${fileId || ''}`.trim();
+  if (!uuidPattern.test(file)) return false;
+  await runSql(
+    `delete from public.chat_attachment_file_ownership
+      where file_id = '${escapeLiteral(file)}'::uuid;`,
+    false,
+  );
+  return true;
 }
 
 module.exports = {
@@ -359,5 +382,6 @@ module.exports = {
   messageBelongsToConversation,
   ensureBucketExists,
   updateChatFileOwnership,
+  deleteChatFileOwnership,
   runSql,
 };

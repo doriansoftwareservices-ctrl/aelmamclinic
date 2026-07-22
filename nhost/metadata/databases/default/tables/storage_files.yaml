@@ -3,14 +3,8 @@ table:
   schema: storage
 configuration:
   column_config:
-    account_id:
-      custom_name: accountId
-    attachment_message_id:
-      custom_name: attachmentMessageId
     bucket_id:
       custom_name: bucketId
-    conversation_id:
-      custom_name: conversationId
     created_at:
       custom_name: createdAt
     etag:
@@ -25,8 +19,6 @@ configuration:
       custom_name: mimeType
     name:
       custom_name: name
-    security_state:
-      custom_name: securityState
     size:
       custom_name: size
     updated_at:
