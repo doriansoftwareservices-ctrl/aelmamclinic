@@ -290,8 +290,6 @@ const TABLES = {
   },
 };
 
-const FULL_SYNC_ROLES = new Set(['owner', 'admin']);
-
 // يجب أن يطابق هذا الجدول مفاتيح lib/core/features.dart حتى لا تصبح الواجهة
 // أكثر صرامة أو أكثر تساهلًا من الخادم. الدالة تعمل بـ admin secret، لذلك
 // يجب تطبيق صلاحيات الميزة و CRUD هنا وليس في Flutter فقط.
@@ -589,7 +587,7 @@ async function accessFor(userId, accountId) {
   };
 }
 
-function assertRoleAllowed(access, table, tableConfig, operationType) {
+function assertRoleAllowed(access, table, tableConfig, operationType, actualAction) {
   if (access.userDisabled) {
     throw deny(403, 'user_disabled', 'User is disabled');
   }
@@ -613,19 +611,19 @@ function assertRoleAllowed(access, table, tableConfig, operationType) {
     throw deny(403, 'insufficient_sync_role', 'Operation is not allowed for this role');
   }
 
-  const action = syncCrudAction(operationType);
-  const hasFullCrudRole = FULL_SYNC_ROLES.has(access.role);
-  if (action === 'create' && !hasFullCrudRole && !access.canCreate) {
+  const action = actualAction || syncCrudAction(operationType);
+
+  if (action === 'create' && !access.canCreate) {
     throw deny(403, 'sync_create_denied', 'You do not have permission to create this data');
   }
-  if (action === 'update' && !hasFullCrudRole && !access.canUpdate) {
+  if (action === 'update' && !access.canUpdate) {
     throw deny(403, 'sync_update_denied', 'You do not have permission to update this data');
   }
-  if (action === 'delete' && !hasFullCrudRole && !access.canDelete) {
+  if (action === 'delete' && !access.canDelete) {
     throw deny(403, 'sync_delete_denied', 'You do not have permission to delete this data');
   }
 
-  const requiredFeature = requiredFeatureFor(table, operationType);
+  const requiredFeature = requiredFeatureFor(table, action);
   if (
     requiredFeature &&
     !access.allowAll &&
@@ -695,7 +693,7 @@ function deterministicUuid(value) {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-async function resolveRemoteId({
+async function resolveRemoteIdentity({
   table,
   accountId,
   deviceId,
@@ -704,12 +702,13 @@ async function resolveRemoteId({
   clientMutationId,
 }) {
   const candidate = `${requestedId || ''}`.trim();
-  if (/^[0-9a-f-]{36}$/i.test(candidate)) return candidate;
+  const hasCandidate = /^[0-9a-f-]{36}$/i.test(candidate);
   const query = `
     query ExistingSyncIdentity(
       $accountId: uuid!,
       $deviceId: String!,
       $localId: bigint!
+      ${hasCandidate ? ', $requestedId: uuid!' : ''}
     ) {
       rows: ${table}(
         where: {
@@ -719,11 +718,32 @@ async function resolveRemoteId({
         },
         limit: 1
       ) { id }
+      ${hasCandidate ? `requested: ${table}(
+        where: {id: {_eq: $requestedId}}, limit: 1
+      ) { id account_id }` : ''}
     }
   `;
-  const data = await gqlRequest(query, { accountId, deviceId, localId });
+  const data = await gqlRequest(query, {
+    accountId, deviceId, localId,
+    ...(hasCandidate ? {requestedId: candidate} : {}),
+  });
   const existing = Array.isArray(data.rows) ? data.rows[0]?.id : null;
-  return existing || deterministicUuid(`${accountId}:${table}:${clientMutationId}`);
+  const requested = hasCandidate && Array.isArray(data.requested)
+    ? data.requested[0] : null;
+  if (requested && requested.account_id !== accountId) {
+    throw deny(403, 'foreign_sync_identity', 'Record belongs to another account');
+  }
+  if (hasCandidate && requested && requested.id !== existing) {
+    throw deny(409, 'sync_identity_mismatch', 'Record identity does not match its origin');
+  }
+  if (hasCandidate && existing && existing !== candidate) {
+    throw deny(409, 'sync_identity_mismatch', 'Record identity does not match its origin');
+  }
+  return {
+    id: existing || (hasCandidate ? candidate
+      : deterministicUuid(`${accountId}:${table}:${clientMutationId}`)),
+    exists: !!existing,
+  };
 }
 
 async function recoverCommittedMutation({
@@ -850,6 +870,7 @@ module.exports = async function handler(req, res) {
     // for this table/operation. client_mutation_id values are opaque, but cached
     // result_json may contain remote ids and sync event ids.
     const access = await accessFor(userId, accountId);
+    // Check membership before querying any row with the admin credential.
     assertRoleAllowed(access, table, tableConfig, operationType);
 
     const cached = await fetchCachedMutation(clientMutationId, accountId);
@@ -885,7 +906,7 @@ module.exports = async function handler(req, res) {
       userId,
       deleteOperation: isDeleteOperation(operationType),
     });
-    object.id = await resolveRemoteId({
+    const identity = await resolveRemoteIdentity({
       table,
       accountId,
       deviceId,
@@ -893,6 +914,13 @@ module.exports = async function handler(req, res) {
       requestedId: object.id,
       clientMutationId,
     });
+    object.id = identity.id;
+    const action = isDeleteOperation(operationType)
+      ? 'delete' : (identity.exists ? 'update' : 'create');
+    if (action === 'delete' && !identity.exists) {
+      throw deny(409, 'sync_identity_missing', 'Cannot delete a missing record');
+    }
+    assertRoleAllowed(access, table, tableConfig, operationType, action);
     const now = new Date().toISOString();
     const eventId = crypto.randomUUID();
     const mutationRowId = crypto.randomUUID();

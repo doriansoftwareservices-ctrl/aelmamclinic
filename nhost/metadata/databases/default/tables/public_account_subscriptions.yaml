@@ -27,7 +27,7 @@ select_permissions:
             schema: public
           _where:
             account_id:
-              _ceq: account_id
+              _ceq: ['$', account_id]
             user_uid:
               _eq: X-Hasura-User-Id
   - role: user
@@ -50,7 +50,7 @@ select_permissions:
             schema: public
           _where:
             account_id:
-              _ceq: account_id
+              _ceq: ['$', account_id]
             user_uid:
               _eq: X-Hasura-User-Id
   - role: superadmin

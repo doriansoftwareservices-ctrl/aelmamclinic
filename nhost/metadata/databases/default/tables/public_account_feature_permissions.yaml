@@ -16,7 +16,7 @@ insert_permissions:
                 schema: public
               _where:
                 account_id:
-                  _ceq: account_id
+                  _ceq: ['$', account_id]
                 disabled:
                   _eq: false
                 role:
@@ -31,11 +31,11 @@ insert_permissions:
                 schema: public
               _where:
                 account_id:
-                  _ceq: account_id
+                  _ceq: ['$', account_id]
                 disabled:
                   _eq: false
                 user_uid:
-                  _ceq: user_uid
+                  _ceq: ['$', user_uid]
       columns: '*'
 select_permissions:
   - role: me
@@ -48,7 +48,7 @@ select_permissions:
             schema: public
           _where:
             account_id:
-              _ceq: account_id
+              _ceq: ['$', account_id]
             disabled:
               _eq: false
             user_uid:
@@ -67,7 +67,7 @@ select_permissions:
             schema: public
           _where:
             account_id:
-              _ceq: account_id
+              _ceq: ['$', account_id]
             disabled:
               _eq: false
             user_uid:
@@ -89,7 +89,7 @@ update_permissions:
                 schema: public
               _where:
                 account_id:
-                  _ceq: account_id
+                  _ceq: ['$', account_id]
                 disabled:
                   _eq: false
                 role:
@@ -104,11 +104,11 @@ update_permissions:
                 schema: public
               _where:
                 account_id:
-                  _ceq: account_id
+                  _ceq: ['$', account_id]
                 disabled:
                   _eq: false
                 user_uid:
-                  _ceq: user_uid
+                  _ceq: ['$', user_uid]
       check:
         _and:
           - _exists:
@@ -117,7 +117,7 @@ update_permissions:
                 schema: public
               _where:
                 account_id:
-                  _ceq: account_id
+                  _ceq: ['$', account_id]
                 disabled:
                   _eq: false
                 role:
@@ -132,11 +132,11 @@ update_permissions:
                 schema: public
               _where:
                 account_id:
-                  _ceq: account_id
+                  _ceq: ['$', account_id]
                 disabled:
                   _eq: false
                 user_uid:
-                  _ceq: user_uid
+                  _ceq: ['$', user_uid]
 delete_permissions:
   - role: superadmin
     permission:
@@ -151,7 +151,7 @@ delete_permissions:
                 schema: public
               _where:
                 account_id:
-                  _ceq: account_id
+                  _ceq: ['$', account_id]
                 disabled:
                   _eq: false
                 role:
@@ -166,8 +166,8 @@ delete_permissions:
                 schema: public
               _where:
                 account_id:
-                  _ceq: account_id
+                  _ceq: ['$', account_id]
                 disabled:
                   _eq: false
                 user_uid:
-                  _ceq: user_uid
+                  _ceq: ['$', user_uid]

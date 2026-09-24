@@ -12,7 +12,7 @@ select_permissions:
             schema: public
           _where:
             account_id:
-              _ceq: account_id
+              _ceq: ['$', account_id]
             disabled:
               _eq: false
             user_uid:
@@ -27,7 +27,7 @@ select_permissions:
             schema: public
           _where:
             account_id:
-              _ceq: account_id
+              _ceq: ['$', account_id]
             disabled:
               _eq: false
             user_uid:
@@ -42,7 +42,7 @@ select_permissions:
             schema: public
           _where:
             account_id:
-              _ceq: account_id
+              _ceq: ['$', account_id]
             disabled:
               _eq: false
             user_uid:
@@ -61,7 +61,7 @@ select_permissions:
             schema: public
           _where:
             account_id:
-              _ceq: account_id
+              _ceq: ['$', account_id]
             disabled:
               _eq: false
             user_uid:

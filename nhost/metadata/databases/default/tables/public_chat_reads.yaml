@@ -11,7 +11,7 @@ insert_permissions:
             schema: public
           _where:
             conversation_id:
-              _ceq: conversation_id
+              _ceq: ['$', conversation_id]
             user_uid:
               _eq: X-Hasura-User-Id
         user_uid:
@@ -26,7 +26,7 @@ insert_permissions:
             schema: public
           _where:
             conversation_id:
-              _ceq: conversation_id
+              _ceq: ['$', conversation_id]
             user_uid:
               _eq: X-Hasura-User-Id
         user_uid:
@@ -41,7 +41,7 @@ insert_permissions:
             schema: public
           _where:
             conversation_id:
-              _ceq: conversation_id
+              _ceq: ['$', conversation_id]
             user_uid:
               _eq: X-Hasura-User-Id
         user_uid:
@@ -60,7 +60,7 @@ insert_permissions:
             schema: public
           _where:
             conversation_id:
-              _ceq: conversation_id
+              _ceq: ['$', conversation_id]
             user_uid:
               _eq: X-Hasura-User-Id
         user_uid:
@@ -75,7 +75,7 @@ insert_permissions:
             schema: public
           _where:
             conversation_id:
-              _ceq: conversation_id
+              _ceq: ['$', conversation_id]
             user_uid:
               _eq: X-Hasura-User-Id
         user_uid:
@@ -92,7 +92,7 @@ select_permissions:
             schema: public
           _where:
             conversation_id:
-              _ceq: conversation_id
+              _ceq: ['$', conversation_id]
             user_uid:
               _eq: X-Hasura-User-Id
   - role: me
@@ -105,7 +105,7 @@ select_permissions:
             schema: public
           _where:
             conversation_id:
-              _ceq: conversation_id
+              _ceq: ['$', conversation_id]
             user_uid:
               _eq: X-Hasura-User-Id
   - role: owner
@@ -118,7 +118,7 @@ select_permissions:
             schema: public
           _where:
             conversation_id:
-              _ceq: conversation_id
+              _ceq: ['$', conversation_id]
             user_uid:
               _eq: X-Hasura-User-Id
   - role: superadmin
@@ -135,7 +135,7 @@ select_permissions:
             schema: public
           _where:
             conversation_id:
-              _ceq: conversation_id
+              _ceq: ['$', conversation_id]
             user_uid:
               _eq: X-Hasura-User-Id
   - role: user
@@ -148,7 +148,7 @@ select_permissions:
             schema: public
           _where:
             conversation_id:
-              _ceq: conversation_id
+              _ceq: ['$', conversation_id]
             user_uid:
               _eq: X-Hasura-User-Id
 update_permissions:
