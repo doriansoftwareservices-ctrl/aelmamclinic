@@ -25,7 +25,9 @@ function loadHandler(sharedExports) {
 }
 
 async function attempt({membership = null, body = profile, authenticated = true,
-  bearer = true, failCreate = false, failProfile = false} = {}) {
+  bearer = true, failCreate = false, failProfile = false,
+  membershipDisabled = false,
+  profileResult = {ok: 't', error: 'NULL', account_id: accountId}} = {}) {
   const writes = [];
   const logs = [];
   const handler = loadHandler({
@@ -34,7 +36,7 @@ async function attempt({membership = null, body = profile, authenticated = true,
     resolveUserIdFromToken: async () => authenticated ? userId : null,
     runSql: async (sql, readOnly) => {
       if (readOnly) return {result: [['account_id', 'role', 'disabled'],
-        ...(membership ? [[accountId, membership, 'f']] : [])]};
+        ...(membership ? [[accountId, membership, membershipDisabled ? 't' : 'f']] : [])]};
       writes.push(sql);
       // Model the PostgreSQL session contract that rejected the deployed
       // function. Only portable custom GUC names are accepted; request identity
@@ -54,6 +56,10 @@ async function attempt({membership = null, body = profile, authenticated = true,
       if ((failCreate && sql.includes('public.self_create_account(')) ||
           (failProfile && sql.includes('public.update_clinic_profile('))) {
         throw Error('run_sql failed: PRIVATE_SQL_CLINIC_CONTACT_AND_ADMIN_DETAIL');
+      }
+      if (sql.includes('public.update_clinic_profile(')) {
+        return {result: [['ok', 'error', 'account_id'],
+          ...(profileResult ? [[profileResult.ok, profileResult.error, profileResult.account_id]] : [])]};
       }
       return {result: [['id'], [accountId]]};
     },
@@ -131,4 +137,63 @@ test('profile failure preserves the created account and redacts upstream SQL det
   assert.equal(writes.length, 2);
   assert.equal(logs.length, 1);
   assert.doesNotMatch(JSON.stringify([response.body, logs]), /PRIVATE_SQL|run_sql failed|Synthetic clinic/);
+});
+
+test('disabled owner membership denies the function before a profile write', async () => {
+  const {response, writes} = await attempt({membership: 'owner', membershipDisabled: true});
+  assert.equal(response.statusCode, 403);
+  assert.equal(response.body.ok, false);
+  assert.equal(response.body.error_code, 'user_disabled');
+  assert.equal(writes.length, 0);
+});
+
+test('existing owner RPC business rejection cannot be reported as a profile success', async () => {
+  const {response, writes, logs} = await attempt({membership: 'owner',
+    profileResult: {ok: 'f', error: 'PRIVATE_PROFILE_REJECTION', account_id: accountId}});
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.created, false);
+  assert.equal(response.body.account_id, accountId);
+  assert.equal(response.body.profile_updated, false);
+  assert.equal(response.body.profile_update_error, 'clinic_profile_update_failed');
+  assert.equal(writes.length, 1);
+  assert.doesNotMatch(JSON.stringify([response.body, logs]), /PRIVATE_PROFILE_REJECTION/);
+});
+
+test('profile RPC business rejection preserves a newly created owner account', async () => {
+  const {response, writes} = await attempt({
+    profileResult: {ok: 'f', error: 'account_not_found', account_id: accountId}});
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.ok, true);
+  assert.equal(response.body.created, true);
+  assert.equal(response.body.account_id, accountId);
+  assert.equal(response.body.profile_updated, false);
+  assert.equal(writes.length, 2);
+});
+
+test('missing profile RPC result is unconfirmed and preserves the existing account', async () => {
+  const {response} = await attempt({membership: 'owner', profileResult: null});
+  assert.equal(response.body.account_id, accountId);
+  assert.equal(response.body.profile_updated, false);
+  assert.equal(response.body.profile_update_error, 'clinic_profile_update_failed');
+});
+
+test('profile RPC acknowledgement must refer to the authenticated membership account', async () => {
+  const {response} = await attempt({membership: 'owner',
+    profileResult: {ok: 't', error: 'NULL', account_id: '99999999-9999-4999-8999-999999999999'}});
+  assert.equal(response.body.account_id, accountId);
+  assert.equal(response.body.profile_updated, false);
+});
+
+test('unknown profile RPC success values cannot confirm an update', async () => {
+  const {response} = await attempt({membership: 'owner',
+    profileResult: {ok: 'unknown-success', error: 'NULL', account_id: accountId}});
+  assert.equal(response.body.profile_updated, false);
+});
+
+test('active admin membership retains its existing profile update authority', async () => {
+  const {response, writes} = await attempt({membership: 'admin'});
+  assert.equal(response.body.created, false);
+  assert.equal(response.body.role, 'admin');
+  assert.equal(response.body.profile_updated, true);
+  assert.equal(writes.length, 1);
 });

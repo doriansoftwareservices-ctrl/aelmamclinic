@@ -157,6 +157,15 @@ module.exports = async function handler(req, res) {
     let created = false;
 
     if (membership?.account_id) {
+      if (membership.disabled === true) {
+        res.status(403).json({
+          ok: false,
+          error: 'user_disabled',
+          error_code: 'user_disabled',
+          correlation_id: correlationId,
+        });
+        return;
+      }
       const role = `${membership.role ?? ''}`.trim().toLowerCase();
       if (role && role !== 'owner' && role !== 'admin') {
         res.status(409).json({
@@ -193,7 +202,11 @@ module.exports = async function handler(req, res) {
       profileUpdateError = 'complete clinic profile is required';
     } else {
       try {
-        await updateClinicProfileAsUser(userId, profile);
+        const profileResult = await updateClinicProfileAsUser(userId, profile);
+        if (profileResult?.ok !== true ||
+            profileResult.account_id !== membership?.account_id) {
+          throw new Error('clinic_profile_result_unconfirmed');
+        }
         profileUpdated = true;
       } catch (profileErr) {
         logFailure('update_clinic_profile', profileErr);
