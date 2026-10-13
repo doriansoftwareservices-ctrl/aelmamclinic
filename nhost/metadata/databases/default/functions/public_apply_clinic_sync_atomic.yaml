@@ -1,0 +1,7 @@
+function:
+  name: apply_clinic_sync_atomic
+  schema: public
+configuration:
+  exposed_as: mutation
+permissions: []
+# Admin-only. Ordinary JWT roles have no permission to select the actor or call this RPC.

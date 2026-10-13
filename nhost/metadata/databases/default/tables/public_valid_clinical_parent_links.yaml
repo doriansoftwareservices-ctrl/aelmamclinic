@@ -1,0 +1,3 @@
+table:
+  name: valid_clinical_parent_links
+  schema: public

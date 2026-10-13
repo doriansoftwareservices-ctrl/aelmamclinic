@@ -2,8 +2,15 @@ table:
   name: v_super_admin_tabs
   schema: public
 select_permissions:
-  - role: superadmin
-    permission:
-      columns:
-        - allowed_tabs
-      filter: {}
+- role: superadmin
+  permission:
+    columns:
+    - allowed_tabs
+    filter:
+      _exists:
+        _table:
+          name: active_superadmin_identity
+          schema: public
+        _where:
+          user_uid:
+            _eq: X-Hasura-User-Id

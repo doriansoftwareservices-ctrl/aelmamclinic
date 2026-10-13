@@ -2,11 +2,18 @@ table:
   name: v_admin_system_health
   schema: public
 select_permissions:
-  - role: superadmin
-    permission:
-      columns:
-        - storage_files
-        - chat_attachments
-        - pending_subscriptions
-        - server_time
-      filter: {}
+- role: superadmin
+  permission:
+    columns:
+    - storage_files
+    - chat_attachments
+    - pending_subscriptions
+    - server_time
+    filter:
+      _exists:
+        _table:
+          name: active_superadmin_identity
+          schema: public
+        _where:
+          user_uid:
+            _eq: X-Hasura-User-Id

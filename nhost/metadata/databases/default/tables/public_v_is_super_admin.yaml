@@ -2,18 +2,25 @@ table:
   name: v_is_super_admin
   schema: public
 select_permissions:
-  - role: me
-    permission:
-      columns:
-        - is_super_admin
-      filter: {}
-  - role: superadmin
-    permission:
-      columns:
-        - is_super_admin
-      filter: {}
-  - role: user
-    permission:
-      columns:
-        - is_super_admin
-      filter: {}
+- role: me
+  permission:
+    columns:
+    - is_super_admin
+    filter: {}
+- role: superadmin
+  permission:
+    columns:
+    - is_super_admin
+    filter:
+      _exists:
+        _table:
+          name: active_superadmin_identity
+          schema: public
+        _where:
+          user_uid:
+            _eq: X-Hasura-User-Id
+- role: user
+  permission:
+    columns:
+    - is_super_admin
+    filter: {}

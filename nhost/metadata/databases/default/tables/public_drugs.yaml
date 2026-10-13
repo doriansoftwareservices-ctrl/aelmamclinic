@@ -22,7 +22,7 @@ array_relationships:
         schema: public
 select_permissions:
 - role: me
-  permission: &domain_member_select
+  permission:
     columns: '*'
     filter:
       _and:
@@ -36,11 +36,31 @@ select_permissions:
               _contains:
               - prescriptions
 - role: user
-  permission: *domain_member_select
+  permission:
+    columns: '*'
+    filter:
+      _and:
+      - active_feature_access:
+          user_uid:
+            _eq: X-Hasura-User-Id
+          _or:
+          - allow_all:
+              _eq: true
+          - allowed_features:
+              _contains:
+              - prescriptions
 - role: superadmin
   permission:
     columns: '*'
     filter:
-      active_superadmin_access:
-        user_uid:
-          _eq: X-Hasura-User-Id
+      _and:
+      - active_superadmin_access:
+          user_uid:
+            _eq: X-Hasura-User-Id
+      - _exists:
+          _table:
+            name: active_superadmin_identity
+            schema: public
+          _where:
+            user_uid:
+              _eq: X-Hasura-User-Id

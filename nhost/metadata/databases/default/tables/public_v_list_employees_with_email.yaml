@@ -2,39 +2,46 @@ table:
   name: v_list_employees_with_email
   schema: public
 select_permissions:
-  - role: me
-    permission:
-      columns:
-        - user_uid
-        - email
-        - role
-        - disabled
-        - created_at
-        - employee_id
-        - doctor_id
-        - chat_code
-      filter: {}
-  - role: superadmin
-    permission:
-      columns:
-        - user_uid
-        - email
-        - role
-        - disabled
-        - created_at
-        - employee_id
-        - doctor_id
-        - chat_code
-      filter: {}
-  - role: user
-    permission:
-      columns:
-        - user_uid
-        - email
-        - role
-        - disabled
-        - created_at
-        - employee_id
-        - doctor_id
-        - chat_code
-      filter: {}
+- role: me
+  permission:
+    columns:
+    - user_uid
+    - email
+    - role
+    - disabled
+    - created_at
+    - employee_id
+    - doctor_id
+    - chat_code
+    filter: {}
+- role: superadmin
+  permission:
+    columns:
+    - user_uid
+    - email
+    - role
+    - disabled
+    - created_at
+    - employee_id
+    - doctor_id
+    - chat_code
+    filter:
+      _exists:
+        _table:
+          name: active_superadmin_identity
+          schema: public
+        _where:
+          user_uid:
+            _eq: X-Hasura-User-Id
+- role: user
+  permission:
+    columns:
+    - user_uid
+    - email
+    - role
+    - disabled
+    - created_at
+    - employee_id
+    - doctor_id
+    - chat_code
+    filter: {}

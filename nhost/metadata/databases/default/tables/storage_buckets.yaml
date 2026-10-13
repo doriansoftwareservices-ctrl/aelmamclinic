@@ -40,51 +40,58 @@ configuration:
     update: updateBuckets
     update_by_pk: updateBucket
 array_relationships:
-  - name: files
-    using:
-      foreign_key_constraint_on:
-        column: bucket_id
-        table:
-          name: files
-          schema: storage
+- name: files
+  using:
+    foreign_key_constraint_on:
+      column: bucket_id
+      table:
+        name: files
+        schema: storage
 select_permissions:
-  - role: employee
-    permission:
-      columns: '*'
-      filter:
-        id:
-          _in:
-            - chat-attachments
-            - chat-images
-            - subscription-proofs
-  - role: me
-    permission:
-      columns: '*'
-      filter:
-        id:
-          _in:
-            - chat-attachments
-            - chat-images
-            - subscription-proofs
-  - role: owner
-    permission:
-      columns: '*'
-      filter:
-        id:
-          _in:
-            - chat-attachments
-            - chat-images
-            - subscription-proofs
-  - role: superadmin
-    permission:
-      columns: '*'
-      filter: {}
-  - role: user
-    permission:
-      columns: '*'
-      filter:
-        id:
-          _in:
-            - chat-attachments
-            - chat-images
-            - subscription-proofs
+- role: employee
+  permission:
+    columns: '*'
+    filter:
+      id:
+        _in:
+        - chat-attachments
+        - chat-images
+        - subscription-proofs
+- role: me
+  permission:
+    columns: '*'
+    filter:
+      id:
+        _in:
+        - chat-attachments
+        - chat-images
+        - subscription-proofs
+- role: owner
+  permission:
+    columns: '*'
+    filter:
+      id:
+        _in:
+        - chat-attachments
+        - chat-images
+        - subscription-proofs
+- role: superadmin
+  permission:
+    columns: '*'
+    filter:
+      _exists:
+        _table:
+          name: active_superadmin_identity
+          schema: public
+        _where:
+          user_uid:
+            _eq: X-Hasura-User-Id
+- role: user
+  permission:
+    columns: '*'
+    filter:
+      id:
+        _in:
+        - chat-attachments
+        - chat-images
+        - subscription-proofs

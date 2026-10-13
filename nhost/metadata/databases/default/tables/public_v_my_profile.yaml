@@ -2,36 +2,43 @@ table:
   name: v_my_profile
   schema: public
 select_permissions:
-  - role: me
-    permission:
-      columns:
-        - id
-        - email
-        - role
-        - account_id
-        - display_name
-        - account_ids
-        - chat_code
-      filter: {}
-  - role: superadmin
-    permission:
-      columns:
-        - id
-        - email
-        - role
-        - account_id
-        - display_name
-        - account_ids
-        - chat_code
-      filter: {}
-  - role: user
-    permission:
-      columns:
-        - id
-        - email
-        - role
-        - account_id
-        - display_name
-        - account_ids
-        - chat_code
-      filter: {}
+- role: me
+  permission:
+    columns:
+    - id
+    - email
+    - role
+    - account_id
+    - display_name
+    - account_ids
+    - chat_code
+    filter: {}
+- role: superadmin
+  permission:
+    columns:
+    - id
+    - email
+    - role
+    - account_id
+    - display_name
+    - account_ids
+    - chat_code
+    filter:
+      _exists:
+        _table:
+          name: active_superadmin_identity
+          schema: public
+        _where:
+          user_uid:
+            _eq: X-Hasura-User-Id
+- role: user
+  permission:
+    columns:
+    - id
+    - email
+    - role
+    - account_id
+    - display_name
+    - account_ids
+    - chat_code
+    filter: {}

@@ -2,48 +2,55 @@ table:
   name: v_payment_methods
   schema: public
 select_permissions:
-  - role: employee
-    permission:
-      columns:
-        - id
-        - name
-        - logo_url
-        - bank_account
-        - is_active
-      filter: {}
-  - role: me
-    permission:
-      columns:
-        - id
-        - name
-        - logo_url
-        - bank_account
-        - is_active
-      filter: {}
-  - role: owner
-    permission:
-      columns:
-        - id
-        - name
-        - logo_url
-        - bank_account
-        - is_active
-      filter: {}
-  - role: superadmin
-    permission:
-      columns:
-        - id
-        - name
-        - logo_url
-        - bank_account
-        - is_active
-      filter: {}
-  - role: user
-    permission:
-      columns:
-        - id
-        - name
-        - logo_url
-        - bank_account
-        - is_active
-      filter: {}
+- role: employee
+  permission:
+    columns:
+    - id
+    - name
+    - logo_url
+    - bank_account
+    - is_active
+    filter: {}
+- role: me
+  permission:
+    columns:
+    - id
+    - name
+    - logo_url
+    - bank_account
+    - is_active
+    filter: {}
+- role: owner
+  permission:
+    columns:
+    - id
+    - name
+    - logo_url
+    - bank_account
+    - is_active
+    filter: {}
+- role: superadmin
+  permission:
+    columns:
+    - id
+    - name
+    - logo_url
+    - bank_account
+    - is_active
+    filter:
+      _exists:
+        _table:
+          name: active_superadmin_identity
+          schema: public
+        _where:
+          user_uid:
+            _eq: X-Hasura-User-Id
+- role: user
+  permission:
+    columns:
+    - id
+    - name
+    - logo_url
+    - bank_account
+    - is_active
+    filter: {}

@@ -1,0 +1,6 @@
+function:
+  name: amend_purchase_atomic
+  schema: public
+configuration:
+  exposed_as: mutation
+# Admin-only: no ordinary role permissions; clinic-sync verifies Auth and SQL rechecks authorization.

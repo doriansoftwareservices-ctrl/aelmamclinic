@@ -2,10 +2,17 @@ table:
   name: v_payment_stats_by_month
   schema: public
 select_permissions:
-  - role: superadmin
-    permission:
-      columns:
-        - month
-        - total_amount
-        - payments_count
-      filter: {}
+- role: superadmin
+  permission:
+    columns:
+    - month
+    - total_amount
+    - payments_count
+    filter:
+      _exists:
+        _table:
+          name: active_superadmin_identity
+          schema: public
+        _where:
+          user_uid:
+            _eq: X-Hasura-User-Id

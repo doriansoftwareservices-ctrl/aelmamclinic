@@ -2,39 +2,46 @@ table:
   name: v_rpc_result
   schema: public
 select_permissions:
-  - role: me
-    permission:
-      columns:
-        - ok
-        - error
-        - account_id
-        - user_uid
-        - owner_uid
-        - role
-        - frozen
-        - disabled
-      filter: {}
-  - role: superadmin
-    permission:
-      columns:
-        - ok
-        - error
-        - account_id
-        - user_uid
-        - owner_uid
-        - role
-        - frozen
-        - disabled
-      filter: {}
-  - role: user
-    permission:
-      columns:
-        - ok
-        - error
-        - account_id
-        - user_uid
-        - owner_uid
-        - role
-        - frozen
-        - disabled
-      filter: {}
+- role: me
+  permission:
+    columns:
+    - ok
+    - error
+    - account_id
+    - user_uid
+    - owner_uid
+    - role
+    - frozen
+    - disabled
+    filter: {}
+- role: superadmin
+  permission:
+    columns:
+    - ok
+    - error
+    - account_id
+    - user_uid
+    - owner_uid
+    - role
+    - frozen
+    - disabled
+    filter:
+      _exists:
+        _table:
+          name: active_superadmin_identity
+          schema: public
+        _where:
+          user_uid:
+            _eq: X-Hasura-User-Id
+- role: user
+  permission:
+    columns:
+    - ok
+    - error
+    - account_id
+    - user_uid
+    - owner_uid
+    - role
+    - frozen
+    - disabled
+    filter: {}

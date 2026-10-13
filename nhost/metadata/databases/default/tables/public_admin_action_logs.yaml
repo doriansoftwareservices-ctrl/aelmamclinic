@@ -2,26 +2,40 @@ table:
   name: admin_action_logs
   schema: public
 insert_permissions:
-  - role: superadmin
-    permission:
-      check: {}
-      columns:
-        - actor_uid
-        - actor_email
-        - action
-        - entity_type
-        - entity_id
-        - details
+- role: superadmin
+  permission:
+    check:
+      _exists:
+        _table:
+          name: active_superadmin_identity
+          schema: public
+        _where:
+          user_uid:
+            _eq: X-Hasura-User-Id
+    columns:
+    - actor_uid
+    - actor_email
+    - action
+    - entity_type
+    - entity_id
+    - details
 select_permissions:
-  - role: superadmin
-    permission:
-      columns:
-        - id
-        - actor_uid
-        - actor_email
-        - action
-        - entity_type
-        - entity_id
-        - details
-        - created_at
-      filter: {}
+- role: superadmin
+  permission:
+    columns:
+    - id
+    - actor_uid
+    - actor_email
+    - action
+    - entity_type
+    - entity_id
+    - details
+    - created_at
+    filter:
+      _exists:
+        _table:
+          name: active_superadmin_identity
+          schema: public
+        _where:
+          user_uid:
+            _eq: X-Hasura-User-Id

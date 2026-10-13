@@ -2,11 +2,18 @@ table:
   name: v_employee_seat_pricing
   schema: public
 select_permissions:
-  - role: superadmin
-    permission:
-      columns:
-        - seat_kind
-        - price_usd
-        - updated_at
-        - updated_by
-      filter: {}
+- role: superadmin
+  permission:
+    columns:
+    - seat_kind
+    - price_usd
+    - updated_at
+    - updated_by
+    filter:
+      _exists:
+        _table:
+          name: active_superadmin_identity
+          schema: public
+        _where:
+          user_uid:
+            _eq: X-Hasura-User-Id

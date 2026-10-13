@@ -49,7 +49,9 @@ disableAutoSignup = false
 [auth.user]
 [auth.user.roles]
 default = 'user'
-allowed = ['user', 'me', 'owner', 'employee', 'admin', 'superadmin', 'anonymous']
+# Public signup grants only the ordinary application role. Privileged claims
+# are provisioned server-side after registry/membership validation.
+allowed = ['user']
 
 [auth.user.locale]
 default = 'en'

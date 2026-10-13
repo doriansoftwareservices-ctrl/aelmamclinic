@@ -5,13 +5,13 @@ const {
   resolveUserIdFromToken,
 } = require('../_shared/storage_utils');
 
+// Tombstone state and its audit fields are owned by explicit delete commands.
+const TOMBSTONE_COLUMNS = new Set([
+  'is_deleted', 'deleted_at', 'deleted_by_user_id',
+  'deletion_client_mutation_id',
+]);
 const META_COLUMNS = new Set([
   'client_mutation_id',
-  'is_deleted',
-  'deleted_at',
-  'deleted_by_user_id',
-  'deletion_client_mutation_id',
-  'server_version',
   'updated_by_user_id',
 ]);
 
@@ -322,9 +322,14 @@ const TABLE_FEATURES = {
   complaints: 'patients.questions',
 };
 
+function requestsDeletedPayload(payload) {
+  return payload.is_deleted === true || payload.is_deleted === 1 ||
+    payload.is_deleted === 'true' || payload.is_deleted === '1';
+}
+
 function syncCrudAction(operationType) {
   const text = `${operationType || ''}`.trim().toLowerCase();
-  if (text.includes('delete') || text.includes('reverse') || text.includes('disable')) {
+  if (text.includes('delete') || text.includes('reverse') || text.includes('disable') || text.includes('archive')) {
     return 'delete';
   }
   if (text.startsWith('create') || text.startsWith('add') || text.startsWith('insert')) {
@@ -424,6 +429,21 @@ async function gqlRequest(query, variables) {
     const errors = Array.isArray(json.errors) ? json.errors : [];
     const err = new Error('upstream_mutation_failed');
     err.code = 'upstream_mutation_failed';
+    const contractCodes = ['purchase_amendment_source_missing', 'purchase_amendment_denied',
+      'purchase_amendment_payload_invalid', 'idempotency_payload_mismatch',
+      'inventory_stock_update_rejected', 'purchase_amendment_conflict',
+      'purchase_amendment_pair_invalid', 'purchase_amendment_link_immutable',
+      'sync_atomic_denied', 'foreign_sync_identity', 'sync_expected_version_invalid',
+      'sync_atomic_request_invalid', 'sync_version_unknown', 'sync_version_conflict',
+      'sync_identity_mismatch', 'sync_identity_missing', 'sync_record_deleted',
+      'mutation_in_progress', 'sync_money_mismatch', 'money_minor_mismatch',
+      'money_dual_write_conflicting_nulls', 'money_value_out_of_minor_range'];
+    const upstreamText = JSON.stringify(errors);
+    err.upstreamContractCode = contractCodes.find((code) => upstreamText.includes(code));
+    if (upstreamText.includes('apply_clinic_sync_atomic') &&
+        upstreamText.toLowerCase().includes('not found')) {
+      err.upstreamContractCode = 'sync_protocol_unavailable';
+    }
     err.isConstraintViolation = errors.some((entry) => {
       const code = `${entry?.extensions?.code || ''}`.toLowerCase();
       const message = `${entry?.message || ''}`.toLowerCase();
@@ -462,7 +482,17 @@ function normalizeObject(value) {
 
 function isDeleteOperation(operationType) {
   const text = `${operationType || ''}`.toLowerCase();
-  return text.includes('delete') || text.includes('reverse') || text.includes('disable');
+  return text.includes('delete') || text.includes('reverse') || text.includes('disable') || text.includes('archive');
+}
+
+function normalizeLocalId(value) {
+  // bigint origin IDs travel as decimal strings; unsafe JSON numbers are rejected.
+  const text = typeof value === 'number'
+    ? (Number.isSafeInteger(value) && value > 0 ? String(value) : null)
+    : (typeof value === 'string' ? value.trim() : null);
+  if (!text || !/^[0-9]{1,19}$/.test(text)) return null;
+  const parsed = BigInt(text);
+  return parsed > 0n && parsed <= 9223372036854775807n ? parsed.toString() : null;
 }
 
 function filterPayload(table, payload, context) {
@@ -473,7 +503,7 @@ function filterPayload(table, payload, context) {
     'device_id',
     'local_id',
     'updated_at',
-    ...config.columns,
+    ...(context.deleteOperation ? [] : config.columns),
     ...META_COLUMNS,
   ]);
   const out = {};
@@ -481,6 +511,14 @@ function filterPayload(table, payload, context) {
     if (!allowed.has(key)) continue;
     if (value === undefined) continue;
     if (key === 'id' && !`${value || ''}`.trim()) continue;
+    if (key.endsWith('_minor') && value !== null) {
+      if ((typeof value !== 'string' && typeof value !== 'number') ||
+        (typeof value === 'number' && !Number.isSafeInteger(value)) ||
+        !/^(0|-?[1-9][0-9]{0,18})$/.test(`${value}`) ||
+        BigInt(value) < -9223372036854775808n || BigInt(value) > 9223372036854775807n) {
+        throw deny(400, 'invalid_sync_money', 'Invalid monetary value');
+      }
+    }
     out[key] = value;
   }
   out.account_id = context.accountId;
@@ -491,7 +529,7 @@ function filterPayload(table, payload, context) {
   out.updated_by_user_id = context.userId;
   if (context.deleteOperation) {
     out.is_deleted = true;
-    out.deleted_at = out.deleted_at || new Date().toISOString();
+    out.deleted_at = new Date().toISOString();
     out.deleted_by_user_id = context.userId;
     out.deletion_client_mutation_id = context.clientMutationId;
   }
@@ -637,52 +675,95 @@ function assertRoleAllowed(access, table, tableConfig, operationType, actualActi
   }
 }
 
-async function applyMutation({
-  table,
-  tableConfig,
-  object,
-  event,
-  clientMutation,
-}) {
-  const updateColumns = [
-    ...new Set([
-      ...tableConfig.columns,
-      'updated_at',
-      'client_mutation_id',
-      'is_deleted',
-      'deleted_at',
-      'deleted_by_user_id',
-      'deletion_client_mutation_id',
-      'updated_by_user_id',
-    ]),
-  ].filter((column) => column !== 'id' && column !== 'account_id');
+async function applyMutation({table, object, event, clientMutation, userId, operationType, expectedVersion, allowLegacyReceipt = false}) {
   const mutationDoc = `
     mutation ClinicSyncApply(
-      $object: ${table}_insert_input!,
-      $event: sync_events_insert_input!,
-      $clientMutation: client_mutations_insert_input!
+      $actor: uuid!, $table: String!, $operation: String!, $expectedVersion: String,
+      $object: jsonb!, $event: jsonb!, $clientMutation: jsonb!
     ) {
-      row: insert_${table}_one(
-        object: $object,
-        on_conflict: {
-          constraint: ${tableConfig.constraint},
-          update_columns: [${updateColumns.join(', ')}]
-        }
-      ) {
-        id
-        updated_at
-        server_version
-      }
-      event: insert_sync_events_one(object: $event) {
-        id
-        created_at
-      }
-      clientMutation: insert_client_mutations_one(object: $clientMutation) {
-        id
-      }
+      rows: apply_clinic_sync_atomic(args: {
+        p_actor: $actor, p_table: $table, p_operation: $operation,
+        p_expected_version: $expectedVersion, p_object: $object,
+        p_event: $event, p_receipt: $clientMutation
+      }) { result_json }
     }
   `;
-  return gqlRequest(mutationDoc, { object, event, clientMutation });
+  try {
+    const data = await gqlRequest(mutationDoc, {
+      actor: userId, table, operation: operationType, expectedVersion,
+      object, event, clientMutation,
+    });
+    const result = Array.isArray(data.rows) ? data.rows[0]?.result_json : null;
+    const version = result?.data?.server_version;
+    if (result?.success !== true || result.operation !== operationType ||
+      result.data?.entity_table !== table ||
+      result.data?.client_mutation_id !== clientMutation.client_mutation_id ||
+      result.data?.remote_id !== object.id ||
+      (!(allowLegacyReceipt && version === null) && (
+        !/^[1-9][0-9]{0,18}$/.test(`${version || ''}`) ||
+        (typeof version === 'number' && !Number.isSafeInteger(version)) ||
+        BigInt(version) > 9223372036854775807n)) ||
+      !result.server_timestamp || !result.data?.sync_event_id) {
+      throw new Error('sync_atomic_acknowledgement_missing');
+    }
+    return result;
+  } catch (error) {
+    switch (error.upstreamContractCode) {
+      case 'sync_protocol_unavailable':
+        throw deny(503, 'sync_protocol_unavailable', 'The versioned sync service is unavailable');
+      case 'sync_atomic_denied':
+      case 'foreign_sync_identity':
+        throw deny(403, error.upstreamContractCode, 'You no longer have permission to synchronize this data');
+      case 'sync_expected_version_invalid':
+      case 'sync_atomic_request_invalid':
+        throw deny(400, error.upstreamContractCode, 'Invalid sync request');
+      case 'sync_version_unknown':
+        throw deny(409, 'sync_version_unknown', 'This saved change needs reconciliation with the server');
+      case 'mutation_in_progress':
+        throw deny(409, 'mutation_in_progress', 'Mutation is still being committed');
+      case 'sync_version_conflict':
+      case 'sync_money_mismatch':
+      case 'money_minor_mismatch':
+      case 'money_dual_write_conflicting_nulls':
+      case 'money_value_out_of_minor_range':
+      case 'sync_identity_mismatch':
+      case 'sync_identity_missing':
+      case 'sync_record_deleted':
+      case 'idempotency_payload_mismatch':
+        throw deny(409, error.upstreamContractCode, 'The record has changed; the saved local change is preserved');
+      default:
+        throw error;
+    }
+  }
+}
+
+function expectedSyncVersion(body, payload) {
+  if (body.sync_protocol == null || body.sync_protocol === 1) return null;
+  if (body.sync_protocol === 2 && body.legacy_prepared === true) {
+    if (body.expected_server_version !== null || Object.hasOwn(payload, 'expected_server_version')) {
+      throw deny(400, 'invalid_sync_protocol', 'Invalid sync protocol');
+    }
+    return null;
+  }
+  if (body.sync_protocol !== 2 || !Object.hasOwn(body, 'expected_server_version') ||
+    !Object.hasOwn(payload, 'expected_server_version')) {
+    throw deny(400, 'invalid_sync_protocol', 'Invalid sync protocol');
+  }
+  function normalize(value) {
+    if (value === null) return null;
+    if ((typeof value !== 'string' && typeof value !== 'number') ||
+      (typeof value === 'number' && !Number.isSafeInteger(value)) ||
+      !/^(0|[1-9][0-9]{0,18})$/.test(`${value}`) ||
+      BigInt(value) > 9223372036854775807n) {
+      throw deny(400, 'sync_expected_version_invalid', 'Invalid server version');
+    }
+    return `${value}`;
+  }
+  const expected = normalize(body.expected_server_version);
+  if (expected !== normalize(payload.expected_server_version)) {
+    throw deny(400, 'sync_expected_version_invalid', 'Server version does not match the saved request');
+  }
+  return expected;
 }
 
 function deterministicUuid(value) {
@@ -717,7 +798,7 @@ async function resolveRemoteIdentity({
           local_id: {_eq: $localId}
         },
         limit: 1
-      ) { id }
+      ) { id is_deleted }
       ${hasCandidate ? `requested: ${table}(
         where: {id: {_eq: $requestedId}}, limit: 1
       ) { id account_id }` : ''}
@@ -743,6 +824,7 @@ async function resolveRemoteIdentity({
     id: existing || (hasCandidate ? candidate
       : deterministicUuid(`${accountId}:${table}:${clientMutationId}`)),
     exists: !!existing,
+    isDeleted: Array.isArray(data.rows) && data.rows[0]?.is_deleted === true,
   };
 }
 
@@ -813,6 +895,51 @@ async function completeMutationResult(id, result) {
   });
 }
 
+async function applyPurchaseAmendment({
+  object, userId, clientMutationId, payloadHash, correlationId,
+}) {
+  const query = 'mutation AmendPurchaseAtomic($actor:uuid!,$object:jsonb!,$receipt:jsonb!,$event:jsonb!){rows:amend_purchase_atomic(args:{p_actor:$actor,p_object:$object,p_receipt:$receipt,p_event:$event}){result_json}}';
+  try {
+    const data = await gqlRequest(query, {
+      actor: userId,
+      object,
+      receipt: {
+        id: crypto.randomUUID(),
+        client_mutation_id: clientMutationId,
+        payload_hash: payloadHash,
+      },
+      event: { id: crypto.randomUUID(), correlation_id: correlationId },
+    });
+    const result = Array.isArray(data.rows) ? data.rows[0]?.result_json : null;
+    if (!result?.success || !Number.isSafeInteger(result.data?.server_version)) {
+      throw new Error('purchase_amendment_acknowledgement_missing');
+    }
+    return result;
+  } catch (error) {
+    switch (error.upstreamContractCode) {
+      case 'purchase_amendment_source_missing':
+        throw deny(409, 'mutation_dependency_pending', 'The original purchase must synchronize first');
+      case 'purchase_amendment_denied':
+        throw deny(403, 'purchase_amendment_denied', 'You do not have permission to amend this purchase');
+      case 'purchase_amendment_payload_invalid':
+        throw deny(400, 'purchase_amendment_payload_invalid', 'Invalid purchase amendment');
+      case 'idempotency_payload_mismatch':
+        throw deny(409, 'idempotency_payload_mismatch', 'Mutation id was reused with a different payload');
+      case 'inventory_stock_update_rejected':
+        throw deny(409, 'inventory_stock_conflict', 'The amendment exceeds available stock');
+      case 'purchase_amendment_conflict':
+      case 'purchase_amendment_pair_invalid':
+      case 'purchase_amendment_link_immutable':
+        throw deny(409, 'purchase_amendment_conflict', 'The original purchase has already changed');
+      default:
+        if (error.isConstraintViolation) {
+          throw deny(409, 'purchase_amendment_conflict', 'Concurrent purchase amendment conflict');
+        }
+        throw error;
+    }
+  }
+}
+
 module.exports = async function handler(req, res) {
   const correlationId = crypto.randomUUID();
   if (req.method && req.method.toUpperCase() !== 'POST') {
@@ -839,10 +966,7 @@ module.exports = async function handler(req, res) {
     const clientMutationId = `${body.client_mutation_id || ''}`.trim();
     const accountId = `${body.account_id || ''}`.trim();
     const deviceId = `${body.device_id || ''}`.trim();
-    const localId =
-      typeof body.local_id === 'number'
-        ? body.local_id
-        : parseInt(`${body.local_id || ''}`, 10);
+    const localId = normalizeLocalId(body.local_id);
 
     if (!operationType || !tableConfig || !clientMutationId || !accountId) {
       fail(res, 400, 'invalid_sync_request', 'Invalid sync request', {
@@ -850,7 +974,7 @@ module.exports = async function handler(req, res) {
       });
       return;
     }
-    if (!deviceId || !Number.isFinite(localId) || localId <= 0) {
+    if (!deviceId || !localId) {
       fail(res, 400, 'invalid_local_identity', 'Missing device/local identity', {
         correlation_id: correlationId,
       });
@@ -858,10 +982,23 @@ module.exports = async function handler(req, res) {
     }
 
     const payload = normalizeObject(body.payload);
+    const expectedVersion = expectedSyncVersion(body, payload);
+    const isAmendment = operationType === 'amend_purchase';
+    if (isAmendment && table !== 'purchases') {
+      throw deny(400, 'invalid_purchase_amendment', 'Purchase amendment requires purchases');
+    }
+    if (!isAmendment && !isDeleteOperation(operationType) && payload.replaces_purchase_id != null) {
+      throw deny(400, 'purchase_amendment_operation_required', 'Replacement requires an explicit amendment');
+    }
+    if (isAmendment && (requestsDeletedPayload(payload) ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(`${payload.replaces_purchase_id || ''}`))) {
+      throw deny(400, 'invalid_purchase_amendment', 'Invalid original purchase identity');
+    }
     const payloadHash = hashPayload({
       operation_type: operationType,
       entity_table: table,
       account_id: accountId,
+      ...(isAmendment ? {device_id: deviceId, local_id: localId} : {}),
       payload,
     });
 
@@ -871,7 +1008,15 @@ module.exports = async function handler(req, res) {
     // result_json may contain remote ids and sync event ids.
     const access = await accessFor(userId, accountId);
     // Check membership before querying any row with the admin credential.
-    assertRoleAllowed(access, table, tableConfig, operationType);
+    const requestsTombstone = payload.is_deleted === true ||
+      payload.is_deleted === 1 || payload.is_deleted === 'true' ||
+      payload.is_deleted === '1';
+    assertRoleAllowed(access, table, tableConfig, operationType,
+      requestsTombstone ? 'delete' : undefined);
+    if (requestsTombstone && !isDeleteOperation(operationType)) {
+      throw deny(400, 'tombstone_operation_required',
+        'Deleting data requires an explicit delete operation');
+    }
 
     const cached = await fetchCachedMutation(clientMutationId, accountId);
     if (cached) {
@@ -881,21 +1026,30 @@ module.exports = async function handler(req, res) {
         });
         return;
       }
-      if (cached.result_json) {
+      if (cached.result_json && body.sync_protocol !== 2) {
         response(res, 200, cached.result_json);
         return;
       }
-      const recovered = await recoverCommittedMutation({
-        cached,
-        table,
-        accountId,
-        clientMutationId,
-      });
-      if (recovered) {
-        response(res, 200, recovered);
-        return;
+      if (body.sync_protocol !== 2) {
+        const recovered = await recoverCommittedMutation({cached, table, accountId, clientMutationId});
+        if (recovered) { response(res, 200, recovered); return; }
+        throw deny(409, 'mutation_in_progress', 'Mutation is still being committed');
       }
-      throw deny(409, 'mutation_in_progress', 'Mutation is still being committed');
+    }
+
+    if (body.legacy_prepared === true && cached?.result_json) {
+      // The prepared payload/hash/CID remain unchanged. SQL rechecks current
+      // authority and returns the original receipt without inventing a base.
+      const result = await applyMutation({
+        table, object: {id: cached.result_json.data?.remote_id,
+          account_id: accountId, device_id: deviceId, local_id: localId},
+        userId, operationType, expectedVersion: null, allowLegacyReceipt: true,
+        event: {id: crypto.randomUUID(), correlation_id: correlationId},
+        clientMutation: {id: crypto.randomUUID(), client_mutation_id: clientMutationId,
+          payload_hash: payloadHash},
+      });
+      response(res, 200, result);
+      return;
     }
 
     const object = filterPayload(table, payload, {
@@ -906,6 +1060,7 @@ module.exports = async function handler(req, res) {
       userId,
       deleteOperation: isDeleteOperation(operationType),
     });
+    if (isAmendment) object.replaces_purchase_id = payload.replaces_purchase_id;
     const identity = await resolveRemoteIdentity({
       table,
       accountId,
@@ -915,76 +1070,40 @@ module.exports = async function handler(req, res) {
       clientMutationId,
     });
     object.id = identity.id;
+    if (!cached && identity.isDeleted && !isDeleteOperation(operationType)) {
+      throw deny(409, 'sync_record_deleted',
+        'Deleted data cannot be restored through an ordinary update');
+    }
+    if (isAmendment) {
+      assertRoleAllowed(access, table, tableConfig, operationType, 'update');
+      if (identity.exists) {
+        const committed = await fetchCachedMutation(clientMutationId, accountId);
+        if (committed?.payload_hash === payloadHash && committed.result_json) {
+          response(res, 200, committed.result_json);
+          return;
+        }
+        throw deny(409, 'purchase_amendment_conflict', 'Replacement identity is already in use');
+      }
+      const amended = await applyPurchaseAmendment({
+        object, userId, clientMutationId, payloadHash, correlationId,
+      });
+      response(res, 200, amended);
+      return;
+    }
     const action = isDeleteOperation(operationType)
       ? 'delete' : (identity.exists ? 'update' : 'create');
     if (action === 'delete' && !identity.exists) {
       throw deny(409, 'sync_identity_missing', 'Cannot delete a missing record');
     }
-    assertRoleAllowed(access, table, tableConfig, operationType, action);
-    const now = new Date().toISOString();
-    const eventId = crypto.randomUUID();
-    const mutationRowId = crypto.randomUUID();
-    const event = {
-      id: eventId,
-      account_id: accountId,
-      domain: tableConfig.domain,
-      entity_table: table,
-      entity_id: object.id,
-      operation_type: operationType,
-      actor_user_id: userId,
-      client_mutation_id: clientMutationId,
-      correlation_id: correlationId,
-    };
-    const result = {
-      success: true,
-      operation: operationType,
-      server_timestamp: now,
-      data: {
-        entity_table: table,
-        client_mutation_id: clientMutationId,
-        remote_id: object.id,
-        server_version: null,
-        sync_event_id: eventId,
+    if (!cached) assertRoleAllowed(access, table, tableConfig, operationType, action);
+    const result = await applyMutation({
+      table, object, userId, operationType, expectedVersion,
+      event: {id: crypto.randomUUID(), correlation_id: correlationId},
+      clientMutation: {
+        id: crypto.randomUUID(), client_mutation_id: clientMutationId,
+        payload_hash: payloadHash,
       },
-    };
-
-    try {
-      await applyMutation({
-        table,
-        tableConfig,
-        object,
-        event,
-        clientMutation: {
-          id: mutationRowId,
-          account_id: accountId,
-          client_mutation_id: clientMutationId,
-          operation_type: operationType,
-          actor_user_id: userId,
-          payload_hash: payloadHash,
-          correlation_id: correlationId,
-          result_json: result,
-          completed_at: now,
-        },
-      });
-    } catch (error) {
-      if (!error?.isConstraintViolation) throw error;
-      const concurrent = await fetchCachedMutation(clientMutationId, accountId);
-      if (!concurrent || concurrent.payload_hash !== payloadHash) {
-        throw deny(409, 'idempotency_conflict', 'Concurrent mutation conflict');
-      }
-      const recovered = concurrent.result_json ||
-        await recoverCommittedMutation({
-          cached: concurrent,
-          table,
-          accountId,
-          clientMutationId,
-        });
-      if (!recovered) {
-        throw deny(409, 'mutation_in_progress', 'Mutation is still being committed');
-      }
-      response(res, 200, recovered);
-      return;
-    }
+    });
     response(res, 200, result);
   } catch (err) {
     fail(

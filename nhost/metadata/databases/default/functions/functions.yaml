@@ -54,3 +54,5 @@
 - "!include public_update_clinic_profile.yaml"
 - "!include public_user_cancel_subscription_request.yaml"
 - "!include public_claim_notification_event.yaml"
+- "!include public_amend_purchase_atomic.yaml"
+- "!include public_apply_clinic_sync_atomic.yaml"

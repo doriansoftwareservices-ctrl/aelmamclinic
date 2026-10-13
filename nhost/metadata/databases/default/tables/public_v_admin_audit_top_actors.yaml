@@ -2,11 +2,18 @@ table:
   name: v_admin_audit_top_actors
   schema: public
 select_permissions:
-  - role: superadmin
-    permission:
-      columns:
-        - actor_uid
-        - actor_email
-        - events
-        - last_at
-      filter: {}
+- role: superadmin
+  permission:
+    columns:
+    - actor_uid
+    - actor_email
+    - events
+    - last_at
+    filter:
+      _exists:
+        _table:
+          name: active_superadmin_identity
+          schema: public
+        _where:
+          user_uid:
+            _eq: X-Hasura-User-Id

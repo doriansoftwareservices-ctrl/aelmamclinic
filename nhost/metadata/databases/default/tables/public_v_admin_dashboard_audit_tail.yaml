@@ -2,15 +2,22 @@ table:
   name: v_admin_dashboard_audit_tail
   schema: public
 select_permissions:
-  - role: superadmin
-    permission:
-      columns:
-        - created_at
-        - account_id
-        - actor_uid
-        - actor_email
-        - table_name
-        - op
-        - row_pk
-        - diff
-      filter: {}
+- role: superadmin
+  permission:
+    columns:
+    - created_at
+    - account_id
+    - actor_uid
+    - actor_email
+    - table_name
+    - op
+    - row_pk
+    - diff
+    filter:
+      _exists:
+        _table:
+          name: active_superadmin_identity
+          schema: public
+        _where:
+          user_uid:
+            _eq: X-Hasura-User-Id

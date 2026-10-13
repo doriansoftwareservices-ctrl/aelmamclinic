@@ -2,15 +2,22 @@ table:
   name: v_admin_dashboard_account_members
   schema: public
 select_permissions:
-  - role: superadmin
-    permission:
-      columns:
-        - account_id
-        - account_name
-        - user_uid
-        - email
-        - role
-        - disabled
-        - created_at
-        - chat_code
-      filter: {}
+- role: superadmin
+  permission:
+    columns:
+    - account_id
+    - account_name
+    - user_uid
+    - email
+    - role
+    - disabled
+    - created_at
+    - chat_code
+    filter:
+      _exists:
+        _table:
+          name: active_superadmin_identity
+          schema: public
+        _where:
+          user_uid:
+            _eq: X-Hasura-User-Id

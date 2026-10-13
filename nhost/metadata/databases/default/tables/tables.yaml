@@ -110,3 +110,6 @@
 - "!include public_money_reconciliation_issues.yaml"
 - "!include public_active_account_feature_access.yaml"
 - "!include public_active_superadmin_account_access.yaml"
+- "!include public_active_superadmin_identity.yaml"
+- "!include public_active_authenticated_identity.yaml"
+- "!include public_valid_clinical_parent_links.yaml"
