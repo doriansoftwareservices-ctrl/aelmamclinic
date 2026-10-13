@@ -721,6 +721,11 @@ async function applyMutation({table, object, event, clientMutation, userId, oper
         throw deny(409, 'sync_version_unknown', 'This saved change needs reconciliation with the server');
       case 'mutation_in_progress':
         throw deny(409, 'mutation_in_progress', 'Mutation is still being committed');
+      case 'inventory_stock_update_rejected':
+        // The stock trigger rolled back the row, receipt and event. Surface
+        // the same domain conflict used by purchase amendments, so the saved
+        // consumption is reviewed instead of retried as a temporary HTTP 500.
+        throw deny(409, 'inventory_stock_conflict', 'The requested quantity exceeds available stock');
       case 'sync_version_conflict':
       case 'sync_money_mismatch':
       case 'money_minor_mismatch':

@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const {
   readBody,
   extractBearer,
@@ -60,8 +61,8 @@ function userSessionSql(userId, role = 'user') {
     'x-hasura-role': `${role || 'user'}`,
   }).replace(/'/g, "''");
   return `
-    select set_config('x-hasura-user-id', '${safeUserId}', true);
-    select set_config('request.jwt.claim.x-hasura-user-id', '${safeUserId}', true);
+    -- Portable custom PostgreSQL settings require qualified identifiers.
+    -- Hasura claim keys belong inside the JSON session, not GUC names.
     select set_config('request.jwt.claim.sub', '${safeUserId}', true);
     select set_config('request.jwt.claim.role', '${safeRole}', true);
     select set_config('hasura.user', '${hasuraUser}', true);
@@ -113,6 +114,12 @@ async function updateClinicProfileAsUser(userId, profile) {
 }
 
 module.exports = async function handler(req, res) {
+  const correlationId = crypto.randomUUID();
+  const logFailure = (phase, error) => console.error('self-create-owner failed', {
+    correlation_id: correlationId,
+    phase,
+    error_type: error?.name || 'Error',
+  });
   try {
     const authHeader = req.headers?.authorization || req.headers?.Authorization;
     if (!authHeader) {
@@ -189,7 +196,8 @@ module.exports = async function handler(req, res) {
         await updateClinicProfileAsUser(userId, profile);
         profileUpdated = true;
       } catch (profileErr) {
-        profileUpdateError = profileErr?.message || 'update_clinic_profile failed';
+        logFailure('update_clinic_profile', profileErr);
+        profileUpdateError = 'clinic_profile_update_failed';
       }
     }
 
@@ -200,11 +208,14 @@ module.exports = async function handler(req, res) {
       role: `${membership?.role ?? 'owner'}`.trim().toLowerCase(),
       profile_updated: profileUpdated,
       profile_update_error: profileUpdateError,
+      correlation_id: correlationId,
     });
   } catch (err) {
-    res.status(err?.statusCode || 500).json({
+    logFailure('create_owner', err);
+    res.status(500).json({
       ok: false,
-      error: err?.message || 'Failed to create account',
+      error: 'self_create_owner_failed',
+      correlation_id: correlationId,
     });
   }
 };
