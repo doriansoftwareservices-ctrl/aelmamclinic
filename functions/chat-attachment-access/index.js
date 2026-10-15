@@ -101,30 +101,21 @@ async function findFile(body) {
   };
 }
 
-async function createSignedUrl(storageUrl, fileId, ttl, secret) {
-  const endpoints = [
-    `${storageUrl}/files/${encodeURIComponent(fileId)}/presigned-url`,
-    `${storageUrl}/files/${encodeURIComponent(fileId)}/presigned`,
-  ];
-  for (const endpoint of endpoints) {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-hasura-admin-secret': secret,
-      },
-      body: JSON.stringify({ expiresIn: ttl }),
-    });
-    if (!response.ok) continue;
-    const payload = await response.json();
-    const value =
-      payload.url ||
-      payload.signedUrl ||
-      payload.presignedUrl ||
-      payload.presigned_url;
-    if (`${value || ''}`.trim()) return `${value}`;
-  }
-  return null;
+async function createSignedUrl(storageUrl, fileId, secret) {
+  const response = await fetch(
+    `${storageUrl}/files/${encodeURIComponent(fileId)}/presignedurl`,
+    {
+      method: 'GET',
+      headers: { 'x-hasura-admin-secret': secret },
+    },
+  );
+  if (!response.ok) return null;
+  const payload = await response.json();
+  const url = `${payload.url || ''}`.trim();
+  const expiration = Number(payload.expiration);
+  if (!url || !Number.isFinite(expiration) || expiration < 1) return null;
+  // Nhost signs for the bucket's configured duration, not a POST body TTL.
+  return { url, expiresIn: Math.floor(expiration) };
 }
 
 module.exports = async (req, res) => {
@@ -160,6 +151,14 @@ module.exports = async (req, res) => {
       );
     }
 
+    if (action === 'resolve') {
+      return res.status(200).json({
+        ok: true,
+        file_id: file.id,
+        correlation_id: correlationId,
+      });
+    }
+
     const secret = adminSecret();
     const storageUrl = resolveStorageUrl();
     if (!secret || !storageUrl) {
@@ -192,17 +191,15 @@ module.exports = async (req, res) => {
       return res.status(200).json({ ok: true, correlation_id: correlationId });
     }
 
-    const requestedTtl = Number(body.expires_in || body.expiresIn || 300);
-    const ttl = Math.max(60, Math.min(900, Number.isFinite(requestedTtl) ? requestedTtl : 300));
-    const signedUrl = await createSignedUrl(storageUrl, file.id, ttl, secret);
-    if (!signedUrl) {
+    const signed = await createSignedUrl(storageUrl, file.id, secret);
+    if (!signed) {
       return fail(res, 502, 'storage_sign_failed', correlationId);
     }
     return res.status(200).json({
       ok: true,
       file_id: file.id,
-      signed_url: signedUrl,
-      expires_in: ttl,
+      signed_url: signed.url,
+      expires_in: signed.expiresIn,
       correlation_id: correlationId,
     });
   } catch (error) {
