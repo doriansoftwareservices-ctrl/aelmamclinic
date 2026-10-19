@@ -184,7 +184,7 @@ module.exports = async (req, res) => {
     }
 
     const access = await getChatAccess(conversationId, uid);
-    if (!access.allowed || !access.accountId) {
+    if (!access.allowed) {
       return res.status(access.accountFrozen ? 423 : 403).json({
         error: access.accountFrozen ? 'account_frozen' : 'forbidden',
         message: 'chat attachment access denied',
@@ -211,7 +211,9 @@ module.exports = async (req, res) => {
         conversationId,
       );
       const r = `${role || ''}`.toLowerCase();
-      const isConvAdmin = ['admin', 'owner', 'superadmin'].includes(r);
+      // A cross-clinic owner's role does not administer another sender's files.
+      const isConvAdmin = access.accountId !== null &&
+        ['admin', 'owner', 'superadmin'].includes(r);
       if (!isSender && !isConvAdmin) {
         return res
           .status(403)

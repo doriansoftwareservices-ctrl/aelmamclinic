@@ -8,6 +8,14 @@ BEGIN
     RETURN;
   END IF;
 
+  -- 20260211200000 intentionally removed this relation; 20260228083000
+  -- restores the uploader/admin proof policy before attachments return.
+  -- Do not install this temporary participant policy without its dependency.
+  IF to_regclass('public.chat_attachments') IS NULL THEN
+    RAISE NOTICE 'defer temporary chat proof policy: attachments not present at this revision';
+    RETURN;
+  END IF;
+
   BEGIN
     EXECUTE 'SET LOCAL ROLE nhost_storage_admin';
   EXCEPTION WHEN others THEN

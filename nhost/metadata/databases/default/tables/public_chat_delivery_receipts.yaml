@@ -6,128 +6,125 @@ insert_permissions:
   permission:
     check:
       _and:
-      - user_uid:
-          _eq: X-Hasura-User-Id
       - _exists:
           _table:
-            name: chat_participants
+            name: chat_current_access
             schema: public
           _where:
-            _or:
-            - is_deleted:
-                _eq: false
-            - is_deleted:
-                _is_null: true
             conversation_id:
               _ceq:
               - $
               - conversation_id
             user_uid:
               _eq: X-Hasura-User-Id
-    columns: '*'
+            can_read:
+              _eq: true
+      - user_uid:
+          _eq: X-Hasura-User-Id
+    columns: &id001
+    - message_id
+    - conversation_id
+    - user_uid
+    - delivered_at
 - role: me
   permission:
     check:
       _and:
-      - user_uid:
-          _eq: X-Hasura-User-Id
       - _exists:
           _table:
-            name: chat_participants
+            name: chat_current_access
             schema: public
           _where:
-            _or:
-            - is_deleted:
-                _eq: false
-            - is_deleted:
-                _is_null: true
             conversation_id:
               _ceq:
               - $
               - conversation_id
             user_uid:
               _eq: X-Hasura-User-Id
-    columns: '*'
+            can_read:
+              _eq: true
+      - user_uid:
+          _eq: X-Hasura-User-Id
+    columns: *id001
 - role: owner
   permission:
     check:
       _and:
-      - user_uid:
-          _eq: X-Hasura-User-Id
       - _exists:
           _table:
-            name: chat_participants
+            name: chat_current_access
             schema: public
           _where:
-            _or:
-            - is_deleted:
-                _eq: false
-            - is_deleted:
-                _is_null: true
             conversation_id:
               _ceq:
               - $
               - conversation_id
             user_uid:
               _eq: X-Hasura-User-Id
-    columns: '*'
+            can_read:
+              _eq: true
+      - user_uid:
+          _eq: X-Hasura-User-Id
+    columns: *id001
 - role: superadmin
   permission:
     check:
       _exists:
         _table:
-          name: active_superadmin_identity
+          name: chat_current_access
           schema: public
         _where:
+          conversation_id:
+            _ceq:
+            - $
+            - conversation_id
           user_uid:
             _eq: X-Hasura-User-Id
-    columns: '*'
+          can_read:
+            _eq: true
+          is_superadmin:
+            _eq: true
+    columns: *id001
 - role: support
   permission:
     check:
       _and:
-      - user_uid:
-          _eq: X-Hasura-User-Id
       - _exists:
           _table:
-            name: chat_participants
+            name: chat_current_access
             schema: public
           _where:
-            _or:
-            - is_deleted:
-                _eq: false
-            - is_deleted:
-                _is_null: true
             conversation_id:
               _ceq:
               - $
               - conversation_id
             user_uid:
               _eq: X-Hasura-User-Id
-    columns: '*'
+            can_read:
+              _eq: true
+      - user_uid:
+          _eq: X-Hasura-User-Id
+    columns: *id001
 - role: user
   permission:
     check:
       _and:
-      - user_uid:
-          _eq: X-Hasura-User-Id
       - _exists:
           _table:
-            name: chat_participants
+            name: chat_current_access
             schema: public
           _where:
-            _or:
-            - is_deleted:
-                _eq: false
-            - is_deleted:
-                _is_null: true
             conversation_id:
               _ceq:
               - $
               - conversation_id
             user_uid:
               _eq: X-Hasura-User-Id
-    columns: '*'
+            can_read:
+              _eq: true
+      - user_uid:
+          _eq: X-Hasura-User-Id
+    columns: *id001
 select_permissions:
 - role: employee
   permission:
@@ -135,249 +132,252 @@ select_permissions:
     filter:
       _exists:
         _table:
-          name: chat_participants
+          name: chat_current_access
           schema: public
         _where:
-          _or:
-          - is_deleted:
-              _eq: false
-          - is_deleted:
-              _is_null: true
           conversation_id:
             _ceq:
             - $
             - conversation_id
           user_uid:
             _eq: X-Hasura-User-Id
+          can_read:
+            _eq: true
 - role: me
   permission:
     columns: '*'
     filter:
       _exists:
         _table:
-          name: chat_participants
+          name: chat_current_access
           schema: public
         _where:
-          _or:
-          - is_deleted:
-              _eq: false
-          - is_deleted:
-              _is_null: true
           conversation_id:
             _ceq:
             - $
             - conversation_id
           user_uid:
             _eq: X-Hasura-User-Id
+          can_read:
+            _eq: true
 - role: owner
   permission:
     columns: '*'
     filter:
       _exists:
         _table:
-          name: chat_participants
+          name: chat_current_access
           schema: public
         _where:
-          _or:
-          - is_deleted:
-              _eq: false
-          - is_deleted:
-              _is_null: true
           conversation_id:
             _ceq:
             - $
             - conversation_id
           user_uid:
             _eq: X-Hasura-User-Id
+          can_read:
+            _eq: true
 - role: superadmin
   permission:
     columns: '*'
     filter:
       _exists:
         _table:
-          name: active_superadmin_identity
+          name: chat_current_access
           schema: public
         _where:
+          conversation_id:
+            _ceq:
+            - $
+            - conversation_id
           user_uid:
             _eq: X-Hasura-User-Id
+          can_read:
+            _eq: true
+          is_superadmin:
+            _eq: true
 - role: support
   permission:
     columns: '*'
     filter:
       _exists:
         _table:
-          name: chat_participants
+          name: chat_current_access
           schema: public
         _where:
-          _or:
-          - is_deleted:
-              _eq: false
-          - is_deleted:
-              _is_null: true
           conversation_id:
             _ceq:
             - $
             - conversation_id
           user_uid:
             _eq: X-Hasura-User-Id
+          can_read:
+            _eq: true
 - role: user
   permission:
     columns: '*'
     filter:
       _exists:
         _table:
-          name: chat_participants
+          name: chat_current_access
           schema: public
         _where:
-          _or:
-          - is_deleted:
-              _eq: false
-          - is_deleted:
-              _is_null: true
           conversation_id:
             _ceq:
             - $
             - conversation_id
           user_uid:
             _eq: X-Hasura-User-Id
+          can_read:
+            _eq: true
 update_permissions:
 - role: superadmin
   permission:
-    columns: '*'
+    columns:
+    - delivered_at
     filter:
       _exists:
         _table:
-          name: active_superadmin_identity
+          name: chat_current_access
           schema: public
         _where:
+          conversation_id:
+            _ceq:
+            - $
+            - conversation_id
           user_uid:
             _eq: X-Hasura-User-Id
+          can_read:
+            _eq: true
+          is_superadmin:
+            _eq: true
     check:
       _exists:
         _table:
-          name: active_superadmin_identity
+          name: chat_current_access
           schema: public
         _where:
+          conversation_id:
+            _ceq:
+            - $
+            - conversation_id
           user_uid:
             _eq: X-Hasura-User-Id
+          can_read:
+            _eq: true
+          is_superadmin:
+            _eq: true
 delete_permissions:
 - role: employee
   permission:
     filter:
       _and:
-      - user_uid:
-          _eq: X-Hasura-User-Id
       - _exists:
           _table:
-            name: chat_participants
+            name: chat_current_access
             schema: public
           _where:
-            _or:
-            - is_deleted:
-                _eq: false
-            - is_deleted:
-                _is_null: true
             conversation_id:
               _ceq:
               - $
               - conversation_id
             user_uid:
               _eq: X-Hasura-User-Id
+            can_read:
+              _eq: true
+      - user_uid:
+          _eq: X-Hasura-User-Id
 - role: me
   permission:
     filter:
       _and:
-      - user_uid:
-          _eq: X-Hasura-User-Id
       - _exists:
           _table:
-            name: chat_participants
+            name: chat_current_access
             schema: public
           _where:
-            _or:
-            - is_deleted:
-                _eq: false
-            - is_deleted:
-                _is_null: true
             conversation_id:
               _ceq:
               - $
               - conversation_id
             user_uid:
               _eq: X-Hasura-User-Id
+            can_read:
+              _eq: true
+      - user_uid:
+          _eq: X-Hasura-User-Id
 - role: owner
   permission:
     filter:
       _and:
-      - user_uid:
-          _eq: X-Hasura-User-Id
       - _exists:
           _table:
-            name: chat_participants
+            name: chat_current_access
             schema: public
           _where:
-            _or:
-            - is_deleted:
-                _eq: false
-            - is_deleted:
-                _is_null: true
             conversation_id:
               _ceq:
               - $
               - conversation_id
             user_uid:
               _eq: X-Hasura-User-Id
+            can_read:
+              _eq: true
+      - user_uid:
+          _eq: X-Hasura-User-Id
 - role: superadmin
   permission:
     filter:
       _exists:
         _table:
-          name: active_superadmin_identity
+          name: chat_current_access
           schema: public
         _where:
+          conversation_id:
+            _ceq:
+            - $
+            - conversation_id
           user_uid:
             _eq: X-Hasura-User-Id
+          can_read:
+            _eq: true
+          is_superadmin:
+            _eq: true
 - role: support
   permission:
     filter:
       _and:
-      - user_uid:
-          _eq: X-Hasura-User-Id
       - _exists:
           _table:
-            name: chat_participants
+            name: chat_current_access
             schema: public
           _where:
-            _or:
-            - is_deleted:
-                _eq: false
-            - is_deleted:
-                _is_null: true
             conversation_id:
               _ceq:
               - $
               - conversation_id
             user_uid:
               _eq: X-Hasura-User-Id
+            can_read:
+              _eq: true
+      - user_uid:
+          _eq: X-Hasura-User-Id
 - role: user
   permission:
     filter:
       _and:
-      - user_uid:
-          _eq: X-Hasura-User-Id
       - _exists:
           _table:
-            name: chat_participants
+            name: chat_current_access
             schema: public
           _where:
-            _or:
-            - is_deleted:
-                _eq: false
-            - is_deleted:
-                _is_null: true
             conversation_id:
               _ceq:
               - $
               - conversation_id
             user_uid:
               _eq: X-Hasura-User-Id
+            can_read:
+              _eq: true
+      - user_uid:
+          _eq: X-Hasura-User-Id

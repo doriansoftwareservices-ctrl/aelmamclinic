@@ -1,0 +1,3 @@
+table:
+  name: chat_message_current_access
+  schema: public

@@ -1,5 +1,40 @@
 BEGIN;
 
+-- Reintroduce the required attachment relation before policies reference it.
+-- The later multi-device migration expands this same schema idempotently.
+CREATE TABLE IF NOT EXISTS public.chat_attachments (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id uuid REFERENCES public.accounts(id) ON DELETE CASCADE,
+  message_id uuid NOT NULL,
+  bucket text NOT NULL DEFAULT 'chat-images',
+  path text NOT NULL,
+  mime_type text,
+  size_bytes integer,
+  width integer,
+  height integer,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  deleted_at timestamptz,
+  is_deleted boolean NOT NULL DEFAULT false,
+  device_id text,
+  local_id bigint
+);
+
+-- Ensure FK to chat_messages if possible
+DO $$
+BEGIN
+  IF to_regclass('public.chat_messages') IS NOT NULL THEN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chat_attachments_message_id_fkey') THEN
+      ALTER TABLE public.chat_attachments
+        ADD CONSTRAINT chat_attachments_message_id_fkey
+        FOREIGN KEY (message_id)
+        REFERENCES public.chat_messages(id)
+        ON DELETE CASCADE;
+    END IF;
+  END IF;
+END$$;
+
+
+
 -- 1) Ensure chat-images bucket exists
 INSERT INTO storage.buckets (id)
 VALUES ('chat-images')

@@ -219,33 +219,12 @@ async function getChatAccess(conversationId, uid) {
   const c = escapeLiteral(conversationId);
   const u = escapeLiteral(uid);
   const json = await runSql(
-    `select c.account_id::text,
-            coalesce(p.role, '')::text,
-            (p.user_uid is not null)::text as participant,
-            exists (
-              select 1
-                from public.account_users au
-               where au.account_id = c.account_id
-                 and au.user_uid = '${u}'::uuid
-                 and coalesce(au.disabled, false) = false
-            )::text as active_member,
-            exists (
-              select 1
-                from public.super_admins sa
-                join auth.users auth_user on auth_user.id = sa.user_uid
-               where sa.user_uid = '${u}'::uuid
-                 and coalesce(sa.disabled, false) = false
-                 and coalesce(auth_user.disabled, false) = false
-            )::text as active_superadmin,
-            coalesce(a.frozen, false)::text as account_frozen
-       from public.chat_conversations c
-       join public.accounts a on a.id = c.account_id
-       left join public.chat_participants p
-         on p.conversation_id = c.id
-        and p.user_uid = '${u}'::uuid
-        and coalesce(p.is_deleted, false) = false
-      where c.id = '${c}'::uuid
-      limit 1;`,
+    `select account_id::text,
+            participant_role,
+            allowed::text,
+            is_superadmin::text,
+            account_frozen::text
+       from public.chat_attachment_access_context('${c}'::uuid, '${u}'::uuid);`,
     true,
   );
   const row = Array.isArray(json?.result) ? json.result[1] : null;
@@ -259,18 +238,12 @@ async function getChatAccess(conversationId, uid) {
     };
   }
   const flag = (value) => `${value || ''}`.toLowerCase() === 'true';
-  const participant = flag(row[2]);
-  const activeMember = flag(row[3]);
-  const activeSuperadmin = flag(row[4]);
-  const accountFrozen = flag(row[5]);
   return {
-    allowed:
-      !accountFrozen &&
-      ((participant && activeMember) || activeSuperadmin),
+    allowed: flag(row[2]),
     accountId: row[0] || null,
     participantRole: row[1] || null,
-    isSuperAdmin: activeSuperadmin,
-    accountFrozen,
+    isSuperAdmin: flag(row[3]),
+    accountFrozen: flag(row[4]),
   };
 }
 
@@ -328,8 +301,11 @@ async function updateChatFileOwnership({
 }) {
   const uuidPattern =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-  const ids = [fileId, accountId, conversationId, messageId, uploadedByUserId];
-  if (!ids.every((value) => uuidPattern.test(`${value || ''}`.trim()))) {
+  const ids = [fileId, conversationId, messageId, uploadedByUserId];
+  if (
+    !ids.every((value) => uuidPattern.test(`${value || ''}`.trim())) ||
+    (accountId !== null && !uuidPattern.test(`${accountId || ''}`.trim()))
+  ) {
     return false;
   }
   const bucket = `${bucketId || ''}`.trim();
@@ -338,12 +314,13 @@ async function updateChatFileOwnership({
     return false;
   }
 
+  const accountSql = accountId === null ? 'NULL' : `'${escapeLiteral(accountId)}'::uuid`;
   const json = await runSql(
     `select public.claim_chat_attachment_file(
        '${escapeLiteral(fileId)}'::uuid,
        '${escapeLiteral(bucket)}'::text,
        '${escapeLiteral(name)}'::text,
-       '${escapeLiteral(accountId)}'::uuid,
+       ${accountSql},
        '${escapeLiteral(conversationId)}'::uuid,
        '${escapeLiteral(messageId)}'::uuid,
        '${escapeLiteral(uploadedByUserId)}'::uuid

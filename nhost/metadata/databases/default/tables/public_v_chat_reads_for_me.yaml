@@ -6,110 +6,121 @@ select_permissions:
   permission:
     columns: '*'
     filter:
-      _exists:
-        _table:
-          name: chat_participants
-          schema: public
-        _where:
-          _or:
-          - is_deleted:
-              _eq: false
-          - is_deleted:
-              _is_null: true
-          conversation_id:
-            _ceq:
-            - $
-            - conversation_id
-          user_uid:
-            _eq: X-Hasura-User-Id
+      _and:
+      - user_uid:
+          _eq: X-Hasura-User-Id
+      - _exists:
+            _table:
+              name: chat_current_access
+              schema: public
+            _where:
+              conversation_id:
+                _ceq:
+                - $
+                - conversation_id
+              user_uid:
+                _eq: X-Hasura-User-Id
+              can_read:
+                _eq: true
 - role: me
   permission:
     columns: '*'
     filter:
-      _exists:
-        _table:
-          name: chat_participants
-          schema: public
-        _where:
-          _or:
-          - is_deleted:
-              _eq: false
-          - is_deleted:
-              _is_null: true
-          conversation_id:
-            _ceq:
-            - $
-            - conversation_id
-          user_uid:
-            _eq: X-Hasura-User-Id
+      _and:
+      - user_uid:
+          _eq: X-Hasura-User-Id
+      - _exists:
+            _table:
+              name: chat_current_access
+              schema: public
+            _where:
+              conversation_id:
+                _ceq:
+                - $
+                - conversation_id
+              user_uid:
+                _eq: X-Hasura-User-Id
+              can_read:
+                _eq: true
 - role: owner
   permission:
     columns: '*'
     filter:
-      _exists:
-        _table:
-          name: chat_participants
-          schema: public
-        _where:
-          _or:
-          - is_deleted:
-              _eq: false
-          - is_deleted:
-              _is_null: true
-          conversation_id:
-            _ceq:
-            - $
-            - conversation_id
-          user_uid:
-            _eq: X-Hasura-User-Id
+      _and:
+      - user_uid:
+          _eq: X-Hasura-User-Id
+      - _exists:
+            _table:
+              name: chat_current_access
+              schema: public
+            _where:
+              conversation_id:
+                _ceq:
+                - $
+                - conversation_id
+              user_uid:
+                _eq: X-Hasura-User-Id
+              can_read:
+                _eq: true
 - role: superadmin
   permission:
     columns: '*'
     filter:
-      _exists:
-        _table:
-          name: active_superadmin_identity
-          schema: public
-        _where:
-          user_uid:
-            _eq: X-Hasura-User-Id
+      _and:
+      - user_uid:
+          _eq: X-Hasura-User-Id
+      - _exists:
+            _table:
+              name: chat_current_access
+              schema: public
+            _where:
+              conversation_id:
+                _ceq:
+                - $
+                - conversation_id
+              user_uid:
+                _eq: X-Hasura-User-Id
+              can_read:
+                _eq: true
+              is_superadmin:
+                _eq: true
 - role: support
   permission:
     columns: '*'
     filter:
-      _exists:
-        _table:
-          name: chat_participants
-          schema: public
-        _where:
-          _or:
-          - is_deleted:
-              _eq: false
-          - is_deleted:
-              _is_null: true
-          conversation_id:
-            _ceq:
-            - $
-            - conversation_id
-          user_uid:
-            _eq: X-Hasura-User-Id
+      _and:
+      - user_uid:
+          _eq: X-Hasura-User-Id
+      - _exists:
+            _table:
+              name: chat_current_access
+              schema: public
+            _where:
+              conversation_id:
+                _ceq:
+                - $
+                - conversation_id
+              user_uid:
+                _eq: X-Hasura-User-Id
+              can_read:
+                _eq: true
 - role: user
   permission:
     columns: '*'
     filter:
-      _exists:
-        _table:
-          name: chat_participants
-          schema: public
-        _where:
-          _or:
-          - is_deleted:
-              _eq: false
-          - is_deleted:
-              _is_null: true
-          conversation_id:
-            _ceq:
-            - $
-            - conversation_id
-          user_uid:
-            _eq: X-Hasura-User-Id
+      _and:
+      - user_uid:
+          _eq: X-Hasura-User-Id
+      - _exists:
+            _table:
+              name: chat_current_access
+              schema: public
+            _where:
+              conversation_id:
+                _ceq:
+                - $
+                - conversation_id
+              user_uid:
+                _eq: X-Hasura-User-Id
+              can_read:
+                _eq: true

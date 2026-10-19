@@ -25,30 +25,54 @@ select_permissions:
   permission:
     columns: '*'
     filter:
-      _and:
-      - active_feature_access:
-          user_uid:
-            _eq: X-Hasura-User-Id
-          _or:
-          - allow_all:
-              _eq: true
-          - allowed_features:
-              _contains:
-              - employees
+      _or:
+      - _and:
+        - active_feature_access:
+            user_uid:
+              _eq: X-Hasura-User-Id
+            _or:
+            - allow_all:
+                _eq: true
+            - allowed_features:
+                _contains:
+                - employees
+      - _and:
+        - active_feature_access:
+            user_uid:
+              _eq: X-Hasura-User-Id
+            _or:
+            - allowed_features:
+                _contains:
+                - patients.new
+            - allowed_features:
+                _contains:
+                - patients.list
 - role: user
   permission:
     columns: '*'
     filter:
-      _and:
-      - active_feature_access:
-          user_uid:
-            _eq: X-Hasura-User-Id
-          _or:
-          - allow_all:
-              _eq: true
-          - allowed_features:
-              _contains:
-              - employees
+      _or:
+      - _and:
+        - active_feature_access:
+            user_uid:
+              _eq: X-Hasura-User-Id
+            _or:
+            - allow_all:
+                _eq: true
+            - allowed_features:
+                _contains:
+                - employees
+      - _and:
+        - active_feature_access:
+            user_uid:
+              _eq: X-Hasura-User-Id
+            _or:
+            - allowed_features:
+                _contains:
+                - patients.new
+            - allowed_features:
+                _contains:
+                - patients.list
 - role: superadmin
   permission:
     columns: '*'

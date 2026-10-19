@@ -22,7 +22,7 @@ const fail = (res, status, code, correlationId) =>
     correlation_id: correlationId,
   });
 
-async function findFile(body) {
+async function findFile(body, allowDeletedMessage = false) {
   const fileId = `${body.file_id || body.fileId || ''}`.trim();
   const bucket = `${body.bucket || body.bucket_id || body.bucketId || ''}`.trim();
   const path = `${body.path || body.name || ''}`.trim();
@@ -51,10 +51,18 @@ async function findFile(body) {
          from storage.files sf
          join public.chat_attachment_file_ownership o
            on (o.file_id is not null and o.file_id = sf.id)
-           or (o.bucket_id = sf.bucket_id and o.file_name = sf.name)
+           or (o.file_id is null and o.bucket_id = sf.bucket_id and o.file_name = sf.name)
+         join public.chat_messages owned_message
+           on owned_message.id = o.message_id
+          and owned_message.conversation_id = o.conversation_id
+         join public.chat_conversations owned_conversation
+           on owned_conversation.id = o.conversation_id
+          and owned_conversation.account_id is not distinct from o.account_id
         where ${predicate}
           and sf.bucket_id in ('chat-images', 'chat-attachments')
           and o.security_state = 'active'
+          and (${allowDeletedMessage ? 'true' : `coalesce(owned_message.is_deleted, false) = false
+          and coalesce(owned_message.deleted, false) = false`})
        limit 1
      ), legacy as (
        select sf.id::text,
@@ -78,7 +86,11 @@ async function findFile(body) {
           and coalesce(a.is_deleted, false) = false
           and coalesce(m.is_deleted, false) = false
           and coalesce(m.deleted, false) = false
-          and not exists (select 1 from registered)
+          and not exists (
+            select 1 from public.chat_attachment_file_ownership existing
+            where existing.file_id = sf.id
+               or (existing.bucket_id = sf.bucket_id and existing.file_name = sf.name)
+          )
        limit 1
      )
      select * from registered
@@ -133,14 +145,13 @@ module.exports = async (req, res) => {
     if (!['sign', 'resolve', 'delete'].includes(action)) {
       return fail(res, 400, 'invalid_action', correlationId);
     }
-    const file = await findFile(body);
+    const file = await findFile(body, action === 'delete');
     if (!file || file.securityState !== 'active' || !file.conversationId) {
       return fail(res, 404, 'attachment_not_found', correlationId);
     }
     const access = await getChatAccess(file.conversationId, uid);
     if (
       !access.allowed ||
-      !access.accountId ||
       access.accountId !== file.accountId
     ) {
       return fail(
@@ -170,7 +181,7 @@ module.exports = async (req, res) => {
       const canDelete =
         access.isSuperAdmin ||
         file.uploadedByUserId === uid ||
-        ['owner', 'admin'].includes(role);
+        (access.accountId !== null && ['owner', 'admin'].includes(role));
       if (!canDelete) return fail(res, 403, 'delete_forbidden', correlationId);
       const response = await fetch(
         `${storageUrl}/files/${encodeURIComponent(file.id)}`,

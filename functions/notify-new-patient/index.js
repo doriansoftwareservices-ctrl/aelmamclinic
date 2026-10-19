@@ -93,10 +93,13 @@ module.exports = async (req, res) => {
           user_uid: {_eq: $uid}, account_id: {_eq: $account}, disabled: {_eq: false}
         }, limit: 1) { user_uid }
         user(id: $uid) { disabled }
+        accounts_by_pk(id: $account) { frozen }
       }`,
       { uid: doctorUid, account: doctorAccountId },
     );
-    if (!access?.account_users?.length || access?.user?.disabled === true) {
+    if (!access?.account_users?.length || !access?.user ||
+        access.user.disabled !== false || !access?.accounts_by_pk ||
+        access.accounts_by_pk.frozen !== false) {
       res.status(200).json({ ok: true, skipped: 'inactive_doctor' });
       return;
     }

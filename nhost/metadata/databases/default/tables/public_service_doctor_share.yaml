@@ -25,30 +25,119 @@ select_permissions:
   permission:
     columns: '*'
     filter:
-      _and:
-      - active_feature_access:
-          user_uid:
-            _eq: X-Hasura-User-Id
-          _or:
-          - allow_all:
-              _eq: true
-          - allowed_features:
-              _contains:
-              - lab_radiology
+      _or:
+      - _and:
+        - active_feature_access:
+            user_uid:
+              _eq: X-Hasura-User-Id
+            _or:
+            - allow_all:
+                _eq: true
+            - allowed_features:
+                _contains:
+                - lab_radiology
+      - _and:
+        - active_feature_access:
+            user_uid:
+              _eq: X-Hasura-User-Id
+            _or:
+            - allowed_features:
+                _contains:
+                - employees
+            - allowed_features:
+                _contains:
+                - patients.new
+            - allowed_features:
+                _contains:
+                - patients.list
+        - _exists:
+            _table:
+              name: medical_services
+              schema: public
+            _where:
+              id:
+                _ceq:
+                - $
+                - service_id
+              account_id:
+                _ceq:
+                - $
+                - account_id
+              service_type:
+                _in: &id001
+                - doctorGeneral
+                - doctor
+                - طبيب
+        - _exists:
+            _table:
+              name: doctors
+              schema: public
+            _where:
+              id:
+                _ceq:
+                - $
+                - doctor_id
+              account_id:
+                _ceq:
+                - $
+                - account_id
 - role: user
   permission:
     columns: '*'
     filter:
-      _and:
-      - active_feature_access:
-          user_uid:
-            _eq: X-Hasura-User-Id
-          _or:
-          - allow_all:
-              _eq: true
-          - allowed_features:
-              _contains:
-              - lab_radiology
+      _or:
+      - _and:
+        - active_feature_access:
+            user_uid:
+              _eq: X-Hasura-User-Id
+            _or:
+            - allow_all:
+                _eq: true
+            - allowed_features:
+                _contains:
+                - lab_radiology
+      - _and:
+        - active_feature_access:
+            user_uid:
+              _eq: X-Hasura-User-Id
+            _or:
+            - allowed_features:
+                _contains:
+                - employees
+            - allowed_features:
+                _contains:
+                - patients.new
+            - allowed_features:
+                _contains:
+                - patients.list
+        - _exists:
+            _table:
+              name: medical_services
+              schema: public
+            _where:
+              id:
+                _ceq:
+                - $
+                - service_id
+              account_id:
+                _ceq:
+                - $
+                - account_id
+              service_type:
+                _in: *id001
+        - _exists:
+            _table:
+              name: doctors
+              schema: public
+            _where:
+              id:
+                _ceq:
+                - $
+                - doctor_id
+              account_id:
+                _ceq:
+                - $
+                - account_id
 - role: superadmin
   permission:
     columns: '*'

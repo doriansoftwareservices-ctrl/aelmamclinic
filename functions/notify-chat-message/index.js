@@ -58,7 +58,7 @@ module.exports = async (req, res) => {
     const row = payload?.event?.data?.new || payload?.data?.new || {};
     const conversationId = row.conversation_id;
     const senderUid = row.sender_uid;
-    const accountId = row.account_id || null;
+    let accountId = row.account_id || null;
     logInfo('CHAT_NOTIFY_REQUEST_RECEIVED', ctx, {
       conversation_id: conversationId || '',
       sender_uid: senderUid || '',
@@ -72,6 +72,7 @@ module.exports = async (req, res) => {
 
     const partsData = await gqlRequest(
       `query Parts($cid: uuid!) {
+        chat_conversations_by_pk(id: $cid) { account_id created_by is_group is_deleted }
         chat_participants(
           where: {
             conversation_id: {_eq: $cid},
@@ -81,10 +82,20 @@ module.exports = async (req, res) => {
           user_uid
           archived
           muted
+          account_id
+          role
         }
       }`,
       { cid: conversationId },
     );
+    // The event can be retried after the room or its authority has changed.
+    // Its nullable account is not a reason to bypass current recipient access.
+    const conversation = partsData?.chat_conversations_by_pk;
+    if (!conversation || conversation.is_deleted === true || conversation.is_deleted === 1) {
+      res.status(200).json({ ok: true, skipped: 'conversation_missing' });
+      return;
+    }
+    accountId = conversation.account_id || null;
     const participantRows = (partsData?.chat_participants || []).filter(Boolean);
     const isSuppressed = (value) => value === true || value === 1;
     let targetUids = participantRows
@@ -94,27 +105,59 @@ module.exports = async (req, res) => {
       .map((participant) => participant.user_uid)
       .filter(Boolean);
 
-    if (targetUids.length > 0 && accountId) {
+    if (targetUids.length > 0) {
       const active = await gqlRequest(
-        `query ActiveChatTargets($uids: [uuid!]!, $account: uuid!) {
+        `query ActiveChatTargets($uids: [uuid!]!) {
           account_users(where: {
-            user_uid: {_in: $uids}, account_id: {_eq: $account}, disabled: {_eq: false}
-          }) { user_uid }
+            user_uid: {_in: $uids}, disabled: {_eq: false}
+          }) { user_uid account_id role }
           users(where: {id: {_in: $uids}, disabled: {_eq: false}}) { id }
-          accounts_by_pk(id: $account) { frozen }
+          super_admins(where: {
+            user_uid: {_in: $uids}, disabled: {_eq: false}
+          }) { user_uid }
+          chat_support_agents(where: {
+            user_uid: {_in: $uids}, is_active: {_eq: true}
+          }) { user_uid }
         }`,
-        { uids: targetUids, account: accountId },
+        { uids: targetUids },
       );
-      if (active?.accounts_by_pk?.frozen === true) {
-        res.status(200).json({ ok: true, skipped: 'account_frozen' });
+      const candidateMemberships = (active?.account_users || []).filter((entry) =>
+        accountId
+          ? entry.account_id === accountId
+          : ['owner', 'admin'].includes(`${entry.role || ''}`.toLowerCase()),
+      );
+      const clinicIds = [...new Set([
+        ...(accountId ? [accountId] : []),
+        ...candidateMemberships.map((entry) => entry.account_id).filter(Boolean),
+      ])];
+      const clinics = clinicIds.length === 0 ? { accounts: [] } : await gqlRequest(
+        `query ActiveChatClinics($accounts: [uuid!]!) {
+          accounts(where: {id: {_in: $accounts}, frozen: {_eq: false}}) { id }
+        }`,
+        { accounts: clinicIds },
+      );
+      const activeClinics = new Set((clinics?.accounts || []).map((entry) => entry.id));
+      if (accountId && !activeClinics.has(accountId)) {
+        res.status(200).json({ ok: true, skipped: 'account_inactive' });
         return;
       }
-      const memberships = new Set(
-        (active?.account_users || []).map((entry) => entry.user_uid),
-      );
+      const memberships = new Set(candidateMemberships
+        .filter((entry) => activeClinics.has(entry.account_id))
+        .map((entry) => entry.user_uid));
+      const superadmins = new Set((active?.super_admins || []).map((entry) => entry.user_uid));
       const enabledUsers = new Set((active?.users || []).map((entry) => entry.id));
+      // chat_start_support assigns an active agent as a null-clinic admin
+      // participant in another actor's direct room. The assignment alone must
+      // not grant notifications for groups or arbitrary participant rows.
+      const activeSupport = new Set((active?.chat_support_agents || []).map((entry) => entry.user_uid));
+      const assignedSupport = new Set(participantRows
+        .filter((entry) => conversation.is_group === false && conversation.created_by &&
+          entry.user_uid !== conversation.created_by && entry.account_id == null &&
+          entry.role === 'admin' && activeSupport.has(entry.user_uid))
+        .map((entry) => entry.user_uid));
       targetUids = targetUids.filter(
-        (uid) => memberships.has(uid) && enabledUsers.has(uid),
+        (uid) => enabledUsers.has(uid) &&
+          (memberships.has(uid) || superadmins.has(uid) || assignedSupport.has(uid)),
       );
     }
 

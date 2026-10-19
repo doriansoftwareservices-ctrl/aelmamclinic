@@ -317,10 +317,10 @@ const TABLE_FEATURES = {
   employees_salaries: 'payments',
   employees_discounts: 'payments',
   financial_logs: 'payments',
-  medical_services: 'lab_radiology',
-  service_doctor_share: 'lab_radiology',
   complaints: 'patients.questions',
 };
+const DOCTOR_SERVICE_TYPES = new Set(['doctorGeneral', 'doctor', 'طبيب']);
+const SERVICE_AUTHORITY_TABLES = new Set(['medical_services', 'service_doctor_share']);
 
 function requestsDeletedPayload(payload) {
   return payload.is_deleted === true || payload.is_deleted === 1 ||
@@ -433,7 +433,8 @@ async function gqlRequest(query, variables) {
       'purchase_amendment_payload_invalid', 'idempotency_payload_mismatch',
       'inventory_stock_update_rejected', 'purchase_amendment_conflict',
       'purchase_amendment_pair_invalid', 'purchase_amendment_link_immutable',
-      'sync_atomic_denied', 'foreign_sync_identity', 'sync_expected_version_invalid',
+      'sync_atomic_denied', 'foreign_sync_identity', 'foreign_sync_reference',
+      'sync_catalog_dependency_pending', 'sync_expected_version_invalid',
       'sync_atomic_request_invalid', 'sync_version_unknown', 'sync_version_conflict',
       'sync_identity_mismatch', 'sync_identity_missing', 'sync_record_deleted',
       'mutation_in_progress', 'sync_money_mismatch', 'money_minor_mismatch',
@@ -625,7 +626,7 @@ async function accessFor(userId, accountId) {
   };
 }
 
-function assertRoleAllowed(access, table, tableConfig, operationType, actualAction) {
+function assertRoleAllowed(access, table, tableConfig, operationType, actualAction, actualFeatures) {
   if (access.userDisabled) {
     throw deny(403, 'user_disabled', 'User is disabled');
   }
@@ -661,18 +662,77 @@ function assertRoleAllowed(access, table, tableConfig, operationType, actualActi
     throw deny(403, 'sync_delete_denied', 'You do not have permission to delete this data');
   }
 
-  const requiredFeature = requiredFeatureFor(table, action);
-  if (
-    requiredFeature &&
-    !access.allowAll &&
-    !access.allowedFeatures.includes(requiredFeature)
-  ) {
+  const requiredFeatures = actualFeatures || [requiredFeatureFor(table, action)].filter(Boolean);
+  const deniedFeature = requiredFeatures.find(feature => !access.allowedFeatures.includes(feature));
+  if (deniedFeature && !access.allowAll) {
     throw deny(
       403,
       'sync_feature_denied',
-      `You do not have permission for feature ${requiredFeature}`,
+      `You do not have permission for feature ${deniedFeature}`,
     );
   }
+}
+
+function serviceFeature(serviceType) {
+  return DOCTOR_SERVICE_TYPES.has(serviceType) ? 'employees' : 'lab_radiology';
+}
+
+// Auth/membership/CRUD is checked before this service-authenticated lookup.
+// Updates authorize the stored classification and the proposed classification;
+// a client cannot relabel an existing lab row or forge a share's parent type.
+async function doctorServiceFeatures({table, accountId, deviceId, localId, payload, currentOnly = false}) {
+  const fields = table === 'medical_services' ? 'service_type' : 'service_id doctor_id';
+  const data = await gqlRequest(`
+    query DoctorServiceWriteScope($accountId: uuid!, $deviceId: String!, $localId: bigint!) {
+      rows: ${table}(where: {account_id: {_eq: $accountId},
+        device_id: {_eq: $deviceId}, local_id: {_eq: $localId}}, limit: 1) {
+        id account_id ${fields}
+      }
+    }`, {accountId, deviceId, localId});
+  const prior = Array.isArray(data.rows) ? data.rows[0] : null;
+  if (table === 'medical_services') {
+    const features = [];
+    if (prior) features.push(serviceFeature(prior.service_type));
+    if (!currentOnly || !prior) {
+      features.push(serviceFeature(Object.hasOwn(payload, 'service_type')
+        ? payload.service_type : prior?.service_type));
+    }
+    return [...new Set(features)];
+  }
+  const next = {
+    service_id: Object.hasOwn(payload, 'service_id') ? payload.service_id : prior?.service_id,
+    doctor_id: Object.hasOwn(payload, 'doctor_id') ? payload.doctor_id : prior?.doctor_id,
+  };
+  const references = prior ? (currentOnly ? [prior] : [prior, next]) : [next];
+  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  for (const reference of references) {
+    if (!uuidPattern.test(`${reference.service_id || ''}`) ||
+        !uuidPattern.test(`${reference.doctor_id || ''}`)) {
+      throw deny(400, 'invalid_sync_reference', 'The service and doctor identities are required');
+    }
+  }
+  const serviceIds = [...new Set(references.map(row => row.service_id))];
+  const doctorIds = [...new Set(references.map(row => row.doctor_id))];
+  const context = await gqlRequest(`
+    query DoctorServiceReferenceScope($serviceIds: [uuid!]!, $doctorIds: [uuid!]!) {
+      services: medical_services(where: {id: {_in: $serviceIds}}) { id account_id service_type }
+      doctors: doctors(where: {id: {_in: $doctorIds}}) { id account_id }
+    }`, {serviceIds, doctorIds});
+  const services = new Map((context.services || []).map(row => [row.id.toLowerCase(), row]));
+  const doctors = new Map((context.doctors || []).map(row => [row.id.toLowerCase(), row]));
+  const features = [];
+  for (const reference of references) {
+    const service = services.get(reference.service_id.toLowerCase());
+    const doctor = doctors.get(reference.doctor_id.toLowerCase());
+    if (!service || !doctor) {
+      throw deny(409, 'mutation_dependency_pending', 'The service and doctor must synchronize first');
+    }
+    if (service.account_id !== accountId || doctor.account_id !== accountId) {
+      throw deny(403, 'foreign_sync_reference', 'The service and doctor must belong to this account');
+    }
+    features.push(serviceFeature(service.service_type));
+  }
+  return [...new Set(features)];
 }
 
 async function applyMutation({table, object, event, clientMutation, userId, operationType, expectedVersion, allowLegacyReceipt = false}) {
@@ -713,7 +773,10 @@ async function applyMutation({table, object, event, clientMutation, userId, oper
         throw deny(503, 'sync_protocol_unavailable', 'The versioned sync service is unavailable');
       case 'sync_atomic_denied':
       case 'foreign_sync_identity':
+      case 'foreign_sync_reference':
         throw deny(403, error.upstreamContractCode, 'You no longer have permission to synchronize this data');
+      case 'sync_catalog_dependency_pending':
+        throw deny(409, 'mutation_dependency_pending', 'The service and doctor must synchronize first');
       case 'sync_expected_version_invalid':
       case 'sync_atomic_request_invalid':
         throw deny(400, error.upstreamContractCode, 'Invalid sync request');
@@ -1023,6 +1086,13 @@ module.exports = async function handler(req, res) {
         'Deleting data requires an explicit delete operation');
     }
 
+    let serviceFeatures = SERVICE_AUTHORITY_TABLES.has(table) && !access.allowAll && !access.isSuperAdmin
+      ? await doctorServiceFeatures({table, accountId, deviceId, localId, payload, currentOnly: true}) : undefined;
+    if (serviceFeatures) {
+      assertRoleAllowed(access, table, tableConfig, operationType,
+        requestsTombstone ? 'delete' : undefined, serviceFeatures);
+    }
+
     const cached = await fetchCachedMutation(clientMutationId, accountId);
     if (cached) {
       if (cached.payload_hash && cached.payload_hash !== payloadHash) {
@@ -1040,6 +1110,13 @@ module.exports = async function handler(req, res) {
         if (recovered) { response(res, 200, recovered); return; }
         throw deny(409, 'mutation_in_progress', 'Mutation is still being committed');
       }
+    }
+
+    if (!cached && serviceFeatures) {
+      serviceFeatures = await doctorServiceFeatures({table, accountId, deviceId, localId, payload,
+        currentOnly: isDeleteOperation(operationType)});
+      assertRoleAllowed(access, table, tableConfig, operationType,
+        requestsTombstone ? 'delete' : undefined, serviceFeatures);
     }
 
     if (body.legacy_prepared === true && cached?.result_json) {
@@ -1100,7 +1177,7 @@ module.exports = async function handler(req, res) {
     if (action === 'delete' && !identity.exists) {
       throw deny(409, 'sync_identity_missing', 'Cannot delete a missing record');
     }
-    if (!cached) assertRoleAllowed(access, table, tableConfig, operationType, action);
+    if (!cached) assertRoleAllowed(access, table, tableConfig, operationType, action, serviceFeatures);
     const result = await applyMutation({
       table, object, userId, operationType, expectedVersion,
       event: {id: crypto.randomUUID(), correlation_id: correlationId},

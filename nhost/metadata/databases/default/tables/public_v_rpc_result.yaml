@@ -2,6 +2,12 @@ table:
   name: v_rpc_result
   schema: public
 select_permissions:
+- role: employee
+  permission:
+    columns:
+    - ok
+    - error
+    filter: {}
 - role: me
   permission:
     columns:
