@@ -196,6 +196,7 @@ interval = '5m'
 version = '14.20-20251217-1'
 
 [postgres.resources]
+enablePublicAccess = true
 [postgres.resources.storage]
 capacity = 1
 
