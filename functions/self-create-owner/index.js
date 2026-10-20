@@ -167,7 +167,7 @@ module.exports = async function handler(req, res) {
         return;
       }
       const role = `${membership.role ?? ''}`.trim().toLowerCase();
-      if (role && role !== 'owner' && role !== 'admin') {
+      if (role !== 'owner' && role !== 'admin') {
         res.status(409).json({
           ok: false,
           error: 'already linked to an account',

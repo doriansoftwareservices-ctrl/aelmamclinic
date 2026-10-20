@@ -1,0 +1,105 @@
+{
+  "version": 3,
+  "sources": [
+    {
+      "name": "default",
+      "kind": "postgres",
+      "configuration": {
+        "connection_info": {
+          "database_url": {
+            "from_env": "HASURA_GRAPHQL_DATABASE_URL"
+          },
+          "isolation_level": "read-committed",
+          "use_prepared_statements": false
+        }
+      },
+      "tables": [
+        {
+          "table": {
+            "name": "v_uuid_result",
+            "schema": "public"
+          },
+          "select_permissions": [
+            {
+              "role": "employee",
+              "permission": {
+                "columns": "*",
+                "filter": {}
+              }
+            },
+            {
+              "role": "me",
+              "permission": {
+                "columns": "*",
+                "filter": {}
+              }
+            },
+            {
+              "role": "owner",
+              "permission": {
+                "columns": "*",
+                "filter": {}
+              }
+            },
+            {
+              "role": "superadmin",
+              "permission": {
+                "columns": "*",
+                "filter": {
+                  "_exists": {
+                    "_table": {
+                      "name": "active_superadmin_identity",
+                      "schema": "public"
+                    },
+                    "_where": {
+                      "user_uid": {
+                        "_eq": "X-Hasura-User-Id"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "role": "user",
+              "permission": {
+                "columns": "*",
+                "filter": {}
+              }
+            }
+          ]
+        },
+        {
+          "table": {
+            "name": "active_superadmin_identity",
+            "schema": "public"
+          }
+        }
+      ],
+      "functions": [
+        {
+          "function": {
+            "name": "self_create_account",
+            "schema": "public"
+          },
+          "configuration": {
+            "custom_name": "self_create_account",
+            "custom_root_fields": {},
+            "exposed_as": "mutation"
+          },
+          "permissions": [
+            {
+              "role": "me"
+            },
+            {
+              "role": "user"
+            },
+            {
+              "role": "superadmin"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -36,7 +36,7 @@ async function attempt({membership = null, body = profile, authenticated = true,
     resolveUserIdFromToken: async () => authenticated ? userId : null,
     runSql: async (sql, readOnly) => {
       if (readOnly) return {result: [['account_id', 'role', 'disabled'],
-        ...(membership ? [[accountId, membership, membershipDisabled ? 't' : 'f']] : [])]};
+        ...(membership !== null ? [[accountId, membership, membershipDisabled ? 't' : 'f']] : [])]};
       writes.push(sql);
       // Model the PostgreSQL session contract that rejected the deployed
       // function. Only portable custom GUC names are accepted; request identity
@@ -101,6 +101,15 @@ test('employee membership cannot create or update an owner clinic', async () => 
   assert.equal(response.statusCode, 409);
   assert.equal(response.body.ok, false);
   assert.equal(writes.length, 0);
+});
+
+test('blank and unknown membership roles cannot be treated as owner authority', async () => {
+  for (const membership of ['', ' ', 'doctor', 'user']) {
+    const {response, writes} = await attempt({membership});
+    assert.equal(response.statusCode, 409);
+    assert.equal(response.body.ok, false);
+    assert.equal(writes.length, 0);
+  }
 });
 
 test('missing and unresolved bearer sessions do not write', async () => {

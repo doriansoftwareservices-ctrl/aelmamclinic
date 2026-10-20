@@ -1,0 +1,8 @@
+{
+  "scope": "Exact owner function and UUID result metadata; active_superadmin_identity is an empty fixture view, not a replacement production authority implementation",
+  "source_files": {
+    "nhost/metadata/databases/default/tables/public_v_uuid_result.yaml": "62631e035497ca7149a521b10eb1b42d2599e9486b0ce289891c02594bce627c",
+    "nhost/metadata/databases/default/functions/public_self_create_account.yaml": "af202dbbddd504c8e90112d07aa818a9f78cea6628d2367b57eae7d7ff8105e0"
+  },
+  "metadata_sha256": "6697400711f7bcd834421f10513bd2dcad3879608bf2548b4a4fd250bef920c8"
+}
