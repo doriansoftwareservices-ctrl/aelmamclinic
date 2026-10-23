@@ -2,107 +2,107 @@ table:
   name: v_chat_last_message
   schema: public
 select_permissions:
-- role: employee
-  permission:
-    columns: '*'
-    filter:
-      _exists:
-        _table:
-          name: chat_current_access
-          schema: public
-        _where:
-          conversation_id:
-            _ceq:
-            - $
-            - conversation_id
-          user_uid:
-            _eq: X-Hasura-User-Id
-          can_read:
-            _eq: true
-- role: me
-  permission:
-    columns: '*'
-    filter:
-      _exists:
-        _table:
-          name: chat_current_access
-          schema: public
-        _where:
-          conversation_id:
-            _ceq:
-            - $
-            - conversation_id
-          user_uid:
-            _eq: X-Hasura-User-Id
-          can_read:
-            _eq: true
-- role: owner
-  permission:
-    columns: '*'
-    filter:
-      _exists:
-        _table:
-          name: chat_current_access
-          schema: public
-        _where:
-          conversation_id:
-            _ceq:
-            - $
-            - conversation_id
-          user_uid:
-            _eq: X-Hasura-User-Id
-          can_read:
-            _eq: true
-- role: superadmin
-  permission:
-    columns: '*'
-    filter:
-      _exists:
-        _table:
-          name: chat_current_access
-          schema: public
-        _where:
-          conversation_id:
-            _ceq:
-            - $
-            - conversation_id
-          user_uid:
-            _eq: X-Hasura-User-Id
-          can_read:
-            _eq: true
-          is_superadmin:
-            _eq: true
-- role: support
-  permission:
-    columns: '*'
-    filter:
-      _exists:
-        _table:
-          name: chat_current_access
-          schema: public
-        _where:
-          conversation_id:
-            _ceq:
-            - $
-            - conversation_id
-          user_uid:
-            _eq: X-Hasura-User-Id
-          can_read:
-            _eq: true
-- role: user
-  permission:
-    columns: '*'
-    filter:
-      _exists:
-        _table:
-          name: chat_current_access
-          schema: public
-        _where:
-          conversation_id:
-            _ceq:
-            - $
-            - conversation_id
-          user_uid:
-            _eq: X-Hasura-User-Id
-          can_read:
-            _eq: true
+  - role: employee
+    permission:
+      columns: '*'
+      filter:
+        _exists:
+          _table:
+            name: chat_current_access
+            schema: public
+          _where:
+            can_read:
+              _eq: true
+            conversation_id:
+              _ceq:
+                - $
+                - conversation_id
+            user_uid:
+              _eq: X-Hasura-User-Id
+  - role: me
+    permission:
+      columns: '*'
+      filter:
+        _exists:
+          _table:
+            name: chat_current_access
+            schema: public
+          _where:
+            can_read:
+              _eq: true
+            conversation_id:
+              _ceq:
+                - $
+                - conversation_id
+            user_uid:
+              _eq: X-Hasura-User-Id
+  - role: owner
+    permission:
+      columns: '*'
+      filter:
+        _exists:
+          _table:
+            name: chat_current_access
+            schema: public
+          _where:
+            can_read:
+              _eq: true
+            conversation_id:
+              _ceq:
+                - $
+                - conversation_id
+            user_uid:
+              _eq: X-Hasura-User-Id
+  - role: superadmin
+    permission:
+      columns: '*'
+      filter:
+        _exists:
+          _table:
+            name: chat_current_access
+            schema: public
+          _where:
+            can_read:
+              _eq: true
+            conversation_id:
+              _ceq:
+                - $
+                - conversation_id
+            is_superadmin:
+              _eq: true
+            user_uid:
+              _eq: X-Hasura-User-Id
+  - role: support
+    permission:
+      columns: '*'
+      filter:
+        _exists:
+          _table:
+            name: chat_current_access
+            schema: public
+          _where:
+            can_read:
+              _eq: true
+            conversation_id:
+              _ceq:
+                - $
+                - conversation_id
+            user_uid:
+              _eq: X-Hasura-User-Id
+  - role: user
+    permission:
+      columns: '*'
+      filter:
+        _exists:
+          _table:
+            name: chat_current_access
+            schema: public
+          _where:
+            can_read:
+              _eq: true
+            conversation_id:
+              _ceq:
+                - $
+                - conversation_id
+            user_uid:
+              _eq: X-Hasura-User-Id

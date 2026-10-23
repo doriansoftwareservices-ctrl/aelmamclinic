@@ -61,24 +61,24 @@ configuration:
     update: updateAuthOauth2AuthRequests
     update_by_pk: updateAuthOauth2AuthRequest
 object_relationships:
-- name: client
-  using:
-    foreign_key_constraint_on: client_id
-- name: user
-  using:
-    foreign_key_constraint_on: user_id
+  - name: client
+    using:
+      foreign_key_constraint_on: client_id
+  - name: user
+    using:
+      foreign_key_constraint_on: user_id
 array_relationships:
-- name: authorizationCodes
-  using:
-    foreign_key_constraint_on:
-      column: auth_request_id
-      table:
-        name: oauth2_authorization_codes
-        schema: auth
-- name: refreshTokens
-  using:
-    foreign_key_constraint_on:
-      column: auth_request_id
-      table:
-        name: oauth2_refresh_tokens
-        schema: auth
+  - name: authorizationCodes
+    using:
+      foreign_key_constraint_on:
+        column: auth_request_id
+        table:
+          name: oauth2_authorization_codes
+          schema: auth
+  - name: refreshTokens
+    using:
+      foreign_key_constraint_on:
+        column: auth_request_id
+        table:
+          name: oauth2_refresh_tokens
+          schema: auth

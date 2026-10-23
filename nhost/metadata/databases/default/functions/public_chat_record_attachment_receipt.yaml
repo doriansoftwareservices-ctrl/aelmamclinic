@@ -1,9 +1,13 @@
 function:
-  name: admin_set_account_plan
+  name: chat_record_attachment_receipt
   schema: public
 configuration:
-  custom_name: admin_set_account_plan
   custom_root_fields: {}
   exposed_as: mutation
 permissions:
+  - role: employee
+  - role: me
+  - role: owner
   - role: superadmin
+  - role: support
+  - role: user

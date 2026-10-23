@@ -2,21 +2,21 @@ table:
   name: v_admin_list_clinics
   schema: public
 select_permissions:
-- role: superadmin
-  permission:
-    columns:
-    - id
-    - name
-    - frozen
-    - created_at
-    - plan_code
-    - plan_status
-    - plan_end_at
-    filter:
-      _exists:
-        _table:
-          name: active_superadmin_identity
-          schema: public
-        _where:
-          user_uid:
-            _eq: X-Hasura-User-Id
+  - role: superadmin
+    permission:
+      columns:
+        - id
+        - name
+        - frozen
+        - created_at
+        - plan_code
+        - plan_status
+        - plan_end_at
+      filter:
+        _exists:
+          _table:
+            name: active_superadmin_identity
+            schema: public
+          _where:
+            user_uid:
+              _eq: X-Hasura-User-Id

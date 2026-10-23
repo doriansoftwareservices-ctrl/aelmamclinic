@@ -2,14 +2,14 @@ table:
   name: v_bool_result
   schema: public
 select_permissions:
-- role: superadmin
-  permission:
-    columns: '*'
-    filter:
-      _exists:
-        _table:
-          name: active_superadmin_identity
-          schema: public
-        _where:
-          user_uid:
-            _eq: X-Hasura-User-Id
+  - role: superadmin
+    permission:
+      columns: '*'
+      filter:
+        _exists:
+          _table:
+            name: active_superadmin_identity
+            schema: public
+          _where:
+            user_uid:
+              _eq: X-Hasura-User-Id

@@ -2,40 +2,40 @@ table:
   name: chat_support_agent_gql_result
   schema: public
 select_permissions:
-- role: employee
-  permission:
-    columns:
-    - user_uid
-    - display_name
-    filter: {}
-- role: me
-  permission:
-    columns:
-    - user_uid
-    - display_name
-    filter: {}
-- role: owner
-  permission:
-    columns:
-    - user_uid
-    - display_name
-    filter: {}
-- role: superadmin
-  permission:
-    columns:
-    - user_uid
-    - display_name
-    filter:
-      _exists:
-        _table:
-          name: active_superadmin_identity
-          schema: public
-        _where:
-          user_uid:
-            _eq: X-Hasura-User-Id
-- role: user
-  permission:
-    columns:
-    - user_uid
-    - display_name
-    filter: {}
+  - role: employee
+    permission:
+      columns:
+        - user_uid
+        - display_name
+      filter: {}
+  - role: me
+    permission:
+      columns:
+        - user_uid
+        - display_name
+      filter: {}
+  - role: owner
+    permission:
+      columns:
+        - user_uid
+        - display_name
+      filter: {}
+  - role: superadmin
+    permission:
+      columns:
+        - user_uid
+        - display_name
+      filter:
+        _exists:
+          _table:
+            name: active_superadmin_identity
+            schema: public
+          _where:
+            user_uid:
+              _eq: X-Hasura-User-Id
+  - role: user
+    permission:
+      columns:
+        - user_uid
+        - display_name
+      filter: {}

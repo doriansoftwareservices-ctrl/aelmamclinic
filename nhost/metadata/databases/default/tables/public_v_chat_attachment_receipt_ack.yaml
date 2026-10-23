@@ -1,0 +1,70 @@
+table:
+  name: v_chat_attachment_receipt_ack
+  schema: public
+select_permissions:
+  - role: employee
+    permission:
+      columns:
+        - attachment_id
+        - user_uid
+        - device_id
+        - downloaded_at
+        - opened_at
+      filter:
+        user_uid:
+          _eq: X-Hasura-User-Id
+  - role: me
+    permission:
+      columns:
+        - attachment_id
+        - user_uid
+        - device_id
+        - downloaded_at
+        - opened_at
+      filter:
+        user_uid:
+          _eq: X-Hasura-User-Id
+  - role: owner
+    permission:
+      columns:
+        - attachment_id
+        - user_uid
+        - device_id
+        - downloaded_at
+        - opened_at
+      filter:
+        user_uid:
+          _eq: X-Hasura-User-Id
+  - role: superadmin
+    permission:
+      columns:
+        - attachment_id
+        - user_uid
+        - device_id
+        - downloaded_at
+        - opened_at
+      filter:
+        user_uid:
+          _eq: X-Hasura-User-Id
+  - role: support
+    permission:
+      columns:
+        - attachment_id
+        - user_uid
+        - device_id
+        - downloaded_at
+        - opened_at
+      filter:
+        user_uid:
+          _eq: X-Hasura-User-Id
+  - role: user
+    permission:
+      columns:
+        - attachment_id
+        - user_uid
+        - device_id
+        - downloaded_at
+        - opened_at
+      filter:
+        user_uid:
+          _eq: X-Hasura-User-Id

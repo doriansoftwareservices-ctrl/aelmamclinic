@@ -1,0 +1,46 @@
+table:
+  name: app_server_now
+  schema: public
+select_permissions:
+  - role: employee
+    permission:
+      columns:
+        - server_now
+        - clinic_pull_clock_contract
+      filter: {}
+      limit: 1
+  - role: me
+    permission:
+      columns:
+        - server_now
+        - clinic_pull_clock_contract
+      filter: {}
+      limit: 1
+  - role: owner
+    permission:
+      columns:
+        - server_now
+        - clinic_pull_clock_contract
+      filter: {}
+      limit: 1
+  - role: superadmin
+    permission:
+      columns:
+        - server_now
+        - clinic_pull_clock_contract
+      filter: {}
+      limit: 1
+  - role: support
+    permission:
+      columns:
+        - server_now
+        - clinic_pull_clock_contract
+      filter: {}
+      limit: 1
+  - role: user
+    permission:
+      columns:
+        - server_now
+        - clinic_pull_clock_contract
+      filter: {}
+      limit: 1

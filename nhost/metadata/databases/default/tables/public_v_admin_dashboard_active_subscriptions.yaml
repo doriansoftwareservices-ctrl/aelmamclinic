@@ -2,28 +2,28 @@ table:
   name: v_admin_dashboard_active_subscriptions
   schema: public
 select_permissions:
-- role: superadmin
-  permission:
-    columns:
-    - account_id
-    - account_name
-    - plan_code
-    - plan_name
-    - status
-    - start_at
-    - end_at
-    - grace_days
-    - effective_end_at
-    - remaining_days_including_grace
-    - approved_at
-    - approved_by
-    - approved_by_email
-    - request_id
-    filter:
-      _exists:
-        _table:
-          name: active_superadmin_identity
-          schema: public
-        _where:
-          user_uid:
-            _eq: X-Hasura-User-Id
+  - role: superadmin
+    permission:
+      columns:
+        - account_id
+        - account_name
+        - plan_code
+        - plan_name
+        - status
+        - start_at
+        - end_at
+        - grace_days
+        - effective_end_at
+        - remaining_days_including_grace
+        - approved_at
+        - approved_by
+        - approved_by_email
+        - request_id
+      filter:
+        _exists:
+          _table:
+            name: active_superadmin_identity
+            schema: public
+          _where:
+            user_uid:
+              _eq: X-Hasura-User-Id

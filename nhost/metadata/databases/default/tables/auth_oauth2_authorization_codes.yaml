@@ -31,6 +31,6 @@ configuration:
     update: updateAuthOauth2AuthorizationCodes
     update_by_pk: updateAuthOauth2AuthorizationCode
 object_relationships:
-- name: authRequest
-  using:
-    foreign_key_constraint_on: auth_request_id
+  - name: authRequest
+    using:
+      foreign_key_constraint_on: auth_request_id

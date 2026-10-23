@@ -96,6 +96,7 @@ const TABLES = {
       'remaining',
       'remaining_minor',
       'register_date',
+      'registered_at',
       'phone_number',
       'health_status',
       'preferences',
@@ -435,6 +436,8 @@ async function gqlRequest(query, variables) {
       'purchase_amendment_pair_invalid', 'purchase_amendment_link_immutable',
       'sync_atomic_denied', 'foreign_sync_identity', 'foreign_sync_reference',
       'sync_catalog_dependency_pending', 'sync_expected_version_invalid',
+      'clinic_timestamp_utc_required', 'clinic_timestamp_invalid',
+      'patient_registration_time_required', 'patient_registration_time_clear_denied',
       'sync_atomic_request_invalid', 'sync_version_unknown', 'sync_version_conflict',
       'sync_identity_mismatch', 'sync_identity_missing', 'sync_record_deleted',
       'mutation_in_progress', 'sync_money_mismatch', 'money_minor_mismatch',
@@ -777,6 +780,10 @@ async function applyMutation({table, object, event, clientMutation, userId, oper
         throw deny(403, error.upstreamContractCode, 'You no longer have permission to synchronize this data');
       case 'sync_catalog_dependency_pending':
         throw deny(409, 'mutation_dependency_pending', 'The service and doctor must synchronize first');
+      case 'clinic_timestamp_utc_required':
+      case 'clinic_timestamp_invalid':
+      case 'patient_registration_time_required':
+      case 'patient_registration_time_clear_denied':
       case 'sync_expected_version_invalid':
       case 'sync_atomic_request_invalid':
         throw deny(400, error.upstreamContractCode, 'Invalid sync request');
@@ -1009,6 +1016,11 @@ async function applyPurchaseAmendment({
 }
 
 module.exports = async function handler(req, res) {
+  // A read-only deployment probe can verify which contract reached the runtime
+  // before the database begins requiring its new patient timestamp field.
+  if (typeof res.setHeader === 'function') {
+    res.setHeader('X-Clinic-Sync-Contract', 'clinic-temporal-v1');
+  }
   const correlationId = crypto.randomUUID();
   if (req.method && req.method.toUpperCase() !== 'POST') {
     fail(res, 405, 'method_not_allowed', 'POST is required', {

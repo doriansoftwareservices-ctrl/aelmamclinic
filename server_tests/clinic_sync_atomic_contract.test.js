@@ -30,7 +30,7 @@ if (priorModule) require.cache[shared] = priorModule;
 else delete require.cache[shared];
 
 async function attempt({expected = '7', header = expected, existing = true,
-  protocol = 2, error, receipt, denied = false, missingAck = false, table = 'item_types', money, legacyPrepared = false} = {}) {
+  protocol = 2, error, receipt, denied = false, missingAck = false, table = 'item_types', money, fields = {}, legacyPrepared = false, method = 'POST'} = {}) {
   const originalFetch = global.fetch;
   const originalSecret = process.env.NHOST_ADMIN_SECRET;
   process.env.NHOST_ADMIN_SECRET = 'synthetic-only';
@@ -73,15 +73,16 @@ async function attempt({expected = '7', header = expected, existing = true,
     } else throw new Error('Unexpected fixture operation');
     return {ok: true, text: async () => JSON.stringify({data})};
   };
-  const reply = {statusCode: 0, body: null,
+  const reply = {statusCode: 0, body: null, headers: {},
+    setHeader(name, value) {this.headers[name.toLowerCase()] = value;},
     status(status) {this.statusCode = status; return this;},
     json(body) {this.body = body; return this;},
   };
-  const payload = {id: remote, name: 'input'};
+  const payload = {id: remote, name: 'input', ...fields};
   if (money !== undefined) payload.cost_minor = money;
   if (protocol === 2 && !legacyPrepared) payload.expected_server_version = expected;
   try {
-    await handler({method: 'POST', body: {
+    await handler({method, body: {
       operation_type: acknowledgement.operation, entity_table: table,
       account_id: account, device_id: 'fixture', local_id: '7',
       client_mutation_id: 'opaque-N-1-cid', payload,
@@ -94,6 +95,14 @@ async function attempt({expected = '7', header = expected, existing = true,
     else process.env.NHOST_ADMIN_SECRET = originalSecret;
   }
 }
+
+test('read-only deployment probe identifies the handler without any upstream call', async () => {
+  const result = await attempt({method: 'GET'});
+  assert.equal(result.statusCode, 405);
+  assert.equal(result.headers['x-clinic-sync-contract'], 'clinic-temporal-v1');
+  assert.equal(result.requests.length, 0);
+  assert.equal(result.writes, 0);
+});
 
 test('success returns the committed version, timestamp and row from one atomic RPC', async () => {
   const result = await attempt();
@@ -211,3 +220,26 @@ test('a frozen legacy receipt is rechecked in SQL with its original unknown vers
   assert.match(result.requests.at(-1).query, /apply_clinic_sync_atomic/);
   assert.equal(result.requests.at(-1).variables.expectedVersion, null);
 });
+
+
+test('patient exact registration reaches the atomic RPC without losing microseconds', async () => {
+  const stamp = '2026-10-21T21:15:00.123456Z';
+  const result = await attempt({table: 'patients', fields: {
+    registered_at: stamp, register_date: '2026-10-22',
+  }});
+  assert.equal(result.statusCode, 200);
+  const mutation = result.requests.find(request => request.query.includes('mutation ClinicSyncApply'));
+  assert.equal(mutation.variables.object.registered_at, stamp);
+  assert.equal(mutation.variables.object.register_date, '2026-10-22');
+});
+
+for (const code of ['clinic_timestamp_utc_required', 'clinic_timestamp_invalid',
+  'patient_registration_time_required', 'patient_registration_time_clear_denied']) {
+  test(`temporal contract rejection ${code} is a typed HTTP400 response`, async () => {
+    const result = await attempt({table: 'patients', error: code});
+    assert.equal(result.statusCode, 400);
+    assert.equal(result.body.error_code, code);
+    assert.equal(result.writes, 1);
+    assert.equal(result.requests.filter(request => /^\s*mutation\b/.test(request.query)).length, 1);
+  });
+}

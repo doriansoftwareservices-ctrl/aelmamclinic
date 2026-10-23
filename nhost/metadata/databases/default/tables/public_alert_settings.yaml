@@ -2,65 +2,65 @@ table:
   name: alert_settings
   schema: public
 array_relationships:
-- name: active_feature_access
-  using:
-    manual_configuration:
-      column_mapping:
-        account_id: account_id
-      insertion_order: null
-      remote_table:
-        name: active_account_feature_access
-        schema: public
-- name: active_superadmin_access
-  using:
-    manual_configuration:
-      column_mapping:
-        account_id: account_id
-      insertion_order: null
-      remote_table:
-        name: active_superadmin_account_access
-        schema: public
+  - name: active_feature_access
+    using:
+      manual_configuration:
+        column_mapping:
+          account_id: account_id
+        insertion_order: null
+        remote_table:
+          name: active_account_feature_access
+          schema: public
+  - name: active_superadmin_access
+    using:
+      manual_configuration:
+        column_mapping:
+          account_id: account_id
+        insertion_order: null
+        remote_table:
+          name: active_superadmin_account_access
+          schema: public
 select_permissions:
-- role: me
-  permission:
-    columns: '*'
-    filter:
-      _and:
-      - active_feature_access:
-          user_uid:
-            _eq: X-Hasura-User-Id
-          _or:
-          - allow_all:
-              _eq: true
-          - allowed_features:
-              _contains:
-              - repository
-- role: user
-  permission:
-    columns: '*'
-    filter:
-      _and:
-      - active_feature_access:
-          user_uid:
-            _eq: X-Hasura-User-Id
-          _or:
-          - allow_all:
-              _eq: true
-          - allowed_features:
-              _contains:
-              - repository
-- role: superadmin
-  permission:
-    columns: '*'
-    filter:
-      _and:
-      - active_superadmin_access:
-          user_uid:
-            _eq: X-Hasura-User-Id
-      - _exists:
-          _table:
-            name: active_superadmin_identity
-            schema: public
-          _where:
-            user_uid:
-              _eq: X-Hasura-User-Id
+  - role: me
+    permission:
+      columns: '*'
+      filter:
+        _and:
+          - active_feature_access:
+              _or:
+                - allow_all:
+                    _eq: true
+                - allowed_features:
+                    _contains:
+                      - repository
+              user_uid:
+                _eq: X-Hasura-User-Id
+  - role: superadmin
+    permission:
+      columns: '*'
+      filter:
+        _and:
+          - active_superadmin_access:
+              user_uid:
+                _eq: X-Hasura-User-Id
+          - _exists:
+              _table:
+                name: active_superadmin_identity
+                schema: public
+              _where:
+                user_uid:
+                  _eq: X-Hasura-User-Id
+  - role: user
+    permission:
+      columns: '*'
+      filter:
+        _and:
+          - active_feature_access:
+              _or:
+                - allow_all:
+                    _eq: true
+                - allowed_features:
+                    _contains:
+                      - repository
+              user_uid:
+                _eq: X-Hasura-User-Id

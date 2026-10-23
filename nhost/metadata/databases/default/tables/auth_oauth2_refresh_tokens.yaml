@@ -40,12 +40,12 @@ configuration:
     update: updateAuthOauth2RefreshTokens
     update_by_pk: updateAuthOauth2RefreshToken
 object_relationships:
-- name: authRequest
-  using:
-    foreign_key_constraint_on: auth_request_id
-- name: client
-  using:
-    foreign_key_constraint_on: client_id
-- name: user
-  using:
-    foreign_key_constraint_on: user_id
+  - name: authRequest
+    using:
+      foreign_key_constraint_on: auth_request_id
+  - name: client
+    using:
+      foreign_key_constraint_on: client_id
+  - name: user
+    using:
+      foreign_key_constraint_on: user_id

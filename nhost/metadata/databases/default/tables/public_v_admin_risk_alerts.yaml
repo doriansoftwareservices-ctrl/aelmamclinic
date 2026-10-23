@@ -2,19 +2,19 @@ table:
   name: v_admin_risk_alerts
   schema: public
 select_permissions:
-- role: superadmin
-  permission:
-    columns:
-    - code
-    - severity
-    - title
-    - count
-    - hint
-    filter:
-      _exists:
-        _table:
-          name: active_superadmin_identity
-          schema: public
-        _where:
-          user_uid:
-            _eq: X-Hasura-User-Id
+  - role: superadmin
+    permission:
+      columns:
+        - code
+        - severity
+        - title
+        - count
+        - hint
+      filter:
+        _exists:
+          _table:
+            name: active_superadmin_identity
+            schema: public
+          _where:
+            user_uid:
+              _eq: X-Hasura-User-Id
