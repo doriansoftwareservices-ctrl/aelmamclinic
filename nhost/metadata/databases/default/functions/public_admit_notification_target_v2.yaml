@@ -1,0 +1,6 @@
+# Private server admission; no application role permission.
+function:
+  name: admit_notification_target_v2
+  schema: public
+configuration:
+  exposed_as: mutation

@@ -1,3 +1,14 @@
+- name: notification_delivery_v2_minute
+  webhook: https://nbbywmmebvxegshrvgic.functions.ap-southeast-1.nhost.run/v1/notify-dispatch-v2
+  schedule: '* * * * *'
+  include_in_metadata: true
+  payload:
+    notification_protocol: 2
+  headers:
+  - name: Content-Type
+    value: application/json
+  - name: x-hasura-event-secret
+    value_from_env: NHOST_WEBHOOK_SECRET
 - name: expire_account_subscriptions_daily
   webhook: https://nbbywmmebvxegshrvgic.graphql.ap-southeast-1.nhost.run/v1
   schedule: 0 3 * * *

@@ -1,0 +1,6 @@
+# Exact registration compare-and-set, server only.
+function:
+  name: deactivate_notification_registration_v2
+  schema: public
+configuration:
+  exposed_as: mutation

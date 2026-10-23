@@ -1,0 +1,7 @@
+function:
+  name: claim_notification_targets_v2
+  schema: public
+configuration:
+  exposed_as: mutation
+permissions: []
+# Server Functions verify the actor; normal JWTs cannot choose one through this RPC.

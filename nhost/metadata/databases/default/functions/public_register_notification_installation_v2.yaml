@@ -1,0 +1,5 @@
+function:
+  name: register_notification_installation_v2
+  schema: public
+configuration:
+  exposed_as: mutation

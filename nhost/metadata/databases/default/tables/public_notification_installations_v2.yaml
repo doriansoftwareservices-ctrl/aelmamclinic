@@ -1,0 +1,4 @@
+# Installation proof/revision are server-only, including for system admins.
+table:
+  name: notification_installations_v2
+  schema: public

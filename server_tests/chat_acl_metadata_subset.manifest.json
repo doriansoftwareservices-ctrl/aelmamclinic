@@ -1,0 +1,33 @@
+{
+  "cloud_requests": 0,
+  "scope": "exact_chat_permissions_local_subset",
+  "source_files": {
+    "nhost/metadata/databases/default/tables/public_chat_conversations.yaml": "318db6f23fcd6a4fbdc02591b087c23181d39e588f3e8840b561e82b8d41eb1b",
+    "nhost/metadata/databases/default/tables/public_chat_messages.yaml": "988c974ffa6162ea60941a8c37ae035bfba504a11dccbf5cef764af67caff956",
+    "nhost/metadata/databases/default/tables/public_chat_participants.yaml": "e4f4c2dbc68d5fd5cce1db48553546ca3cd878a80eeccc97c7dd59edd10e026e",
+    "nhost/metadata/databases/default/tables/public_chat_reads.yaml": "c22ada371e8416f0ea94d3ff455fa8758efe5d3e36bd351a015166521ac8c471",
+    "nhost/metadata/databases/default/tables/public_chat_typing.yaml": "f9c5cb1be66557e167cd80d1173d1a083fee7b51a39befd885c1cd1a6d0e4e89",
+    "nhost/metadata/databases/default/tables/public_chat_delivery_receipts.yaml": "9d361ece53b593c654bbabdd78889a861e45116f0f9b743a8d44b365bcfb483d",
+    "nhost/metadata/databases/default/tables/public_chat_scope_authority.yaml": "57263a785a41a00c67d867398f7b0ac736d5487d30ea967381cb93b472c4a90d",
+    "nhost/metadata/databases/default/tables/public_chat_current_access.yaml": "94a516575394c8dfa6958ad72da4c31fd3231ab803df31db3121709a1a2f8892",
+    "nhost/metadata/databases/default/tables/public_chat_reactions.yaml": "0a57e2fe30b561980ac3a5b303b4ae92ff70e5ba9116990d2d846f7b35c5c448",
+    "nhost/metadata/databases/default/tables/public_chat_message_current_access.yaml": "8829eb177ce48d7647f98aa7f51b7f83d3f4b69d017d6ac4f61ade9143f63e4d",
+    "nhost/metadata/databases/default/tables/public_v_chat_last_message.yaml": "883543c18c05f106ae2ac3e66f0f09c19c1a174297eb716dca5b11071bf8e70a",
+    "nhost/metadata/databases/default/tables/public_v_chat_conversations_for_me.yaml": "56833cba4c8ab1294126b3291a7d4167ab1f603139e2d6ff7655154414c4a3d4",
+    "nhost/metadata/databases/default/tables/public_v_chat_reads_for_me.yaml": "350c7d922471a826c996097377460cdbf874e99faeebff4ae10626cc1c31cee2",
+    "nhost/metadata/databases/default/tables/public_v_chat_typing_active.yaml": "457c339b5351dbb6e0777aa2b47b6babcba609f75eb357578afff85558d7d513",
+    "nhost/metadata/databases/default/tables/public_v_rpc_result.yaml": "06d6e3875339cbc63b850a6873493846ded4fa53b93057199bb5994809b81b8c",
+    "nhost/metadata/databases/default/tables/public_v_uuid_result.yaml": "62631e035497ca7149a521b10eb1b42d2599e9486b0ce289891c02594bce627c",
+    "nhost/metadata/databases/default/functions/public_chat_start_dm.yaml": "c4ef68132a788eee04c9ae79d82dfc0474d70bf88f8c8b748f0a1179afb7bb10",
+    "nhost/metadata/databases/default/functions/public_chat_start_support.yaml": "c61adbc8a81233dc17dac744cb9fbd0726fc5793113c908850128c4cd1fc96c3",
+    "nhost/metadata/databases/default/functions/public_chat_mark_delivered.yaml": "463a456ba0abee6b7fc755e619e67aea8361df20b218c898401d10dab234c069",
+    "nhost/metadata/databases/default/functions/public_chat_admin_start_dm.yaml": "3159cd5c4f6d0948641c410b01799c15d364efa04ffce5db63d372462a0709b1"
+  },
+  "table_count": 20,
+  "omitted": [
+    "event_triggers",
+    "unrelated_supporting_table_permissions",
+    "unrelated_tracked_functions"
+  ],
+  "metadata_sha256": "bb70b02c560606b39eddf075e9380cb11a26940651bd9738a7ad78815bbd7b77"
+}

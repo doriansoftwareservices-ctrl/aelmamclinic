@@ -1,0 +1,20 @@
+{
+  "cloud_requests": 0,
+  "scope": "exact_doctor_catalog_permissions_local_subset",
+  "source_files": {
+    "nhost/metadata/databases/default/tables/public_doctors.yaml": "7e5da00836452fdfa5c1071c25a8ef48ad49e0ee37d5c1764f950a93e732b1ff",
+    "nhost/metadata/databases/default/tables/public_medical_services.yaml": "ae5638b1b9add6a232ecb925083a82772a7a02e55d51474ecd0fd79701bcec32",
+    "nhost/metadata/databases/default/tables/public_service_doctor_share.yaml": "0ea359eab6b490546a7dbc77f44a76a5f2d2e00ae2b13fb11d0e489129e13b60",
+    "nhost/metadata/databases/default/tables/public_employees.yaml": "68ed5bf32ce7cc634ddd796805c8b6dd84f4ce57f468f32b2404423a4bc62872",
+    "nhost/metadata/databases/default/tables/public_employees_salaries.yaml": "4ea41aac5b569f7155046f1f69a51d2b1240aad14ebd4b233bd3bc1349092b43",
+    "nhost/metadata/databases/default/tables/public_financial_logs.yaml": "3b89a269b3a0f19e9b7e44f6650f7b8bb54a22317fe3505433cc5c842350b506",
+    "nhost/metadata/databases/default/functions/public_apply_clinic_sync_atomic.yaml": "bac73f255ee5e62a4d1e62b47f2b29c1280c9398de6a14a8b1443fd0536fc3c8"
+  },
+  "table_count": 10,
+  "omitted": [
+    "event_triggers",
+    "unrelated_supporting_table_permissions",
+    "unrelated_tracked_functions"
+  ],
+  "metadata_sha256": "5c67d68604e715777f142413185c615a201940c84750e5046d33ece0efe57ef5"
+}

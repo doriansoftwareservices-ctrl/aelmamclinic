@@ -122,3 +122,8 @@
 - "!include storage_buckets.yaml"
 - "!include storage_files.yaml"
 - "!include storage_virus.yaml"
+
+- "!include public_notification_delivery_control_v2.yaml"
+- "!include public_notification_delivery_events_v2.yaml"
+- "!include public_notification_delivery_targets_v2.yaml"
+- "!include public_notification_installations_v2.yaml"

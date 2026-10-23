@@ -1,0 +1,8 @@
+# Pending notification v2 candidate; nonce and lease data are server-only.
+table:
+  name: notification_delivery_targets_v2
+  schema: public
+object_relationships:
+- name: delivery_event
+  using:
+    foreign_key_constraint_on: event_id

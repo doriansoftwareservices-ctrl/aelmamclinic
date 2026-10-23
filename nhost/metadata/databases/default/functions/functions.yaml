@@ -57,3 +57,11 @@
 - "!include public_superadmin_review_employee_seat_request.yaml"
 - "!include public_update_clinic_profile.yaml"
 - "!include public_user_cancel_subscription_request.yaml"
+
+- "!include public_acknowledge_notification_target_v2.yaml"
+- "!include public_admit_notification_target_v2.yaml"
+- "!include public_claim_notification_targets_v2.yaml"
+- "!include public_deactivate_notification_registration_v2.yaml"
+- "!include public_enqueue_notification_delivery_v2.yaml"
+- "!include public_finish_notification_target_v2.yaml"
+- "!include public_register_notification_installation_v2.yaml"

@@ -1,0 +1,1182 @@
+{
+  "version": 3,
+  "sources": [
+    {
+      "name": "default",
+      "kind": "postgres",
+      "configuration": {
+        "connection_info": {
+          "database_url": {
+            "from_env": "HASURA_GRAPHQL_DATABASE_URL"
+          },
+          "isolation_level": "read-committed",
+          "use_prepared_statements": true
+        }
+      },
+      "tables": [
+        {
+          "table": {
+            "name": "doctors",
+            "schema": "public"
+          },
+          "array_relationships": [
+            {
+              "name": "active_feature_access",
+              "using": {
+                "manual_configuration": {
+                  "column_mapping": {
+                    "account_id": "account_id"
+                  },
+                  "insertion_order": null,
+                  "remote_table": {
+                    "name": "active_account_feature_access",
+                    "schema": "public"
+                  }
+                }
+              }
+            },
+            {
+              "name": "active_superadmin_access",
+              "using": {
+                "manual_configuration": {
+                  "column_mapping": {
+                    "account_id": "account_id"
+                  },
+                  "insertion_order": null,
+                  "remote_table": {
+                    "name": "active_superadmin_account_access",
+                    "schema": "public"
+                  }
+                }
+              }
+            }
+          ],
+          "select_permissions": [
+            {
+              "role": "me",
+              "permission": {
+                "columns": "*",
+                "filter": {
+                  "_or": [
+                    {
+                      "_and": [
+                        {
+                          "active_feature_access": {
+                            "user_uid": {
+                              "_eq": "X-Hasura-User-Id"
+                            },
+                            "_or": [
+                              {
+                                "allow_all": {
+                                  "_eq": true
+                                }
+                              },
+                              {
+                                "allowed_features": {
+                                  "_contains": [
+                                    "employees"
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "_and": [
+                        {
+                          "active_feature_access": {
+                            "user_uid": {
+                              "_eq": "X-Hasura-User-Id"
+                            },
+                            "_or": [
+                              {
+                                "allowed_features": {
+                                  "_contains": [
+                                    "patients.new"
+                                  ]
+                                }
+                              },
+                              {
+                                "allowed_features": {
+                                  "_contains": [
+                                    "patients.list"
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "role": "user",
+              "permission": {
+                "columns": "*",
+                "filter": {
+                  "_or": [
+                    {
+                      "_and": [
+                        {
+                          "active_feature_access": {
+                            "user_uid": {
+                              "_eq": "X-Hasura-User-Id"
+                            },
+                            "_or": [
+                              {
+                                "allow_all": {
+                                  "_eq": true
+                                }
+                              },
+                              {
+                                "allowed_features": {
+                                  "_contains": [
+                                    "employees"
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "_and": [
+                        {
+                          "active_feature_access": {
+                            "user_uid": {
+                              "_eq": "X-Hasura-User-Id"
+                            },
+                            "_or": [
+                              {
+                                "allowed_features": {
+                                  "_contains": [
+                                    "patients.new"
+                                  ]
+                                }
+                              },
+                              {
+                                "allowed_features": {
+                                  "_contains": [
+                                    "patients.list"
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "role": "superadmin",
+              "permission": {
+                "columns": "*",
+                "filter": {
+                  "_and": [
+                    {
+                      "active_superadmin_access": {
+                        "user_uid": {
+                          "_eq": "X-Hasura-User-Id"
+                        }
+                      }
+                    },
+                    {
+                      "_exists": {
+                        "_table": {
+                          "name": "active_superadmin_identity",
+                          "schema": "public"
+                        },
+                        "_where": {
+                          "user_uid": {
+                            "_eq": "X-Hasura-User-Id"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "table": {
+            "name": "medical_services",
+            "schema": "public"
+          },
+          "array_relationships": [
+            {
+              "name": "active_feature_access",
+              "using": {
+                "manual_configuration": {
+                  "column_mapping": {
+                    "account_id": "account_id"
+                  },
+                  "insertion_order": null,
+                  "remote_table": {
+                    "name": "active_account_feature_access",
+                    "schema": "public"
+                  }
+                }
+              }
+            },
+            {
+              "name": "active_superadmin_access",
+              "using": {
+                "manual_configuration": {
+                  "column_mapping": {
+                    "account_id": "account_id"
+                  },
+                  "insertion_order": null,
+                  "remote_table": {
+                    "name": "active_superadmin_account_access",
+                    "schema": "public"
+                  }
+                }
+              }
+            }
+          ],
+          "select_permissions": [
+            {
+              "role": "me",
+              "permission": {
+                "columns": "*",
+                "filter": {
+                  "_or": [
+                    {
+                      "_and": [
+                        {
+                          "active_feature_access": {
+                            "user_uid": {
+                              "_eq": "X-Hasura-User-Id"
+                            },
+                            "_or": [
+                              {
+                                "allow_all": {
+                                  "_eq": true
+                                }
+                              },
+                              {
+                                "allowed_features": {
+                                  "_contains": [
+                                    "lab_radiology"
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "_and": [
+                        {
+                          "service_type": {
+                            "_in": [
+                              "doctorGeneral",
+                              "doctor",
+                              "طبيب"
+                            ]
+                          }
+                        },
+                        {
+                          "active_feature_access": {
+                            "user_uid": {
+                              "_eq": "X-Hasura-User-Id"
+                            },
+                            "_or": [
+                              {
+                                "allowed_features": {
+                                  "_contains": [
+                                    "employees"
+                                  ]
+                                }
+                              },
+                              {
+                                "allowed_features": {
+                                  "_contains": [
+                                    "patients.new"
+                                  ]
+                                }
+                              },
+                              {
+                                "allowed_features": {
+                                  "_contains": [
+                                    "patients.list"
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "role": "user",
+              "permission": {
+                "columns": "*",
+                "filter": {
+                  "_or": [
+                    {
+                      "_and": [
+                        {
+                          "active_feature_access": {
+                            "user_uid": {
+                              "_eq": "X-Hasura-User-Id"
+                            },
+                            "_or": [
+                              {
+                                "allow_all": {
+                                  "_eq": true
+                                }
+                              },
+                              {
+                                "allowed_features": {
+                                  "_contains": [
+                                    "lab_radiology"
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "_and": [
+                        {
+                          "service_type": {
+                            "_in": [
+                              "doctorGeneral",
+                              "doctor",
+                              "طبيب"
+                            ]
+                          }
+                        },
+                        {
+                          "active_feature_access": {
+                            "user_uid": {
+                              "_eq": "X-Hasura-User-Id"
+                            },
+                            "_or": [
+                              {
+                                "allowed_features": {
+                                  "_contains": [
+                                    "employees"
+                                  ]
+                                }
+                              },
+                              {
+                                "allowed_features": {
+                                  "_contains": [
+                                    "patients.new"
+                                  ]
+                                }
+                              },
+                              {
+                                "allowed_features": {
+                                  "_contains": [
+                                    "patients.list"
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "role": "superadmin",
+              "permission": {
+                "columns": "*",
+                "filter": {
+                  "_and": [
+                    {
+                      "active_superadmin_access": {
+                        "user_uid": {
+                          "_eq": "X-Hasura-User-Id"
+                        }
+                      }
+                    },
+                    {
+                      "_exists": {
+                        "_table": {
+                          "name": "active_superadmin_identity",
+                          "schema": "public"
+                        },
+                        "_where": {
+                          "user_uid": {
+                            "_eq": "X-Hasura-User-Id"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "table": {
+            "name": "service_doctor_share",
+            "schema": "public"
+          },
+          "array_relationships": [
+            {
+              "name": "active_feature_access",
+              "using": {
+                "manual_configuration": {
+                  "column_mapping": {
+                    "account_id": "account_id"
+                  },
+                  "insertion_order": null,
+                  "remote_table": {
+                    "name": "active_account_feature_access",
+                    "schema": "public"
+                  }
+                }
+              }
+            },
+            {
+              "name": "active_superadmin_access",
+              "using": {
+                "manual_configuration": {
+                  "column_mapping": {
+                    "account_id": "account_id"
+                  },
+                  "insertion_order": null,
+                  "remote_table": {
+                    "name": "active_superadmin_account_access",
+                    "schema": "public"
+                  }
+                }
+              }
+            }
+          ],
+          "select_permissions": [
+            {
+              "role": "me",
+              "permission": {
+                "columns": "*",
+                "filter": {
+                  "_or": [
+                    {
+                      "_and": [
+                        {
+                          "active_feature_access": {
+                            "user_uid": {
+                              "_eq": "X-Hasura-User-Id"
+                            },
+                            "_or": [
+                              {
+                                "allow_all": {
+                                  "_eq": true
+                                }
+                              },
+                              {
+                                "allowed_features": {
+                                  "_contains": [
+                                    "lab_radiology"
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "_and": [
+                        {
+                          "active_feature_access": {
+                            "user_uid": {
+                              "_eq": "X-Hasura-User-Id"
+                            },
+                            "_or": [
+                              {
+                                "allowed_features": {
+                                  "_contains": [
+                                    "employees"
+                                  ]
+                                }
+                              },
+                              {
+                                "allowed_features": {
+                                  "_contains": [
+                                    "patients.new"
+                                  ]
+                                }
+                              },
+                              {
+                                "allowed_features": {
+                                  "_contains": [
+                                    "patients.list"
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "_exists": {
+                            "_table": {
+                              "name": "medical_services",
+                              "schema": "public"
+                            },
+                            "_where": {
+                              "id": {
+                                "_ceq": [
+                                  "$",
+                                  "service_id"
+                                ]
+                              },
+                              "account_id": {
+                                "_ceq": [
+                                  "$",
+                                  "account_id"
+                                ]
+                              },
+                              "service_type": {
+                                "_in": [
+                                  "doctorGeneral",
+                                  "doctor",
+                                  "طبيب"
+                                ]
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "_exists": {
+                            "_table": {
+                              "name": "doctors",
+                              "schema": "public"
+                            },
+                            "_where": {
+                              "id": {
+                                "_ceq": [
+                                  "$",
+                                  "doctor_id"
+                                ]
+                              },
+                              "account_id": {
+                                "_ceq": [
+                                  "$",
+                                  "account_id"
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "role": "user",
+              "permission": {
+                "columns": "*",
+                "filter": {
+                  "_or": [
+                    {
+                      "_and": [
+                        {
+                          "active_feature_access": {
+                            "user_uid": {
+                              "_eq": "X-Hasura-User-Id"
+                            },
+                            "_or": [
+                              {
+                                "allow_all": {
+                                  "_eq": true
+                                }
+                              },
+                              {
+                                "allowed_features": {
+                                  "_contains": [
+                                    "lab_radiology"
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "_and": [
+                        {
+                          "active_feature_access": {
+                            "user_uid": {
+                              "_eq": "X-Hasura-User-Id"
+                            },
+                            "_or": [
+                              {
+                                "allowed_features": {
+                                  "_contains": [
+                                    "employees"
+                                  ]
+                                }
+                              },
+                              {
+                                "allowed_features": {
+                                  "_contains": [
+                                    "patients.new"
+                                  ]
+                                }
+                              },
+                              {
+                                "allowed_features": {
+                                  "_contains": [
+                                    "patients.list"
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "_exists": {
+                            "_table": {
+                              "name": "medical_services",
+                              "schema": "public"
+                            },
+                            "_where": {
+                              "id": {
+                                "_ceq": [
+                                  "$",
+                                  "service_id"
+                                ]
+                              },
+                              "account_id": {
+                                "_ceq": [
+                                  "$",
+                                  "account_id"
+                                ]
+                              },
+                              "service_type": {
+                                "_in": [
+                                  "doctorGeneral",
+                                  "doctor",
+                                  "طبيب"
+                                ]
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "_exists": {
+                            "_table": {
+                              "name": "doctors",
+                              "schema": "public"
+                            },
+                            "_where": {
+                              "id": {
+                                "_ceq": [
+                                  "$",
+                                  "doctor_id"
+                                ]
+                              },
+                              "account_id": {
+                                "_ceq": [
+                                  "$",
+                                  "account_id"
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "role": "superadmin",
+              "permission": {
+                "columns": "*",
+                "filter": {
+                  "_and": [
+                    {
+                      "active_superadmin_access": {
+                        "user_uid": {
+                          "_eq": "X-Hasura-User-Id"
+                        }
+                      }
+                    },
+                    {
+                      "_exists": {
+                        "_table": {
+                          "name": "active_superadmin_identity",
+                          "schema": "public"
+                        },
+                        "_where": {
+                          "user_uid": {
+                            "_eq": "X-Hasura-User-Id"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "table": {
+            "name": "employees",
+            "schema": "public"
+          },
+          "array_relationships": [
+            {
+              "name": "active_feature_access",
+              "using": {
+                "manual_configuration": {
+                  "column_mapping": {
+                    "account_id": "account_id"
+                  },
+                  "insertion_order": null,
+                  "remote_table": {
+                    "name": "active_account_feature_access",
+                    "schema": "public"
+                  }
+                }
+              }
+            },
+            {
+              "name": "active_superadmin_access",
+              "using": {
+                "manual_configuration": {
+                  "column_mapping": {
+                    "account_id": "account_id"
+                  },
+                  "insertion_order": null,
+                  "remote_table": {
+                    "name": "active_superadmin_account_access",
+                    "schema": "public"
+                  }
+                }
+              }
+            }
+          ],
+          "select_permissions": [
+            {
+              "role": "me",
+              "permission": {
+                "columns": "*",
+                "filter": {
+                  "_and": [
+                    {
+                      "active_feature_access": {
+                        "user_uid": {
+                          "_eq": "X-Hasura-User-Id"
+                        },
+                        "_or": [
+                          {
+                            "allow_all": {
+                              "_eq": true
+                            }
+                          },
+                          {
+                            "allowed_features": {
+                              "_contains": [
+                                "employees"
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "role": "user",
+              "permission": {
+                "columns": "*",
+                "filter": {
+                  "_and": [
+                    {
+                      "active_feature_access": {
+                        "user_uid": {
+                          "_eq": "X-Hasura-User-Id"
+                        },
+                        "_or": [
+                          {
+                            "allow_all": {
+                              "_eq": true
+                            }
+                          },
+                          {
+                            "allowed_features": {
+                              "_contains": [
+                                "employees"
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "role": "superadmin",
+              "permission": {
+                "columns": "*",
+                "filter": {
+                  "_and": [
+                    {
+                      "active_superadmin_access": {
+                        "user_uid": {
+                          "_eq": "X-Hasura-User-Id"
+                        }
+                      }
+                    },
+                    {
+                      "_exists": {
+                        "_table": {
+                          "name": "active_superadmin_identity",
+                          "schema": "public"
+                        },
+                        "_where": {
+                          "user_uid": {
+                            "_eq": "X-Hasura-User-Id"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "table": {
+            "name": "employees_salaries",
+            "schema": "public"
+          },
+          "array_relationships": [
+            {
+              "name": "active_feature_access",
+              "using": {
+                "manual_configuration": {
+                  "column_mapping": {
+                    "account_id": "account_id"
+                  },
+                  "insertion_order": null,
+                  "remote_table": {
+                    "name": "active_account_feature_access",
+                    "schema": "public"
+                  }
+                }
+              }
+            },
+            {
+              "name": "active_superadmin_access",
+              "using": {
+                "manual_configuration": {
+                  "column_mapping": {
+                    "account_id": "account_id"
+                  },
+                  "insertion_order": null,
+                  "remote_table": {
+                    "name": "active_superadmin_account_access",
+                    "schema": "public"
+                  }
+                }
+              }
+            }
+          ],
+          "select_permissions": [
+            {
+              "role": "me",
+              "permission": {
+                "columns": "*",
+                "filter": {
+                  "_and": [
+                    {
+                      "active_feature_access": {
+                        "user_uid": {
+                          "_eq": "X-Hasura-User-Id"
+                        },
+                        "_or": [
+                          {
+                            "allow_all": {
+                              "_eq": true
+                            }
+                          },
+                          {
+                            "allowed_features": {
+                              "_contains": [
+                                "payments"
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "role": "user",
+              "permission": {
+                "columns": "*",
+                "filter": {
+                  "_and": [
+                    {
+                      "active_feature_access": {
+                        "user_uid": {
+                          "_eq": "X-Hasura-User-Id"
+                        },
+                        "_or": [
+                          {
+                            "allow_all": {
+                              "_eq": true
+                            }
+                          },
+                          {
+                            "allowed_features": {
+                              "_contains": [
+                                "payments"
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "role": "superadmin",
+              "permission": {
+                "columns": "*",
+                "filter": {
+                  "_and": [
+                    {
+                      "active_superadmin_access": {
+                        "user_uid": {
+                          "_eq": "X-Hasura-User-Id"
+                        }
+                      }
+                    },
+                    {
+                      "_exists": {
+                        "_table": {
+                          "name": "active_superadmin_identity",
+                          "schema": "public"
+                        },
+                        "_where": {
+                          "user_uid": {
+                            "_eq": "X-Hasura-User-Id"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "table": {
+            "name": "financial_logs",
+            "schema": "public"
+          },
+          "array_relationships": [
+            {
+              "name": "active_feature_access",
+              "using": {
+                "manual_configuration": {
+                  "column_mapping": {
+                    "account_id": "account_id"
+                  },
+                  "insertion_order": null,
+                  "remote_table": {
+                    "name": "active_account_feature_access",
+                    "schema": "public"
+                  }
+                }
+              }
+            },
+            {
+              "name": "active_superadmin_access",
+              "using": {
+                "manual_configuration": {
+                  "column_mapping": {
+                    "account_id": "account_id"
+                  },
+                  "insertion_order": null,
+                  "remote_table": {
+                    "name": "active_superadmin_account_access",
+                    "schema": "public"
+                  }
+                }
+              }
+            }
+          ],
+          "select_permissions": [
+            {
+              "role": "me",
+              "permission": {
+                "columns": "*",
+                "filter": {
+                  "_and": [
+                    {
+                      "active_feature_access": {
+                        "user_uid": {
+                          "_eq": "X-Hasura-User-Id"
+                        },
+                        "_or": [
+                          {
+                            "allow_all": {
+                              "_eq": true
+                            }
+                          },
+                          {
+                            "allowed_features": {
+                              "_contains": [
+                                "payments"
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "role": "user",
+              "permission": {
+                "columns": "*",
+                "filter": {
+                  "_and": [
+                    {
+                      "active_feature_access": {
+                        "user_uid": {
+                          "_eq": "X-Hasura-User-Id"
+                        },
+                        "_or": [
+                          {
+                            "allow_all": {
+                              "_eq": true
+                            }
+                          },
+                          {
+                            "allowed_features": {
+                              "_contains": [
+                                "payments"
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "role": "superadmin",
+              "permission": {
+                "columns": "*",
+                "filter": {
+                  "_and": [
+                    {
+                      "active_superadmin_access": {
+                        "user_uid": {
+                          "_eq": "X-Hasura-User-Id"
+                        }
+                      }
+                    },
+                    {
+                      "_exists": {
+                        "_table": {
+                          "name": "active_superadmin_identity",
+                          "schema": "public"
+                        },
+                        "_where": {
+                          "user_uid": {
+                            "_eq": "X-Hasura-User-Id"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "table": {
+            "schema": "public",
+            "name": "active_account_feature_access"
+          }
+        },
+        {
+          "table": {
+            "schema": "public",
+            "name": "active_superadmin_account_access"
+          }
+        },
+        {
+          "table": {
+            "schema": "public",
+            "name": "active_superadmin_identity"
+          }
+        },
+        {
+          "table": {
+            "schema": "public",
+            "name": "client_mutations"
+          }
+        }
+      ],
+      "functions": [
+        {
+          "function": {
+            "name": "apply_clinic_sync_atomic",
+            "schema": "public"
+          },
+          "configuration": {
+            "exposed_as": "mutation"
+          },
+          "permissions": []
+        }
+      ]
+    }
+  ]
+}

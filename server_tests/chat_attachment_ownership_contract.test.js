@@ -7,7 +7,10 @@ const root = path.resolve(__dirname, '..');
 const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
 
 test('managed storage.files is not altered by the ownership migration', () => {
-  const sql = read('nhost/migrations/default/20260721230000_chat_attachment_ownership/up.sql');
+  const sql = [
+    read('nhost/migrations/default/20260721230000_chat_attachment_ownership/up.sql'),
+    read('nhost/migrations/default/20261016000000_chat_attachment_global_scope/up.sql'),
+  ].join('\n');
   assert.doesNotMatch(sql, /SET(?:\s+LOCAL)?\s+ROLE\s+nhost_storage_admin/i);
   assert.doesNotMatch(sql, /ALTER\s+TABLE\s+storage\.files/i);
   assert.doesNotMatch(sql, /CREATE\s+(?:UNIQUE\s+)?INDEX[^;]+ON\s+storage\.files/is);

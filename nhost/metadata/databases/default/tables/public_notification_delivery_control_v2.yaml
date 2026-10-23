@@ -1,0 +1,4 @@
+# Private rollout barrier. No application role can read or change activation.
+table:
+  name: notification_delivery_control_v2
+  schema: public
