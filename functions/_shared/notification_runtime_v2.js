@@ -14,13 +14,21 @@ function notificationConfig(env=process.env) {
   const secret = env.GRAPHQL_ADMIN_SECRET || env.NHOST_ADMIN_SECRET || env.HASURA_GRAPHQL_ADMIN_SECRET;
   const raw = env.NHOST_GRAPHQL_URL || env.HASURA_GRAPHQL_URL ||
     (env.NHOST_SUBDOMAIN && env.NHOST_REGION ? 'https://'+env.NHOST_SUBDOMAIN+'.graphql.'+env.NHOST_REGION+'.nhost.run/v1' : '');
-  const graphql = raw.replace(/\/+$/,'').replace(/\/v1\/graphql$/,'').replace(/\/v1$/,'')+'/v1/graphql';
-  const auth = (env.NHOST_AUTH_URL || raw.replace(/\.(graphql|hasura)\./,'.auth.'))
-    .replace(/\/+$/,'').replace(/\/v1\/graphql$/,'').replace(/\/v1$/,'')+'/v1/user';
   try {
-    if (!secret || !raw || new URL(graphql).protocol !== 'https:' || new URL(auth).protocol !== 'https:') fail();
+    // Nhost's public graphql host serves /v1, whereas the Hasura host serves
+    // /v1/graphql. Repositories use the latter contract. Rewrite only the
+    // service label on an actual Nhost hostname, never a custom API hostname.
+    const endpoint = new URL(raw);
+    if (endpoint.hostname.endsWith('.nhost.run')) {
+      endpoint.hostname = endpoint.hostname.replace('.graphql.','.hasura.');
+    }
+    const graphql = endpoint.toString().replace(/\/+$/,'')
+      .replace(/\/v1\/graphql$/,'').replace(/\/v1$/,'')+'/v1/graphql';
+    const auth = (env.NHOST_AUTH_URL || raw.replace(/\.(graphql|hasura)\./,'.auth.'))
+      .replace(/\/+$/,'').replace(/\/v1\/graphql$/,'').replace(/\/v1$/,'')+'/v1/user';
+    if (!secret || !raw || endpoint.protocol !== 'https:' || new URL(auth).protocol !== 'https:') fail();
+    return {graphql,auth,secret};
   } catch (_) {fail();}
-  return {graphql,auth,secret};
 }
 
 async function notificationRequest(url,options,fetchImpl=globalThis.fetch,timeoutMs=4000) {

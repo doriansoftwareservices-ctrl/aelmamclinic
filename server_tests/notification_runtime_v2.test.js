@@ -31,7 +31,7 @@ test('server errors expose no upstream credential or patient fields',async()=>{
 test('Auth URL normalization does not append a second v1 or reuse the GraphQL route',()=>{
   const config=notificationConfig({...env,NHOST_GRAPHQL_URL:'https://fixture.graphql.region.nhost.run/v1/graphql'});
   assert.equal(config.auth,'https://fixture.auth.region.nhost.run/v1/user');
-  assert.equal(config.graphql,'https://fixture.graphql.region.nhost.run/v1/graphql');
+  assert.equal(config.graphql,'https://fixture.hasura.region.nhost.run/v1/graphql');
 });
 test('request body is bounded before dispatching privileged operations',async()=>{
   await assert.rejects(notificationBody({body:{x:'x'.repeat(8192)}}),error=>error.status===413);
@@ -46,4 +46,28 @@ test('Auth denial remains401 while Auth transport failure remains retryable503',
   const req={headers:{authorization:'Bearer synthetic'}};const config=notificationConfig(env);
   await assert.rejects(notificationActor(req,config,async()=>({status:401,json:async()=>({})})),error=>error.status===401);
   await assert.rejects(notificationActor(req,config,async()=>{throw new Error('private');}),error=>error.status===503);
+});
+
+for(const suffix of ['', '/v1', '/v1/graphql']) {
+ test('Nhost graphql alias resolves to the actual Hasura API, suffix '+suffix,()=>{
+  const value=notificationConfig({...env,NHOST_GRAPHQL_URL:'https://fixture.graphql.region.nhost.run'+suffix});
+  assert.equal(value.graphql,'https://fixture.hasura.region.nhost.run/v1/graphql');
+  assert.equal(value.auth,'https://fixture.auth.region.nhost.run/v1/user');
+ });
+}
+test('Nhost subdomain fallback also selects the actual Hasura endpoint',()=>{
+ assert.equal(notificationConfig(env).graphql,'https://fixture.hasura.fixture-region.nhost.run/v1/graphql');
+});
+test('explicit custom GraphQL hosts keep their original hostname',()=>{
+ assert.equal(notificationConfig({...env,NHOST_GRAPHQL_URL:'https://graphql.example.invalid/v1/graphql'}).graphql,
+  'https://graphql.example.invalid/v1/graphql');
+});
+test('disabled cloud wakeup works when the graphql alias rejects v1/graphql',async()=>{
+ let calls=0;
+ const result=await invoke({env:{...env,NHOST_GRAPHQL_URL:'https://fixture.graphql.region.nhost.run/v1'},fetchImpl:async(url)=>{
+  calls++;
+  if(url==='https://fixture.hasura.region.nhost.run/v1/graphql')return{status:200,ok:true,json:async()=>({data:{notification_delivery_control_v2:[{capture_enabled:false,dispatch_enabled:false}]}})};
+  return{status:404,ok:false,json:async()=>({error:'Not Found'})};
+ }});
+ assert.equal(result.status,200);assert.equal(result.body.disabled,true);assert.equal(calls,1);
 });
