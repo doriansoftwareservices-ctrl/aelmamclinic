@@ -17,9 +17,11 @@ for line in sys.stdin:
   if value.get('actor'):
    actor=value['actor'];assert actor['role'] in ['user','superadmin','me','owner','employee','support']
    headers.update({'x-hasura-role':actor['role'],'x-hasura-user-id':actor['uid']})
-  req=urllib.request.Request('http://127.0.0.1:8085/v1/graphql',json.dumps({'query':value['document'],'variables':value.get('variables',{})}).encode(),headers)
+  is_sql='sql' in value
+  payload={'type':'run_sql','args':{'source':'default','sql':value['sql'],'read_only':False,'check_metadata_consistency':False}} if is_sql else {'query':value['document'],'variables':value.get('variables',{})}
+  req=urllib.request.Request('http://127.0.0.1:8085'+('/v2/query' if is_sql else '/v1/graphql'),json.dumps(payload).encode(),headers)
   try:
-   with urllib.request.urlopen(req,timeout=3) as response:status=response.status;body=json.load(response)
+   with urllib.request.urlopen(req,timeout=10) as response:status=response.status;body=json.load(response)
   except urllib.error.HTTPError as response:status=response.code;body=json.load(response)
   print(json.dumps({'id':value['id'],'status':status,'body':body}),flush=True)
  except Exception as error:print(json.dumps({'id':value.get('id'),'error':type(error).__name__}),flush=True)
@@ -31,10 +33,10 @@ for line in sys.stdin:
     const reply = JSON.parse(line);const item = pending.get(reply.id);
     if (!item) return;
     pending.delete(reply.id);item.cleanup();
-    if (reply.error) item.reject(new Error('owned_fixture_transport_failed'));
+    if (reply.error) item.reject(new Error('owned_fixture_transport_failed:' + reply.error));
     else item.resolve(reply);
   });
-  const request = (document, variables = {}, actor = null, signal) => new Promise((resolve, reject) => {
+  const request = (document, variables = {}, actor = null, signal, sqlStatement) => new Promise((resolve, reject) => {
     if (signal?.aborted) {reject(new Error('owned_fixture_request_aborted'));return;}
     const id = ++serial;
     const abort = () => {pending.delete(id);cleanup();reject(new Error('owned_fixture_request_aborted'));};
@@ -42,22 +44,22 @@ for line in sys.stdin:
     const cleanup = () => {clearTimeout(timer);signal?.removeEventListener('abort', abort);};
     signal?.addEventListener('abort', abort, {once: true});
     pending.set(id, {resolve, reject, cleanup});
-    child.stdin.write(JSON.stringify({id, document, variables, actor}) + '\n');
+    child.stdin.write(JSON.stringify({id, document, variables, actor, ...(sqlStatement === undefined ? {} : {sql: sqlStatement})}) + '\n');
   });
-  const sql = statement => new Promise((resolve, reject) => {
-    const process = spawn(docker, ['exec', '-i', container, 'psql', '-U', 'postgres',
-      '-X', '-qAt', '-v', 'ON_ERROR_STOP=1', '-d', database]);
-    let stdout = '';let stderr = '';
-    process.stdout.on('data', value => {stdout += value;});
-    process.stderr.on('data', value => {stderr += value;});
-    const timer = setTimeout(() => {process.kill();reject(new Error('owned_fixture_SQL_timeout'));}, 20000);
-    process.on('error', reject);
-    process.on('exit', code => {
-      clearTimeout(timer);if (code) reject(new Error('owned_fixture_SQL_failed:' + stderr));else resolve(stdout.trim());
-    });
-    process.stdin.end("BEGIN;DO $$ BEGIN IF current_database()<>'" + database +
-      "' THEN RAISE EXCEPTION 'owned_fixture_only';END IF;END $$;" + statement + ';COMMIT;');
-  });
+  // Reuse the already-started bridge. Starting docker.exe for every SQL call
+  // adds Windows/WSL interop stalls unrelated to the product's HTTP deadline.
+  // Hasura executes this one multi-statement SQL request atomically; an actual
+  // rollback-and-recovery test below verifies that fixture contract.
+  const sql = async statement => {
+    const guarded = "DO $$ BEGIN IF current_database()<>'" + database +
+      "' THEN RAISE EXCEPTION 'owned_fixture_only';END IF;END $$;" + statement + ';';
+    const reply = await request(undefined, {}, null, undefined, guarded);
+    if (reply.status !== 200 || !['TuplesOk', 'CommandOk'].includes(reply.body?.result_type)) {
+      throw new Error('owned_fixture_SQL_failed');
+    }
+    return reply.body.result_type === 'CommandOk' ? '' : reply.body.result.slice(1)
+      .map(row => row.map(value => value ?? '').join('|')).join('\n');
+  };
   return {
     sql,
     async query({document, variables, actor}) {

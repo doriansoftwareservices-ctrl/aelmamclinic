@@ -438,6 +438,7 @@ async function gqlRequest(query, variables) {
       'sync_catalog_dependency_pending', 'sync_expected_version_invalid',
       'clinic_timestamp_utc_required', 'clinic_timestamp_invalid',
       'patient_registration_time_required', 'patient_registration_time_clear_denied',
+      'patient_registration_paid_period_locked', 'patient_registration_financial_review_required',
       'sync_atomic_request_invalid', 'sync_version_unknown', 'sync_version_conflict',
       'sync_identity_mismatch', 'sync_identity_missing', 'sync_record_deleted',
       'mutation_in_progress', 'sync_money_mismatch', 'money_minor_mismatch',
@@ -780,6 +781,9 @@ async function applyMutation({table, object, event, clientMutation, userId, oper
         throw deny(403, error.upstreamContractCode, 'You no longer have permission to synchronize this data');
       case 'sync_catalog_dependency_pending':
         throw deny(409, 'mutation_dependency_pending', 'The service and doctor must synchronize first');
+      case 'patient_registration_paid_period_locked':
+      case 'patient_registration_financial_review_required':
+        throw deny(409, error.upstreamContractCode, 'The visit registration time needs financial review');
       case 'clinic_timestamp_utc_required':
       case 'clinic_timestamp_invalid':
       case 'patient_registration_time_required':

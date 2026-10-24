@@ -243,3 +243,12 @@ for (const code of ['clinic_timestamp_utc_required', 'clinic_timestamp_invalid',
     assert.equal(result.requests.filter(request => /^\s*mutation\b/.test(request.query)).length, 1);
   });
 }
+
+for(const code of ['patient_registration_paid_period_locked','patient_registration_financial_review_required']) {
+ test('paid registration correction '+code+' remains a typed financial conflict',async()=>{
+  const result=await attempt({table:'patients',error:code});
+  assert.equal(result.statusCode,409);assert.equal(result.body.error_code,code);
+  assert.equal(result.writes,1);
+  assert.equal(result.requests.filter(request=>/^\s*mutation\b/.test(request.query)).length,1);
+ });
+}
